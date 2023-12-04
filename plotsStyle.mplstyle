@@ -1,0 +1,27 @@
+axes.labelsize : 20
+axes.grid : True
+
+figure.titlesize : 24
+figure.figsize : 12, 8
+
+legend.fontsize : 16
+
+xtick.major.bottom : True
+xtick.minor.bottom : True
+xtick.major.top : True
+xtick.minor.top : True
+xtick.direction : in
+xtick.major.pad : 5
+xtick.minor.pad : 5
+xtick.labelsize : 16
+
+ytick.major.left : True
+ytick.minor.left : True
+ytick.major.right : True
+ytick.minor.right : True
+ytick.direction : in
+ytick.major.pad : 5
+ytick.minor.pad : 5
+ytick.labelsize : 16
+
+
