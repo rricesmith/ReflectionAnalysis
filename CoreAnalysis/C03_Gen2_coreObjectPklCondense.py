@@ -19,7 +19,7 @@ cores = 2000
 
 identifier = 'Gen2_2021'
 #trigger_antennas = [ ['LPDA_2of4_2sigma', [0, 1, 2, 3]], ['LPDA_2of4_3.8sigma', [0, 1, 2, 3]] ]
-trigger_antennas = [ ['LPDA_2of4_100Hz', [0, 1, 2, 3]], ['PA_8channel_100Hz', [4, 5, 6, 7, 8, 9, 10, 11]]]
+trigger_antennas = [ ['LPDA_2of4_100Hz', [0, 1, 2, 3]], ['PA_4channel_100Hz', [8, 9, 10, 11]]]
 
 #identifier = 'DipoleTesting'
 #trigger_antennas = [ ['Gen2_Dipole_2sig', [0]], ['Gen2_Dipole_3sig', [0]],

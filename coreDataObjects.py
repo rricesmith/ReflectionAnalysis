@@ -371,9 +371,7 @@ class coresBin:
     def totalEventRateCore(self, singleAeff=False, type='TA'):
 #        print(f'tot aeff core {self.totalAeffCore()}')
 #        print(f'total erate area core {self.totalEventRateAreaCore()}')
-        if singleAeff:
-            return self.singleAeff * self.totalEventRateAreaCore(type=type)
-        return self.totalAeffCore() * self.totalEventRateAreaCore(type=type)
+        return self.totalAeffCore(singleAeff) * self.totalEventRateAreaCore(type=type)
 
     def totalEventErrorCore(self, singleAeff=False, highLow=True, type='TA'):
         #old way I did error, wrong I believe because each bin is independent, so want to have the sqrt of the sum of the squares
@@ -390,9 +388,13 @@ class coresBin:
 #        errorLow = self.weightedAverageAeff - self.weightedErrorAeff
 #        print(f'error Low is {errorLow}')
         if highLow == False:
-            return self.weightedErrorAeff * self.totalEventRateAreaCore(type=type)
-        errorHigh = self.totalAeffCore() + self.weightedErrorAeff
-        errorLow = self.totalAeffCore() - self.weightedErrorAeff
+            if singleAeff:
+                return self.singleErrorAeff * self.totalEventRateAreaCore(type=type)
+            else:
+                return self.weightedErrorAeff * self.totalEventRateAreaCore(type=type)
+
+        errorHigh = self.totalAeffCore(singleAeff) + self.weightedErrorAeff
+        errorLow = self.totalAeffCore(singleAeff) - self.weightedErrorAeff
         if errorLow < 0:
             errorLow = 0
         return errorHigh * self.totalEventRateAreaCore(type=type), errorLow * self.totalEventRateAreaCore(type=type)
@@ -400,11 +402,13 @@ class coresBin:
 
 
     def totalEventRateAreaCore(self, type='TA'):
+        # Returns the integrated surface flux for the core bin
+        # Evts/km^2
         try:
             if type == 'TA':
-                return self.totalEventRateArea_TA
+                return self.totalEventRateArea_TA * (self.e_bins[1] - self.e_bins[0])
             elif type == 'Auger':
-                return self.totalEventRateArea_Auger
+                return self.totalEventRateArea_Auger * (self.e_bins[1] - self.e_bins[0])
             else:
                 print(f'Type {type} not supported')
                 quit()
@@ -422,14 +426,20 @@ class coresBin:
             self.totalEventRateArea_Auger = totalEventRate
 
             if type == 'TA':
-                return self.totalEventRateArea_TA
+                return self.totalEventRateArea_TA * (self.e_bins[1] - self.e_bins[0])
             elif type == 'Auger':
-                return self.totalEventRateArea_Auger
+                return self.totalEventRateArea_Auger * (self.e_bins[1] - self.e_bins[0])
             else:
                 print(f'Type {type} not supported')
                 quit()
 
-    def totalAeffCore(self):
+    def totalAeffCore(self, singleAeff=False):
+        if singleAeff:
+            try:
+                return self.singleAeff
+            except AttributeError:
+                self.setSingleAeff(self.max_radius, self.radius_trig_hist, self.n_cores)
+                return self.singleAeff
         return sum(self.Aeff_per_rad_bin)
 #        return self.weightedAverageAeff
 

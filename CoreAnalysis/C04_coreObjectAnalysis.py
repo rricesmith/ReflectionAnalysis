@@ -33,8 +33,8 @@ if __name__ == '__main__':
     parser.add_argument('location', type=str, help='MB or SP location')
     parser.add_argument('--title_comment', type=str, default='', help='Extra string to put into title')
     parser.add_argument('--savePrefix', type=str, default='', help='Prefix to save file with to separate from others')
-    parser.add_argument('--f', type=float, default=0.3, help='f value used in calculation')
-    parser.add_argument('--dB', type=float, default=40, help='dB value of reflector used')
+    parser.add_argument('--f', type=float, default=0.3, help='f value used in calculation, DEPRECIATED')
+    parser.add_argument('--dB', type=float, default=40, help='dB value of reflector used, DEPRECIATED')
     args = parser.parse_args()
     core_input_file = args.inputfilenamecores
     location = args.location
@@ -184,6 +184,21 @@ if __name__ == '__main__':
 #            plt.show()
     print(f'here1')
 
+
+    print(f'plotting CR vs Shower energy flux')
+    CDO_util.plotCrShowerHeatFlux(CoreObjectsList, loc=location)
+    plt.savefig(f'plots/CoreAnalysis/{savePrefix}_CRvsShowerFlux.png')
+    plt.clf()
+
+    print(f'doing single aeff vs multi aeff test')
+    CDO_util.plotCoreEnergyAeff(CoreObjectsList, label='Multi Aeff')
+    CDO_util.plotCoreEnergyAeff(CoreObjectsList, singleAeff=True, label='Single Aeff')
+    plt.legend()
+    plt.ylim(10**-6, 10**2)
+    plt.savefig(f'plots/CoreAnalysis/{savePrefix}_SingleVsMultiAeff.png')
+    plt.clf()
+
+
     #following line is bugged, fix later
 #    plt.contourf(xx, yy, zz, cmap='YlOrRd', norm=matplotlib.colors.LogNorm()) 
 #    plt.colorbar(label=f'Events/Stn/Yr, Net {np.sum(zz):.5f}')
@@ -207,6 +222,13 @@ if __name__ == '__main__':
     plt.clf()
     print(f'here3')
 
+    #Plot single vs multi aeff event rate result
+    CDO_util.plotCoreEnergyEventRate(CoreObjectsList, label='multi Aeff', lowerLim=18)
+    CDO_util.plotCoreEnergyEventRate(CoreObjectsList, singleAeff=True, label='single Aeff', lowerLim=18)
+#    plt.yscale('log')
+    plt.savefig(f'plots/CoreAnalysis/{savePrefix}_SingleVsMulti_CoreEnergy_Erate.png')
+    plt.clf()
+#    quit()
 
     #Make plot of event rate per CR energy
     CDO_util.plotCREnergyEventRate(CoreObjectsList)

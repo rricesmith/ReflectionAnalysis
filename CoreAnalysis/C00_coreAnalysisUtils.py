@@ -117,7 +117,7 @@ def plotCREnergyEventRate(CoreObjectsList, error=True, title_comment='', legend_
 #    plt.clf()
     return plot
     
-def plotCoreEnergyEventRate(CoreObjectsList, error=True, title_comment='', legend_comment='', type='TA', DEBUG=False):
+def plotCoreEnergyEventRate(CoreObjectsList, error=True, singleAeff=False, title_comment='', label='', type='TA', lowerLim=0, DEBUG=False):
     #Make a plot of event rate as function of core energy
     plotCoreEng = []
     plotCoreErate = []
@@ -129,13 +129,15 @@ def plotCoreEnergyEventRate(CoreObjectsList, error=True, title_comment='', legen
     testZen = []
     for core in CoreObjectsList:
         energy = core.e_center
-        erate = core.totalEventRateCore(type=type)
+        erate = core.totalEventRateCore(singleAeff=singleAeff, type=type)
         zen = core.zen_center
-        sigma_error = core.totalEventErrorCore(highLow=False, type=type)
-        print(f'eng {energy} zen {zen} has rate {erate} and error {sigma_error}')
-        if not erate == 0:
-            print(f'based off of total trigs {sum(core.statistics_per_bin)}')
-        errorhigh, errorlow = core.totalEventErrorCore(type=type)
+        sigma_error = core.totalEventErrorCore(singleAeff=singleAeff, highLow=False, type=type)
+
+        if DEBUG:
+            print(f'eng {energy} zen {zen} has rate {erate} and error {sigma_error}')
+            if not erate == 0:
+                print(f'based off of total trigs {sum(core.statistics_per_bin)}')
+        errorhigh, errorlow = core.totalEventErrorCore(singleAeff=singleAeff, type=type)
         if not zen in testZen:
             testZen.append(zen)
         if not energy in plotCoreEng:
@@ -144,7 +146,7 @@ def plotCoreEnergyEventRate(CoreObjectsList, error=True, title_comment='', legen
             errorErateHigh.append(errorhigh)
             errorErateLow.append(errorlow)
 
-            finalError.append([core.totalEventErrorCore(highLow=False, type=type)])
+            finalError.append([core.totalEventErrorCore(singleAeff=singleAeff, highLow=False, type=type)])
         else:
             index = plotCoreEng.index(energy)
             plotCoreErate[index] += erate
@@ -152,12 +154,17 @@ def plotCoreEnergyEventRate(CoreObjectsList, error=True, title_comment='', legen
             errorErateLow[index] += errorlow
 
 
-            finalError[index].append(core.totalEventErrorCore(highLow=False,type=type))
+            finalError[index].append(core.totalEventErrorCore(singleAeff=singleAeff, highLow=False,type=type))
 
     #Sort in case its unsorted
     finalError = [x for _,x in sorted(zip(plotCoreEng, finalError))]
     plotCoreErate = [x for _,x in sorted(zip(plotCoreEng, plotCoreErate))]
     plotCoreEng = sorted(plotCoreEng)
+
+    for iC, eng in enumerate(plotCoreEng):
+        if eng < lowerLim:
+            finalError[iC] = 0
+            plotCoreErate[iC] = 0
 
     if error:
         plotErr = np.zeros(len(finalError))
@@ -178,7 +185,7 @@ def plotCoreEnergyEventRate(CoreObjectsList, error=True, title_comment='', legen
         sumErr = np.sqrt(np.sum(plotErr**2))
         if DEBUG:
             print(f'tot rate {np.sum(plotCoreErate)} and tot error {sumErr}')
-        plot = plt.fill_between(plotCoreEng, plotErrHigh, plotErrLow, label=f'{np.sum(plotCoreErate):.4f}±{sumErr:.4f} Evts/Stn/Yr')
+        plot = plt.fill_between(plotCoreEng, plotErrHigh, plotErrLow, label=f'{label} {np.sum(plotCoreErate):.4f}±{sumErr:.4f} Evts/Stn/Yr')
     #    plt.plot(plotCoreEng, plotCoreErate, color='blue', label='err prop')
 
         if DEBUG:
@@ -198,7 +205,7 @@ def plotCoreEnergyEventRate(CoreObjectsList, error=True, title_comment='', legen
             plt.savefig(f'plots/CoreAnalysis/finaltesterror.png')
             plt.clf()
     else:
-        plot = plt.plot(plotCoreEng, plotCoreErate, label=f'{legend_comment} {np.sum(plotCoreErate):.4f} Evts/Stn/Yr')
+        plot = plt.plot(plotCoreEng, plotCoreErate, label=f'{label} {np.sum(plotCoreErate):.4f} Evts/Stn/Yr')
     plt.xlabel('Core Energy (log10eV)')
     plt.ylabel('Evts/Stn/Yr')
     plt.legend(loc='upper left')
@@ -207,20 +214,20 @@ def plotCoreEnergyEventRate(CoreObjectsList, error=True, title_comment='', legen
 #    plt.clf()
     return plot
 
-def plotCoreEnergyAeff(CoreObjectsList, title_comment=''):
+def plotCoreEnergyAeff(CoreObjectsList, singleAeff=False, label='', title_comment=''):
     #Make a plot of effective area as function of core energy
     plotCoreEng = []
     plotCoreAeff = []
     for core in CoreObjectsList:
         energy = core.e_center
-        aeff = core.totalAeffCore()
+        aeff = core.totalAeffCore(singleAeff=singleAeff)
         if not energy in plotCoreEng:
             plotCoreEng.append(energy)
             plotCoreAeff.append(aeff)
         else:
             index = plotCoreEng.index(energy)
             plotCoreAeff[index] += aeff
-    plt.scatter(plotCoreEng, plotCoreAeff)
+    plt.scatter(plotCoreEng, plotCoreAeff, label=label)
     plt.xlabel('Core Energy (log10eV)')
     plt.ylabel(r'Effective Area ($km^{2}$)')
     plt.yscale('log')
@@ -516,6 +523,65 @@ def plotXSlantPerVarHistogram(CoreObjectsList, loc='SP', type='TA', var='zenith'
     return 0
 
 
+def plotCrShowerHeatFlux(CoreObjectsList, f=0.3, type='TA', loc='SP'):
+    if loc == 'SP':
+        atm_overburden = 680
+    elif loc == 'MB':
+        atm_overburden = 1000
+
+    if type == 'TA':
+        with open(f"data/output_TA_19_{atm_overburden}.pkl", "rb") as fin:
+            shower_energies, weights_shower_energies, shower_xmax = pickle.load(fin)
+            fin.close()
+    elif type == 'Auger':
+        with open(f"data/output_auger_19_{atm_overburden}.pkl", "rb") as fin:
+            shower_energies, weights_shower_energies, shower_xmax = pickle.load(fin)
+            fin.close()
+    else:
+        print(f'Type {type} is wrong')
+        quit()
+
+
+    #For iterating through the generated showers
+    shower_E_bins = np.arange(17, 20.01, 0.1)
+    logEs = 0.5 * (shower_E_bins[1:] + shower_E_bins[:-1])
+    dCos = 0.05
+    coszen_bin_edges = np.arange(np.cos(np.deg2rad(60)), 1.01, dCos)
+    coszen_bin_edges = np.flip(coszen_bin_edges)
+    coszens = 0.5 * (coszen_bin_edges[1:] + coszen_bin_edges[:-1])
+    cos_edges = np.arccos(coszen_bin_edges)
+    cos_edges[np.isnan(cos_edges)] = 0
+
+
+    plotCrEng = np.arange(17.0, 20.01, 0.1)
+    plotShEng = np.arange(15.0, 20.01, 0.1)
+    eRate = np.zeros((len(plotCrEng), len(plotShEng)))
+
+    #Add showers to right bins
+    for iE, logE in enumerate(logEs):
+        eIndex = np.digitize(logE, plotCrEng)
+#        print(f'logE {logE} index {eIndex} in plot {plotCrEng}')
+        for iC, coszen in enumerate(coszens):
+            mask = ~np.isnan(shower_energies[iE][iC])
+            shEngs = shower_energies[iE][iC][mask]
+            shRates = weights_shower_energies[iE][iC][mask]
+            for shN, shEng in enumerate(shEngs):
+                shIndex = np.digitize(np.log10(shEng * f), plotShEng)
+#                print(f'sh eng {np.log10(shEng * f)} index {shIndex} in plot {plotShEng}')
+                eRate[eIndex, shIndex] += shRates[shN]
+
+
+    eRate = np.fliplr(eRate)
+    eRate, cmap = set_bad_imshow(eRate, 0)
+    eRate = eRate.T
+    norm = matplotlib.colors.LogNorm()
+    plt.imshow(eRate, extent=[17.0, 20.0, 15.0, 20.0], aspect='auto',
+                norm=norm, cmap=cmap, vmin=3*10**-7, vmax=5*10**2)
+    plt.xlabel('lg(Ecr/eV)')
+    plt.ylabel('lg(Esh/eV) = lg(f*Ecore/eV)')
+    plt.colorbar()
+
+    return
 
 
 if __name__ == "__main__":
