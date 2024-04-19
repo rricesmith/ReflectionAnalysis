@@ -3,11 +3,11 @@ import numpy as np
 
 
 
-n_cores = 1000
+n_cores = 100
 num_icetop = 30
 amp = True
 add_noise = True
-output_folder = 'SimpleFootprintSimulation/output/3.5.24/'
+output_folder = 'SimpleFootprintSimulation/output/4.17.24/'
 output_filename = 'Stn51_IceTop'
 
 min_energy = 16.0

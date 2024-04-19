@@ -141,12 +141,11 @@ station_id = 51
 
 # Indicate channels for simulation
 direct_LPDA_channels = [4, 5, 6]
-sigma_trigger = 5 # Sigma threshold to trigger on
 
 # initialize all modules that are needed for processing
 # provide input parameters that are to remain constant during processung
 readCoREAS = NuRadioReco.modules.io.coreas.readCoREAS.readCoREAS()
-readCoREAS.begin(input_files, station_id, n_cores=n_cores, max_distance=None)
+readCoREAS.begin(input_files, station_id, n_cores=n_cores, max_distance=2*units.km)
 
 simulationSelector = NuRadioReco.modules.io.coreas.simulationSelector.simulationSelector()
 simulationSelector.begin()
@@ -172,7 +171,7 @@ channelResampler = NuRadioReco.modules.channelResampler.channelResampler()
 channelResampler.begin()
 
 triggerTimeAdjuster = NuRadioReco.modules.triggerTimeAdjuster.triggerTimeAdjuster()
-triggerTimeAdjuster.begin(trigger_name=f'direct_LPDA_2of3_{sigma_trigger}sigma')
+triggerTimeAdjuster.begin(trigger_name=f'direct_LPDA_2of3_3.5sigma')
 
 
 eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
@@ -199,15 +198,20 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
     if preAmpVrms_per_channel == {}:
         # Get noise levels for simulation
         preAmpVrms_per_channel, postAmpVrms_per_channel = calculateNoisePerChannel(det, station=station, amp=sim_amp)
+        ic(preAmpVrms_per_channel, postAmpVrms_per_channel)
         if add_noise:
-            threshold_high = {key: value * sigma_trigger for key, value in postAmpVrms_per_channel.items()}
-            threshold_low = {key: value * -sigma_trigger for key, value in postAmpVrms_per_channel.items()}
+            threshold_high_3_5 = {key: value * 3.5 for key, value in postAmpVrms_per_channel.items()}
+            threshold_low_3_5 = {key: value * -3.5 for key, value in postAmpVrms_per_channel.items()}
+            threshold_high_5 = {key: value * 5 for key, value in postAmpVrms_per_channel.items()}
+            threshold_low_5 = {key: value * -5 for key, value in postAmpVrms_per_channel.items()}
         else:
-            threshold_high = {key: value * sigma_trigger for key, value in preAmpVrms_per_channel.items()}
-            threshold_low = {key: value * -sigma_trigger for key, value in preAmpVrms_per_channel.items()}
+            threshold_high_3_5 = {key: value * 3.5 for key, value in preAmpVrms_per_channel.items()}
+            threshold_low_3_5 = {key: value * -3.5 for key, value in preAmpVrms_per_channel.items()}
+            threshold_high_5 = {key: value * 5 for key, value in postAmpVrms_per_channel.items()}
+            threshold_low_5 = {key: value * -5 for key, value in postAmpVrms_per_channel.items()}
 
-        # ic(preAmpVrms_per_channel, postAmpVrms_per_channel, threshold_high, threshold_low)
-
+        # ic(preAmpVrms_per_channel, postAmpVrms_per_channel, threshold_high_3_5, threshold_high_5)
+        # quit()
 
     if simulationSelector.run(evt, station.get_sim_station(), det):
 
@@ -218,22 +222,29 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
 
         hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
 
-        highLowThreshold.run(evt, station, det, threshold_high=threshold_high, 
-                            threshold_low=threshold_low,
+        highLowThreshold.run(evt, station, det, threshold_high=threshold_high_3_5, 
+                            threshold_low=threshold_low_3_5,
                             coinc_window = 40*units.ns,
                             triggered_channels=direct_LPDA_channels,
                             number_concidences=2,
-                            trigger_name=f'direct_LPDA_2of3_{sigma_trigger}sigma')
+                            trigger_name=f'direct_LPDA_2of3_3.5sigma')
 
 
-        if station.get_trigger(f'direct_LPDA_2of3_{sigma_trigger}sigma').has_triggered():
+        if station.get_trigger(f'direct_LPDA_2of3_3.5sigma').has_triggered():
 
-            highLowThreshold.run(evt, station, det, threshold_high=threshold_high, 
-                                threshold_low=threshold_low,
+            highLowThreshold.run(evt, station, det, threshold_high=threshold_high_3_5, 
+                                threshold_low=threshold_low_3_5,
                                 coinc_window = 40*units.ns,
                                 triggered_channels=direct_LPDA_channels,
-                                number_concidences=2,
-                                trigger_name=f'direct_LPDA_3of3_{sigma_trigger}sigma')
+                                number_concidences=3,
+                                trigger_name=f'direct_LPDA_3of3_3.5sigma')
+
+            highLowThreshold.run(evt, station, det, threshold_high=threshold_high_5, 
+                                threshold_low=threshold_low_5,
+                                coinc_window = 40*units.ns,
+                                triggered_channels=direct_LPDA_channels,
+                                number_concidences=3,
+                                trigger_name=f'direct_LPDA_3of3_5sigma')
 
 
             triggerTimeAdjuster.run(evt, station, det)
