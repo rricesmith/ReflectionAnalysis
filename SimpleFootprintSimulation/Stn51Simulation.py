@@ -101,12 +101,12 @@ def pullFilesForSimulation(sim_type, min_energy, max_energy, num_icetop=10, icet
             folder = f'../../../../../dfs8/sbarwick_lab/arianna/SIM/southpole/IceTop/lgE_{i:.1f}/sin2_{sin2:.1f}/'
             for (dirpath, dirnames, filenames) in os.walk(folder):
                 for file in filenames:
+                    if num_in_bin == num_icetop:
+                        continue
                     if not 'highlevel' in file:
                         file = os.path.join(folder, file)
                         input_files.append(file)
                         num_in_bin += 1
-                    if num_in_bin == num_icetop:
-                        continue
         i += 0.1
 
     return input_files
@@ -117,6 +117,7 @@ parser.add_argument('output_filename', type=str, help='Output filename for simul
 parser.add_argument('n_cores', type=int, help='Number of cores to use for simulation')
 parser.add_argument('--min_energy', type=float, default=16.0, help='Minimum energy for simulation')
 parser.add_argument('--max_energy', type=float, default=18.5, help='Maximum energy for simulation')
+parser.add_argument('--sin2', type=float, default=-1, help='Sin^2(zenith) value for simulation, range from 0.0-1.0')
 parser.add_argument('--num_icetop', type=int, default=10, help='Number of IceTop footprints to simulate per bin')
 parser.add_argument('--sim_amp', default=True, help='Include amplifier in simulation')
 parser.add_argument('--add_noise', default=False, help='Include noise in simulation')
@@ -126,12 +127,13 @@ output_filename = args.output_filename
 n_cores = args.n_cores
 min_energy = args.min_energy
 max_energy = args.max_energy
+sin2 = args.sin2
 num_icetop = args.num_icetop
 sim_amp = args.sim_amp
 add_noise = args.add_noise
 
 # Get files for simulation
-input_files = pullFilesForSimulation('IceTop', min_energy, max_energy, num_icetop=num_icetop, icetop_sin=-1)
+input_files = pullFilesForSimulation('IceTop', min_energy, max_energy, num_icetop=num_icetop, icetop_sin=sin2)
 
 # Setup detector
 # det = detector.Detector(json_filename=f'configurations/station51_InfAir.json', assume_inf=False, antenna_by_depth=False)
@@ -199,7 +201,7 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
         # Get noise levels for simulation
         preAmpVrms_per_channel, postAmpVrms_per_channel = calculateNoisePerChannel(det, station=station, amp=sim_amp)
         ic(preAmpVrms_per_channel, postAmpVrms_per_channel)
-        if add_noise:
+        if sim_amp:
             threshold_high_3_5 = {key: value * 3.5 for key, value in postAmpVrms_per_channel.items()}
             threshold_low_3_5 = {key: value * -3.5 for key, value in postAmpVrms_per_channel.items()}
             threshold_high_5 = {key: value * 5 for key, value in postAmpVrms_per_channel.items()}
@@ -207,15 +209,15 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
         else:
             threshold_high_3_5 = {key: value * 3.5 for key, value in preAmpVrms_per_channel.items()}
             threshold_low_3_5 = {key: value * -3.5 for key, value in preAmpVrms_per_channel.items()}
-            threshold_high_5 = {key: value * 5 for key, value in postAmpVrms_per_channel.items()}
-            threshold_low_5 = {key: value * -5 for key, value in postAmpVrms_per_channel.items()}
+            threshold_high_5 = {key: value * 5 for key, value in preAmpVrms_per_channel.items()}
+            threshold_low_5 = {key: value * -5 for key, value in preAmpVrms_per_channel.items()}
 
-        # ic(preAmpVrms_per_channel, postAmpVrms_per_channel, threshold_high_3_5, threshold_high_5)
-        # quit()
+        ic(preAmpVrms_per_channel, postAmpVrms_per_channel, threshold_high_3_5, threshold_high_5)
+        quit()
 
     if simulationSelector.run(evt, station.get_sim_station(), det):
 
-        efieldToVoltageConverter.run(evt, station, det)
+        # efieldToVoltageConverter.run(evt, station, det)
 
         if add_noise:
             channelGenericNoiseAdder.run(evt, station, det, type='rayleigh', amplitude=preAmpVrms_per_channel)
@@ -248,9 +250,13 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
 
 
             triggerTimeAdjuster.run(evt, station, det)
-            channelResampler.run(evt, station, det, 2*units.GHz)
+            # channelResampler.run(evt, station, det, 2*units.GHz)
             channelStopFilter.run(evt, station, det)
-            eventWriter.run(evt, det)
+
+    # Save every event for proper rate calculation
+    # Now every event is saved regardless of if it triggers or not
+    # When checking events in nur, now check if station.has_triggered()
+    eventWriter.run(evt, det)
 
 
 nevents = eventWriter.end()
