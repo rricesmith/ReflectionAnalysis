@@ -194,7 +194,7 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
     eventTypeIdentifier.run(evt, station, mode='forced', forced_event_type='cosmic_ray')
     # channelAddCableDelay.run(evt, station, det, mode='add')   # Not sure if necessary
     efieldToVoltageConverter.run(evt, station, det)
-    channelResampler.run(evt, station, det, 2*units.GHz)
+    channelResampler.run(evt, station, det, 1*units.GHz)
 
 
     if preAmpVrms_per_channel == {}:
@@ -250,7 +250,7 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
 
 
             triggerTimeAdjuster.run(evt, station, det)
-            # channelResampler.run(evt, station, det, 2*units.GHz)
+            # channelResampler.run(evt, station, det, 1*units.GHz)
             channelStopFilter.run(evt, station, det)
 
     # Save every event for proper rate calculation
