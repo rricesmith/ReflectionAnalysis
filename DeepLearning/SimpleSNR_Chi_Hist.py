@@ -55,18 +55,27 @@ def loadTemplate(type='RCR', amp='200s'):
 
 def plotSimSNRChi(templates_RCR, noiseRMS, amp='200s', type='RCR'):
 
-    path = 'DeepLearning/data/3rdpass/'
+    # path = 'DeepLearning/data/3rdpass/'
+    path = '../../../../../dfs8/sbarwick_lab/ariannaproject/rricesmi/numpy_arrays/'
+    simulation_date = '2.9.24'
+
     RCR_files = []
     if type == 'RCR':
+        path += f'simulatedRCRs/{amp}_{simulation_date}/'
         for filename in os.listdir(path):
-            if filename.startswith(f'SimRCR_{amp}'):
+            if filename.startswith(f'FilteredSimRCR'):
                 RCR_files.append(os.path.join(path, filename))
-                RCR_weights_file = f'DeepLearning/data/3rdpass/SimWeights_{filename}'
+            if filename.startswith(f'SimWeights'):
+                RCR_weights_file = os.path.join(path, filename)
     elif type == 'Backlobe':
+        path += f'simulatedBacklobes/{amp}_{simulation_date}/'
         for filename in os.listdir(path):
-            if filename.startswith(f'Backlobe_{amp}'):
+            if filename.startswith(f'Backlobe'):
                 RCR_files.append(os.path.join(path, filename))
-                RCR_weights_file = f'DeepLearning/data/3rdpass/SimWeights_{filename}'
+            if filename.startswith(f'SimWeights'):
+                RCR_weights_file = os.path.join(path, filename)
+
+    ic(RCR_files, RCR_weights_file)
 
     for file in RCR_files:
         RCR_sim = np.load(file)
