@@ -1,6 +1,6 @@
 import datetime
 from NuRadioReco.utilities import units
-from NuRadioReco.modules import channelResampler as CchannelResampler
+from NuRadioReco.modules import channelResampler as channelResampler
 from NuRadioReco.modules.ARIANNA import hardwareResponseIncorporator as ChardwareResponseIncorporator
 from NuRadioReco.modules import channelTimeWindow as cTWindow
 import NuRadioReco.modules.channelSignalReconstructor
@@ -26,7 +26,7 @@ import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
-channelResampler = CchannelResampler.channelResampler()
+channelResampler = channelResampler.channelResampler()
 channelResampler.begin(debug=False)
 channelBandPassFilter = NuRadioReco.modules.channelBandPassFilter.channelBandPassFilter()
 hardwareResponseIncorporator = ChardwareResponseIncorporator.hardwareResponseIncorporator()
@@ -167,8 +167,8 @@ def pT(traces, title, saveLoc, sampling_rate=2, show=False):
     plt.close()
     return
 
-def getVrms(nurFile, save_chans, station_id, det, check_forced=False, max_check=1000, plot_avg_trace=False, saveLoc='plots/'):
-    template = NuRadioRecoio.NuRadioRecoio(nurFile)
+def getVrms(nurFiles, save_chans, station_id, det, check_forced=False, max_check=1000, plot_avg_trace=False, saveLoc='plots/'):
+    template = NuRadioRecoio.NuRadioRecoio(nurFiles)
 
 
     Vrms_sum = 0
@@ -208,8 +208,30 @@ def getVrms(nurFile, save_chans, station_id, det, check_forced=False, max_check=
 
 
 
-def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=False, blackout=True,
-              filter=False, BW=[80*units.MHz, 500*units.MHz], normalize=False, saveTimes=False, timeAdjust=True, sim=False, reconstruct=False):
+def converter(nurFiles, folder, save_prefix, save_chans, station_id = 1, det=None, plot=False, blackout=True,
+              filter=False, BW=[80*units.MHz, 500*units.MHz], normalize=False, saveTimes=False, timeAdjust=True, sim=False, reconstruct=False, forced=True):
+    ###
+    #Converts a nur file, or collection of nur files, into numpy arrays for data processing
+    ###
+    #Inputs:
+    #
+    # nurFiles      : list of strings
+    #       -list of paths to each nur file, [path/to/file/1.nur, path/to/file/2.nur, ...]
+    # folder        : string
+    #       -name of folder to save events to
+    # save_prefix   : string
+    #       -prefix to append to saved file names
+    # save_chans    : array of ints
+    #       -list of channels to save traces of
+    # station_id    : int
+    #       -id of the station data is saved on in the files
+    # det           : NuRadioReco.detector
+    #       -detector object used in simulation. Needed for reconstruction
+    # plot          : bool
+    #       -if True, plots every 1000th trace to view a sub-selection with
+    save_prefix = save_prefix + f'_forced{forced}'
+
+
     count = 0
     part = 0
     max_events = 500000
@@ -221,13 +243,13 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
         arw = np.zeros(max_events)
         #Also add the true energy, zenith and azimuth of the event
         arz = np.zeros((max_events,3))
-    template = NuRadioRecoio.NuRadioRecoio(nurFile)
+    template = NuRadioRecoio.NuRadioRecoio(nurFiles)
 
 #    station_id = 1
 
     #Normalizing will save traces with values of sigma, rather than voltage
     if normalize:
-        Vrms = getVrms(nurFile, save_chans, station_id, det)
+        Vrms = getVrms(nurFiles, save_chans, station_id, det)
         print(f'normalizing to {Vrms} vrms')
 
     if reconstruct:
@@ -243,6 +265,10 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
         station = evt.get_station(station_id)
         stationtime = station.get_station_time().unix
 
+        # Skip forced triggers in flagged
+        if not forced and not station.has_triggered():
+            continue
+
 
         if 0 and station.has_triggered():
             for ch in [0, 1, 2, 3]:
@@ -250,9 +276,10 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
             quit()
 
         #Checking if event on Chris' golden day
+        checkGolden = False
         if i % 1000 == 0:
             print(f'{i} events processed...')
-        if False and datetime.datetime(2017, 3, 29, 3, 25) < datetime.datetime.fromtimestamp(stationtime) < datetime.datetime(2017, 3, 29, 3, 26):
+        if checkGolden and datetime.datetime(2017, 3, 29, 3, 25) < datetime.datetime.fromtimestamp(stationtime) < datetime.datetime(2017, 3, 29, 3, 26):
             print(f'found event on day, plotting')
             traces = []
             channelBandPassFilter.run(evt, station, det, passband=[1*units.MHz, 2000*units.MHz], filter_type='butter', order=10)
@@ -273,24 +300,24 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
 #        continue
         count = i - max_events * part
         if count >= max_events:
-            saveName = f'DeepLearning/data/{folder}/{type}_{max_events}events_part{part}.npy'
+            saveName = f'DeepLearning/data/{folder}/{save_prefix}_{max_events}events_part{part}.npy'
             print(f'Reached cap, saving events to {saveName}')
             np.save(saveName, ary)
             if saveTimes:
-                saveTimes = f'DeepLearning/data/{folder}/DateTime_{type}_{max_events}events_part{part}.npy'
+                saveTimes = f'DeepLearning/data/{folder}/DateTime_{save_prefix}_{max_events}events_part{part}.npy'
                 print(f'Saving times to {saveTimes}')
                 np.save(saveTimes, art)
                 art = np.zeros(max_events)
             if sim:
-                saveWeights = f'DeepLearning/data/{folder}/SimWeights_{type}_{max_events}events_part{part}.npy'
-                saveParams = f'DeepLearning/data/{folder}/SimZeniths_{type}_{max_events}events_part{part}.npy'
+                saveWeights = f'DeepLearning/data/{folder}/SimWeights_{save_prefix}_{max_events}events_part{part}.npy'
+                saveParams = f'DeepLearning/data/{folder}/SimZeniths_{save_prefix}_{max_events}events_part{part}.npy'
                 print(f'Saving times to {saveWeights}')
                 np.save(saveWeights, arw)
                 np.save(saveParams, arz)
                 arw = np.zeros(max_events)
                 arz = np.zeros(max_events)
             if reconstruct:
-                saveReconstruct = f'DeepLearning/data/{folder}/SimReconZeniths_{type}_{max_events}events_part{part}.npy'
+                saveReconstruct = f'DeepLearning/data/{folder}/SimReconZeniths_{save_prefix}_{max_events}events_part{part}.npy'
                 np.save(saveParams, arr)
                 arr = np.zeros(max_events)
             part += 1
@@ -360,67 +387,72 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
     print(ary.shape)
 
 
-    saveName = f'DeepLearning/data/{folder}/{type}_{len(ary)}events_part{part}.npy'
+    saveName = f'DeepLearning/data/{folder}/{save_prefix}_{len(ary)}events_part{part}.npy'
     print(f'Saving to {saveName}')
     np.save(saveName, ary)
 
     if saveTimes:
 #        art = art[0:(count - max_events * part)]
         art = art[0:i]
-        saveTimes = f'DeepLearning/data/{folder}/DateTime_{type}_{len(ary)}events_part{part}.npy'
+        saveTimes = f'DeepLearning/data/{folder}/DateTime_{save_prefix}_{len(ary)}events_part{part}.npy'
         np.save(saveTimes, art)
     if sim:
         arw = arw[0:i]
         arz = arz[0:i]
-        saveWeights = f'DeepLearning/data/{folder}/SimWeights_{type}_{len(ary)}events_part{part}.npy'
-        saveParams = f'DeepLearning/data/{folder}/SimParams_{type}_{len(ary)}events_part{part}.npy'
+        saveWeights = f'DeepLearning/data/{folder}/SimWeights_{save_prefix}_{len(ary)}events_part{part}.npy'
+        saveParams = f'DeepLearning/data/{folder}/SimParams_{save_prefix}_{len(ary)}events_part{part}.npy'
         np.save(saveWeights, arw)
         np.save(saveParams, arz)
     if reconstruct:
         arr = arr[0:i]
-        saveReconstruct = f'DeepLearning/data/{folder}/SimReconZeniths_{type}_{len(ary)}events_part{part}.npy'
+        saveReconstruct = f'DeepLearning/data/{folder}/SimReconZeniths_{save_prefix}_{len(ary)}events_part{part}.npy'
         np.save(saveParams, arr)
 
 
     return
         
 
-folder = "3rdpass"
-series = '100s'     #Alternative is 200s
+folder = "4thpass"
+amp_type = '200'     #Alternative is 200s
 
-#Convert simulated data
+#Convert RCR simulated data
 if False:
-    det = generic_detector.GenericDetector(json_filename=f'configurations/gen2_MB_old_{series}_footprint576m_infirn.json', assume_inf=False, antenna_by_depth=False, default_station=1)
+    det = generic_detector.GenericDetector(json_filename=f'configurations/gen2_MB_old_{amp_type}s_footprint576m_infirn.json', assume_inf=False, antenna_by_depth=False, default_station=1)
     station_files_path = 'FootprintAnalysis/output/'
     SimRCRFiles = []
     for filename in os.listdir(station_files_path):
-        if filename.startswith(f'MB_old_{series}') and filename.endswith('.nur'):
+        if filename.startswith(f'RCRs_MB_MB_old_{amp_type}s_refracted') and filename.endswith('.nur'):
+            print(f'adding events from file {filename}')
             SimRCRFiles.append(os.path.join(station_files_path, filename))
 
     saveChannels = [4, 5, 6, 7]
-    converter(SimRCRFiles, folder, f'SimRCR_{series}', saveChannels, station_id = 1, det=det, filter=True, saveTimes=False, plot=False, sim=True, reconstruct=False, blackout=False)
+    converter(SimRCRFiles, folder, f'SimRCR_{amp_type}s', saveChannels, station_id = 1, det=det, filter=True, saveTimes=False, plot=False, sim=True, reconstruct=False, blackout=False)
+    print(f'saved RCRs!')
 
-    quit()
+#    quit()
 
 #Convert simulated backlobe data
-if True:
-    det = generic_detector.GenericDetector(json_filename=f'configurations/gen2_MB_BacklobeTest_{series}_footprint576m_infirn.json', assume_inf=False, antenna_by_depth=False, default_station=1)
+if False:
+#    det = generic_detector.GenericDetector(json_filename=f'configurations/gen2_MB_BacklobeTest_{amp_type}s_footprint576m_infirn.json', assume_inf=False, antenna_by_depth=False, default_station=1)
+    det = generic_detector.GenericDetector(json_filename=f'configurations/gen2_MB_old_{amp_type}s_footprint576m_infirn.json', assume_inf=False, antenna_by_depth=False, default_station=1)
     station_files_path = 'FootprintAnalysis/output/'
     SimRCRFiles = []
     for filename in os.listdir(station_files_path):
-        if filename.startswith(f'Backlobes_BacklobeTest_{series}_Refl_CRs_10000Evts_Noise_False') and filename.endswith('.nur'):
+#        if filename.startswith(f'Backlobes_BacklobeTest_{amp_type}s_Refl_CRs_10000Evts_Noise_False') and filename.endswith('.nur'):
+        if filename.startswith(f'NewBacklobes_MB_BacklobeTest_{amp_type}s_direct_CRs') and filename.endswith('.nur'):
             print(f'Adding file {filename}')
             SimRCRFiles.append(os.path.join(station_files_path, filename))
 
     saveChannels = [0, 1, 2, 3]
-    converter(SimRCRFiles, folder, f'Backlobe_{series}_Noiseless', saveChannels, station_id = 1, det=det, filter=True, saveTimes=False, plot=False, sim=True, reconstruct=False, blackout=False)
+    converter(SimRCRFiles, folder, f'Backlobe_{amp_type}s', saveChannels, station_id = 1, det=det, filter=True, saveTimes=False, plot=False, sim=True, reconstruct=False, blackout=False)
+    print(f'saved backlobes!!')
 
     quit()
 
 #Existing data conversion
 
-station_id = 15
-station_path = f"../../../ariannaproject/station_nur/station_{station_id}/"
+station_id = 30
+station_path = f"../../../../../dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
 
 
 DataFiles = []
@@ -434,4 +466,4 @@ for filename in os.listdir(station_path):
 
 saveChannels = [0, 1, 2, 3]
 #converter(DataFiles, folder, f'Station{station_id}_Data', saveChannels, station_id = station_id, filter=False, saveTimes=True, plot=False)
-converter(DataFiles, folder, f'FilteredStation{station_id}_Data', saveChannels, station_id = station_id, filter=True, saveTimes=True, plot=False)
+converter(DataFiles, folder, f'FilteredStation{station_id}_Data', saveChannels, station_id = station_id, filter=True, saveTimes=True, plot=False, forced=False)

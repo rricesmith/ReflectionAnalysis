@@ -304,6 +304,8 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
     All_Azi = []
     forcedMask = []
 
+    PassingCut_Traces = []
+
 #    i = 0  #Maybe I need to do iteration outside of enumerate because we skip events in blackoutTime?
     for i, evt in enumerate(template.get_events()):
         #If in a blackout region, skip event
@@ -347,6 +349,7 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
                 PassingCut_RCR_Chi.append(All_RCR_Chi[-1])
                 PassingCut_Zen.append(np.rad2deg(zen))
                 PassingCut_Azi.append(np.rad2deg(azi))
+                PassingCut_Traces.append(traces)
 
                 pT(traces, datetime.datetime.fromtimestamp(stationtime).strftime("%m-%d-%Y, %H:%M:%S") + f' Chi {PassingCut_RCR_Chi[-1]:.2f}, {np.rad2deg(zen):.1f}Deg Zen {np.rad2deg(azi):.1f}Deg Azi', 
                 f'DeepLearning/plots/Station_{station_id}/GoldenDay/NurSearch_{i}_Chi{PassingCut_RCR_Chi[-1]:.2f}_SNR{PassingCut_SNRs[-1]:.2f}.png', average_fft_per_channel=average_fft_per_channel)
@@ -358,6 +361,8 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
     np.save(f'DeepLearning/data/3rdpass/Station{station_id}_SNR_Chi.npy', [All_SNRs, All_RCR_Chi, All_Azi, 
             All_Zen, PassingCut_SNRs, PassingCut_RCR_Chi, PassingCut_Azi, PassingCut_Zen])
     print(f'Saved to DeepLearning/data/3rdpass/Station{station_id}_SNR_Chi.npy')
+    np.save(f'DeepLearning/data/3rdpass/Station{station_id}_Traces.npy', PassingCut_Traces)
+    print(f'Saved traces to DeepLearning/data/3rdpass/Station{station_id}_Traces.npy')
 
     if len(PassingCut_SNRs) == 0:
         return
@@ -374,27 +379,29 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
     plt.xlim((3, 100))
     plt.ylim((0, 1))
     plt.xlabel('SNR')
-    plt.ylabel('RCR Avg Chi Highest Parallel Channels')
-    plt.legend()
+    plt.ylabel('Avg Chi Highest Parallel Channels')
+    # plt.legend()
     plt.xscale('log')
     plt.tick_params(axis='x', which='minor', bottom=True)
     plt.grid(visible=True, which='both', axis='both')
-    plt.title(f'Station {station_id} RCR SNR-Chi')
+    plt.title(f'Station {station_id}')
     plt.savefig(f'DeepLearning/plots/Station_{station_id}/ChiSNR_All_Stnd{station_id}.png')
 
 
     #Plot of sim overlayed on top of all events
     plotSimSNRChi(templates_RCR, noiseRMS)
+    plt.scatter([], [], color='red', label='Simulated Air Showers')
+    plt.legend()
     plt.savefig(f'DeepLearning/plots/Station_{station_id}/ChiSNR_wSim_Stnd{station_id}.png')
 
     #Plot of station & sim, with events passing cuts circled
-    plt.scatter(PassingCut_SNRs, PassingCut_RCR_Chi, label=f'{len(PassingCut_RCR_Chi)} Events Passing All Cuts', facecolor='none', edgecolor='black')
+    plt.scatter(PassingCut_SNRs, PassingCut_RCR_Chi, label=f'{len(PassingCut_RCR_Chi)} Events Passing Cuts', facecolor='none', edgecolor='black')
     if station_id == 19:
         plt.scatter(chrisEvent[0], chrisEvent[1], label='Persichilli Thesis Event', facecolor='none', edgecolor='red')
     plt.xlim((3, 100))
     plt.ylim((0, 1))
     plt.xlabel('SNR')
-    plt.ylabel('RCR Avg Chi Highest Parallel Channels')
+    plt.ylabel('Avg Chi Highest Parallel Channels')
     plt.legend()
     plt.xscale('log')
     plt.tick_params(axis='x', which='minor', bottom=True)
@@ -403,6 +410,31 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
     plt.savefig(f'DeepLearning/plots/Station_{station_id}/ChiSNR_PassedCuts_Stnd{station_id}.png')
     plt.clf()
     plt.close()
+
+    # Redoing above but adding simulated backlobes on top of simulated air showers
+    if True:
+        plt.hist2d(All_SNRs, All_RCR_Chi, bins=[SNRbins, maxCorrBins], norm=matplotlib.colors.LogNorm())
+        plotSimSNRChi(templates_RCR, noiseRMS)
+        plotSimSNRChi(templates_RCR, noiseRMS, type='Backlobe')    
+        plt.scatter([], [], color='red', label='Simulated Air Showers')
+        plt.scatter([], [], color='green', label='Simulated Backlobe')
+        plt.scatter(PassingCut_SNRs, PassingCut_RCR_Chi, label=f'{len(PassingCut_RCR_Chi)} Events Passing Cuts', facecolor='none', edgecolor='black')
+
+        plt.colorbar()
+        plt.xlim((3, 100))
+        plt.ylim((0, 1))
+        plt.xlabel('SNR')
+        plt.ylabel('Avg Chi Highest Parallel Channels')
+        plt.xscale('log')
+        plt.tick_params(axis='x', which='minor', bottom=True)
+        plt.grid(visible=True, which='both', axis='both')
+        plt.title(f'Station {station_id}')
+        plt.legend()
+        plt.savefig(f'DeepLearning/plots/Station_{station_id}/ChiSNR_wBacklobe_PassedCuts_Stnd{station_id}.png')
+        plt.clf()
+        plt.close()
+
+
 
     #Histogram of reconstructed directions
     #First of only the events passing cuts
@@ -495,7 +527,7 @@ def plotSimSNRChi(templates_RCR, noiseRMS, amp='200s', type='RCR'):
     maxCorrBins = np.arange(0, 1.0001, 0.01)
 
     print(f'len sim snr {len(sim_SNRs)} and chi {len(sim_Chi)}')
-    print(f'weights {sim_weights}')
+    # print(f'weights {sim_weights}')
 
     sim_weights = np.array(sim_weights)
     sim_SNRs = np.array(sim_SNRs)
@@ -513,7 +545,8 @@ def plotSimSNRChi(templates_RCR, noiseRMS, amp='200s', type='RCR'):
         cmap = 'seismic'
     else:
         cmap = 'PiYG'
-    plt.scatter(sim_SNRs, sim_Chi, c=sim_weights, label=f'Simulated {type}', cmap=cmap, alpha=0.9, norm=matplotlib.colors.LogNorm())
+    # plt.scatter(sim_SNRs, sim_Chi, c=sim_weights, label=f'Simulated {type}', cmap=cmap, alpha=0.9, norm=matplotlib.colors.LogNorm())
+    plt.scatter(sim_SNRs, sim_Chi, c=sim_weights, cmap=cmap, alpha=0.9, norm=matplotlib.colors.LogNorm())
 
     
 
@@ -570,13 +603,13 @@ if __name__ == "__main__":
         quit()
 
     folder = "2ndpass"
-    MB_RCR_path = f"DeepLearning/data/{folder}/"
+    # MB_RCR_path = f"DeepLearning/data/{folder}/"
     series = '200s'     #Alternative is 200s
 
     #Existing data conversion
 
 #    station_id = 17
-    station_path = f"../../../ariannaproject/station_nur/station_{station_id}/"
+    station_path = f"/dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
 
     detector = generic_detector.GenericDetector(json_filename=f'DeepLearning/station_configs/station{station_id}.json', assume_inf=False, antenna_by_depth=False, default_station=station_id)
 

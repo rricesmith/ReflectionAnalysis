@@ -17,12 +17,12 @@ export PYTHONPATH=$Radio:$PYTHONPATH
 module load python/3.8.0
 cd $ReflectiveAnalysis
 
-python DeepLearning/D01_convertSimNurToNpy.py
+# python DeepLearning/D01_convertSimNurToNpy.py
 #python DeepLearning/D02_trainCNN.py
 
 #python DeepLearning/D03_processData.py 18
 #python DeepLearning/D04_processAnalysis.py 13
-#python DeepLearning/D04B_reprocessNurPassingCut.py 19
+python DeepLearning/D04B_reprocessNurPassingCut.py 30
 
 #python DeepLearning/calcAverageNoiseFFT.py 13
 #python DeepLearning/calcAverageNoiseFFT.py 15

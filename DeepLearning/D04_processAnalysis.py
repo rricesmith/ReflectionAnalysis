@@ -15,7 +15,8 @@ from DeepLearning.D04B_reprocessNurPassingCut import loadTemplate, getMaxSNR, ge
 def plotTrace(traces, title, saveLoc, sampling_rate=2, show=False):
     #Sampling rate should be in GHz
 
-    x = np.linspace(1, int(256 / sampling_rate), num=256)
+    num = len(traces[0])
+    x = np.linspace(1, int(256 / sampling_rate), num=num)
     x_freq = np.fft.rfftfreq(len(x), d=(1 / sampling_rate*units.GHz)) / units.MHz
 
 #    print(f'shape traces {np.shape(traces)}')
@@ -41,7 +42,7 @@ def plotTrace(traces, title, saveLoc, sampling_rate=2, show=False):
     for chID, trace in enumerate(traces):
         axs[chID][0].set_ylabel(f'ch{chID}',labelpad=10,rotation=0,fontsize=13)
         # axs[i].set_ylim(-250,250)
-        axs[chID][0].set_xlim(-3,260 / sampling_rate)
+        axs[chID][0].set_xlim(-3, 260 / sampling_rate)
         axs[chID][1].set_xlim(-3, 1000)
         axs[chID][0].tick_params(labelsize=13)
         axs[chID][1].tick_params(labelsize=13)
@@ -52,7 +53,7 @@ def plotTrace(traces, title, saveLoc, sampling_rate=2, show=False):
     axs[0][0].tick_params(labelsize=13)
     axs[0][1].tick_params(labelsize=13)
     axs[0][0].set_ylabel(f'ch{0}',labelpad=3,rotation=0,fontsize=13)
-    axs[chID][0].set_xlim(-3,260 / sampling_rate)
+    axs[chID][0].set_xlim(-3, 260 / sampling_rate)
     axs[chID][1].set_xlim(-3, 1000)
 
 

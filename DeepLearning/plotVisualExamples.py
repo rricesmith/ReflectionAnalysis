@@ -154,7 +154,7 @@ def get_max_weight_traces(traces_file, weights_file, type, amp, num=50):
             print(f'shape vtrace {np.shape(vtrace)}')
             
         print(f'shape vtrace {np.shape(vtrace)}')
-        plot_trace(vtrace, f'High Weight {type} {amp}', saveLoc=f'DeepLearning/plots/{type}/{amp}/{type}_{amp}_{id}.png')
+        plot_trace(vtrace, f'High Weight {type} {amp}', saveLoc=f'DeepLearning/plots/{type}_{amp}_{id}.png')
 
     return
 
@@ -267,9 +267,10 @@ def plot_hists(weights_backlobe_file, params_backlobe_file, weights_RCR_file, pa
 
     return
 
-#amps = ['100s', '200s']
-amps = ['200s']
-path = 'DeepLearning/data/3rdpass/'
+amps = ['100s', '200s']
+#amps = ['200s']
+order = '4th'
+path = f'DeepLearning/data/{order}pass/'
 
 for amp in amps:
     #RCR files
@@ -277,21 +278,21 @@ for amp in amps:
     for filename in os.listdir(path):
         if filename.startswith(f'SimRCR_{amp}'):
             RCR_files.append(os.path.join(path, filename))
-            RCR_weights_file = f'DeepLearning/data/3rdpass/SimWeights_{filename}'
-            RCR_params_file = f'DeepLearning/data/3rdpass/SimParams_{filename}'
+            RCR_weights_file = f'DeepLearning/data/{order}pass/SimWeights_{filename}'
+            RCR_params_file = f'DeepLearning/data/{order}pass/SimParams_{filename}'
 
 
     Backlobe_files = []
     for filename in os.listdir(path):
-        if filename.startswith(f'Backlobe_{amp}_wNoise'):
+        if filename.startswith(f'Backlobe_{amp}'):
 #        if filename.startswith(f'Backlobe_{amp}_Noiseless'):
             Backlobe_files.append(os.path.join(path, filename))
-            Backlobe_weights_file = f'DeepLearning/data/3rdpass/SimWeights_{filename}'
-            Backlobe_params_file = f'DeepLearning/data/3rdpass/SimParams_{filename}'
+            Backlobe_weights_file = f'DeepLearning/data/{order}pass/SimWeights_{filename}'
+            Backlobe_params_file = f'DeepLearning/data/{order}pass/SimParams_{filename}'
 
 
-#    get_max_weight_traces(RCR_files[0], RCR_weights_file, type='RCR', amp=amp, num=50)
-#    get_max_weight_traces(Backlobe_files[0], Backlobe_weights_file, type='Backlobe_wNoise', amp=amp, num=50)
+    get_max_weight_traces(RCR_files[0], RCR_weights_file, type=f'2.24_Sims/RCR/{amp}/RCR', amp=amp, num=100)
+    get_max_weight_traces(Backlobe_files[0], Backlobe_weights_file, type=f'2.24_Sims/Backlobe/{amp}/Backlobe', amp=amp, num=100)
 #    get_max_weight_traces(Backlobe_files[0], Backlobe_weights_file, type='Backlobe_Noiseless', amp=amp, num=50)
 
 

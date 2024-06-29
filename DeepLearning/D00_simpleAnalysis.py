@@ -7,17 +7,21 @@ from NuRadioReco.utilities import units, fft
 
 #This code performs a simple analysis of data from backlobe & reflected cosmic ray events
 
-series = '100s' #indicate which series this will be performed on
-folder = 'DeepLearning/data/4thpass/'
+series = '200s' #indicate which series this will be performed on
+# folder = 'DeepLearning/data/4thpass/'
+date = '2.9.24'
+backlobe_folder = f'test/simulatedBacklobes/{series}_{date}/'
+rcr_folder = f'test/simulatedRCRs/{series}_{date}/'
 
 #import the numpy arrays for the backlobe and reflected events
-for file in os.listdir(folder):
+for file in os.listdir(backlobe_folder):
     if file.startswith(f'Backlobe_{series}'):
         backlobe_traces = np.load(folder + file)
     if file.startswith(f'SimParams_Backlobe_{series}'):
         backlobe_params = np.load(folder + file)
     if file.startswith(f'SimWeights_Backlobe_{series}'):
         backlobe_weights = np.load(folder + file)
+for file in os.listdir(rcr_folder):
     if file.startswith(f'FilteredSimRCR_{series}'):
         reflected_traces = np.load(folder + file)
     if file.startswith(f'SimParams_SimRCR_{series}'):
