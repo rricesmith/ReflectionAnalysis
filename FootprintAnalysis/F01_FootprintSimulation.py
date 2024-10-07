@@ -50,7 +50,7 @@ from NuRadioReco.utilities.io_utilities import read_pickle
 from radiotools.helper import get_normalized_xcorr
 import templateCrossCorr as txc
 import NuRadioReco.modules.io.eventWriter
-
+from icecream import ic
 
 color = itertools.cycle(('black', 'blue', 'green', 'orange'))
 
@@ -115,7 +115,7 @@ def pullFilesForSimulation(sim_type, min_file, max_file, num_icetop):
                 sin2Val = [icetop_sin]
             for sin2 in sin2Val:
                 num_in_bin = 0
-                folder = f'../../../../pub/arianna/SIM/southpole/IceTopLibrary/lgE_{i:.1f}/sin2_{sin2:.1f}/'
+                folder = f'../../../../../dfs8/sbarwick_lab/arianna/SIM/southpole/IceTop/lgE_{i:.1f}/sin2_{sin2:.1f}/'
                 for (dirpath, dirnames, filenames) in os.walk(folder):
                     for file in filenames:
                         if not 'highlevel' in file:
@@ -208,7 +208,8 @@ def getDetectorAndTriggersForSim(config, amp_type, depthLayer):
     elif config == 'Stn51':
         det = detector.Detector(json_filename=f'configurations/station51_InfAir.json', assume_inf=False, antenna_by_depth=False)
 #        det = generic_detector.GenericDetector(json_filename=f'configurations/station51_InfAir.json', assume_inf=False, antenna_by_depth=False, default_station=51)
-        lpda_sigma = [[5, '5sigma']]
+        # lpda_sigma = [[5, '5sigma']]
+        lpda_sigma = [[2.5, '5sigma']]  #Doing an unrealistic trigger so we get statistics for IceTop
         lpda_coinc = 2	#2/3 for Testing station 51 analysis
     elif config == 'TriggerTest':
         depthLayer = 576.0
@@ -234,6 +235,8 @@ def getDetectorAndTriggersForSim(config, amp_type, depthLayer):
     else:
         print(f'no config of {config} used, use SP, MB_old, or MB_future')
         quit()
+
+    print(f'lpda sig {lpda_sigma}')
     return det, lpda_sigma, dip_sigma, PA_sigma, lpda_coinc
 
 def getAntennaChannels(config):
@@ -284,9 +287,9 @@ def getAntennaChannels(config):
     elif config == 'Stn51':
         dir_LPDA_channels = [4, 5, 6]	#Station 51 upward channels on July 2018
     #    dir_LPDA_channels = [4, 5, 6, 8]	#Station 51 upward channels on July 2018 with extra test channel
-        refl_LPDA_channels = [0]
-        dir_dipole_channels = [0]
-        refl_dipole_channels = [0]
+        refl_LPDA_channels = []
+        dir_dipole_channels = []
+        refl_dipole_channels = []
     elif config == 'TriggerTest' or 'PyrasTest':
         dir_LPDA_channels = [0, 1, 2]
     #    dir_LPDA_channels = [0, 1, 2, 3]
@@ -522,8 +525,11 @@ if CoREAS_mode == 'direct':
     pre = 'dir'
 else:
     pre = 'refl'
-triggerTimeAdjuster.begin(trigger_name=f'{pre}_LPDA_4.4sigma')
-#triggerTimeAdjuster.begin(trigger_name='dir_LPDA_5sigma')
+if config == 'Stn51':
+    triggerTimeAdjuster.begin(trigger_name='dir_LPDA_5sigma')       #Stn51
+else:
+#    triggerTimeAdjuster.begin(trigger_name=f'{pre}_LPDA_2sigma')
+    triggerTimeAdjuster.begin(trigger_name=f'{pre}_LPDA_4.4sigma')
 
 simpleThreshold = NuRadioReco.modules.trigger.simpleThreshold.triggerSimulator()
 highLowThreshold = NuRadioReco.modules.trigger.highLowThreshold.triggerSimulator()
@@ -535,7 +541,10 @@ phasedArrayTrigger = NuRadioReco.modules.phasedarray.triggerSimulator.triggerSim
 saveEvent = True
 numToSave = 10000
 savedEvents = 0
-output_filename = f'FootprintAnalysis/output/Backlobes_{config}_{amp_type}s_Refl_CRs_{numToSave}Evts_Noise_{noise}_Amp_{add_amp}_min{min_file}_max{max_file}.nur'
+#output_filename = f'FootprintAnalysis/output/Backlobes_{config}_{amp_type}s_Refl_CRs_{numToSave}Evts_Noise_{noise}_Amp_{add_amp}_min{min_file}_max{max_file}.nur'
+#output_filename = f'FootprintAnalysis/output/NewBacklobes_{type}_{config}_{amp_type}s_{CoREAS_mode}_CRs_{numToSave}Evts_Noise_{noise}_Amp_{add_amp}_min{min_file}_max{max_file}.nur'
+#output_filename = f'FootprintAnalysis/output/RCRs_{type}_{config}_{amp_type}s_{CoREAS_mode}_CRs_{numToSave}Evts_Noise_{noise}_Amp_{add_amp}_min{min_file}_max{max_file}.nur'
+output_filename = f'FootprintAnalysis/output/Stn51_2.5sigma_{type}_{config}_{amp_type}s_{CoREAS_mode}_CRs_{numToSave}Evts_Noise_{noise}_Amp_{add_amp}_min{min_file}_max{max_file}.nur'
 eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
 eventWriter.begin(output_filename)
 #mode = {'Channels':True, 'ElectricFields':True, 'SimChannels':True, 'SimElectricFields':True}
@@ -558,6 +567,24 @@ noise_figure, noise_temp, passband, passband_dipole, passband_PA = bandwidthAndV
 Vrms_per_channel = {}
 preAmpVrms_per_channel = {}
 output = {}
+
+#Test for ch max amps, and if something is going wrong in sim
+pre_max_trace_final = {}
+post_max_trace_final = {}
+for channel in dir_LPDA_channels:
+    pre_max_trace_final[channel] = []
+    post_max_trace_final[channel] = []
+for channel in refl_LPDA_channels:
+    pre_max_trace_final[channel] = []
+    post_max_trace_final[channel] = []
+for channel in dir_dipole_channels:
+    pre_max_trace_final[channel] = []
+    post_max_trace_final[channel] = []
+for channel in refl_dipole_channels:
+    pre_max_trace_final[channel] = []
+    post_max_trace_final[channel] = []
+
+
 # Loop over all events in file as initialized in readCoRREAS and perform analysis
 for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_model):
     print(f'check : returned event. x {x} y {y}')
@@ -629,6 +656,8 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
 
     print(f'Run of {runid}')
     for station in evt.get_stations():
+
+
         station.set_station_time(datetime.datetime(2018, 10, 1))
 
         ss = station.get_sim_station()
@@ -643,6 +672,23 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
         if saveEvent:
             channelResampler.run(evt, station, det, 2*units.GHz)
 
+        #Test for ch max amps, and if something is going wrong in sim
+        pre_sim = {}
+        for channel in station.get_channel_ids():
+            ch = station.get_channel(channel)
+            max_trace = max(ch.get_trace())
+            pre_sim[ch.get_id()] = max_trace
+
+
+        #DEBUG Trace
+        testTraces = []
+        for ch in station.iter_channels():
+            max_trace = max(ch.get_trace())
+            testTraces.append(max_trace)
+        # print(f'675 max trace ratio 0 to 2 {testTraces[0]/testTraces[2]}')
+        # if testTraces[0]/testTraces[2] > 10:
+        #     print(f'wonky')
+        #     quit()
 
         #Calculate Vrms, only done once
         check_noise = False
@@ -704,6 +750,9 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
 
                 Vrms_per_channel[channel_id] = Vrms
                 preAmpVrms_per_channel[channel_id] = preAmpVrms
+            ic(preAmpVrms_per_channel, Vrms_per_channel)
+            quit()
+
 
             lpda_thresh_high = {key: value for key, value in Vrms_per_channel.items()}
             lpda_thresh_low = {key: value * -1 for key, value in Vrms_per_channel.items()}
@@ -711,6 +760,17 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
             dip_thresh_low = {key: value * -1 for key, value in Vrms_per_channel.items()}
             PA_thresh_high = {key: value for key, value in Vrms_per_channel.items()}
             PA_thresh_low = {key: value * -1 for key, value in Vrms_per_channel.items()}
+
+        #DEBUG Trace
+        testTraces = []
+        for ch in station.iter_channels():
+            max_trace = max(ch.get_trace())
+            testTraces.append(max_trace)
+        # print(f'750 max trace ratio 0 to 2 {testTraces[0]/testTraces[2]}')
+        # if testTraces[0]/testTraces[2] > 10:
+        #     print(f'wonky')
+        #     quit()
+
 
         eventTypeIdentifier.run(evt, station, 'forced', 'cosmic_ray')
         #Cut each channel to be shorter to reduce amount of noise added and likelyhood of noise triggers. Do for each set of channels separately
@@ -723,16 +783,39 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
 #            channelLengthAdjuster.run(evt, station, channel_ids=dir_PA_channels)
 #            channelLengthAdjuster.run(evt, station, channel_ids=refl_PA_channels)
 
+        #DEBUG Trace
+        testTraces = []
+        for ch in station.iter_channels():
+            max_trace = max(ch.get_trace())
+            testTraces.append(max_trace)
+        # print(f'771 max trace ratio 0 to 2 {testTraces[0]/testTraces[2]}')
+        # if testTraces[0]/testTraces[2] > 10:
+        #     print(f'wonky')
+        #     quit()
+
+
         #Because out Dipole is a stand in for a Phased Array, want to multiply signal by 2 relative to noise
         #To do this we multiply the channel trace by a factor of two, then add noise as normal for 1sigma Vrms
-        for ch_id in refl_dipole_channels:
-            channel = station.get_channel(ch_id)
-            trace = channel.get_trace()
-            channel.set_trace(trace * 2, channel.get_sampling_rate())
-        for ch_id in dir_dipole_channels:
-            channel = station.get_channel(ch_id)
-            trace = channel.get_trace()
-            channel.set_trace(trace * 2, channel.get_sampling_rate())
+        if config == 'SP' or config == 'MB_future':
+            for ch_id in refl_dipole_channels:
+                channel = station.get_channel(ch_id)
+                trace = channel.get_trace()
+                channel.set_trace(trace * 2, channel.get_sampling_rate())
+            for ch_id in dir_dipole_channels:
+                channel = station.get_channel(ch_id)
+                trace = channel.get_trace()
+                channel.set_trace(trace * 2, channel.get_sampling_rate())
+
+        #DEBUG Trace
+        testTraces = []
+        for ch in station.iter_channels():
+            max_trace = max(ch.get_trace())
+            testTraces.append(max_trace)
+        # print(f'780 max trace ratio 0 to 2 {testTraces[0]/testTraces[2]}')
+        # if testTraces[0]/testTraces[2] > 10:
+        #     print(f'wonky')
+        #     quit()
+
 
         if noise and not saveEvent:
             if not amp_type == 'PyrasTest':
@@ -749,6 +832,16 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
                 noise_rms = np.sqrt(np.mean(np.square(cTrace)))
                 print(f'ch {channel_id} has noise rms {noise_rms} pre-amp')
 
+        #DEBUG Trace
+        testTraces = []
+        for ch in station.iter_channels():
+            max_trace = max(ch.get_trace())
+            testTraces.append(max_trace)
+        # print(f'795 max trace ratio 0 to 2 {testTraces[0]/testTraces[2]}')
+        # if testTraces[0]/testTraces[2] > 10:
+        #     print(f'wonky')
+        #     quit()
+
         if add_amp:
             #There was filtering before amp response in the 100/200s amps to prevent blowup of amp. Not in 300 or future amps
             """
@@ -757,6 +850,17 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
                     channelBandPassFilter.run(evt, station, det, passband=[pb[0], pb[1]], filter_type=pb[2], order=pb[3])
             """
             hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
+
+        #DEBUG Trace
+        testTraces = []
+        for ch in station.iter_channels():
+            max_trace = max(ch.get_trace())
+            testTraces.append(max_trace)
+        # print(f'811 max trace ratio 0 to 2 {testTraces[0]/testTraces[2]}')
+        # if testTraces[0]/testTraces[2] > 10:
+        #     print(f'wonky')
+        #     quit()
+
 
         if check_noise:
             for channel_id in station.get_channel_ids():
@@ -790,6 +894,15 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
 
         channelSignalReconstructor.run(evt, station, det)
 
+        #DEBUG Trace
+        testTraces = []
+        for ch in station.iter_channels():
+            max_trace = max(ch.get_trace())
+            testTraces.append(max_trace)
+        # print(f'836 max trace ratio 0 to 2 {testTraces[0]/testTraces[2]}')
+        # if testTraces[0]/testTraces[2] > 10:
+        #     print(f'wonky')
+        #     quit()
 
         print(f'coreas mode {CoREAS_mode}')
         if CoREAS_mode == 'direct':
@@ -818,31 +931,10 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
                 output[runid][name]['n_lpda_dir'] += int(station.has_triggered(trigger_name='dir_LPDA_'+name))
 
 
-        # Trigger for direct dipoles
-            highLowThreshold.run(evt, station, det,
-                                        threshold_high = {key: value * dip_sigma for key, value in dip_thresh_high.items()},
-                                        threshold_low = {key: value * dip_sigma for key, value in dip_thresh_low.items()},
-                                        triggered_channels=dir_dipole_channels,
-                                        number_concidences=1,
-                                        trigger_name='dipole_2.0sigma_dir')
-            if station.has_triggered(trigger_name='dipole_2.0sigma_dir'):
-                max_amps = []
-                for channel in dir_dipole_channels:
-                    ch_snr = station.get_channel(channel).get_parameter(chp.SNR)
-                    max_amp = ch_snr['peak_2_peak_amplitude']
-                    max_amps.append(max_amp)
-                SNR = max(max_amps)
-#                SNR = SNR / Vrms_per_channel[dir_dipole_channels[0]]
-                output[runid]['dip_dir_SNR'].append(SNR)
-                dip_dir_trig = True
-#            output[runid]['dip_dir_mask'].append(station.has_triggered(trigger_name='dipole_2.0sigma_dir'))
-            output[runid]['n_dip_dir'] += int(station.has_triggered(trigger_name='dipole_2.0sigma_dir'))
-
-
             if config == 'Stn51':
                 #For Stn51 sim, use reflected when doing direct for a 3/3 5sigma trigger
                 simpleThreshold.run(evt, station, det,
-                                            threshold = {key: value * 5 for key, value in lpda_thresh_high.items()},
+                                            threshold = {key: value * 2.5 for key, value in lpda_thresh_high.items()},
                                             coinc_window = 40 * units.ns,
                                             triggered_channels=dir_LPDA_channels,
                                             number_concidences=3,
@@ -860,6 +952,26 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
                     lpda_refl_trig[name] = True
 #                output[runid][name]['lpda_refl_mask'].append(station.has_triggered(trigger_name='LPDA_2of4_3.5sigma'))
                 output[runid][name]['n_lpda_refl'] += int(station.has_triggered(trigger_name='LPDA_3of3_5sigma'))
+            else:
+            # Trigger for direct dipoles
+                highLowThreshold.run(evt, station, det,
+                                            threshold_high = {key: value * dip_sigma for key, value in dip_thresh_high.items()},
+                                            threshold_low = {key: value * dip_sigma for key, value in dip_thresh_low.items()},
+                                            triggered_channels=dir_dipole_channels,
+                                            number_concidences=1,
+                                            trigger_name='dipole_2.0sigma_dir')
+                if station.has_triggered(trigger_name='dipole_2.0sigma_dir'):
+                    max_amps = []
+                    for channel in dir_dipole_channels:
+                        ch_snr = station.get_channel(channel).get_parameter(chp.SNR)
+                        max_amp = ch_snr['peak_2_peak_amplitude']
+                        max_amps.append(max_amp)
+                    SNR = max(max_amps)
+    #                SNR = SNR / Vrms_per_channel[dir_dipole_channels[0]]
+                    output[runid]['dip_dir_SNR'].append(SNR)
+                    dip_dir_trig = True
+    #            output[runid]['dip_dir_mask'].append(station.has_triggered(trigger_name='dipole_2.0sigma_dir'))
+                output[runid]['n_dip_dir'] += int(station.has_triggered(trigger_name='dipole_2.0sigma_dir'))
 
 
 
@@ -1014,9 +1126,16 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
             if saveEvent and station.has_triggered(trigger_name=trigger_name):
                 print(f'triggered')
 
+                #Testing order of trace editing is correct
+                testTraces = []
+                for ch in station.iter_channels():
+                    max_trace = max(ch.get_trace())
+                    testTraces.append(max_trace)
+                # print(f'1259 max trace ratio 0 to 2 {testTraces[0]/testTraces[2]}')
                 if 0:
                     trigger = station.get_trigger(trigger_name)
-                    chs = refl_LPDA_channels
+                    # chs = refl_LPDA_channels
+                    chs = dir_LPDA_channels
                     traces = {}
                     times = {}
                     for ch in chs:
@@ -1032,12 +1151,12 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
                         channelGenericNoiseAdder.run(evt, station, det, min_freq=0*units.MHz, max_freq=0.5*sim_sampling_rate, type="rayleigh",
                                                 amplitude=preAmpVrms_per_channel)
                         hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
-#                        channelGenericNoiseAdder.run(evt, station, det, min_freq=0*units.MHz, max_freq=0.5*sim_sampling_rate, type="rayleigh",
-#                                                amplitude=Vrms_per_channel)
+                        #channelGenericNoiseAdder.run(evt, station, det, min_freq=0*units.MHz, max_freq=0.5*sim_sampling_rate, type="rayleigh",
+                        #                        amplitude=Vrms_per_channel)
                         #Removing the cable delay that is added one way, but not removed in the other?
-                        for channel in station.iter_channels():
-                            cable_delay = det.get_cable_delay(station.get_id(), channel.get_id())
-                            channel.add_trace_start_time(cable_delay)
+                    for channel in station.iter_channels():
+                        cable_delay = det.get_cable_delay(station.get_id(), channel.get_id())
+                        channel.add_trace_start_time(cable_delay)
 
                     for ch in chs:
                         ch0trace = station.get_channel(ch).get_trace()
@@ -1095,7 +1214,9 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
                         axs[3].axvline(x=trigger.get_trigger_time(), color='green')
 
                         plt.savefig(f'testTrace{ch}.png')
-                    quit()
+                        plt.clf()
+                        plt.close()
+                    # quit()
 
                 if noise:
                     hardwareResponseIncorporator.run(evt, station, det, sim_to_data=False)
@@ -1106,13 +1227,75 @@ for evt, iE, x, y in runCoREAS(CoREAS_mode, det, depthLayer, dB, attenuation_mod
                     for channel in station.iter_channels():
                         cable_delay = det.get_cable_delay(station.get_id(), channel.get_id())
                         channel.add_trace_start_time(cable_delay)
+                preTrigger_trace = []
+                for ch in station.iter_channels(dir_LPDA_channels):
+                    preTrigger_trace.append(ch.get_trace())
                 triggerTimeAdjuster.run(evt, station, det)
+                pre_trace = []
+                for ch in station.iter_channels(dir_LPDA_channels):
+                    pre_trace.append(ch.get_trace())
                 channelResampler.run(evt, station, det, 2*units.GHz)
+                post_trace = []
+                for ch in station.iter_channels(dir_LPDA_channels):
+                    post_trace.append(ch.get_trace())
+
+                #Saving a single trace & freq spec w/o noise for comparing to a neutrino
+                if 0:
+                    trigger = station.get_trigger(trigger_name)
+                    trace = [0]
+                    for ch in refl_LPDA_channels:
+                        chTrace = station.get_channel(ch).get_trace()
+                        if max(chTrace) > max(trace):
+                            trace = chTrace
+                            times = station.get_channel(ch).get_times()
+                            freqSpec = station.get_channel(ch).get_frequency_spectrum()
+                            freq = station.get_channel(ch).get_frequencies()
+
+                    energy = np.log10(output[runid]['energy'])
+                    zenith = np.rad2deg(output[runid]['zenith'])
+
+                    output = [[times], [trace], [freq], [freqSpec]]                    
+                    with open(f'data/F01_Noiseless_RCR_{energy:.1f}log10eV_{zenith}degZen.pkl', 'wb') as fout:
+                        pickle.dump(output, fout)
+                    print(f'Done! Eng {energy} zen {zenith}')
+                    quit()
 
                 savedEvents += 1
-                print(f'saving event {savedEvents}')
-                eventWriter.run(evt, mode=mode)
+                print(f'----------------------\nsaving event {savedEvents}---------------------\n')
+                if not (testTraces[0]/testTraces[2] > 10 or testTraces[2]/testTraces[0] > 10 or testTraces[1]/testTraces[3] > 10 or testTraces[3]/testTraces[1] > 10):
+                    print(f'----------------------------\nnot wonky, saving--------------------------\n')
+                    # eventWriter.run(evt, mode=mode)
+                    eventWriter.run(evt)
+                #Test for ch max amps, and if something is going wrong in sim
+                post_sim = {}
+                for ch in station.iter_channels():
+                    max_trace = max(ch.get_trace())
+                    post_sim[ch.get_id()] = max_trace
+                # for ch_id in pre_sim:
+                #     pre_max_trace_final[ch_id].append(pre_sim[ch_id])
+                #     post_max_trace_final[ch_id].append(post_sim[ch_id])
+                # print(f'pre max trace is {pre_max_trace_final} and post {post_max_trace_final}')
+                #DEBUG Trace
+                testTraces = []
+                for ch in station.iter_channels():
+                    max_trace = max(ch.get_trace())
+                    testTraces.append(max_trace)
+                # print(f'1259 max trace ratio 0 to 2 {testTraces[0]/testTraces[2]}')
+                # if testTraces[0]/testTraces[2] > 10:
+                if 0:
+                    print(f'energy of this sim is {sim_shower[shp.energy]}')
+                    print(f'wonky')
+                    with open(f'data/F01_PrePostTrace_Traces_Study_{type}_{config}.pkl', 'wb') as fout:
+                        pickle.dump([preTrigger_trace, pre_trace, post_trace], fout)
+                    quit()
+                # if testTraces[0] > 0 and testTraces[2] > 0:
+                #     print(f'done, quitting')
+                #     quit()
+
                 if savedEvents >= numToSave:
+                    # with open(f'data/F01_PrePostTrace_Study_{type}_{config}.pkl', 'wb') as fout:
+                    #     pickle.dump([pre_max_trace_final, post_max_trace_final], fout)
+                    eventWriter.end()
                     quit()
 
         station.remove_triggers()

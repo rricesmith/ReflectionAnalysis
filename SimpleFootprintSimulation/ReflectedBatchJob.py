@@ -11,10 +11,10 @@ if loc == 'MB':
     depthLayer = 576 #m
     dB = 0 #Assume perfect reflector, although realistically it isn't quite that for MB
 amp = True
-amp_type = 100
-add_noise = True
-output_folder = f'SimpleFootprintSimulation/output/RCR/5.7.24/{amp_type}s/'
-output_filename = f'RCR_{loc}_{depthLayer}m_{dB}dB'
+amp_type = 200
+add_noise = False
+output_folder = f'SimpleFootprintSimulation/output/RCR/9.30.24/{amp_type}s/'
+output_filename = f'RCR_{loc}_{depthLayer}m_{dB}dB_{amp_type}s_Noise{add_noise}'
 
 # Make directory if it doesn't exist
 Path(output_folder).mkdir(parents=True, exist_ok=True)

@@ -4,8 +4,8 @@ from NuRadioMC.EvtGen.generator import generate_eventlist_cylinder
 import numpy as np
 
 
-loc = 'GL'
-max_rad = 12
+loc = 'SP'
+max_rad = 6
 
 if loc == 'SP':
     min = -2.7
@@ -24,7 +24,7 @@ volume = {
 'fiducial_rmax': max_rad * units.km}
 
 
-energies = np.logspace(16, 20, num=12)
+energies = np.logspace(16, 20, num=20)
 
 for energy in energies:
     if energy < 5*1e17:

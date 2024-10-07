@@ -7,29 +7,29 @@ from NuRadioReco.utilities import units
 
 partition = 'standard'
 
-CoREAS_mode = 'direct'
-#CoREAS_mode = 'refracted'
-#spacing = 10	#diameter of circle to throw over
-spacing = 4
+# CoREAS_mode = 'direct'
+CoREAS_mode = 'refracted'
+#spacing = 5	#diameter of circle to throw over
+spacing = 2
 depth = 300
 dB = 40
 #ncores = 10
 ncores = 1000
-noise = False
-#noise = True
+# noise = False
+noise = True
 
-type = 'MB'
-#type = 'IceTop'
+#type = 'MB'
+type = 'IceTop'
 #type = 'SP'
 #type = 'GL'
 
 #config = 'SP'
-#config = 'MB_old'
+config = 'MB_old'
 #config = 'MB_future'
 #config = 'GL'
 #config = 'TriggerTest'
-config = 'BacklobeTest'
-#config = 'Stn51'
+#config = 'BacklobeTest'
+# config = 'Stn51'
 
 #100 - RCR only and some upward current stations, 200 - some upward current stations, 300 - SP current
 #All Future set amp False type future
@@ -37,7 +37,9 @@ config = 'BacklobeTest'
 amp = True
 #amp_type = 'future'
 #amp_type = 'TriggerTest'
-amp_type = '100'
+#amp_type = '100'
+amp_type = '200'
+# amp_type = '300'
 #amp_type = None
 
 antenna = 'lpda'
@@ -52,11 +54,10 @@ if type == 'SP':
 #    highid = 1099
     limit = 2199	#max SP file
 elif type == 'IceTop':
-    ncores = 100
     lowid = 16.0
     highid = 16.1
     limit = 18.7    
-    numIceTop = 10
+    numIceTop = 30  #Max is ~34, often use 10 for lower statistics
     iceTopSin = 0
 #-1 makes a file with all sin bins
 #    iceTopSin = -1

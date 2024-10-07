@@ -13,39 +13,40 @@ def makeAndRunFile(loc, energy, n_nu, part=0 ,parts=False, part_max=9):
     filename = f'RunSim_{loc}_E{energy}_N{n_nu}_part{part}'
 
 
-    # save_prefix = "R12km"
-    save_prefix = "R6km"
+    # amp = '300'
+    amp = 'r6km'
+    save_prefix = "MJob"
+    extra_stat = 'AddedLowEng3kmExtraSPonly'
 
-    # cmd = f'python NeutrinoAnalysis/T02_RunSimulation.py '
-    cmd = f'python NeutrinoAnalysis/T02_RunSimulation_Gen2CorePaper.py '
+    # cmd = f'python NeutrinoAnalysis/M02_RunSimulation{amp}s.py '
+    cmd = f'python NeutrinoAnalysis/M02_CombinedSim.py '
 #    neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/AddedStats_{loc}_{energy:.4e}_n{n_nu:.4e}.hdf5'
     neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/{save_prefix}_{loc}_{energy:.4e}_n{n_nu:.4e}.hdf5'
     cmd += neutrino_file
     if parts == True:
         cmd += f'.part{part:04d}'
-    # cmd += f' NeutrinoAnalysis/station_configs/gen2_{loc}_NoDipole_infirn.json '
-    cmd += ' configurations/gen2_hybrid_2021.json '
-    # cmd += f'NeutrinoAnalysis/{loc}_config.yaml '
-    cmd += f' NeutrinoAnalysis/SP_Gen2_config.yaml '
+    cmd += f' NeutrinoAnalysis/station_configs/gen2_{loc}_infirn.json '
+    cmd += f'NeutrinoAnalysis/{loc}_config.yaml '
 
     #Output, can add prefix here
 #    folder = "GL_Higher_Sampling/"
 #    folder = "GL_Uniform_with_phasing/"
 #    folder = "GL_Bugfig_Orig/"
 #    folder = "GL_Bugfig_Dephased/"
-    folder = "Gen2_CorePaper/"
-    cmd += f'NeutrinoAnalysis/output/{folder}{save_prefix}_{loc}_Allsigma_{energy}_n{n_nu}'
+    # folder = "AttTest_GL3/"
+    folder = f'MJob/{amp}/{loc}/'
+    cmd += f'NeutrinoAnalysis/output/{folder}{save_prefix}_{loc}_Allsigma_{energy}_n{n_nu}_{extra_stat}'
     if parts == True:
         cmd += f'_part{part:04d}'
     cmd += f'.hdf5 '
-    cmd += f'NeutrinoAnalysis/output/{folder}{save_prefix}_{loc}_Allsigma_{energy}_n{n_nu}'
+    cmd += f'NeutrinoAnalysis/output/{folder}{save_prefix}_{loc}_Allsigma_{energy}_n{n_nu}_{extra_stat}'
     if parts == True:
         cmd += f'_part{part:04d}'
     cmd += '.nur '
 #        cmd += f'--part 0009
     #now adding settings for slurm scheduler
     header = "#!/bin/bash\n"
-    header += f"#SBATCH --job-name={loc}{energy}_{part}      ##Name of the job.\n"
+    header += f"#SBATCH --job-name={amp}{loc}{energy}_{part}      ##Name of the job.\n"
     header += "#SBATCH -A sbarwick_lab                  ##Account to charge to\n"
     header += "#SBATCH -p standard                          ##Partition/queue name\n"
 #    header += "#SBATCH -p free                          ##Partition/queue name\n"
@@ -77,7 +78,7 @@ def makeAndRunFile(loc, energy, n_nu, part=0 ,parts=False, part_max=9):
 
     slurm_name = 'sbatch ' + slurm_name
     print(f'cmd running {cmd}')
-    print(f'running {slurm_name}')
+    print(f'running {slurm_name}, error ' + os.path.join(working_dir, 'logs', f'{filename}.err'))
     process = subprocess.Popen(slurm_name.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
 
@@ -91,7 +92,8 @@ def makeAndRunFile(loc, energy, n_nu, part=0 ,parts=False, part_max=9):
 
 
 
-loc = 'SP'
+# loc = ['MB', 'SP']
+loc = ['MB']
 #energy_number = [['3e16', '1e6'], ['5e16', '1e6'], ['1e17', '1e5']]
 #energy_number = [['1e17', '1e6'], ['3e16', '1e6']]
 #energy_number = [['1e16', '1e7'], ['3e17', '1e6'], ['1e17', '5e6']]
@@ -101,18 +103,25 @@ parts = True
 part_max = 299
 part = 0
 
-energies = np.logspace(16, 20, num=20)
+# n_bins = 12
+n_bins = 20
+energies = np.logspace(17, 20, num=n_bins)
 
-for energy in energies:
-    parts=True
-    if energy < 5*1e17:
-        num = 1e6
-    elif energy > 1e19:
-        num = 1e4
-        parts=False
-    else:
-        num = 1e5
-    makeAndRunFile(loc, energy, num, part=0, parts=parts, part_max=part_max)
+for l in loc:
+    for energy in energies:
+        parts=True
+        # if energy < 5*1e17:
+        #     num = 1e6
+        if energy < 1e18:
+            num = 5e6
+        else:
+            continue
+        # elif energy > 1e19:
+        #     num = 1e4
+        #     parts=False
+        # else:
+        #     num = 1e5
+        makeAndRunFile(l, energy, num, part=0, parts=parts, part_max=part_max)
 
 
 #for energy, n_nu in energy_number:

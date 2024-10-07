@@ -24,11 +24,11 @@ logEs = 0.5 * (shower_E_bins[1:] + shower_E_bins[:-1])
 def get_Energies_Weights(type, year, loc):
     if loc == 'SP':
         with open(f'data/output_{type}_{year}_680.pkl', 'rb') as fin:
-            shower_energies, weights_shower_energies = pickle.load(fin)
+            shower_energies, weights_shower_energies, shower_xmax = pickle.load(fin)
             fin.close()
     elif loc == 'MB':
         with open(f'data/output_{type}_{year}_1000.pkl', 'rb') as fin:
-            shower_energies, weights_shower_energies = pickle.load(fin)
+            shower_energies, weights_shower_energies, shower_xmax = pickle.load(fin)
             fin.close()
     else:
         print(f'Location {loc} not made')
@@ -285,7 +285,7 @@ if __name__ == '__main__':
     plt.ylim((7*10**-8, 2*10**3))
     #plt.ylabel('Event Rate/yr/km^2')
     plt.ylabel(r'$\phi_{core}$ ($km^{-2}$ $yr^{-1}$) per steradian bin', fontsize=16)
-    plt.xlabel(r'$E$ ($log_{10}$eV)', fontsize=16)
+    plt.xlabel(r'$E_{core}$ ($log_{10}$eV)', fontsize=16)
     #plt.title('Core Energy Spectrum South Pole')
     plt.savefig("plots/CoreAnalysis/CoreEngSpectrumSP")
     #plt.show()
@@ -305,7 +305,7 @@ if __name__ == '__main__':
     plt.yscale('log')
     #plt.ylabel('Event Rate/yr/km^2')
     plt.ylabel(r'$\phi_{core}$ ($km^{-2}$ $yr^{-1}$) per steradian bin', fontsize=16)
-    plt.xlabel(r'$E$ ($log_{10}$eV)', fontsize=16)
+    plt.xlabel(r'$E_{core}$ ($log_{10}$eV)', fontsize=16)
     plt.ylim((7*10**-8, 2*10**3))
 
     #plt.title('Core Energy Spectrum')
@@ -321,11 +321,11 @@ if __name__ == '__main__':
     #plt.scatter(logEs, MB_event_rate_core, label='Auger MB', marker='^')
 
     plt.scatter(logEs, auger19_event_rate, marker='v', color='gray')
-    plt.scatter(logEs, TA19_event_rate, label='Cosmic Ray Flux',marker='^', color='black')
+    plt.scatter(logEs, TA19_event_rate, label=r'E_${CR}$, Cosmic Ray Flux',marker='^', color='black')
     plt.scatter(logEs, SP_event_rate_core_auger, marker='v', color='blue', alpha=0.5)
-    plt.scatter(logEs, SP_event_rate_core_TA, label='South Pole Cores', marker='^', color='blue')
+    plt.scatter(logEs, SP_event_rate_core_TA, label=r'E_${core}$, South Pole', marker='^', color='blue')
     plt.scatter(logEs, MB_event_rate_core_auger, marker='v', color='orange', alpha=0.5)
-    plt.scatter(logEs, MB_event_rate_core_TA, label='Moores Bay Cores', marker='^', color='orange')
+    plt.scatter(logEs, MB_event_rate_core_TA, label=r'E_${core}$, Moores Bay', marker='^', color='orange')
     #plt.scatter(logEs, auger19_event_rate, label='Auger', marker='+')
 #    plt.text(18, 2.5*10**2, 'TA', color='black')
 #    plt.text(17.4, 2.5*10**2, 'Auger', color='gray')
@@ -339,7 +339,7 @@ if __name__ == '__main__':
     legend1 = plt.legend(handles=[(plt.scatter([], [], marker='^', color='black'), plt.scatter([], [], marker='v', color='gray')),
                                 (plt.scatter([], [], marker='^', color='blue'), plt.scatter([], [], marker='v', color='blue', alpha=0.5)),
                                 (plt.scatter([], [], marker='^', color='orange'), plt.scatter([], [], marker='v', color='orange', alpha=0.5))],
-                                labels=['Cosmic Ray Flux', 'South Pole Cores', 'Moores Bay Cores'],
+                                labels=[r'$E_{CR}$, Cosmic Ray Flux', r'$E_{core}$, South Pole', r'$E_{core}$, Moores Bay'],
                                 loc='upper right', prop={'size':16}, handler_map={tuple: HandlerTuple(ndivide=None)})
     plt.gca().add_artist(legend1)
     legend2 = plt.legend(handles=[plt.scatter([], [], marker='^', facecolor='none', edgecolor='black', label='TA'),

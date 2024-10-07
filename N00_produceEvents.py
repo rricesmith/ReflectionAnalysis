@@ -33,7 +33,7 @@ def generate_events(n_throws, max_rad, shower_energy, shower_energy_high = 0, se
     generate_eventlist_cylinder(saveFile, n_throws, eMin, eMax, volume, 0.0 * units.rad, np.deg2rad(60) * units.rad, deposited=depositEnergy)
     return saveFile
 
-def generate_events_square(n_throws, min_x, min_y, max_x, max_y, min_z, shower_energy, shower_energy_high = 0, zen_low = 0 * units.deg, zen_high = 60 * units.deg, seed=None, depositEnergy=False):
+def generate_events_square(n_throws, min_x, min_y, max_x, max_y, min_z, shower_energy, shower_energy_high = 0, zen_low = 0 * units.deg, zen_high = 60 * units.deg, seed=None, depositEnergy=False, part=0):
 #shower energy is in log10eV, ie 18 -> 10^18eV
 
     eMin = 10 ** shower_energy * units.eV
@@ -59,7 +59,7 @@ def generate_events_square(n_throws, min_x, min_y, max_x, max_y, min_z, shower_e
 
     volume = {"fiducial_xmin": xmin, "fiducial_xmax" : xmax, "fiducial_ymin": ymin, "fiducial_ymax": ymax, "fiducial_zmin" : zmin, "fiducial_zmax" : zmax}
 
-    saveFile = PathToReflectiveAnalysis + f'/tempdata/CR_{n_throws}cores_{shower_energy:.2f}to{shower_energy_high:.2f}eV_zen{zen_low:.2f}-{zen_high:.2f}_{min_x*2:.2f}length.hdf5'
+    saveFile = PathToReflectiveAnalysis + f'/tempdata/CR_{n_throws}cores_{shower_energy:.2f}to{shower_energy_high:.2f}eV_zen{zen_low:.2f}-{zen_high:.2f}_{min_x*2:.2f}length_part{part}.hdf5'
 
     print(f'Parameters {zmin}zmin {zmax}zmax {eMin}eMin {eMax}eMax {zen_low}zen_low {zen_high}zen_high')
 

@@ -22,10 +22,12 @@ if __name__ == "__main__":
 
 
     # plot expected limit
-    fig, ax = limits.get_E2_limit_figure(diffuse=True, show_grand_10k=False, show_grand_200k=False, show_RNOG=True, show_ara=True,
-                                         show_anita_I_IV_limit=False, show_auger_limit=False,
+    fig, ax = limits.get_E2_limit_figure(diffuse=True, show_grand_10k=True, show_grand_200k=False, show_RNOG=True, show_ara=True,
+                                         show_anita_I_IV_limit=True, show_auger_limit=False,
                                          show_IceCubeGen2_whitepaper=False, show_IceCubeGen2_ICRC2021=True)
 
+    fig.savefig("NeutrinoAnalysis/limits_ARI_RNOG_GRAND_Anita_Gen2.png")
+    quit()
 
 
     energies = [1e16, 3e16,  5e16,  7e16,  1e17,  3e17,  5e17,  7e17,  1e18,  3e18,  5e18,  1e19]
@@ -62,7 +64,7 @@ if __name__ == "__main__":
 #    fig.legend(handles=handles, labels=labels, loc='best')
     plt.xlim([1e14,1e19])
     plt.ylim([1e-11,1e-5])
-    fig.savefig("limits.png")
+    fig.savefig("NeutrinoAnalysis/limits.png")
     plt.show()
 
 

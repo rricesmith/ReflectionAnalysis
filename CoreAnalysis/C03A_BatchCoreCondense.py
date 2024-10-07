@@ -6,11 +6,10 @@ import A00_SlurmUtil
 
 layer_depths = [ [300, 1.7], [500, 1.7], [800, 1.7] ]
 
-#f_values = [0.6, 0.5, 0.4, 0.3, 0.2, 0.1]
 f_values = [0.3]
-#f_values = [0.1]
-#dB_values = [40, 45, 50]
-dB_values = [40]
+#f_values = [0.3]
+dB_values = [50]
+#dB_values = [40]
 
 #direction = 'above'
 direction = 'below'
@@ -36,10 +35,12 @@ testLArray(f_values, dB_values)
 
 
 #cmd = 'python CoreAnalysis/C03_LPDA_coreObjectPklCondense.py'
-cmd = 'python CoreAnalysis/C03_Gen2_coreObjectPklCondense.py'
+#cmd = 'python CoreAnalysis/C03_Gen2_coreObjectPklCondense.py'
+cmd = 'python CoreAnalysis/C03_CorePaper_coreObjectPklCondense.py'
 
 for f in f_values:
     for dB in dB_values:
 
-        args = f' {dB} {f} --direction {direction}'
+        # args = f' {dB} {f} --direction {direction}'
+        args = f' {dB} {f}'
         A00_SlurmUtil.makeAndRunJob(cmd + args, f'{f}f_{dB}dB_Condense', runDirectory='run/CoreRefl1.70km', partition='standard')

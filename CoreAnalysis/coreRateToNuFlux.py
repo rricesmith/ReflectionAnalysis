@@ -61,7 +61,7 @@ def get_Veff_from_e2(u1, energy,
     return veff_sr
 
 
-def flux_from_num_events_per_bin(number_of_events_per_energy, energies, Veff,
+def flux_from_num_events_per_bin(energies, number_of_events_per_energy, dB=None, veff=False,
                                 livetime=10 * units.year,
                                 nuCrsScn='ctw'):
     """
@@ -81,12 +81,32 @@ def flux_from_num_events_per_bin(number_of_events_per_energy, energies, Veff,
     flux: array of floats
         the flux at energy logE    
     """
+    if not dB == None:
+        inelastics = inelasticities.get_neutrino_inelasticity(1000)
+        mean_ine = 1 / np.mean(inelastics)
+        energies *= 10**(-dB/20) * mean_ine
+
+    if not veff:
+        #Get Gen2 flux and convert to Veff
+        gen2_E, gen2_flux = np.loadtxt("../NuRadioMC/NuRadioMC/examples/Sensitivities/data/Gen2radio_sensitivity_ICRC2021.txt")
+        gen2_E *= units.eV
+        gen2_flux *= units.GeV * units.cm ** -2 * units.second ** -1 * units.sr ** -1
+
+        while energies[0] < gen2_E[0]:
+            energies = np.delete(energies, 0)
+            number_of_events_per_energy = np.delete(number_of_events_per_energy, 0)
+
+        veff_gen2 = get_Veff_from_e2(gen2_flux, gen2_E)
+        veff_interp = interpolate.interp1d(gen2_E, veff_gen2, kind='linear')
+        veff = veff_interp(energies)
+
 
     logE = np.log10(energies)
     dLogE = logE[1] - logE[0]
-    flux = (number_of_events_per_energy * cross_sections.get_interaction_length(energies, cross_section_type=nuCrsScn)) / (np.log(10) * livetime * energies * Veff * dLogE)
+    print(f'dLogE {dLogE} num evts {number_of_events_per_energy} energies {energies} Veff {veff}')
+    flux = (number_of_events_per_energy * cross_sections.get_interaction_length(energies, cross_section_type=nuCrsScn)) / (np.log(10) * livetime * energies * veff * dLogE)
 
-    return flux
+    return energies, flux
 
 
 
@@ -147,7 +167,7 @@ if __name__ == "__main__":
 #    evts_per_eBin = np.array([0, 0, 0, 0, 0, 5*10**-5, 8*10**-3, 2*10**-3]) * n_stations   #3.8 sigma shallow
 #    evts_per_eBin = np.array([0, 0, 0, 0, 10**-5, 2*10**-4, 3.2*10**-2, 8*10**-3]) * n_stations    #Testing approximate increase to 2sigma
 #    evts_per_eBin = np.array([0, 10**-4, 10**-3, 2*10**-4, 10**-3, 10**-2, 10**-4, 0]) * n_stations    #Testing Alans results
-#    dummy_flux = flux_from_num_events_per_bin(evts_per_eBin, gen2_E, veff_gen2)
+#    dummy_flux = flux_from_num_events_per_bin(gen2_E, evts_per_eBin, veff_gen2)
 #    e2_dummy_flux = dummy_flux * gen2_E ** 2
 #    print(f'dummy flux {e2_dummy_flux / plotUnitsFlux}')
 
@@ -162,7 +182,7 @@ if __name__ == "__main__":
         alan_energies = np.delete(alan_energies, 0)
         alan_events = np.delete(alan_events, 0)
 
-    alan_flux = flux_from_num_events_per_bin(alan_events, alan_energies, veff_interp(alan_energies))
+    alan_energies, alan_flux = flux_from_num_events_per_bin(alan_energies, alan_events, veff=veff_interp(alan_energies))
     alan_flux_e2 = alan_flux * alan_energies**2
 
     fig, ax = limits.get_E2_limit_figure(diffuse=True, show_grand_10k=False, show_grand_200k=False, show_RNOG=True, show_ara=True,

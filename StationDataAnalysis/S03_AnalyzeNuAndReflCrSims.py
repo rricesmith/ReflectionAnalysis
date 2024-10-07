@@ -21,13 +21,13 @@ import StationDataAnalysis.Nu_RCR_ChiCut as ChiCut
 
 #ReflCrFiles = ['StationDataAnalysis/data/MB_old_100s_Refl_CRs_500Evts_Noise_False_Amp_False.nur']
 	#100s
-#ReflCrFiles = ['StationDataAnalysis/data/MB_old_100s_Refl_CRs_500Evts_Noise_True_Amp_True.nur', 'StationDataAnalysis/data/MB_old_100s_Refl_CRs_500Evts_Noise_True_Amp_True_part02.nur', 'StationDataAnalysis/data/MB_old_100s_Refl_CRs_500Evts_Noise_True_Amp_True_part03.nur']
-#NuFiles = ['StationDataAnalysis/data/N02_SimNu_100s_wNoise_wAmp.nur']
-#templates = '100'
+ReflCrFiles = ['StationDataAnalysis/data/MB_old_100s_Refl_CRs_500Evts_Noise_True_Amp_True.nur', 'StationDataAnalysis/data/MB_old_100s_Refl_CRs_500Evts_Noise_True_Amp_True_part02.nur', 'StationDataAnalysis/data/MB_old_100s_Refl_CRs_500Evts_Noise_True_Amp_True_part03.nur']
+NuFiles = ['StationDataAnalysis/data/N02_SimNu_100s_wNoise_wAmp.nur']
+templates = '100'
 	#200s
-ReflCrFiles = ['StationDataAnalysis/data/MB_old_200s_Refl_CRs_500Evts_Noise_True_Amp_True.nur']
-NuFiles = ['StationDataAnalysis/data/N02_SimNu_200s_wNoise_wAmp.nur']
-templates = '200'
+# ReflCrFiles = ['StationDataAnalysis/data/MB_old_200s_Refl_CRs_500Evts_Noise_True_Amp_True.nur']
+# NuFiles = ['StationDataAnalysis/data/N02_SimNu_200s_wNoise_wAmp.nur']
+# templates = '200'
 
 
 station_id = 1
@@ -255,8 +255,8 @@ plt.ylim((0, 1))
 plt.xlim((0.06, 100))
 plt.legend()
 plt.show()
-quit()
-
+# quit()
+plt.clf()
 
 """
 plt.hist(NuSim['DipP2p'], bins=NuDipBins)
@@ -311,8 +311,8 @@ plt.show()
 
 
 plt.plot(np.linspace(0, 1, 20), np.linspace(0, 1, 20), linestyle='--')
-plt.scatter(CrSim['nuXcorr'], CrSim['crXcorr'], label='R-CR Events')
-plt.scatter(NuSim['nuXcorr'], NuSim['crXcorr'], label='Nu Events')
+plt.scatter(CrSim['nuXcorr'], CrSim['crXcorr'], label='Simulated Reflected Air Showers')
+plt.scatter(NuSim['nuXcorr'], NuSim['crXcorr'], label='Simulated Neutrinos')
 x = np.linspace(0, 1, 100)
 """
 def nuFit(nuChi):
@@ -343,11 +343,13 @@ plt.plot(x, y, label=f'{nuEff:.1f}% Nu Efficient\n{crEff:.1f}% R-CR Efficient', 
 """
 nuEff = ChiCut.cutEfficiency(NuSim['nuXcorr'], NuSim['crXcorr'])
 crEff = ChiCut.cutEfficiency(CrSim['nuXcorr'], CrSim['crXcorr'])
-plt.plot(x, ChiCut.cutArray(x), label=f'{nuEff:.1f}% Nu Efficient\n{crEff:.1f}% R-CR Efficient', color='red', linestyle='-')
+# plt.plot(x, ChiCut.cutArray(x), label=f'{nuEff:.1f}% Nu Efficient\n{crEff:.1f}% R-CR Efficient', color='red', linestyle='-')
+plt.plot(x, ChiCut.cutArray(x), label=f'{nuEff:.1f}% Neutrino Efficient', color='red', linestyle='-')
 
-plt.xlabel('Nu Chi')
-plt.ylabel('R-CR Chi')
+plt.xlabel('Neutrino Chi')
+plt.ylabel('Reflected Air Shower Chi')
 plt.xlim((0, 1))
 plt.ylim((0, 1))
 plt.legend()
-plt.show()
+# plt.show()
+plt.savefig(f'plots/Advancement/NuVsCrChi.png', format='png')

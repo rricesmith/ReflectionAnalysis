@@ -15,7 +15,7 @@ import coreDataObjects as CDO
 import pickle
 import CoreAnalysis.C00_coreAnalysisUtils as CDO_util
 plt.style.use('plotsStyle.mplstyle')
-
+from icecream import ic
 
 
 
@@ -70,8 +70,8 @@ if __name__ == '__main__':
 #    file_prefix = 'run/CoreRefl'
     file_prefix = 'data/'
 
-    xx = np.linspace(-1200, 1200, 100)
-    yy = np.linspace(-1200, 1200, 100)
+    xx = np.linspace(-1000, 1000, 100)
+    yy = np.linspace(-1000, 1000, 100)
     zz = np.zeros( (len(xx), len(yy)) )
 
 
@@ -156,6 +156,10 @@ if __name__ == '__main__':
 #    plt.scatter(plotEng, zenCent[iZ], c=z)
     """
 
+    CDO_util.plotCoreDiagnostics(CoreObjectsList, title_comment=savePrefix)
+    quit()
+
+
 #        plt.bar(zenBins[:-1], core.getZeniths(), width=np.diff(zenBins), align='edge')
     plt.scatter(scatterEng, scatterZen, c=scatterCount, norm=matplotlib.colors.LogNorm())
     plt.clim(10**-5, 100)
@@ -170,18 +174,7 @@ if __name__ == '__main__':
 
 
 
-    #Make XY heatmap of event rate
-    for core in CoreObjectsList:
-#        print(f'core info ebins {core.e_bins} rad bins {core.rad_bins} parentCRs num {len(core.parentCRs)}')
-#        print(f'trig rates {core.trigRatesPerRadBin} and Aeff {core.Aeff_per_rad_bin} over bins {core.rad_bins}')
-        core.setTotalEventRatePerArea()
-#        print(f'core info ebins {core.e_bins} parentCRs num {len(core.parentCRs_TA)} with event rate total per area {core.totalEventRatePerArea}')
-        xx, yy, zz = core.addEventsToArea(xx, yy, zz)
 
-#        plot = plt.figure(1)
-#        if core.plotEventRatePerRad():
-#            print(f'can we show?')
-#            plt.show()
     print(f'here1')
 
 
@@ -199,10 +192,19 @@ if __name__ == '__main__':
     plt.clf()
 
 
-    #following line is bugged, fix later
-#    plt.contourf(xx, yy, zz, cmap='YlOrRd', norm=matplotlib.colors.LogNorm()) 
-#    plt.colorbar(label=f'Events/Stn/Yr, Net {np.sum(zz):.5f}')
+    #Make XY heatmap of event rate
+    for core in CoreObjectsList:
+        x1, y1, z1 = core.addEventsToArea(xx, yy, zz)
+        zz += z1
+    ic(xx)
+    ic(yy)
+    ic(zz)
+    plt.contourf(xx, yy, zz, cmap='YlOrRd', norm=matplotlib.colors.LogNorm()) 
+    # plt.contourf(xx, yy, zz, cmap='YlOrRd') 
+    plt.colorbar(label=f'Events/Stn/Yr, Net {np.sum(zz):.5f}')
     plt.scatter(0, 0, s=30, marker='x', color='black')
+    plt.xlim(min(xx), max(xx))
+    plt.ylim(min(yy), max(yy))
     plt.title(f'Core Event Rate Distribution over all CRs for {type}')
     plt.savefig(f'plots/CoreAnalysis/{savePrefix}_CoreEvntRate_XY_Distribution.png')
     plt.clf()

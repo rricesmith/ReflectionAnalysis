@@ -21,7 +21,7 @@ import datetime
 import json
 from NuRadioReco.utilities import units, fft
 from NuRadioReco.utilities.cr_flux import get_cr_event_rate
-
+from icecream import ic
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
@@ -412,16 +412,18 @@ def converter(nurFiles, folder, save_prefix, save_chans, station_id = 1, det=Non
     return
         
 
-folder = "4thpass"
+folder = "5thpass"
 amp_type = '200'     #Alternative is 200s
 
 #Convert RCR simulated data
 if False:
     det = generic_detector.GenericDetector(json_filename=f'configurations/gen2_MB_old_{amp_type}s_footprint576m_infirn.json', assume_inf=False, antenna_by_depth=False, default_station=1)
-    station_files_path = 'FootprintAnalysis/output/'
+    # station_files_path = 'FootprintAnalysis/output/'
+    station_files_path = f'SimpleFootprintSimulation/output/RCR/9.30.24/{amp_type}s/'
     SimRCRFiles = []
     for filename in os.listdir(station_files_path):
-        if filename.startswith(f'RCRs_MB_MB_old_{amp_type}s_refracted') and filename.endswith('.nur'):
+        # if filename.startswith(f'RCRs_MB_MB_old_{amp_type}s_refracted') and filename.endswith('.nur'):
+        if filename.startswith(f'RCR_MB') and filename.endswith('.nur'):
             print(f'adding events from file {filename}')
             SimRCRFiles.append(os.path.join(station_files_path, filename))
 
@@ -429,7 +431,7 @@ if False:
     converter(SimRCRFiles, folder, f'SimRCR_{amp_type}s', saveChannels, station_id = 1, det=det, filter=True, saveTimes=False, plot=False, sim=True, reconstruct=False, blackout=False)
     print(f'saved RCRs!')
 
-#    quit()
+    quit()
 
 #Convert simulated backlobe data
 if False:

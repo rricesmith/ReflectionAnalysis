@@ -5,7 +5,7 @@ import argparse
 import h5py
 import time
 import os
-
+from icecream import ic
 
 """
 This file takes input from W03CheckOutput.py from the NuRadioMC tutorial file
@@ -33,6 +33,9 @@ def group_event_id_diagnostic(fin, event_group_id, trigger = 'LPDA_2of4_100Hz', 
 def trigger_mask(fin, trigger = 'LPDA_2of4_100Hz', station = 'station_1', DEBUG=False):
     trigger_names = np.array(fin.attrs['trigger_names'])
     trigger_index = np.squeeze(np.argwhere(trigger_names == trigger))
+    if DEBUG:
+        print(f'trigger names {fin.attrs["trigger_names"]}')
+        print(f'trid index {trigger_index}')
 
     """
     print(f'trigger index {trigger_index}')
@@ -88,19 +91,32 @@ def reflection_types(fin, ant_num = 0, station = 'station_1', trigger_index = 1,
 
     return reflection_type
 
+def index_max_amp_per_event(fin, ant_num=5, station='station_1', trigger_index=1, DEBUG=False):
+    multi_trigger_mask = np.array(fin[station]['multiple_triggers'])[:, trigger_index]
+    max_amp_per_ray = fin[station]['max_amp_shower_and_ray'][:, ant_num, :]
+    index_of_max_amplitude_per_event = np.argmax(max_amp_per_ray, axis=1)[multi_trigger_mask]
+
+    return index_of_max_amplitude_per_event
+
 #Function takes in antenna number for a file and returns 4 arrays that act as masks for reflected/direct above & below triggers
 #Last array return has the z_arrival direction for each triggered signal
 def dipole_direction_masks(fin, ant_num = 5 , station = 'station_1', trigger_index = 1, DEBUG=False):
-    print(f'DIPOLE MASK')
-    print(f'using ant {ant_num} station {station} and trig ind {trigger_index}')
+    if DEBUG:
+        print(f'DIPOLE MASK')
+        print(f'using ant {ant_num} station {station} and trig ind {trigger_index}')
     multi_trigger_mask = np.array(fin[station]['multiple_triggers'])[:, trigger_index]
-    print(f'len mult trig mask {len(multi_trigger_mask)}')
+    if DEBUG:
+        print(f'len mult trig mask {len(multi_trigger_mask)}')
     max_amp_per_ray = fin[station]['max_amp_shower_and_ray'][:, ant_num, :]
-    print(f'len max amp ray {len(max_amp_per_ray)}')
+    if DEBUG:
+        print(f'len max amp ray {len(max_amp_per_ray)}')
     index_of_max_amplitude_per_event = np.argmax(max_amp_per_ray, axis=1)[multi_trigger_mask]
-    print(f'len index {len(index_of_max_amplitude_per_event)}')
+    if DEBUG:
+        print(f'len index {len(index_of_max_amplitude_per_event)}')
     receive_vecs = fin[station]['receive_vectors'][:, ant_num, :][multi_trigger_mask]
-    print(f'len recieve vec {len(receive_vecs)}')
+    if DEBUG:
+        print(f'len recieve vec {len(receive_vecs)}')
+    launch_vecs = fin[station]['launch_vectors'][:, ant_num, :][multi_trigger_mask]
     num_events = len(receive_vecs)
     
 
@@ -110,13 +126,17 @@ def dipole_direction_masks(fin, ant_num = 5 , station = 'station_1', trigger_ind
     dir_bel_mask = np.zeros(num_events, dtype = np.bool)
 
     z_arrival = np.zeros(num_events)
+    z_launch = np.zeros(num_events)
 
     refl_mask = reflection_types(fin, ant_num, station, trigger_index).astype(np.int) == 1
-    print(f'len refl mask {len(refl_mask)}')
+    if DEBUG:
+        print(f'len refl mask {len(refl_mask)}')
 
 #    print(f'Check : len index_mask_amp {len(index_of_max_amplitude_per_event)} len rec_vecs {len(receive_vecs)} len refl_mask {len(refl_mask)}')
     for iShower in range(num_events):
         z_arrival[iShower] = receive_vecs[iShower][index_of_max_amplitude_per_event][iShower][2]
+        z_launch[iShower] = launch_vecs[iShower][index_of_max_amplitude_per_event][iShower][2]
+        # z_launch.append(launch_vecs[iShower][index_of_max_amplitude_per_event][iShower])
         if refl_mask[iShower]:
             if z_arrival[iShower] > 0:
                 refl_abv_mask[iShower] = True
@@ -128,7 +148,54 @@ def dipole_direction_masks(fin, ant_num = 5 , station = 'station_1', trigger_ind
             else:
                 dir_bel_mask[iShower] = True
 
-    return refl_abv_mask, refl_bel_mask, dir_abv_mask, dir_bel_mask, z_arrival
+    return refl_abv_mask, refl_bel_mask, dir_abv_mask, dir_bel_mask, z_arrival, z_launch
+
+def launch_angles_max_amp(fin, ant_num = [5] , station = 'station_1', trigger_index = 1, DEBUG=False):
+    multi_trigger_mask = np.array(fin[station]['multiple_triggers'])[:, trigger_index]
+    max_amp_per_ray = fin[station]['max_amp_shower_and_ray'][:, ant_num, :]
+    index_of_max_amplitude_per_event = np.argmax(max_amp_per_ray, axis=1)[multi_trigger_mask]
+    receive_vecs = fin[station]['receive_vectors'][:, ant_num, :][multi_trigger_mask]
+    launch_vecs = fin[station]['launch_vectors'][:, ant_num, :][multi_trigger_mask]
+    num_events = len(receive_vecs)
+
+    z_launch = []
+    for iShower in range(num_events):
+        z_launch.append(launch_vecs[iShower][index_of_max_amplitude_per_event][iShower])
+        # ic(launch_vecs[iShower][index_of_max_amplitude_per_event][iShower][2])
+        # quit()
+    z_launch = np.array(z_launch)
+    return z_launch
+
+def ray_tracing_solutions_max_amp(fin, ant_num = [5] , station = 'station_1', trigger_index = 1, DEBUG=False):
+    multi_trigger_mask = np.array(fin[station]['multiple_triggers'])[:, trigger_index]
+    max_amp_per_ray = fin[station]['max_amp_shower_and_ray'][:, ant_num, :]
+    index_of_max_amplitude_per_event = np.argmax(max_amp_per_ray, axis=1)[multi_trigger_mask]
+    return index_of_max_amplitude_per_event
+
+def ray_tracing_max_amp(fin, ant_num = [5] , station = 'station_1', trigger_index = 1, DEBUG=False):
+    # Return the maximum amplitude of the raw signal at the triggered antenna of all ray tracing solutions
+    multi_trigger_mask = np.array(fin[station]['multiple_triggers'])[:, trigger_index]
+    index_max_amp_per_event = ray_tracing_solutions_max_amp(fin, ant_num, station, trigger_index, DEBUG)
+    max_amp_per_ray = fin[station]['max_amp_shower_and_ray'][:, ant_num, :][multi_trigger_mask]
+    return_max_amp_per_ray = []
+    for iShower in range(len(max_amp_per_ray)):
+        return_max_amp_per_ray.append(max_amp_per_ray[iShower][index_max_amp_per_event[iShower]])
+    return_max_amp_per_ray = np.array(return_max_amp_per_ray)
+    return return_max_amp_per_ray
+
+def multi_ray_tracing_max_amp(fin, ant_num = [5] , station = 'station_1', trigger_index = 1, DEBUG=False):
+    # Return the maximum  per event of the raw signal over multiple channels
+    max_amps = {}
+    for ant in ant_num:
+        max_amps[ant] = ray_tracing_max_amp(fin, ant, station, trigger_index, DEBUG)
+    
+    return_max_amps = max_amps[ant_num[0]]
+    for ant in ant_num[1:]:
+        for iA, amp in enumerate(return_max_amps):
+            if amp < max_amps[ant][iA]:
+                return_max_amps[iA] = max_amps[ant][iA]
+
+    return return_max_amps
 
 
 #This function returns the launch vectors of reflected triggers for use to get viewing angle
@@ -233,18 +300,20 @@ def triggered_max_amps(fin, ant_num = [5], station = 'station_1', trigger_index 
 
 #This function returns the mask for an array such as an LPDA
 #It runs through each antenna and returns masks for directions as well as the average z arrival between all antennas
-def multi_array_direction_masks(fin, ant_num, station = 'station_1', trigger_index = 1):
+def multi_array_direction_masks(fin, ant_num, station = 'station_1', trigger_index = 1, DEBUG=False):
     refl_abv_dic = {}
     refl_bel_dic = {}
     dir_abv_dic = {}
     dir_bel_dic = {}
-    z_vals = {}
+    arrival_vals = {}
+    launch_vals = {}
     length = 0
 
     for ant in ant_num:
-        refl_abv_dic[ant], refl_bel_dic[ant], dir_abv_dic[ant], dir_bel_dic[ant], z_vals[ant] = dipole_direction_masks(fin, ant, station, trigger_index)
+        refl_abv_dic[ant], refl_bel_dic[ant], dir_abv_dic[ant], dir_bel_dic[ant], arrival_vals[ant], launch_vals[ant] = dipole_direction_masks(fin, ant, station, trigger_index, DEBUG)
         length = len(refl_abv_dic[ant])
-        print(f'length for ant {ant} is {length}')
+        if DEBUG:
+            print(f'length for ant {ant} is {length}')
 #        print(length)
     """
     refl_abv_mask = np.zeros(length, dtype=bool)
@@ -273,14 +342,18 @@ def multi_array_direction_masks(fin, ant_num, station = 'station_1', trigger_ind
     dir_abv_mask = dir_abv_mask > (len(ant_num)/2)
     dir_bel_mask = dir_bel_mask > (len(ant_num)/2)
 
-    z_array_vals = np.zeros(length)
-    for zz in range(len(z_array_vals)):
+    # Get the mean arrival and launch angle for the antennas examined
+    arrival_array_vals = np.zeros(length)
+    launch_array_vals = np.zeros(length)
+    for zz in range(len(arrival_array_vals)):
         iZZ = np.empty(len(ant_num))
+        iLL = np.empty(len(ant_num))
         for iAnt, ant in enumerate(ant_num):
-            iZZ[iAnt] = z_vals[ant][zz]
-        z_array_vals[zz] = np.nanmean(iZZ)
-
-    return refl_abv_mask, refl_bel_mask, dir_abv_mask, dir_bel_mask, z_array_vals
+            iZZ[iAnt] = arrival_vals[ant][zz]
+            iLL[iAnt] = launch_vals[ant][zz]
+        arrival_array_vals[zz] = np.nanmean(iZZ)
+        launch_array_vals[zz] = np.nanmean(iLL)
+    return refl_abv_mask, refl_bel_mask, dir_abv_mask, dir_bel_mask, arrival_array_vals, launch_array_vals
 
 #plots Radius vs Zenith distribution after being masked by reflected/direct and above/below
 def plot_rad_zenith(rr, zen, refl_abv, refl_bel, dir_abv, dir_bel):

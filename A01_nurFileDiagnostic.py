@@ -6,14 +6,14 @@ from NuRadioReco.framework.parameters import stationParameters as stnp
 import matplotlib.pyplot as plt
 
 #Diagnostic settings
-nurPath = '../../../ariannaproject/rricesmi/simulatedRCRs/200s/'
-saveFolder = 'plots/diagnostics'
-channel_ids = [0, 1, 2, 3]
+# nurPath = '../../../ariannaproject/rricesmi/simulatedRCRs/200s/'
+nurPath = '../../../../../dfs8/sbarwick_lab/ariannaproject/rricesmi/simStn51/3.11.24/'
+saveFolder = 'plots/diagnostics/Stn51'
+# channel_ids = [0, 1, 2, 3]
+channel_ids = [4, 5, 6]
 
 maxSave = 100
 saveIter = 500
-
-
 
 
 
@@ -62,7 +62,7 @@ for i, evt in enumerate(eventReader.get_events()):
         axs[0].set_ylabel(f'ch{0}',labelpad=3,rotation=0,fontsize=13)
 #        axs[c].set_xlim(-3,260)
         # axs[3].set_ylabel('mV',labelpad=0)
-        fig.text(0.03, 0.5, 'voltage [mV]', ha='center', va='center', rotation='vertical',fontsize=18)
+        fig.text(0.03, 0.5, 'voltage [V]', ha='center', va='center', rotation='vertical',fontsize=18)
         plt.xticks(size=13)
         # plt.yticks(size=15)
     #    plt.show()

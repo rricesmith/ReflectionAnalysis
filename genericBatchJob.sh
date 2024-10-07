@@ -19,9 +19,30 @@ export PYTHONPATH=$Radio:$PYTHONPATH
 module load python/3.8.0
 cd $ReflectiveAnalysis
 
+# python DeepLearning/SimpleSNR_Chi_plot.py
+python DeepLearning/D04B_reprocessNurPassingCut.py 30
+# python DeepLearning/D01_convertSimNurToNpy.py
+# python DeepLearning/D04C_CutInBacklobeRCR.py
+
+# python CoreAnalysis/C04F_CalculateEffectiveAreaFromHdf.py ../CorePaperhdf5/gen2/*depth_300*
+# python CoreAnalysis/C04E_corePaperNoiseDiagnostics.py 50 0.3
+# python NeutrinoAnalysis/M01_generate_eventlist.py
+# python DeepLearning/simpleTimeStrip.py
+# python SimpleFootprintSimulation/Stn51RateCalc.py
+# python CoreAnalysis/C04_corePaperDiagnostics.py 50 0.3
+
+
+# python SimpleFootprintSimulatiom/Stn51Simulation.py SimpleFootprintSimulatiom/output/3.4.24_test.nur --min_energy 18.3 --max_energy 18.4
+# python CoreAnalysis/C04_coreObjectAnalysis.py data/CoreDataObjects/CorePaper_CoreDataObjects_LPDA_2of4_100Hz_refl_300mRefl_SP_1R_0.3f_50.0dB_1.43781km_50000cores.pkl SP --title_comment LPDA_2of4_100MHz --savePrefix CorePaper/LPDA_2of4_100MHz
+# python CoreAnalysis/C04_coreObjectAnalysis.py data/CoreDataObjects/CorePaper_CoreDataObjects_PA_8ch_100Hz_refl_300mRefl_SP_1R_0.3f_50.0dB_1.43781km_50000cores.pkl SP --title_comment PA_8ch_100Hz --savePrefix CorePaper/PA_8ch_100Hz
+
+#python FootprintAnalysis/F01_FootprintSimulation.py 2 50 direct --type SP --config Stn51 --no_noise --add_amp --amp_type 300 --antenna lpda
+#python FootprintAnalysis/F01_FootprintSimulation.py 2 50 direct --type MB --config MB_old --min_file 150 --no_noise --add_amp --amp_type 200 --antenna lpda
+
 #python DeepLearning/D01_convertSimNurToNpy.py
 #python DeepLearning/D02_trainCNN.py
-python DeepLearning/D03_probHist.py
+#python DeepLearning/D03_probHist.py
+# python DeepLearning/plotVisualExamples.py
 
 #python CoreAnalysis/C00_coreAnalysisUtils.py
 #python DeepLearning/testTimeStrip.py

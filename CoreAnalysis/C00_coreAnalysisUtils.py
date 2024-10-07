@@ -3,6 +3,7 @@ import coreDataObjects as CDO
 import numpy as np
 import matplotlib.colors
 import pickle
+from icecream import ic
 
 
 def set_bad_imshow(array, value):
@@ -11,6 +12,97 @@ def set_bad_imshow(array, value):
     cmap.set_bad(color='white')
     return ma, cmap
 
+def plotCoreDiagnostics(CoreObjectsList, title_comment='', legend_comment='', type='TA', density=False):
+    #Make a page of histograms of the event rate as a function of radius per energy and coszen bin
+
+    zenBins = np.linspace(0, np.pi, 30)
+    zenBins = np.rad2deg(zenBins)
+    all_energies = []
+    all_coszen = []
+
+    all_data = {}
+
+    for core in CoreObjectsList:
+        energy = f'{core.e_bins[0]:.1f}-{core.e_bins[1]:.1f}'
+        coszen = f'{np.rad2deg(np.arccos(core.coszen_bins[0])):.1f}-{np.rad2deg(np.arccos(core.coszen_bins[1])):.1f}'
+        if not energy in all_energies:
+            all_energies.append(energy)
+            all_data[energy] = {}
+        if not coszen in all_coszen:
+            all_coszen.append(coszen)
+            all_data[energy][coszen] = {}
+        if not coszen in all_data[energy]:
+            all_data[energy][coszen] = {}
+        all_data[energy][coszen]['Aeff_per_rad'] = [core.rad_bins, core.Aeff_per_rad_bin]
+        all_data[energy][coszen]['ArrivalAngles'] = core.getZeniths()
+
+    all_energies.sort()
+    all_coszen.sort()
+
+    ncols = len(all_energies)
+    nrows = len(all_coszen)
+    ic(all_energies)
+    ic(all_coszen)
+    ic(ncols, nrows)
+    fig, ax = plt.subplots(ncols=ncols, nrows=nrows, figsize=(ncols * 8, nrows * 5), gridspec_kw={"wspace": 0.2, "hspace": 0.2})
+    ax = np.atleast_2d(ax)
+
+    for iE, energy in enumerate(all_energies):
+        for iC, coszen in enumerate(all_coszen):
+            ic(energy, coszen)
+            prad = all_data[energy][coszen]['Aeff_per_rad'][0]
+            pAeff = all_data[energy][coszen]['Aeff_per_rad'][1]
+
+            ax[iC, iE].bar(prad[:-1], pAeff, width=np.diff(prad), align='edge')
+            ax[iC, iE].set_title(f'{energy} log10eV, {coszen} deg')
+            ax[iC, iE].set_ylabel('Effective Area (m^2)')
+            ax[iC, iE].set_yscale('log')
+            ax[iC, iE].set_ylim(10**-9, 10**-1)
+        ax[-1, iE].set_xlabel('Radius (m)')
+
+    ic('saving')
+    plt.savefig(f'plots/CoreAnalysis/{title_comment}_Diagnostics_AeffRads.png', bbox_inches='tight')
+    plt.clf()
+    ic('saved')
+
+    fig, ax = plt.subplots(ncols=ncols, nrows=nrows, figsize=(ncols * 8, nrows * 5), gridspec_kw={"wspace": 0.2, "hspace": 0.2})
+    ax = np.atleast_2d(ax)
+
+    for iE, energy in enumerate(all_energies):
+        for iC, coszen in enumerate(all_coszen):
+            ic(energy, coszen)
+            pArrAng = all_data[energy][coszen]['ArrivalAngles']
+
+            ax[iC, iE].bar(zenBins[:-1], pArrAng, width=np.diff(zenBins), align='edge')
+            ax[iC, iE].set_title(f'{energy} log10eV, {coszen} deg')
+            ax[iC, iE].set_ylabel('Count of Events')
+            ax[iC, iE].set_yscale('log')
+            ax[iC, iE].set_ylim(bottom=1)
+        ax[-1, iE].set_xlabel('Arrival Angle (deg)')
+
+    plt.savefig(f'plots/CoreAnalysis/{title_comment}_Diagnostics_ArrivalAngles.png', bbox_inches='tight')
+    plt.clf()
+
+    #2D histogram of Arrival angle vs Radius
+    fig, ax = plt.subplots(ncols=ncols, nrows=nrows, figsize=(ncols * 8, nrows * 5), gridspec_kw={"wspace": 0.2, "hspace": 0.2})
+    ax = np.atleast_2d(ax)
+
+    for iE, energy in enumerate(all_energies):
+        for iC, coszen in enumerate(all_coszen):
+            prad = all_data[energy][coszen]['Aeff_per_rad'][0]      #x-axis
+            pAeff = all_data[energy][coszen]['Aeff_per_rad'][1]     #Aeff per x-axis bin, rad
+            pArrAng = all_data[energy][coszen]['ArrivalAngles']     #num of triggers per zenith arrival angle
+
+
+
+
+    #Also do one with launch vector rather than arrival angle
+    #And plot some of the event displays of events from lowest energy
+    # https://github.com/nu-radio/NuRadioMC/blob/develop/NuRadioMC/SignalProp/examples/example_3d.py
+    #   Line 39, rather than plot all of them, find the one with max amplitude
+    #also do 2d launch vs radius, launch vs arrival
+
+    return
 
 def plotArrivalDirectionHist(CoreObjectsList, cut=None, title_comment='', legend_comment='', type='TA', density=False):
     #Make a histogram of arrival angles
@@ -117,8 +209,7 @@ def plotCREnergyEventRate(CoreObjectsList, error=True, title_comment='', legend_
 #    plt.clf()
     return plot
     
-def plotCoreEnergyEventRate(CoreObjectsList, error=True, singleAeff=False, title_comment='', label='', type='TA', lowerLim=0, DEBUG=False):
-    #Make a plot of event rate as function of core energy
+def getCoreEnergyEventRate(CoreObjectsList, singleAeff=False, type='TA', DEBUG=False):    
     plotCoreEng = []
     plotCoreErate = []
 #    plotErrorErate = []
@@ -161,10 +252,11 @@ def plotCoreEnergyEventRate(CoreObjectsList, error=True, singleAeff=False, title
     plotCoreErate = [x for _,x in sorted(zip(plotCoreEng, plotCoreErate))]
     plotCoreEng = sorted(plotCoreEng)
 
-    for iC, eng in enumerate(plotCoreEng):
-        if eng < lowerLim:
-            finalError[iC] = 0
-            plotCoreErate[iC] = 0
+    return plotCoreEng, plotCoreErate, finalError
+
+def plotCoreEnergyEventRate(CoreObjectsList, error=True, singleAeff=False, title_comment='', label='', type='TA', lowerLim=0, DEBUG=False):
+    #Make a plot of event rate as function of core energy
+    plotCoreEng, plotCoreErate, finalError = getCoreEnergyEventRate(CoreObjectsList, singleAeff)
 
     if error:
         plotErr = np.zeros(len(finalError))
@@ -337,13 +429,13 @@ def plotCrEnergyZenithHeat(CoreObjectsList, title_comment='', type='TA'):
     plotCrEng.sort()
     plotCrZen.sort()
     labelEng.sort()
+    ic(labelEng)
 
     labelZen = []
     for coszen in labelCosZen:
 
         labelZen.append(np.rad2deg(np.nan_to_num(np.arccos(coszen))))
     labelZen.sort()
-
 
 
     eRate = np.zeros((len(plotCrEng), len(plotCrZen)))

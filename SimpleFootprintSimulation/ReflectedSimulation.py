@@ -27,6 +27,8 @@ from scipy import constants
 from NuRadioReco.detector import detector
 from NuRadioReco.detector import generic_detector
 
+import matplotlib.pyplot as plt
+
 import logging
 logger=logging.getLogger("module")
 logger.setLevel(logging.WARNING)
@@ -243,7 +245,8 @@ for evt, iE, x, y in runCoREAS(det, depthLayer, dB, attenuation_model):
         if add_noise:
             channelGenericNoiseAdder.run(evt, station, det, type='rayleigh', amplitude=preAmpVrms_per_channel)
 
-        hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
+        if sim_amp:
+            hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
 
         highLowThreshold.run(evt, station, det, threshold_high=threshold_high_3_5, 
                             threshold_low=threshold_low_3_5,
@@ -253,7 +256,7 @@ for evt, iE, x, y in runCoREAS(det, depthLayer, dB, attenuation_model):
                             trigger_name=f'direct_LPDA_2of4_3.5sigma')
 
 
-        if station.get_trigger(f'direct_LPDA_2of4_3.5sigma').has_triggered():
+        if station.has_triggered(f'direct_LPDA_2of4_3.5sigma'):
 
             highLowThreshold.run(evt, station, det, threshold_high=threshold_high_4_4, 
                                 threshold_low=threshold_low_4_4,
@@ -263,10 +266,24 @@ for evt, iE, x, y in runCoREAS(det, depthLayer, dB, attenuation_model):
                                 trigger_name=f'direct_LPDA_2of4_4.4sigma')
 
 
+            fig, axs = plt.subplots(2, 4, figsize=(12, 6))
+            for iC, ch in enumerate(refl_LPDA_channels):
+                trace = station.get_channel(ch).get_trace()
+                axs[0][iC].plot(trace)
+
             triggerTimeAdjuster.run(evt, station, det)
-            # channelResampler.run(evt, station, det, 1*units.GHz)
+            channelResampler.run(evt, station, det, 2*units.GHz)
             channelStopFilter.run(evt, station, det)
             eventWriter.run(evt, det)
+
+            for iC, ch in enumerate(refl_LPDA_channels):
+                trace = station.get_channel(ch).get_trace()
+                axs[1][iC].plot(trace)
+            savename = 'testTrace.png'
+            fig.savefig(savename)
+            print(f'saved {savename}')
+            quit()
+
 
     # Save every event for proper rate calculation
     # Now every event is saved regardless of if it triggers or not

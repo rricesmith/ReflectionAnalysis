@@ -41,7 +41,7 @@
             "ant_deployment_time": "{TinyDate}:2017-12-01T00:00:00",
             "ant_orientation_phi": 0.0,
             "ant_orientation_theta": 180.0,
-	            "ant_position_x": -0.17,
+            "ant_position_x": -0.17,
             "ant_position_y": 2.94,
             "ant_position_z": -1.519,
             "ant_rotation_phi": 276.9,

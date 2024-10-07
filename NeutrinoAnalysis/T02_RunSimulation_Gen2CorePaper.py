@@ -106,7 +106,7 @@ for channel_id in shallow_channels:
     order_high[channel_id] = 5
 
 
-class TDR_Simulation(simulation.simulation):
+class mySimulation(simulation.simulation):
 
     def _detector_simulation_filter_amp(self, evt, station, det):
         # here we apply a larger bandpass filter up to 1GHz
@@ -274,8 +274,8 @@ class TDR_Simulation(simulation.simulation):
 #            self._mout_attrs['trigger_names'] = ['LPDA_2of4_100Hz', 'LPDA_2of4_10mHz', 'PA_8channel_100Hz', 'PA_4channel_100Hz', 'PA_8channel_1mHz', 'PA_4channel_1mHz']
 
 parser = argparse.ArgumentParser(description='Run NuRadioMC simulation')
-#parser.add_argument('inputfilename', type=str,
-#                    help='path to NuRadioMC input event list')
+parser.add_argument('inputfilename', type=str,
+                    help='path to NuRadioMC input event list')
 parser.add_argument('detectordescription', type=str,
                     help='path to file containing the detector description')
 parser.add_argument('config', type=str,
@@ -284,82 +284,21 @@ parser.add_argument('outputfilename', type=str,
                     help='hdf5 output filename')
 parser.add_argument('outputfilenameNuRadioReco', type=str, nargs='?', default=None,
                     help='outputfilename of NuRadioReco detector sim file')
-parser.add_argument('n_throws', type=int, help='Number of showers to simulate')
-parser.add_argument('shower_energy', type=float, help='Shower energy to simulate in log10eV')
-parser.add_argument('shower_energy_high', type=float, help='High end of shower energy to simulate, default 0 means only low energy')
-
-parser.add_argument('zen_low', type=float, help='Low zen of bin to sim')
-parser.add_argument('zen_high', type=float, help='High zen of bin to sim')
-
-parser.add_argument('location', type=str, help='MB or SP, sets reflective layer depth, dB, and refraction index')
-parser.add_argument('depth', type=float, help='Depth of reflective layer')
-parser.add_argument('reflection', type=float, help='Reflection coeff in dB')
-
-parser.add_argument('spacing', type=float, help='Spacing of detectors to use')
-parser.add_argument('part', type=int, help='Part number to use')
+parser.add_argument('--part', type=str, default = 'None')
 args = parser.parse_args()
 
-R = args.reflection
-depth = args.depth
-
-if args.location == 'SP':
-    ice = 1.78
-    z0 = 77. * units.m
-    d_n = 0.423
-elif args.location == 'MB':
-    depth = 576
-    R = 1
-    ice = 1.78
-    z0 = 37*units.m
-    d_n = 0.481
-elif args.location == 'GL':
-    depth = 3000
-    R = 0
-    ice = 1.78
-    z0 = 37.25 * units.m
-    d_n = 0.51
-else:
-    print(f'{args.location} is not a usable location, use MB or SP')
-    quit()
-
-input_file = generate_events_square(n_throws = args.n_throws, min_x = -args.spacing/2, min_y = -args.spacing/2,
-                                    max_x = args.spacing/2, max_y = args.spacing/2 , min_z = 5,
-                                    shower_energy = args.shower_energy, shower_energy_high = args.shower_energy_high, 
-                                    zen_low=args.zen_low, zen_high=args.zen_high, seed=None, depositEnergy=True, part=args.part)
-
-
-class ice_model_reflection(medium_base.IceModelSimple):
-    def __init__(self):
-        # from https://doi.org/10.1088/1475-7516/2018/07/055 MB1 model
-###     Below is code for mooresbay simple
-        # from https://doi.org/10.1088/1475-7516/2018/07/055 MB1 model
-        super().__init__(
-            n_ice = ice, 
-            z_0 = z0, 
-            delta_n = d_n,
-            )
-
-        # from https://doi.org/10.3189/2015JoG14J214
-        self.add_reflective_bottom( 
-            refl_z = -depth*units.m, 
-            refl_coef = R, 
-            refl_phase_shift = 180*units.deg,
-            )
-
-
-ice_model = ice_model_reflection()
-
-print(f'Refl Coeff {ice_model.reflection_coefficient}')
-print(f'refl depth {ice_model.reflection}')
-
-
-sim = TDR_Simulation(inputfilename=input_file,
-                            outputfilename=args.outputfilename,
-                            detectorfile=args.detectordescription,
-                            outputfilenameNuRadioReco=args.outputfilenameNuRadioReco,
-                            config_file=args.config,
-                            default_detector_station=1001,
-                            file_overwrite=True,
-                            ice_model=ice_model,
-                            log_level=logging.WARNING)
-sim.run()
+if __name__ == "__main__":
+    if not args.part == 'None':
+        args.inputfilename += '.part' + args.part
+        args.outputfilename = args.outputfilename + '.part' + args.part
+        args.outputfilenameNuRadioReco = args.outputfilenameNuRadioReco + '.part' + args.part
+#        print(f'using input {args.inputfilename} and output {args.outputfilename}')
+#    plt.draw()
+#    print(f'drawn')
+    sim = mySimulation(inputfilename=args.inputfilename,
+                                outputfilename=args.outputfilename,
+                                detectorfile=args.detectordescription,
+                                outputfilenameNuRadioReco=args.outputfilenameNuRadioReco,
+                                config_file=args.config,
+                                file_overwrite=True)
+    sim.run()

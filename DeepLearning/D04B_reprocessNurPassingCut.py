@@ -21,12 +21,12 @@ import json
 from NuRadioReco.utilities import units
 from NuRadioReco.utilities import units, fft
 from glob import glob
-
+from icecream import ic
 import argparse
 
 import templateCrossCorr as txc
 from NuRadioReco.utilities.io_utilities import read_pickle
-
+import DeepLearning.D00_helperFunctions as D00_helperFunctions
 
 import matplotlib
 matplotlib.use('agg')
@@ -238,6 +238,14 @@ def getMaxChi(traces, sampling_rate, template_trace, template_sampling_rate, par
 
     return max(maxCorr)
 
+def getMaxAllChi(traces, sampling_rate, template_traces, template_sampling_rate, parallelChannels=[[0, 2], [1, 3]]):
+
+    maxCorr = []
+    for trace in template_traces:
+        maxCorr.append(getMaxChi(traces, sampling_rate, trace, template_sampling_rate, parallelChannels=parallelChannels))
+
+    return max(maxCorr)
+
 def getMaxSNR(traces, noiseRMS=22.53 * units.mV):
 
     SNRs = []
@@ -261,7 +269,9 @@ def loadTemplate(type='RCR', amp='200s'):
     quit()
 
 def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=False, 
-              filter=False, BW=[80*units.MHz, 500*units.MHz], normalize=False, saveTimes=False, timeAdjust=True):
+              filter=False, BW=[80*units.MHz, 500*units.MHz], normalize=False, saveTimes=False, timeAdjust=True, cut=True):
+    if cut:
+        import DeepLearning.D04C_CutInBacklobeRCR as D04C_CutInBacklobeRCR
     count = 0
     part = 0
     max_events = 500000
@@ -270,7 +280,7 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
         art = np.zeros(max_events)
     template = NuRadioRecoio.NuRadioRecoio(nurFile)
 
-    timeCutTimes, ampCutTimes, deepLearnCutTimes, allCutTimes = np.load(f'DeepLearning/data/3rdpass/timesPassedCuts_FilteredStation{station_id}_TimeCut_1perDay_Amp0.95%.npy', allow_pickle=True)
+    timeCutTimes, ampCutTimes, deepLearnCutTimes, allCutTimes = np.load(f'DeepLearning/data/{folder}/timesPassedCuts_FilteredStation{station_id}_TimeCut_1perDay_Amp0.95%.npy', allow_pickle=True)
 
     #Load the average fft for plotting
     average_fft, average_fft_per_channel = np.load(f'DeepLearning/data/Station{station_id}_NoiseFFT_Filtered.npy', allow_pickle=True)
@@ -286,25 +296,41 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
         print(f'normalizing to {Vrms} vrms')
 
     #Load 200s template
-    templates_RCR = 'StationDataAnalysis/templates/reflectedCR_template_200series.pkl'
-    templates_RCR = read_pickle(templates_RCR)
-    for key in templates_RCR:
-        temp = templates_RCR[key]
-    templates_RCR = temp
+    templates_RCR = D00_helperFunctions.loadSingleTemplate('200')
+    # templates_RCR = 'StationDataAnalysis/templates/reflectedCR_template_200series.pkl'
+    # templates_RCR = read_pickle(templates_RCR)
+    # for key in templates_RCR:
+    #     temp = templates_RCR[key]
+    # templates_RCR = temp
 
-
+    # Load series of templates
+    # template_series_RCR_location = 'DeepLearning/templates/RCR/'
+    # template_series_RCR = []
+    # for filename in os.listdir(template_series_RCR_location):
+    #     if filename.startswith('200s'):
+    #         temp = np.load(os.path.join(template_series_RCR_location, filename))
+    #         template_series_RCR.append(temp)
+    template_series_RCR = D00_helperFunctions.loadMultipleTemplates('200')
+    template_series_RCR.append(templates_RCR)
 
     PassingCut_SNRs = []
     PassingCut_RCR_Chi = []
     PassingCut_Zen = []
     PassingCut_Azi = []
+    PassingCut_Traces = []
+
+    PassingChiCut_SNRs = []
+    PassingChiCut_RCR_Chi = []
+    PassingChiCut_Zen = []
+    PassingChiCut_Azi = []
+    PassingChiCut_Traces = []
+
     All_SNRs = []
     All_RCR_Chi = []
     All_Zen = []
     All_Azi = []
     forcedMask = []
 
-    PassingCut_Traces = []
 
 #    i = 0  #Maybe I need to do iteration outside of enumerate because we skip events in blackoutTime?
     for i, evt in enumerate(template.get_events()):
@@ -325,7 +351,8 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
             y = channel.get_trace()
             traces.append(y)
         All_SNRs.append(getMaxSNR(traces, noiseRMS=noiseRMS))
-        All_RCR_Chi.append(getMaxChi(traces, 2*units.GHz, templates_RCR, 2*units.GHz))
+        # All_RCR_Chi.append(getMaxChi(traces, 2*units.GHz, templates_RCR, 2*units.GHz))
+        All_RCR_Chi.append(getMaxAllChi(traces, 2*units.GHz, template_series_RCR, 2*units.GHz))
 
         #Skipping this for now, moving to processing phase. Takes hours per file alone
         """        
@@ -355,14 +382,32 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
                 f'DeepLearning/plots/Station_{station_id}/GoldenDay/NurSearch_{i}_Chi{PassingCut_RCR_Chi[-1]:.2f}_SNR{PassingCut_SNRs[-1]:.2f}.png', average_fft_per_channel=average_fft_per_channel)
         if datetime.datetime(2017, 3, 29, 3, 25, 1) < datetime.datetime.fromtimestamp(stationtime) < datetime.datetime(2017, 3, 29, 3, 25, 5):
             chrisEvent = [All_SNRs[-1], All_RCR_Chi[-1]]
+        if cut and (All_RCR_Chi[-1] > D04C_CutInBacklobeRCR.RCRChiSNRCut(All_SNRs[-1])):
+            # Passing cut made, plot trace and save info
+            correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
+            zen = station[stnp.zenith]
+            azi = station[stnp.azimuth]
+
+            PassingChiCut_SNRs.append(All_SNRs[-1])
+            PassingChiCut_RCR_Chi.append(All_RCR_Chi[-1])
+            PassingChiCut_Zen.append(np.rad2deg(zen))
+            PassingChiCut_Azi.append(np.rad2deg(azi))
+            PassingChiCut_Traces.append(traces)
+
+
+            pT(traces, datetime.datetime.fromtimestamp(stationtime).strftime("%m-%d-%Y, %H:%M:%S") + f' Chi {All_RCR_Chi[-1]:.2f}, {np.rad2deg(zen):.1f}Deg Zen {np.rad2deg(azi):.1f}Deg Azi', 
+            f'DeepLearning/plots/Station_{station_id}/PassingSNRChiCut/NurSearch_{i}_Chi{All_RCR_Chi[-1]:.2f}_SNR{All_SNRs[-1]:.2f}.png', average_fft_per_channel=average_fft_per_channel)
+            
 
 
     print(f'Saving the SNR, Chi, and reconstructed Zen/Azi angles')
-    np.save(f'DeepLearning/data/3rdpass/Station{station_id}_SNR_Chi.npy', [All_SNRs, All_RCR_Chi, All_Azi, 
+    np.save(f'DeepLearning/data/{folder}/Station{station_id}_SNR_Chi.npy', [All_SNRs, All_RCR_Chi, All_Azi, 
             All_Zen, PassingCut_SNRs, PassingCut_RCR_Chi, PassingCut_Azi, PassingCut_Zen])
-    print(f'Saved to DeepLearning/data/3rdpass/Station{station_id}_SNR_Chi.npy')
-    np.save(f'DeepLearning/data/3rdpass/Station{station_id}_Traces.npy', PassingCut_Traces)
-    print(f'Saved traces to DeepLearning/data/3rdpass/Station{station_id}_Traces.npy')
+    print(f'Saved to DeepLearning/data/{folder}/Station{station_id}_SNR_Chi.npy')
+    np.save(f'DeepLearning/data/{folder}/Station{station_id}_Traces.npy', PassingCut_Traces)
+    print(f'Saved traces to DeepLearning/data/{folder}/Station{station_id}_Traces.npy')
+    np.save(f'DeepLearning/data/{folder}/Station{station_id}_SnrChiCut.npy', [PassingChiCut_SNRs, PassingChiCut_RCR_Chi, PassingChiCut_Azi, PassingChiCut_Zen, PassingChiCut_Traces])
+    print(f'Saved to traces and data to DeepLearning/data/{folder}/Station{station_id}_SnrChiCut.npy')
 
     if len(PassingCut_SNRs) == 0:
         return
@@ -370,11 +415,21 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
     print(f'Snrs {PassingCut_SNRs}')
     print(f'Chis {PassingCut_RCR_Chi}')
 
+    if cut:
+        snrchicutmask = D04C_CutInBacklobeRCR.RCRChiSNRCutMask(All_SNRs, All_RCR_Chi)
+
+
+
     SNRbins = np.logspace(0.477, 2, num=80)
     maxCorrBins = np.arange(0, 1.0001, 0.01)
 
     #Plot of all events in Chi-SNR space
-    plt.hist2d(All_SNRs, All_RCR_Chi, bins=[SNRbins, maxCorrBins], norm=matplotlib.colors.LogNorm())
+    if cut:
+        plt.hist2d(All_SNRs, All_RCR_Chi, bins=[SNRbins, maxCorrBins], label=f'{snrchicutmask.sum()} Passing SNR-Chi Cut',norm=matplotlib.colors.LogNorm())
+        D04C_CutInBacklobeRCR.plotRCRChiSNRCut(label=True)
+        plt.legend()
+    else:
+        plt.hist2d(All_SNRs, All_RCR_Chi, bins=[SNRbins, maxCorrBins], norm=matplotlib.colors.LogNorm())
     plt.colorbar()
     plt.xlim((3, 100))
     plt.ylim((0, 1))
@@ -389,13 +444,17 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
 
 
     #Plot of sim overlayed on top of all events
-    plotSimSNRChi(templates_RCR, noiseRMS)
-    plt.scatter([], [], color='red', label='Simulated Air Showers')
+    # plotSimSNRChi(templates_RCR, noiseRMS)
+    plotSimSNRChi(template_series_RCR, noiseRMS, cut=cut)
+    if not cut:
+        plt.scatter([], [], color='red', label='Simulated Air Showers')
+    else:
+        D04C_CutInBacklobeRCR.plotRCRChiSNRCut(label=False)
     plt.legend()
     plt.savefig(f'DeepLearning/plots/Station_{station_id}/ChiSNR_wSim_Stnd{station_id}.png')
 
     #Plot of station & sim, with events passing cuts circled
-    plt.scatter(PassingCut_SNRs, PassingCut_RCR_Chi, label=f'{len(PassingCut_RCR_Chi)} Events Passing Cuts', facecolor='none', edgecolor='black')
+    plt.scatter(PassingCut_SNRs, PassingCut_RCR_Chi, label=f'{len(PassingCut_RCR_Chi)} Events Passing ML-Time Cuts', facecolor='none', edgecolor='black')
     if station_id == 19:
         plt.scatter(chrisEvent[0], chrisEvent[1], label='Persichilli Thesis Event', facecolor='none', edgecolor='red')
     plt.xlim((3, 100))
@@ -413,12 +472,21 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
 
     # Redoing above but adding simulated backlobes on top of simulated air showers
     if True:
-        plt.hist2d(All_SNRs, All_RCR_Chi, bins=[SNRbins, maxCorrBins], norm=matplotlib.colors.LogNorm())
-        plotSimSNRChi(templates_RCR, noiseRMS)
-        plotSimSNRChi(templates_RCR, noiseRMS, type='Backlobe')    
-        plt.scatter([], [], color='red', label='Simulated Air Showers')
-        plt.scatter([], [], color='green', label='Simulated Backlobe')
-        plt.scatter(PassingCut_SNRs, PassingCut_RCR_Chi, label=f'{len(PassingCut_RCR_Chi)} Events Passing Cuts', facecolor='none', edgecolor='black')
+        if cut:
+            plt.hist2d(All_SNRs, All_RCR_Chi, bins=[SNRbins, maxCorrBins], label=f'{snrchicutmask.sum()} Passing SNR-Chi Cut',norm=matplotlib.colors.LogNorm())
+            plotSimSNRChi(template_series_RCR, noiseRMS, cut=True)
+            plotSimSNRChi(template_series_RCR, noiseRMS, type='Backlobe', cut=True)    
+            D04C_CutInBacklobeRCR.plotRCRChiSNRCut(label=True)
+            plt.legend()
+        else:
+            plt.hist2d(All_SNRs, All_RCR_Chi, bins=[SNRbins, maxCorrBins], norm=matplotlib.colors.LogNorm())
+        # plotSimSNRChi(templates_RCR, noiseRMS)
+        # plotSimSNRChi(templates_RCR, noiseRMS, type='Backlobe')    
+            plotSimSNRChi(template_series_RCR, noiseRMS)
+            plotSimSNRChi(template_series_RCR, noiseRMS, type='Backlobe')    
+            plt.scatter([], [], color='red', label='Simulated Air Showers')
+            plt.scatter([], [], color='green', label='Simulated Backlobe')
+        plt.scatter(PassingCut_SNRs, PassingCut_RCR_Chi, label=f'{len(PassingCut_RCR_Chi)} Events Passing ML-Time Cuts', facecolor='none', edgecolor='black')
 
         plt.colorbar()
         plt.xlim((3, 100))
@@ -471,7 +539,9 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
     return
         
 
-def plotSimSNRChi(templates_RCR, noiseRMS, amp='200s', type='RCR'):
+def plotSimSNRChi(templates_RCR, noiseRMS, amp='200s', type='RCR', ax=None, cut=False, plotOnlyAbove=False):
+    if cut:
+        import DeepLearning.D04C_CutInBacklobeRCR as D04C_CutInBacklobeRCR
 
     path = 'DeepLearning/data/3rdpass/'
     RCR_files = []
@@ -494,15 +564,17 @@ def plotSimSNRChi(templates_RCR, noiseRMS, amp='200s', type='RCR'):
     sim_Chi = []
     sim_weights = []
     for iR, RCR in enumerate(RCR_sim):
-            
+
+
         traces = []
         for trace in RCR:
             traces.append(trace * units.V)
         sim_SNRs.append(getMaxSNR(traces, noiseRMS=noiseRMS))
-        sim_Chi.append(getMaxChi(traces, 2*units.GHz, templates_RCR, 2*units.GHz))
+        # sim_Chi.append(getMaxChi(traces, 2*units.GHz, templates_RCR, 2*units.GHz))
+        sim_Chi.append(getMaxAllChi(traces, 2*units.GHz, templates_RCR, 2*units.GHz))
 
         sim_weights.append(RCR_weights[iR])
-        if iR % 1000 == 0:
+        if iR % 1000 == 0 and False:
             pT(traces, f'Backlobe SNR {sim_SNRs[-1]:.1f} Chi {sim_Chi[-1]:.2f}', f'DeepLearning/plots/Backlobe/SimBacklobe_SNR{sim_SNRs[-1]:.1f}_Chi{sim_Chi[-1]:.2f}_{iR}.png')
 
     if False:
@@ -541,13 +613,37 @@ def plotSimSNRChi(templates_RCR, noiseRMS, amp='200s', type='RCR'):
     sim_Chi = sim_Chi[sort_order]
     sim_weights = sim_weights[sort_order]
 
+    if cut:
+        cutMask = D04C_CutInBacklobeRCR.RCRChiSNRCutMask(sim_SNRs, sim_Chi)
+        weight_cut = np.sum(sim_weights[cutMask]) / np.sum(sim_weights)
+    if plotOnlyAbove:
+        sim_SNRs = sim_SNRs[cutMask]
+        sim_Chi = sim_Chi[cutMask]
+        sim_weights = sim_weights[cutMask]
+
     if type == 'RCR':
         cmap = 'seismic'
     else:
         cmap = 'PiYG'
     # plt.scatter(sim_SNRs, sim_Chi, c=sim_weights, label=f'Simulated {type}', cmap=cmap, alpha=0.9, norm=matplotlib.colors.LogNorm())
-    plt.scatter(sim_SNRs, sim_Chi, c=sim_weights, cmap=cmap, alpha=0.9, norm=matplotlib.colors.LogNorm())
-
+    if ax is None:
+        if cut:
+            # weight_cut = np.sum(sim_weights[cutMask]) / np.sum(sim_weights)
+            eff = weight_cut*100
+            if type == 'Backlobe':
+                eff = 1 - eff
+            plt.scatter(sim_SNRs, sim_Chi, c=sim_weights, label=f'{type} {eff:.1f}% Efficiency',cmap=cmap, alpha=0.9, norm=matplotlib.colors.LogNorm())
+        else:
+            plt.scatter(sim_SNRs, sim_Chi, c=sim_weights, cmap=cmap, alpha=0.9, norm=matplotlib.colors.LogNorm())
+    else:
+        if cut:
+            # weight_cut = np.sum(sim_weights[cutMask]) / np.sum(sim_weights)
+            eff = weight_cut*100
+            if type == 'Backlobe':
+                eff = 1 - eff
+            ax.scatter(sim_SNRs, sim_Chi, c=sim_weights, label=f'{type} {eff:.1f}% Efficiency', cmap=cmap, alpha=0.9, norm=matplotlib.colors.LogNorm())
+        else:
+            ax.scatter(sim_SNRs, sim_Chi, c=sim_weights, cmap=cmap, alpha=0.9, norm=matplotlib.colors.LogNorm())
     
 
 
@@ -557,52 +653,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     station_id = args.station
 
-
-    #Load 200s template
-    templates_RCR = 'StationDataAnalysis/templates/reflectedCR_template_200series.pkl'
-    templates_RCR = read_pickle(templates_RCR)
-    for key in templates_RCR:
-        temp = templates_RCR[key]
-    templates_RCR = temp
-
     #200s Noise
     noiseRMS = 22.53 * units.mV
 
 
-###############
-    if False:
-        
-        plotSimSNRChi(templates_RCR, noiseRMS, type='Backlobe')    
-        plt.xlim((3, 100))
-        plt.ylim((0, 1))
-        plt.xlabel('SNR')
-        plt.ylabel('RCR Avg Chi Highest Parallel Channels')
-        plt.legend()
-        plt.xscale('log')
-    #    plt.colorbar()
-        plt.tick_params(axis='x', which='minor', bottom=True)
-        plt.grid(visible=True, which='both', axis='both')
-        plt.savefig('DeepLearning/plots/simBacklobeSNRChitest.png')
-
-        plotSimSNRChi(templates_RCR, noiseRMS, type='RCR')
-        plt.savefig('DeepLearning/plots/BothsimBacklobeSNRChitest.png')
-        plt.clf()
-
-        plotSimSNRChi(templates_RCR, noiseRMS, type='RCR')
-        plt.xlim((3, 100))
-        plt.ylim((0, 1))
-        plt.xlabel('SNR')
-        plt.ylabel('RCR Avg Chi Highest Parallel Channels')
-        plt.legend()
-        plt.xscale('log')
-    #    plt.colorbar()
-        plt.tick_params(axis='x', which='minor', bottom=True)
-        plt.grid(visible=True, which='both', axis='both')
-        plt.savefig('DeepLearning/plots/simSNRChitest.png')
-
-        quit()
-
-    folder = "2ndpass"
+    folder = "5thpass"
     # MB_RCR_path = f"DeepLearning/data/{folder}/"
     series = '200s'     #Alternative is 200s
 

@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+from icecream import ic
 
 def coreStatistics(core_bin_lower_energy, cores_max=5000, cores_min=1000, DEBUG=False):
     #Pass in the lower energy of the bin being simulated, along with any changes core statistics
@@ -197,6 +197,7 @@ class coresBin:
                 arrival_zen = [], SNR = []):
     ####
     #Rad Bins should be in units m
+    #zenith corresponds to arrival angle
     ####
         self.parentCRs_TA = []
         self.parentCRs_Auger = []
@@ -229,6 +230,7 @@ class coresBin:
         self.zenHist, edges = np.histogram(zeniths, self.zenBins)
         
     def getZeniths(self):
+        # returns histogram of arrival angles
         try:
             return self.zenHist
         except AttributeError:
@@ -387,6 +389,7 @@ class coresBin:
 #        print(f'weighted avg aeff {self.weightedAverageAeff} and error {self.weightedErrorAeff}')
 #        errorLow = self.weightedAverageAeff - self.weightedErrorAeff
 #        print(f'error Low is {errorLow}')
+
         if highLow == False:
             if singleAeff:
                 return self.singleErrorAeff * self.totalEventRateAreaCore(type=type)
@@ -443,6 +446,7 @@ class coresBin:
         return sum(self.Aeff_per_rad_bin)
 #        return self.weightedAverageAeff
 
+    """ #Depreciated function, removed 12/7/23
     def setTotalEventRatePerArea(self, type='TA'):
         totalEventRatePerArea = 0
         parentCRs = self.parentCRs_TA
@@ -463,6 +467,7 @@ class coresBin:
         else:
             print(f'Type {type} not supported')
             quit()
+    """
 
     def eventRatePerRad(self, type='TA'):
         if not len(self.rad_bins) > 0:
@@ -578,22 +583,32 @@ class coresBin:
         if not self.hasParents() or not (len(self.rad_bins) > 0):
             return xx, yy, zz
 #        eventRatePerArea = self.totalEventRatePerArea()
-        totEventRateArea = self.setTotalEventRatePerArea(type)
+#        totEventRateArea = self.setTotalEventRatePerArea(type)
+        totEventRateArea = self.totalEventRateAreaCore(type)
+        # ic(totEventRateArea)
 #        print(f'event rate per area {self.totalEventRatePerArea}')
 #        print(f'saved valued {self.totalEventRatePerArea}')
         if totEventRateArea == 0:
             return xx, yy, zz
-        if (sum(self.trigRatesPerRadBin)==0):
+        # ic(self.trigRatesPerRadBin)
+        # ic(self.Aeff_per_rad_bin)
+        # if (sum(self.trigRatesPerRadBin)==0):
+        if (sum(self.Aeff_per_rad_bin)==0):
             return xx, yy, zz
         areaPerBin = (xx[0] - xx[1]) * (yy[0] - yy[1]) * 10**-6
 #        print(f'Looking at trig rates {self.trigRatesPerRadBin} over bins {self.rad_bins} with area {areaPerBin}')
+        trigRatePerRad = np.array(self.radius_trig_hist) / np.array(self.throwsPerRadBin)
         for iX, x in enumerate(xx):
             for iY, y in enumerate(yy):
                 r = np.sqrt(x**2 + y**2)
                 r_dig = np.digitize(r, self.rad_bins)
+                # ic(r, r_dig, self.rad_bins)
                 if r_dig >= (len(self.rad_bins)-1):
                     continue
-                zz[iX][iY] += areaPerBin * self.trigRatesPerRadBin[r_dig] * totEventRateArea
+                # zz[iX][iY] += areaPerBin * self.trigRatesPerRadBin[r_dig] * totEventRateArea
+                zz[iX][iY] += areaPerBin * trigRatePerRad[r_dig] * totEventRateArea
+                # zz[iX][iY] += self.Aeff_per_rad_bin[r_dig] * totEventRateArea * 10**-6
+        # ic(zz)
         return xx, yy, zz
 
 

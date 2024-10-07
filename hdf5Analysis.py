@@ -6,7 +6,7 @@ import argparse
 import h5py
 import time
 import os
-
+import icecream as ic
 
 """
 This file takes input from W03CheckOutput.py from the NuRadioMC tutorial file
@@ -67,6 +67,7 @@ def dipole_direction_masks(fin, ant_num = 5 , station = 'station_1', trigger_ind
         max_amp_per_ray = fin[station]['max_amp_shower_and_ray'][:, ant_num, :]
         index_of_max_amplitude_per_event = np.argmax(max_amp_per_ray, axis=1)[multi_trigger_mask]
         receive_vecs = fin[station]['receive_vectors'][:, ant_num, :][multi_trigger_mask]
+        launch_vecs = fin[station]['launch_vectors'][:, ant_num, :][multi_trigger_mask]
         num_events = len(receive_vecs)
         
         refl_abv_mask = np.zeros(num_events, dtype = np.bool)
@@ -75,11 +76,13 @@ def dipole_direction_masks(fin, ant_num = 5 , station = 'station_1', trigger_ind
         dir_bel_mask = np.zeros(num_events, dtype = np.bool)
 
         z_arrival = np.zeros(num_events)
+        z_launch = np.zeros(num_evemts)
 
         refl_mask = reflection_types(fin, ant_num, station, trigger_index).astype(np.int) == 1
 
         for iShower in range(num_events):
                 z_arrival[iShower] = receive_vecs[iShower][index_of_max_amplitude_per_event][iShower][2]
+                z_launch[iShower] = launch_vecs[iShower][index_of_max_amplitude_per_event][iShower][2]
                 if refl_mask[iShower]:
                         if z_arrival[iShower] > 0:
                                 refl_abv_mask[iShower] = True
@@ -91,7 +94,7 @@ def dipole_direction_masks(fin, ant_num = 5 , station = 'station_1', trigger_ind
                         else:
                                 dir_bel_mask[iShower] = True
 
-        return refl_abv_mask, refl_bel_mask, dir_abv_mask, dir_bel_mask, z_arrival
+        return refl_abv_mask, refl_bel_mask, dir_abv_mask, dir_bel_mask, z_arrival, z_launch
 
 
 def multi_array_direction_masks(fin, ant_num, station = 'station_1', trigger_index = 1):
@@ -99,11 +102,12 @@ def multi_array_direction_masks(fin, ant_num, station = 'station_1', trigger_ind
         refl_bel_dic = {}
         dir_abv_dic = {}
         dir_bel_dic = {}
-        z_vals = {}
+        arrival_vals = {}
+        launch_vals = {}
         length = 0
 
         for ant in ant_num:
-                refl_abv_dic[ant], refl_bel_dic[ant], dir_abv_dic[ant], dir_bel_dic[ant], z_vals[ant] = dipole_direction_masks(fin, ant, station, trigger_index)
+                refl_abv_dic[ant], refl_bel_dic[ant], dir_abv_dic[ant], dir_bel_dic[ant], arrival_vals[ant], launch_vals[ant] = dipole_direction_masks(fin, ant, station, trigger_index)
                 length = len(refl_abv_dic[ant])
                 print(length)
 
@@ -117,14 +121,19 @@ def multi_array_direction_masks(fin, ant_num, station = 'station_1', trigger_ind
                 dir_abv_mask = dir_abv_mask | dir_abv_dic[ant]
                 dir_bel_mask = dir_bel_mask | dir_bel_dic[ant]
         
-        z_array_vals = np.zeros(length)
-        for zz in range(len(z_array_vals)):
+        arrival_array_vals = np.zeros(length)
+        # Get the average of arrival angles over all antennas that are being examined
+        for zz in range(len(arrival_array_vals)):
                 iZZ = np.empty(len(ant_num))
+                print(f'zz {zz}')
                 for ant in ant_num:
-                        iZZ[ant] = z_vals[ant][zz]
-                z_array_vals[zz] = np.nanmean(iZZ)
+                        iZZ[ant] = arrival_vals[ant][zz]
+                        print(f'{launch_vals[ant][zz]}')
+                arrival_array_vals[zz] = np.nanmean(iZZ)
 
-        return refl_abv_mask, refl_bel_mask, dir_abv_mask, dir_bel_mask, z_array_vals
+        # For launch angles, only want the launch angle that corresponds to the trigger, so the max amp launch val
+
+        return refl_abv_mask, refl_bel_mask, dir_abv_mask, dir_bel_mask, arrival_array_vals
 
 
 """
