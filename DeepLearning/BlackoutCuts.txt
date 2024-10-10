@@ -1,0 +1,20 @@
+Cuts were made generally during periods of high human activity near stations, such as when new stations were being installed nearby
+
+
+Cut times
+
+1388188800 -> 1388880000
+1415577600 -> 1417824000
+1447113600 -> 1449360000
+1478649600 -> 1481241600
+1509408000 -> 1512691200
+1541548800 -> 1543363200
+
+Converted to local times (GMT)
+
+Saturday, December 28, 2013 12:00:00 AM     -> Sunday, January 5, 2014 12:00:00 AM
+Monday, November 10, 2014 12:00:00 AM       -> Saturday, December 6, 2014 12:00:00 AM
+Tuesday, November 10, 2015 12:00:00 AM      -> Sunday, December 6, 2015 12:00:00 AM
+Wednesday, November 9, 2016 12:00:00 AM     -> Sunday, December 6, 2015 12:00:00 AM
+Tuesday, October 31, 2017 12:00:00 AM       -> Friday, December 8, 2017 12:00:00 AM
+Wednesday, November 7, 2018 12:00:00 AM     -> Wednesday, November 28, 2018 12:00:00 AM
