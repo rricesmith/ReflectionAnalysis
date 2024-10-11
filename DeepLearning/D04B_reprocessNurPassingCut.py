@@ -247,6 +247,8 @@ def getMaxAllChi(traces, sampling_rate, template_traces, template_sampling_rate,
     return max(maxCorr)
 
 def getMaxSNR(traces, noiseRMS=22.53 * units.mV):
+    # traces should be a list or numpy array of channels
+    # iterate through each channel and return the highest SNR of all channels
 
     SNRs = []
     for trace in traces:
