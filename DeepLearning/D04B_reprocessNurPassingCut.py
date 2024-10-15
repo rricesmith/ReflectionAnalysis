@@ -320,17 +320,20 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
     PassingCut_Zen = []
     PassingCut_Azi = []
     PassingCut_Traces = []
+    PassingCut_Times = []
 
     PassingChiCut_SNRs = []
     PassingChiCut_RCR_Chi = []
     PassingChiCut_Zen = []
     PassingChiCut_Azi = []
     PassingChiCut_Traces = []
+    PassingChiCut_Times = []
 
     All_SNRs = []
     All_RCR_Chi = []
     All_Zen = []
     All_Azi = []
+    All_Times = []
     forcedMask = []
 
 
@@ -355,6 +358,7 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
         All_SNRs.append(getMaxSNR(traces, noiseRMS=noiseRMS))
         # All_RCR_Chi.append(getMaxChi(traces, 2*units.GHz, templates_RCR, 2*units.GHz))
         All_RCR_Chi.append(getMaxAllChi(traces, 2*units.GHz, template_series_RCR, 2*units.GHz))
+        All_Times.append(stationtime)
 
         #Skipping this for now, moving to processing phase. Takes hours per file alone
         """        
@@ -379,6 +383,7 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
                 PassingCut_Zen.append(np.rad2deg(zen))
                 PassingCut_Azi.append(np.rad2deg(azi))
                 PassingCut_Traces.append(traces)
+                PassingCut_Times.append(stationtime)
 
                 pT(traces, datetime.datetime.fromtimestamp(stationtime).strftime("%m-%d-%Y, %H:%M:%S") + f' Chi {PassingCut_RCR_Chi[-1]:.2f}, {np.rad2deg(zen):.1f}Deg Zen {np.rad2deg(azi):.1f}Deg Azi', 
                 f'DeepLearning/plots/Station_{station_id}/GoldenDay/NurSearch_{i}_Chi{PassingCut_RCR_Chi[-1]:.2f}_SNR{PassingCut_SNRs[-1]:.2f}.png', average_fft_per_channel=average_fft_per_channel)
@@ -395,6 +400,7 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
             PassingChiCut_Zen.append(np.rad2deg(zen))
             PassingChiCut_Azi.append(np.rad2deg(azi))
             PassingChiCut_Traces.append(traces)
+            PassingChiCut_Times.append(stationtime)
 
 
             pT(traces, datetime.datetime.fromtimestamp(stationtime).strftime("%m-%d-%Y, %H:%M:%S") + f' Chi {All_RCR_Chi[-1]:.2f}, {np.rad2deg(zen):.1f}Deg Zen {np.rad2deg(azi):.1f}Deg Azi', 
@@ -410,6 +416,8 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
     print(f'Saved traces to DeepLearning/data/{folder}/Station{station_id}_Traces.npy')
     np.save(f'DeepLearning/data/{folder}/Station{station_id}_SnrChiCut.npy', [PassingChiCut_SNRs, PassingChiCut_RCR_Chi, PassingChiCut_Azi, PassingChiCut_Zen, PassingChiCut_Traces])
     print(f'Saved to traces and data to DeepLearning/data/{folder}/Station{station_id}_SnrChiCut.npy')
+    np.save(f'DeepLearning/data/{folder}/Station{station_id}_Times.npy', [All_Times, PassingCut_Times, PassingChiCut_Times])
+    print(f'Saved to DeepLearning/data/{folder}/Station{station_id}_Times.npy')
 
     if len(PassingCut_SNRs) == 0:
         return
