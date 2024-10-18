@@ -182,7 +182,7 @@ def pT(traces, title, saveLoc, sampling_rate=2, show=False, average_fft_per_chan
         print(f'saving to {saveLoc}')
         plt.savefig(saveLoc, format='png')
     plt.clf()
-    plt.close()
+    plt.close(fig)
 
     return
 
@@ -334,6 +334,7 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
     All_Zen = []
     All_Azi = []
     All_Times = []
+    All_Traces = []
     forcedMask = []
 
 
@@ -359,20 +360,20 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
         # All_RCR_Chi.append(getMaxChi(traces, 2*units.GHz, templates_RCR, 2*units.GHz))
         All_RCR_Chi.append(getMaxAllChi(traces, 2*units.GHz, template_series_RCR, 2*units.GHz))
         All_Times.append(stationtime)
+        All_Traces.append(traces)
 
         #Skipping this for now, moving to processing phase. Takes hours per file alone
-        """        
         correlationDirectionFitter.run(evt, station, det, n_index=1.35)
         zen = station[stnp.zenith]
         azi = station[stnp.azimuth]
         All_Zen.append(np.rad2deg(zen))
         All_Azi.append(np.rad2deg(azi))
-        """
+
         if datetime.datetime.fromtimestamp(stationtime) > datetime.datetime(2019, 1, 1):
             continue
         for goodTime in allCutTimes:
             if datetime.datetime.fromtimestamp(stationtime) == goodTime:
-                correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
+                # correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
                 zen = station[stnp.zenith]
                 azi = station[stnp.azimuth]
 
@@ -391,7 +392,7 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
             chrisEvent = [All_SNRs[-1], All_RCR_Chi[-1]]
         if cut and (All_RCR_Chi[-1] > D04C_CutInBacklobeRCR.RCRChiSNRCut(All_SNRs[-1])):
             # Passing cut made, plot trace and save info
-            correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
+            # correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
             zen = station[stnp.zenith]
             azi = station[stnp.azimuth]
 
