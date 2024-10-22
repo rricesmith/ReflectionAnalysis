@@ -285,7 +285,7 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
     timeCutTimes, ampCutTimes, deepLearnCutTimes, allCutTimes = np.load(f'DeepLearning/data/{folder}/timesPassedCuts_FilteredStation{station_id}_TimeCut_1perDay_Amp0.95%.npy', allow_pickle=True)
 
     #Load the average fft for plotting
-    average_fft, average_fft_per_channel = np.load(f'DeepLearning/data/Station{station_id}_NoiseFFT_Filtered.npy', allow_pickle=True)
+    # average_fft, average_fft_per_channel = np.load(f'DeepLearning/data/Station{station_id}_NoiseFFT_Filtered.npy', allow_pickle=True)
 
 
     #200s Noise
@@ -387,7 +387,8 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
                 PassingCut_Times.append(stationtime)
 
                 pT(traces, datetime.datetime.fromtimestamp(stationtime).strftime("%m-%d-%Y, %H:%M:%S") + f' Chi {PassingCut_RCR_Chi[-1]:.2f}, {np.rad2deg(zen):.1f}Deg Zen {np.rad2deg(azi):.1f}Deg Azi', 
-                f'DeepLearning/plots/Station_{station_id}/GoldenDay/NurSearch_{i}_Chi{PassingCut_RCR_Chi[-1]:.2f}_SNR{PassingCut_SNRs[-1]:.2f}.png', average_fft_per_channel=average_fft_per_channel)
+                f'DeepLearning/plots/Station_{station_id}/GoldenDay/NurSearch_{i}_Chi{PassingCut_RCR_Chi[-1]:.2f}_SNR{PassingCut_SNRs[-1]:.2f}.png')
+                # f'DeepLearning/plots/Station_{station_id}/GoldenDay/NurSearch_{i}_Chi{PassingCut_RCR_Chi[-1]:.2f}_SNR{PassingCut_SNRs[-1]:.2f}.png', average_fft_per_channel=average_fft_per_channel)
         if datetime.datetime(2017, 3, 29, 3, 25, 1) < datetime.datetime.fromtimestamp(stationtime) < datetime.datetime(2017, 3, 29, 3, 25, 5):
             chrisEvent = [All_SNRs[-1], All_RCR_Chi[-1]]
         if cut and (All_RCR_Chi[-1] > D04C_CutInBacklobeRCR.RCRChiSNRCut(All_SNRs[-1])):
@@ -405,7 +406,8 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
 
 
             pT(traces, datetime.datetime.fromtimestamp(stationtime).strftime("%m-%d-%Y, %H:%M:%S") + f' Chi {All_RCR_Chi[-1]:.2f}, {np.rad2deg(zen):.1f}Deg Zen {np.rad2deg(azi):.1f}Deg Azi', 
-            f'DeepLearning/plots/Station_{station_id}/PassingSNRChiCut/NurSearch_{i}_Chi{All_RCR_Chi[-1]:.2f}_SNR{All_SNRs[-1]:.2f}.png', average_fft_per_channel=average_fft_per_channel)
+            f'DeepLearning/plots/Station_{station_id}/PassingSNRChiCut/NurSearch_{i}_Chi{All_RCR_Chi[-1]:.2f}_SNR{All_SNRs[-1]:.2f}.png')
+            # f'DeepLearning/plots/Station_{station_id}/PassingSNRChiCut/NurSearch_{i}_Chi{All_RCR_Chi[-1]:.2f}_SNR{All_SNRs[-1]:.2f}.png', average_fft_per_channel=average_fft_per_channel)
             
 
 
@@ -661,35 +663,50 @@ def plotSimSNRChi(templates_RCR, noiseRMS, amp='200s', type='RCR', ax=None, cut=
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run Analysis on particular station')
     parser.add_argument('station', type=int, default=19, help='Station to run on')
+    parser.add_argument('--folder', type=str, default='5thpass', help='Folder to save data to')
+    parser.add_argument('--single_file', type=str, default=None, help='Single file to run on')
+    parser.add_arguemnt('--first_ch', type=int, default=0, help='First channel of 4 to save data from')
+    parser.add_arguemnt('--amp', type=str, default='200s', help='Amp type used')
     args = parser.parse_args()
     station_id = args.station
+    folder = args.folder
+    single_file = args.single_file
+    first_ch = args.first_ch
+    amp = args.amp
+    
+    if amp == '100s':
+        noiseRMS = 20.0 * units.mV
+    elif amp == '200s':
+        noiseRMS = 22.53 * units.mV
+    elif amp == '300s':
+        noiseRMS = 10 * units.mV # Placeholder, need to look up TODO
 
-    #200s Noise
-    noiseRMS = 22.53 * units.mV
-
-
-    folder = "5thpass"
-    # MB_RCR_path = f"DeepLearning/data/{folder}/"
-    series = '200s'     #Alternative is 200s
 
     #Existing data conversion
 
 #    station_id = 17
-    station_path = f"/dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
 
-    detector = generic_detector.GenericDetector(json_filename=f'DeepLearning/station_configs/station{station_id}.json', assume_inf=False, antenna_by_depth=False, default_station=station_id)
+    # detector = generic_detector.GenericDetector(json_filename=f'DeepLearning/station_configs/station{station_id}.json', assume_inf=False, antenna_by_depth=False, default_station=station_id)
+    detector = detector.Detector('../../NuRadioMC/NuRadioReco/detector/ARIANNA/arianna_detector_db.json', 'json')   #Relative path from running folder
 
-    DataFiles = []
-    for filename in os.listdir(station_path):
-        if filename.endswith('_statDatPak.root.nur'):
-            continue
-        else:
-            DataFiles.append(os.path.join(station_path, filename))
+    if single_file is None:
+        station_path = f"/dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
+        DataFiles = []
+        for filename in os.listdir(station_path):
+            if filename.endswith('_statDatPak.root.nur'):
+                continue
+            else:
+                DataFiles.append(os.path.join(station_path, filename))
+        savename = f'FilteredStation{station_id}_Data'
+    else:
+        DataFiles = [single_file]
+        savename = f'FilteredStation{station_id}_Data_{single_file.split("/")[-1].replace(".root.nur", "")}'
+
 
 #    DataFiles = DataFiles[0:1]     #Just 1 file for testing purposes
 
-    saveChannels = [0, 1, 2, 3]
+    saveChannels = np.arange(first_ch, first_ch+4)
     #converter(DataFiles, folder, f'Station{station_id}_Data', saveChannels, station_id = station_id, filter=False, saveTimes=True, plot=False)
-    converter(DataFiles, folder, f'FilteredStation{station_id}_Data', saveChannels, station_id = station_id, det=detector, filter=True, saveTimes=True, plot=False)
+    converter(DataFiles, folder, savename, saveChannels, station_id = station_id, det=detector, filter=True, saveTimes=True, plot=False)
 #    for file in DataFiles:
 #        converter(file, folder, f'FilteredStation{station_id}_Data', saveChannels, station_id = station_id, filter=True, saveTimes=True, plot=False)
