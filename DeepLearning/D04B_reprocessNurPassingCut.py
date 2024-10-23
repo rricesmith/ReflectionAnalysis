@@ -366,14 +366,26 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
         for ChId, channel in enumerate(station.iter_channels(use_channels=save_chans)):
             y = channel.get_trace()
             traces.append(y)
+        # Moving appending to after correlation in case there is an error in time lookup
+        # All_SNRs.append(getMaxSNR(traces, noiseRMS=noiseRMS))
+        # All_RCR_Chi.append(getMaxChi(traces, 2*units.GHz, templates_RCR, 2*units.GHz))
+        # All_RCR_Chi.append(getMaxAllChi(traces, 2*units.GHz, template_series_RCR, 2*units.GHz))
+        # All_Times.append(stationtime)
+        # All_Traces.append(traces)
+
+        #Skipping this for now, moving to processing phase. Takes hours per file alone
+        try:
+            correlationDirectionFitter.run(evt, station, det, n_index=1.35)
+        except LookupError:
+            print(f'Error for date {datetime.datetime.fromtimestamp(stationtime)}, skipping')
+            continue
+
         All_SNRs.append(getMaxSNR(traces, noiseRMS=noiseRMS))
         # All_RCR_Chi.append(getMaxChi(traces, 2*units.GHz, templates_RCR, 2*units.GHz))
         All_RCR_Chi.append(getMaxAllChi(traces, 2*units.GHz, template_series_RCR, 2*units.GHz))
         All_Times.append(stationtime)
         All_Traces.append(traces)
 
-        #Skipping this for now, moving to processing phase. Takes hours per file alone
-        correlationDirectionFitter.run(evt, station, det, n_index=1.35)
         zen = station[stnp.zenith]
         azi = station[stnp.azimuth]
         All_Zen.append(np.rad2deg(zen))
