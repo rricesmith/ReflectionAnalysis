@@ -270,7 +270,7 @@ def loadTemplate(type='RCR', amp='200s'):
     print(f'{type} {amp} not implemented')
     quit()
 
-def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=False, 
+def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, plot=False, 
               filter=False, BW=[80*units.MHz, 500*units.MHz], normalize=False, saveTimes=False, timeAdjust=True, cut=True):
     if cut:
         import DeepLearning.D04C_CutInBacklobeRCR as D04C_CutInBacklobeRCR
@@ -282,7 +282,16 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
         art = np.zeros(max_events)
     template = NuRadioRecoio.NuRadioRecoio(nurFile)
 
-    timeCutTimes, ampCutTimes, deepLearnCutTimes, allCutTimes = np.load(f'DeepLearning/data/{folder}/timesPassedCuts_FilteredStation{station_id}_TimeCut_1perDay_Amp0.95%.npy', allow_pickle=True)
+    cutPath = f'DeepLearning/data/{folder}/timesPassedCuts_FilteredStation{station_id}_TimeCut_1perDay_Amp0.95%.npy'
+    if os.path.isfile(cutPath):
+        timeCutTimes, ampCutTimes, deepLearnCutTimes, allCutTimes = np.load(cutPath, allow_pickle=True)
+    else:
+        print(f'No cut times found, ignoring')
+        timeCutTimes = []
+        ampCutTimes = []
+        deepLearnCutTimes = []
+        allCutTimes = []
+
 
     #Load the average fft for plotting
     # average_fft, average_fft_per_channel = np.load(f'DeepLearning/data/Station{station_id}_NoiseFFT_Filtered.npy', allow_pickle=True)
@@ -345,7 +354,8 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
         stationtime = station.get_station_time().unix
         if inBlackoutTime(stationtime, blackoutTimes):
             continue
-
+        det.update(station.get_station_time())
+        # det.update(datetime.datetime(2018, 12, 10))
         forcedMask.append(station.has_triggered())
 
         #Checking if event on Chris' golden day
@@ -412,15 +422,17 @@ def converter(nurFile, folder, type, save_chans, station_id = 1, det=None, plot=
 
 
     print(f'Saving the SNR, Chi, and reconstructed Zen/Azi angles')
-    np.save(f'DeepLearning/data/{folder}/Station{station_id}_SNR_Chi.npy', [All_SNRs, All_RCR_Chi, All_Azi, 
+    np.save(f'DeepLearning/data/{folder}/{savename}_SNR_Chi.npy', [All_SNRs, All_RCR_Chi, All_Azi, 
             All_Zen, PassingCut_SNRs, PassingCut_RCR_Chi, PassingCut_Azi, PassingCut_Zen])
-    print(f'Saved to DeepLearning/data/{folder}/Station{station_id}_SNR_Chi.npy')
-    np.save(f'DeepLearning/data/{folder}/Station{station_id}_Traces.npy', PassingCut_Traces)
-    print(f'Saved traces to DeepLearning/data/{folder}/Station{station_id}_Traces.npy')
-    np.save(f'DeepLearning/data/{folder}/Station{station_id}_SnrChiCut.npy', [PassingChiCut_SNRs, PassingChiCut_RCR_Chi, PassingChiCut_Azi, PassingChiCut_Zen, PassingChiCut_Traces])
-    print(f'Saved to traces and data to DeepLearning/data/{folder}/Station{station_id}_SnrChiCut.npy')
-    np.save(f'DeepLearning/data/{folder}/Station{station_id}_Times.npy', [All_Times, PassingCut_Times, PassingChiCut_Times])
-    print(f'Saved to DeepLearning/data/{folder}/Station{station_id}_Times.npy')
+    print(f'Saved to DeepLearning/data/{folder}/{savename}_SNR_Chi.npy')
+    np.save(f'DeepLearning/data/{folder}/{savename}_Traces.npy', PassingCut_Traces)
+    print(f'Saved traces to DeepLearning/data/{folder}/{savename}_Traces.npy')
+    np.save(f'DeepLearning/data/{folder}/{savename}_SnrChiCut.npy', [PassingChiCut_SNRs, PassingChiCut_RCR_Chi, PassingChiCut_Azi, PassingChiCut_Zen, PassingChiCut_Traces])
+    print(f'Saved to traces and data to DeepLearning/data/{folder}/{savename}_SnrChiCut.npy')
+    np.save(f'DeepLearning/data/{folder}/{savename}_Times.npy', [All_Times, PassingCut_Times, PassingChiCut_Times])
+    print(f'Saved to DeepLearning/data/{folder}/{savename}_Times.npy')
+
+    return
 
     if len(PassingCut_SNRs) == 0:
         return
@@ -665,8 +677,8 @@ if __name__ == "__main__":
     parser.add_argument('station', type=int, default=19, help='Station to run on')
     parser.add_argument('--folder', type=str, default='5thpass', help='Folder to save data to')
     parser.add_argument('--single_file', type=str, default=None, help='Single file to run on')
-    parser.add_arguemnt('--first_ch', type=int, default=0, help='First channel of 4 to save data from')
-    parser.add_arguemnt('--amp', type=str, default='200s', help='Amp type used')
+    parser.add_argument('--first_ch', type=int, default=0, help='First channel of 4 to save data from')
+    parser.add_argument('--amp', type=str, default='200s', help='Amp type used')
     args = parser.parse_args()
     station_id = args.station
     folder = args.folder
@@ -687,7 +699,7 @@ if __name__ == "__main__":
 #    station_id = 17
 
     # detector = generic_detector.GenericDetector(json_filename=f'DeepLearning/station_configs/station{station_id}.json', assume_inf=False, antenna_by_depth=False, default_station=station_id)
-    detector = detector.Detector('../../NuRadioMC/NuRadioReco/detector/ARIANNA/arianna_detector_db.json', 'json')   #Relative path from running folder
+    detector = detector.Detector('../NuRadioMC/NuRadioReco/detector/ARIANNA/arianna_detector_db.json', 'json')   #Relative path from running folder
 
     if single_file is None:
         station_path = f"/dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
@@ -701,7 +713,6 @@ if __name__ == "__main__":
     else:
         DataFiles = [single_file]
         savename = f'FilteredStation{station_id}_Data_{single_file.split("/")[-1].replace(".root.nur", "")}'
-
 
 #    DataFiles = DataFiles[0:1]     #Just 1 file for testing purposes
 

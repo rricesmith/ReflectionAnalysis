@@ -4,6 +4,8 @@ import subprocess
 
 def makeAndRunJob(commandToRun, jobName='job', partition='free', runDirectory='run/'):
 
+    print(f'Running job {jobName} with error files {runDirectory}/logs/{jobName}.out')
+
     if not (partition == 'free' or partition == 'standard'):
         print(f'Partition {partition} does not exist')
         quit()
