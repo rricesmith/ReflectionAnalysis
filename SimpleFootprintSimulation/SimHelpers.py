@@ -1,7 +1,7 @@
 from NuRadioReco.utilities import units
 import os
 import numpy as np
-
+from scipy import constants
 
 
 def pullFilesForSimulation(sim_type, min_file=0, max_file=-1):
