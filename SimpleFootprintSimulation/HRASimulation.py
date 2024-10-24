@@ -57,7 +57,7 @@ input_files = pullFilesForSimulation('MB', min_file, max_file)
 # det = detector.Detector('../NuRadioMC/NuRadioReco/detector/ARIANNA/arianna_detector_db.json', 'json')   #Relative path from running folder
 # Have to use a custom detector file rather than one in NuRadioReco as CoREAS throws events around the position 0,0
 # Therefore the json is configured to be centered on station G/18, the approximate center of the detector, and then thrown in a large enough area to cover all stations
-det = detector.Detector('SimpleFootprintAnalysis/HRAStationLayoutForCoREAS.json', 'json')   #Relative path from running folder
+det = detector.Detector('SimpleFootprintSimulation/HRAStationLayoutForCoREAS.json', 'json')   #Relative path from running folder
 
 
 det.update(astropy.time.Time('2017-1-1'))
@@ -129,7 +129,7 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
 
         if preAmpVrms_per_channel[station_id] == {}:
             # Get noise levels for simulation
-            preAmpVrms, postAmpVrms = calculateNoisePerChannel(det, station=station, amp=sim_amp, hardwareResponseIncorporator, channelBandPassFilter)
+            preAmpVrms, postAmpVrms = calculateNoisePerChannel(det, station=station, amp=sim_amp, hardwareResponseIncorporator=hardwareResponseIncorporator, channelBandPassFilter=channelBandPassFilter)
             preAmpVrms_per_channel[station_id] = preAmpVrms
             threshold_high_3_5 = {key: value * 3.5 for key, value in postAmpVrms_per_channel.items()}
             threshold_low_3_5 = {key: value * -3.5 for key, value in postAmpVrms_per_channel.items()}
