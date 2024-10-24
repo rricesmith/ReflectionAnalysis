@@ -34,12 +34,13 @@ logger.setLevel(logging.WARNING)
 
 # Read in settings for simulation
 parser = argparse.ArgumentParser(description='Run Cosmic Ray simulation for Station 51')
-parser.add_argument('output_filename', type=str, help='Output filename for simulation')
+parser.add_argument('output_filename', type=str, help='Output filename for simulation, without nur prepend')
 parser.add_argument('n_cores', type=int, help='Number of cores to use for simulation')
 parser.add_argument('--min_file', type=int, default=0, help='Minimum file number to use')
 parser.add_argument('--max_file', type=int, default=-1, help='Maximum file number to use, -1 means use all files')
 parser.add_argument('--add_noise', default=False, help='Include noise in simulation')
 parser.add_argument('--distance', type=int, default=10, help='Distance in km to simulate')
+parser.add_argument('--seed', type=int, default=0, help='Seed for simulation, needed to ensure all stations receive same CRs')
 
 args = parser.parse_args()
 output_filename = args.output_filename
@@ -48,6 +49,7 @@ min_file = args.min_file
 max_file = args.max_file
 add_noise = args.add_noise
 distance = args.distance
+seed = args.seed
 
 # Get files for simulation
 input_files = pullFilesForSimulation('MB', min_file, max_file)
@@ -70,9 +72,6 @@ secondary_LPDA_channels = [4, 5, 6, 7]     #Only on station 52
 
 # initialize all modules that are needed for processing
 # provide input parameters that are to remain constant during processung
-readCoREAS = NuRadioReco.modules.io.coreas.readCoREAS.readCoREAS()
-readCoREAS.begin(input_files, station_id, n_cores=n_cores, max_distance=distance*units.km)
-
 simulationSelector = NuRadioReco.modules.io.coreas.simulationSelector.simulationSelector()
 simulationSelector.begin()
 
@@ -100,8 +99,6 @@ triggerTimeAdjuster = NuRadioReco.modules.triggerTimeAdjuster.triggerTimeAdjuste
 triggerTimeAdjuster.begin(trigger_name=f'primary_LPDA_2of4_3.5sigma')
 
 
-eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
-eventWriter.begin(output_filename)
 
 preAmpVrms_per_channel = {}
 for station_id in all_stations:
@@ -111,12 +108,19 @@ thresholds_high = {}
 thresholds_low = {}
 
 # Start simulation
-for iE, evt in enumerate(readCoREAS.run(detector=det)):
-    logger.info("processing event {:d} with id {:d}".format(iE, evt.get_id()))
+# Because CoREAS only simulates one station at a time, need to simulate each station in order using the same seed
+# All events will be saved, therefore all events will be in order compared to each other across files
+for station_id in all_stations:
+    readCoREAS = NuRadioReco.modules.io.coreas.readCoREAS.readCoREAS()
+    readCoREAS.begin(input_files, station_id, n_cores=n_cores, max_distance=distance*units.km, seed=seed)
+    eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
+    eventWriter.begin(output_filename + f'_station{station_id}.nur')
 
-    # for station in evt.get_stations():
+    for iE, evt in enumerate(readCoREAS.run(detector=det)):
+        logger.info("processing event {:d} with id {:d}".format(iE, evt.get_id()))
 
-    for station_id in all_stations:
+        # for station in evt.get_stations():
+
         station = evt.get_station(station_id)
         station.set_station_time(datetime.datetime(2018, 10, 1))
         det.update(station.get_station_time())
@@ -200,13 +204,14 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
                 triggerTimeAdjuster.run(evt, station, det)
                 # channelResampler.run(evt, station, det, 1*units.GHz)
                 channelStopFilter.run(evt, station, det)
-                # eventWriter.run(evt, det)
+                eventWriter.run(evt, det)
 
-    # Save every event for proper rate calculation
-    # Now every event is saved regardless of if it triggers or not
-    # When checking events in nur, now check if station.has_triggered()
-    eventWriter.run(evt, det)
+        # Save every event for proper rate calculation
+        # Now every event is saved regardless of if it triggers or not
+        # When checking events in nur, now check if station.has_triggered()
+        # eventWriter.run(evt, det)
 
 
-nevents = eventWriter.end()
-print("Finished processing, {} events".format(nevents))
+    nevents = eventWriter.end()
+    dt = readCoREAS.end()
+    print(f"Finished processing Station {station_id}, {nevents} events processed, {dt} seconds elapsed")
