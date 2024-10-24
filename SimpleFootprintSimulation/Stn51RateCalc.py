@@ -11,7 +11,7 @@ from pathlib import Path
 def getTriggerRatePerBin(simulation_files_folder, e_bins, zen_bins, trigger_names):
     # simulation_files_folder   : path/to/simulation/files --NOTE!: The simulation needs to be configured to save non-triggering events too
     # e_bins                    : list of energy bin edges, in log10
-    # zen_bins                  : list of zenith bin edges, in radians
+    # zen_bins                  : list of zenith bin edges, in whatever format files are saved in (sin2val for IceTop)
     # trigger_names             : list of strings of trigger names
     ###
     # returns
@@ -20,16 +20,16 @@ def getTriggerRatePerBin(simulation_files_folder, e_bins, zen_bins, trigger_name
     trig_rate_per_bin = {}
     n_trig_per_bin = {}
     for trigger in trigger_names:
-        trig_rate_per_bin[trigger] = np.zeros((len(sin2Val),len(e_range)-1))
-        n_trig_per_bin[trigger] = np.zeros((len(sin2Val),len(e_range)-1))
+        trig_rate_per_bin[trigger] = np.zeros((len(zen_bins)-1,len(e_range)-1))
+        n_trig_per_bin[trigger] = np.zeros((len(zen_bins)-1,len(e_range)-1))
 
     for iE in range(len(e_range)-1):
-        for iS in range(len(sin2Val)-1):
+        for iS in range(len(zen_bins)-1):
             # Load files for given bin only
             nurFiles= []
 
             for file in os.listdir(sim_folder):
-                if file.endswith('.nur') and (f'{e_range[iE]:.1f}-{e_range[iE+1]:.1f}eV_{sin2Val[iS]:.1f}sin2' in file):
+                if file.endswith('.nur') and (f'{e_range[iE]:.1f}-{e_range[iE+1]:.1f}eV_{zen_bins[iS]:.1f}sin2' in file):
                     nurFiles.append(os.path.join(sim_folder, file))
             if nurFiles == []:
                 continue
@@ -67,6 +67,8 @@ def getAeffRatePerBin(trigger_names, max_distance):
 def getEventRatePerBin(aeff_per_bin, e_bins, zen_bins, trigger_names):
     # Returns the event rate per bin in energy/zenith
 
+    # NOTE! zen_bins needs to be in degrees
+
     # rate_per_bin  : dictionary of a 2D numpy array of event rate per bin in energy/zenith per trigger name
     # rate_sin_sum  : dictionary of a 1D numpy array of event rate per bin in energy per trigger name (summed over all zenith bins)
 
@@ -103,7 +105,7 @@ def getParametersPerEvent(simulation_files_folder, trigger_name, e_bins=None, ze
 
     # If work has not already been done to get rate and trig per bin, do it here
     if rate_per_bin is None or n_trig_per_bin is None:
-        n_trig_per_bin, trig_rate_per_bin = getTriggerRatePerBin(simulation_files_folder, e_bins, zen_bins, trigger_names)
+        n_trig_per_bin, trig_rate_per_bin = getTriggerRatePerBin(simulation_files_folder, e_bins, sin2Val, trigger_names)
         aeff_per_bin = getAeffRatePerBin(trig_rate_per_bin, max_distance)
         rate_per_bin, rate_sin_sum = getEventRatePerBin(aeff_per_bin, e_bins, zen_bins, trigger_names)
 
@@ -159,7 +161,7 @@ if __name__ == '__main__':
     max_energy = 18.6
     # sin2Val = -0.1
     e_range = np.arange(min_energy, max_energy, 0.1)
-    sin2Val = np.arange(0, 1.01, 0.1)
+    sin2Val = np.arange(0, 1.01, 0.1)                   # Current simulations are ran in bins of sin^2(angle) in radians
     angle_bins = np.rad2deg(np.arcsin(np.sqrt(sin2Val)))
 
 
@@ -170,7 +172,7 @@ if __name__ == '__main__':
 
     n_trig_per_bin, trig_rate_per_bin = getTriggerRatePerBin(sim_folder, e_range, sin2Val, trigger_names)
     aeff_per_bin = getAeffRatePerBin(trig_rate_per_bin, trigger_names, max_distance)
-    rate_per_bin, rate_sin_sum = getEventRatePerBin(aeff_per_bin, e_range, sin2Val, trigger_names)
+    rate_per_bin, rate_sin_sum = getEventRatePerBin(aeff_per_bin, e_range, angle_bins, trigger_names)
 
 
     # Plot each trigger separately, showing different sin bins
@@ -246,3 +248,8 @@ if __name__ == '__main__':
     plt.legend(loc='upper left', prop={'size': 8})
     plt.savefig(plot_folder+f'Stn51_EventRate_AllTriggers_40degCut.png')
     plt.clf()
+
+
+    # Now can do plots of parameters
+    trig_energy, trig_zenith, trig_azimuth, trig_weight = getParametersPerEvent(sim_folder, trigger_names[0], e_range, sin2Val, rate_per_bin, n_trig_per_bin)
+    # TODO
