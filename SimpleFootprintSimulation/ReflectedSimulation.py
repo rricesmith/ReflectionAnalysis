@@ -273,7 +273,7 @@ for evt, iE, x, y in runCoREAS(det, depthLayer, dB, attenuation_model):
 
             triggerTimeAdjuster.run(evt, station, det)
             channelResampler.run(evt, station, det, 2*units.GHz)
-            channelStopFilter.run(evt, station, det)
+            channelStopFilter.run(evt, station, det, prepend=0*units.ns, append=0*units.ns)
             eventWriter.run(evt, det)
 
             for iC, ch in enumerate(refl_LPDA_channels):

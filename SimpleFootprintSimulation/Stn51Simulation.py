@@ -251,8 +251,8 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
 
             triggerTimeAdjuster.run(evt, station, det)
             # channelResampler.run(evt, station, det, 1*units.GHz)
-            channelStopFilter.run(evt, station, det)
-
+            channelStopFilter.run(evt, station, det, prepend=0*units.ns, append=0*units.ns)
+            
     # Save every event for proper rate calculation
     # Now every event is saved regardless of if it triggers or not
     # When checking events in nur, now check if station.has_triggered()

@@ -214,7 +214,7 @@ for station_id in all_stations:
 
                 triggerTimeAdjuster.run(evt, station, det)
                 # channelResampler.run(evt, station, det, 1*units.GHz)
-                channelStopFilter.run(evt, station, det)
+                channelStopFilter.run(evt, station, det, prepend=0*units.ns, append=0*units.ns)
         # Save every event for rate calculation
         eventWriter.run(evt, det)
 
