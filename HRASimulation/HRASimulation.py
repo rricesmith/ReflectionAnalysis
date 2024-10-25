@@ -59,7 +59,7 @@ input_files = pullFilesForSimulation('MB', min_file, max_file)
 # det = detector.Detector('../NuRadioMC/NuRadioReco/detector/ARIANNA/arianna_detector_db.json', 'json')   #Relative path from running folder
 # Have to use a custom detector file rather than one in NuRadioReco as CoREAS throws events around the position 0,0
 # Therefore the json is configured to be centered on station G/18, the approximate center of the detector, and then thrown in a large enough area to cover all stations
-det = detector.Detector('SimpleFootprintSimulation/HRAStationLayoutForCoREAS.json', 'json')   #Relative path from running folder
+det = detector.Detector('HRASimulation/HRAStationLayoutForCoREAS.json', 'json')   #Relative path from running folder
 
 
 det.update(astropy.time.Time('2017-1-1'))
