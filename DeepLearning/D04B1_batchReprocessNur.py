@@ -42,7 +42,8 @@ for station  in stations_200s:
 
 for station in stations_300s:
     amp = '300s'
-    folder = f'{base_folder}/Station{station}'
+    first_ch = 0
+    folder = f'{base_folder}/Station{station}/FirstCh{first_ch}'
     station_path = f"/dfs8/sbarwick_lab/ariannaproject/leshanz_backup/arianna/station_{station}/data/"
     i = 0
     for file in os.listdir(station_path):
@@ -50,6 +51,18 @@ for station in stations_300s:
             continue    
         else:
             filename = os.path.join(station_path, file)
-            cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp}'
+            cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp} --first_ch {first_ch}'
+            slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_{i}', partition='standard', runDirectory='run/')
+            i += 1
+
+    i = 0
+    first_ch = 4 # 4 is first channel for upward facing LPDAs, only in stn 52
+    folder = f'{base_folder}/Station{station}/FirstCh{first_ch}'
+    for file in os.listdir(station_path):
+        if file.endswith('_statDatPak.root.nur'):
+            continue    
+        else:
+            filename = os.path.join(station_path, file)
+            cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp} --first_ch {first_ch}'
             slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_{i}', partition='standard', runDirectory='run/')
             i += 1
