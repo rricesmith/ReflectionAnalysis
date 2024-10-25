@@ -340,8 +340,8 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
 
     All_SNRs = []
     All_RCR_Chi = []
-    All_Zen = []
-    All_Azi = []
+    # All_Zen = []
+    # All_Azi = []
     All_Times = []
     All_Traces = []
     forcedMask = []
@@ -367,18 +367,13 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
             y = channel.get_trace()
             traces.append(y)
         # Moving appending to after correlation in case there is an error in time lookup
-        # All_SNRs.append(getMaxSNR(traces, noiseRMS=noiseRMS))
-        # All_RCR_Chi.append(getMaxChi(traces, 2*units.GHz, templates_RCR, 2*units.GHz))
-        # All_RCR_Chi.append(getMaxAllChi(traces, 2*units.GHz, template_series_RCR, 2*units.GHz))
-        # All_Times.append(stationtime)
-        # All_Traces.append(traces)
 
         #Skipping this for now, moving to processing phase. Takes hours per file alone
-        try:
-            correlationDirectionFitter.run(evt, station, det, n_index=1.35)
-        except LookupError:
-            print(f'Error for date {datetime.datetime.fromtimestamp(stationtime)}, skipping')
-            continue
+        # try:
+        #     correlationDirectionFitter.run(evt, station, det, n_index=1.35)
+        # except LookupError:
+        #     print(f'Error for date {datetime.datetime.fromtimestamp(stationtime)}, skipping')
+        #     continue
 
         All_SNRs.append(getMaxSNR(traces, noiseRMS=noiseRMS))
         # All_RCR_Chi.append(getMaxChi(traces, 2*units.GHz, templates_RCR, 2*units.GHz))
@@ -386,16 +381,21 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
         All_Times.append(stationtime)
         All_Traces.append(traces)
 
-        zen = station[stnp.zenith]
-        azi = station[stnp.azimuth]
-        All_Zen.append(np.rad2deg(zen))
-        All_Azi.append(np.rad2deg(azi))
+        # zen = station[stnp.zenith]
+        # azi = station[stnp.azimuth]
+        # All_Zen.append(np.rad2deg(zen))
+        # All_Azi.append(np.rad2deg(azi))
 
         if datetime.datetime.fromtimestamp(stationtime) > datetime.datetime(2019, 1, 1):
             continue
         for goodTime in allCutTimes:
             if datetime.datetime.fromtimestamp(stationtime) == goodTime:
                 # correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
+                try:
+                    correlationDirectionFitter.run(evt, station, det, n_index=1.35)
+                except LookupError:
+                    print(f'Error for date {datetime.datetime.fromtimestamp(stationtime)}, skipping')
+                    continue
                 zen = station[stnp.zenith]
                 azi = station[stnp.azimuth]
 
@@ -415,6 +415,11 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
             chrisEvent = [All_SNRs[-1], All_RCR_Chi[-1]]
         if cut and (All_RCR_Chi[-1] > D04C_CutInBacklobeRCR.RCRChiSNRCut(All_SNRs[-1])):
             # Passing cut made, plot trace and save info
+            try:
+                correlationDirectionFitter.run(evt, station, det, n_index=1.35)
+            except LookupError:
+                print(f'Error for date {datetime.datetime.fromtimestamp(stationtime)}, skipping')
+                continue
             # correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
             zen = station[stnp.zenith]
             azi = station[stnp.azimuth]
@@ -427,15 +432,16 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
             PassingChiCut_Times.append(stationtime)
 
 
-            pT(traces, datetime.datetime.fromtimestamp(stationtime).strftime("%m-%d-%Y, %H:%M:%S") + f' Chi {All_RCR_Chi[-1]:.2f}, {np.rad2deg(zen):.1f}Deg Zen {np.rad2deg(azi):.1f}Deg Azi', 
-            f'DeepLearning/plots/Station_{station_id}/PassingSNRChiCut/NurSearch_{i}_Chi{All_RCR_Chi[-1]:.2f}_SNR{All_SNRs[-1]:.2f}.png')
+            if False:
+                pT(traces, datetime.datetime.fromtimestamp(stationtime).strftime("%m-%d-%Y, %H:%M:%S") + f' Chi {All_RCR_Chi[-1]:.2f}, {np.rad2deg(zen):.1f}Deg Zen {np.rad2deg(azi):.1f}Deg Azi', 
+                f'DeepLearning/plots/Station_{station_id}/PassingSNRChiCut/NurSearch_{i}_Chi{All_RCR_Chi[-1]:.2f}_SNR{All_SNRs[-1]:.2f}.png')
             # f'DeepLearning/plots/Station_{station_id}/PassingSNRChiCut/NurSearch_{i}_Chi{All_RCR_Chi[-1]:.2f}_SNR{All_SNRs[-1]:.2f}.png', average_fft_per_channel=average_fft_per_channel)
             
 
 
     print(f'Saving the SNR, Chi, and reconstructed Zen/Azi angles')
-    np.save(f'DeepLearning/data/{folder}/{savename}_SNR_Chi.npy', [All_SNRs, All_RCR_Chi, All_Azi, 
-            All_Zen, PassingCut_SNRs, PassingCut_RCR_Chi, PassingCut_Azi, PassingCut_Zen])
+    np.save(f'DeepLearning/data/{folder}/{savename}_SNR_Chi.npy', [All_SNRs, All_RCR_Chi,  
+            PassingCut_SNRs, PassingCut_RCR_Chi, PassingCut_Azi, PassingCut_Zen])
     print(f'Saved to DeepLearning/data/{folder}/{savename}_SNR_Chi.npy')
     np.save(f'DeepLearning/data/{folder}/{savename}_Traces.npy', PassingCut_Traces)
     print(f'Saved traces to DeepLearning/data/{folder}/{savename}_Traces.npy')

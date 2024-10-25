@@ -2,7 +2,7 @@ import A00_SlurmUtil as slurm
 import os
 
 
-base_folder = '6thpass'
+base_folder = '7thpass'
 
 stations_100s = [13, 15, 18, 32]
 stations_200s = [14, 17, 19, 30]
