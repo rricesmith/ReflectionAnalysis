@@ -241,12 +241,18 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
                                 coinc_window = 40*units.ns,
                                 triggered_channels=direct_LPDA_channels,
                                 number_concidences=2,
-                                trigger_name=f'direct_LPDA_2of4_4.44sigma')
+                                trigger_name=f'direct_LPDA_2of4_4.4sigma')
 
 
+            trace = station.get_channel(0).get_trace()
+            ic(trace)
             triggerTimeAdjuster.run(evt, station, det)
+            trace = station.get_channel(0).get_trace()
+            ic(trace)
             # channelResampler.run(evt, station, det, 1*units.GHz)
             channelStopFilter.run(evt, station, det)
+            trace = station.get_channel(0).get_trace()
+            ic(trace)
             eventWriter.run(evt, det)
 
     # Save every event for proper rate calculation
