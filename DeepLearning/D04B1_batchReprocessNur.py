@@ -30,7 +30,7 @@ for station in stations_100s:
         print(f'cmd {cmd}')
         slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_{i}', partition='standard', runDirectory='run/')
 
-quit()
+# quit()
 
 for station  in stations_200s:
     amp = '200s'

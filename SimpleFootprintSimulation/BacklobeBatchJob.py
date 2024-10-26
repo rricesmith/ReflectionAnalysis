@@ -6,9 +6,9 @@ from pathlib import Path
 n_cores = 1000 # Low sensitivity to BL, so 1k per file is fine
 loc = 'MB'  #Or SP, not setup yet though
 amp = True
-amp_type = 100
+amp_type = 200
 add_noise = True
-output_folder = f'SimpleFootprintSimulation/output/Backlobe/5.7.24/{amp_type}s/'
+output_folder = f'SimpleFootprintSimulation/output/Backlobe/10.25.24/{amp_type}s/'
 output_filename = f'Backlobe_{loc}'
 
 # Make directory if it doesn't exist

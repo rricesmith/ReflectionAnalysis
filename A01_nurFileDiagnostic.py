@@ -7,10 +7,11 @@ import matplotlib.pyplot as plt
 
 #Diagnostic settings
 # nurPath = '../../../ariannaproject/rricesmi/simulatedRCRs/200s/'
-nurPath = '../../../../../dfs8/sbarwick_lab/ariannaproject/rricesmi/simStn51/3.11.24/'
-saveFolder = 'plots/diagnostics/Stn51'
-# channel_ids = [0, 1, 2, 3]
-channel_ids = [4, 5, 6]
+# nurPath = '../../../../../dfs8/sbarwick_lab/ariannaproject/rricesmi/simStn51/3.11.24/'
+nurPath = 'SimpleFootprintSimulation/output/Backlobe/5.7.24/100s/'
+saveFolder = 'plots/diagnostics/Backlobe'
+channel_ids = [0, 1, 2, 3]
+# channel_ids = [4, 5, 6]
 
 maxSave = 100
 saveIter = 500

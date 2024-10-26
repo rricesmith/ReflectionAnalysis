@@ -412,8 +412,8 @@ def converter(nurFiles, folder, save_prefix, save_chans, station_id = 1, det=Non
     return
         
 
-folder = "5thpass"
-amp_type = '200'     #Alternative is 200s
+folder = "7thpass"
+amp_type = '100'     #Alternative is 200s
 
 #Convert RCR simulated data
 if False:
@@ -434,14 +434,16 @@ if False:
     quit()
 
 #Convert simulated backlobe data
-if False:
+if True:
 #    det = generic_detector.GenericDetector(json_filename=f'configurations/gen2_MB_BacklobeTest_{amp_type}s_footprint576m_infirn.json', assume_inf=False, antenna_by_depth=False, default_station=1)
     det = generic_detector.GenericDetector(json_filename=f'configurations/gen2_MB_old_{amp_type}s_footprint576m_infirn.json', assume_inf=False, antenna_by_depth=False, default_station=1)
-    station_files_path = 'FootprintAnalysis/output/'
+#    station_files_path = 'FootprintAnalysis/output/'
+    station_files_path = f'SimpleFootprintSimulation/output/Backlobe/10.25.24/{amp_type}s/'
     SimRCRFiles = []
     for filename in os.listdir(station_files_path):
 #        if filename.startswith(f'Backlobes_BacklobeTest_{amp_type}s_Refl_CRs_10000Evts_Noise_False') and filename.endswith('.nur'):
-        if filename.startswith(f'NewBacklobes_MB_BacklobeTest_{amp_type}s_direct_CRs') and filename.endswith('.nur'):
+#        if filename.startswith(f'NewBacklobes_MB_BacklobeTest_{amp_type}s_direct_CRs') and filename.endswith('.nur'):
+        if filename.endswith('.nur'):
             print(f'Adding file {filename}')
             SimRCRFiles.append(os.path.join(station_files_path, filename))
 

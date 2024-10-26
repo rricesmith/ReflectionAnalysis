@@ -20,8 +20,8 @@ module load python/3.8.0
 cd $ReflectiveAnalysis
 
 # python DeepLearning/SimpleSNR_Chi_plot.py
-python DeepLearning/D04B_reprocessNurPassingCut.py 30
-# python DeepLearning/D01_convertSimNurToNpy.py
+# python DeepLearning/D04B_reprocessNurPassingCut.py 30
+python DeepLearning/D01_convertSimNurToNpy.py
 # python DeepLearning/D04C_CutInBacklobeRCR.py
 
 # python CoreAnalysis/C04F_CalculateEffectiveAreaFromHdf.py ../CorePaperhdf5/gen2/*depth_300*
