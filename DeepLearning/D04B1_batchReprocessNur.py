@@ -5,10 +5,10 @@ import os
 base_folder = '7thpass'
 single_file = False
 
-# stations_100s = [13, 15, 18, 32]
-# stations_200s = [14, 17, 19, 30]
-stations_100s = []
-stations_200s = []
+stations_100s = [13, 15, 18, 32]
+stations_200s = [14, 17, 19, 30]
+# stations_100s = []
+# stations_200s = []
 stations_300s = [52]
 
 

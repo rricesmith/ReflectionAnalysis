@@ -456,6 +456,9 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
             except LookupError:
                 print(f'Error for date {datetime.datetime.fromtimestamp(stationtime)}, skipping')
                 continue
+            zen = station[stnp.zenith]
+            azi = station[stnp.azimuth]
+
             in2016_SNRs.append(All_SNRs[-1])
             in2016_RCR_Chi.append(All_RCR_Chi[-1])
             in2016_Zen.append(np.rad2deg(zen))
