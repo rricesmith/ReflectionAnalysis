@@ -343,7 +343,7 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
     # All_Zen = []
     # All_Azi = []
     All_Times = []
-    All_Traces = []
+#    All_Traces = []
     forcedMask = []
 
 
@@ -351,7 +351,11 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
     for i, evt in enumerate(template.get_events()):
         #If in a blackout region, skip event
         station = evt.get_station(station_id)
-        stationtime = station.get_station_time().unix
+        try:
+            stationtime = station.get_station_time().unix
+        except AttributeError:
+            print(f'Error on event {i}, skipping')
+            continue
         if inBlackoutTime(stationtime, blackoutTimes):
             continue
         det.update(station.get_station_time())
@@ -379,7 +383,7 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
         # All_RCR_Chi.append(getMaxChi(traces, 2*units.GHz, templates_RCR, 2*units.GHz))
         All_RCR_Chi.append(getMaxAllChi(traces, 2*units.GHz, template_series_RCR, 2*units.GHz))
         All_Times.append(stationtime)
-        All_Traces.append(traces)
+#        All_Traces.append(traces)
 
         # zen = station[stnp.zenith]
         # azi = station[stnp.azimuth]
@@ -720,12 +724,20 @@ if __name__ == "__main__":
     detector = detector.Detector('../NuRadioMC/NuRadioReco/detector/ARIANNA/arianna_detector_db.json', 'json')   #Relative path from running folder
 
     if single_file is None:
-        station_path = f"/dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
+        if not station_id == 52:
+            station_path = f"/dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
+        elif station_id == 52:
+            station_path = f"/dfs8/sbarwick_lab/ariannaproject/leshanz_backup/arianna/station_{station_id}/data/"
         DataFiles = []
         for filename in os.listdir(station_path):
             if filename.endswith('_statDatPak.root.nur'):
                 continue
+            elif not filename.endswith('.nur'):
+                continue
             else:
+                if os.path.getsize(os.path.join(station_path, filename)) == 0:
+                    print(f'File {filename} is empty, skipping')
+                    continue
                 DataFiles.append(os.path.join(station_path, filename))
         savename = f'FilteredStation{station_id}_Data'
     else:
