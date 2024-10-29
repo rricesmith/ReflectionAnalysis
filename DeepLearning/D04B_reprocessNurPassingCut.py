@@ -32,6 +32,7 @@ import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
+from StationDataAnalysis.S00_FoundEventsSearchUtil import inStation2016
 
 #####
 #This code takes output from D03/D04, and then rerun's through the original events
@@ -338,6 +339,14 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
     PassingChiCut_Traces = []
     PassingChiCut_Times = []
 
+    in2016_SNRs = []
+    in2016_RCR_Chi = []
+    in2016_Zen = []
+    in2016_Azi = []
+    in2016_Times = []
+    in2016_Traces = []
+
+
     All_SNRs = []
     All_RCR_Chi = []
     # All_Zen = []
@@ -412,8 +421,9 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
                 PassingCut_Traces.append(traces)
                 PassingCut_Times.append(stationtime)
 
-                pT(traces, datetime.datetime.fromtimestamp(stationtime).strftime("%m-%d-%Y, %H:%M:%S") + f' Chi {PassingCut_RCR_Chi[-1]:.2f}, {np.rad2deg(zen):.1f}Deg Zen {np.rad2deg(azi):.1f}Deg Azi', 
-                f'DeepLearning/plots/Station_{station_id}/GoldenDay/NurSearch_{i}_Chi{PassingCut_RCR_Chi[-1]:.2f}_SNR{PassingCut_SNRs[-1]:.2f}.png')
+                if False:
+                    pT(traces, datetime.datetime.fromtimestamp(stationtime).strftime("%m-%d-%Y, %H:%M:%S") + f' Chi {PassingCut_RCR_Chi[-1]:.2f}, {np.rad2deg(zen):.1f}Deg Zen {np.rad2deg(azi):.1f}Deg Azi', 
+                    f'DeepLearning/plots/Station_{station_id}/GoldenDay/NurSearch_{i}_Chi{PassingCut_RCR_Chi[-1]:.2f}_SNR{PassingCut_SNRs[-1]:.2f}.png')
                 # f'DeepLearning/plots/Station_{station_id}/GoldenDay/NurSearch_{i}_Chi{PassingCut_RCR_Chi[-1]:.2f}_SNR{PassingCut_SNRs[-1]:.2f}.png', average_fft_per_channel=average_fft_per_channel)
         if datetime.datetime(2017, 3, 29, 3, 25, 1) < datetime.datetime.fromtimestamp(stationtime) < datetime.datetime(2017, 3, 29, 3, 25, 5):
             chrisEvent = [All_SNRs[-1], All_RCR_Chi[-1]]
@@ -440,7 +450,19 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
                 pT(traces, datetime.datetime.fromtimestamp(stationtime).strftime("%m-%d-%Y, %H:%M:%S") + f' Chi {All_RCR_Chi[-1]:.2f}, {np.rad2deg(zen):.1f}Deg Zen {np.rad2deg(azi):.1f}Deg Azi', 
                 f'DeepLearning/plots/Station_{station_id}/PassingSNRChiCut/NurSearch_{i}_Chi{All_RCR_Chi[-1]:.2f}_SNR{All_SNRs[-1]:.2f}.png')
             # f'DeepLearning/plots/Station_{station_id}/PassingSNRChiCut/NurSearch_{i}_Chi{All_RCR_Chi[-1]:.2f}_SNR{All_SNRs[-1]:.2f}.png', average_fft_per_channel=average_fft_per_channel)
-            
+        if inStation2016(stationtime):
+            try:
+                correlationDirectionFitter.run(evt, station, det, n_index=1.35)
+            except LookupError:
+                print(f'Error for date {datetime.datetime.fromtimestamp(stationtime)}, skipping')
+                continue
+            in2016_SNRs.append(All_SNRs[-1])
+            in2016_RCR_Chi.append(All_RCR_Chi[-1])
+            in2016_Zen.append(np.rad2deg(zen))
+            in2016_Azi.append(np.rad2deg(azi))
+            in2016_Times.append(stationtime)
+            in2016_Traces.append(traces)
+
 
 
     print(f'Saving the SNR, Chi, and reconstructed Zen/Azi angles')
@@ -453,6 +475,8 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
     print(f'Saved to traces and data to DeepLearning/data/{folder}/{savename}_SnrChiCut.npy')
     np.save(f'DeepLearning/data/{folder}/{savename}_Times.npy', [All_Times, PassingCut_Times, PassingChiCut_Times])
     print(f'Saved to DeepLearning/data/{folder}/{savename}_Times.npy')
+    np.save(f'DeepLearning/data/{folder}/{savename}_In2016.npy', [in2016_SNRs, in2016_RCR_Chi, in2016_Azi, in2016_Zen, in2016_Traces, in2016_Times])
+    print(f'Saved to DeepLearning/data/{folder}/{savename}_In2016.npy')
 
     return
 
