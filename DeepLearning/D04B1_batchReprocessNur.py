@@ -5,8 +5,10 @@ import os
 base_folder = '7thpass'
 single_file = False
 
-stations_100s = [13, 15, 18, 32]
-stations_200s = [14, 17, 19, 30]
+# stations_100s = [13, 15, 18, 32]
+# stations_200s = [14, 17, 19, 30]
+stations_100s = []
+stations_200s = []
 stations_300s = [52]
 
 
@@ -64,12 +66,12 @@ for station in stations_300s:
             else:
                 filename = os.path.join(station_path, file)
                 cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp} --first_ch {first_ch}'
-                slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_{i}', partition='standard', runDirectory='run/')
+                slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_ch{first_ch}_{i}', partition='standard', runDirectory='run/')
                 i += 1
     else:
         cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --amp {amp} --first_ch {first_ch}'
         print(f'cmd {cmd}')
-        slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_{i}', partition='standard', runDirectory='run/')
+        slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_ch{first_ch}_{i}', partition='standard', runDirectory='run/')
 
     first_ch = 4 # 4 is first channel for upward facing LPDAs, only in stn 52
     folder = f'{base_folder}/Station{station}/FirstCh{first_ch}'
@@ -81,10 +83,10 @@ for station in stations_300s:
             else:
                 filename = os.path.join(station_path, file)
                 cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp} --first_ch {first_ch}'
-                slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_{i}', partition='standard', runDirectory='run/')
+                slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_ch{first_ch}_{i}', partition='standard', runDirectory='run/')
                 i += 1
     else:
         cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --amp {amp} --first_ch {first_ch}'
         print(f'cmd {cmd}')
-        slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_{i}', partition='standard', runDirectory='run/')
+        slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_ch{first_ch}_{i}', partition='standard', runDirectory='run/')
 
