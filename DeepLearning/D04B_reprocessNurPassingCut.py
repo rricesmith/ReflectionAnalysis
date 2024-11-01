@@ -613,22 +613,22 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
     return
         
 
-def plotSimSNRChi(templates_RCR, noiseRMS, amp='200s', type='RCR', ax=None, cut=False, plotOnlyAbove=False):
+def plotSimSNRChi(templates_RCR, noiseRMS, amp='200s', type='RCR', ax=None, cut=False, plotOnlyAbove=False, path='DeepLearning/data/3rdpass/'):
     if cut:
         import DeepLearning.D04C_CutInBacklobeRCR as D04C_CutInBacklobeRCR
 
-    path = 'DeepLearning/data/3rdpass/'
+    # path = 'DeepLearning/data/3rdpass/'
     RCR_files = []
     if type == 'RCR':
         for filename in os.listdir(path):
             if filename.startswith(f'SimRCR_{amp}'):
                 RCR_files.append(os.path.join(path, filename))
-                RCR_weights_file = f'DeepLearning/data/3rdpass/SimWeights_{filename}'
+                RCR_weights_file = f'{path}/SimWeights_{filename}'
     elif type == 'Backlobe':
         for filename in os.listdir(path):
             if filename.startswith(f'Backlobe_{amp}'):
                 RCR_files.append(os.path.join(path, filename))
-                RCR_weights_file = f'DeepLearning/data/3rdpass/SimWeights_{filename}'
+                RCR_weights_file = f'{path}/SimWeights_{filename}'
 
     for file in RCR_files:
         RCR_sim = np.load(file)
