@@ -78,8 +78,8 @@ axs2 = np.atleast_1d(axs2)
 # templates_RCR.append(D00_helperFunctions.loadSingleTemplate(series))
 
 
-plotSimSNRChi(templates_RCR, noiseRMS, ax=axs2[0], cut=True, path=f'DeepLearning/data/5thpass/')
-plotSimSNRChi(templates_RCR, noiseRMS, ax=axs[0], cut=True, path=f'DeepLearning/data/5thpass/')
+plotSimSNRChi(templates_RCR, noiseRMS, ax=axs2[0], cut=True, path=f'DeepLearning/data/3rdpass/')
+plotSimSNRChi(templates_RCR, noiseRMS, ax=axs[0], cut=True, path=f'DeepLearning/data/3rdpass/')
 
 D04C_CutInBacklobeRCR.plotRCRChiSNRCut(ax=axs[0], label=False)
 D04C_CutInBacklobeRCR.plotRCRChiSNRCut(ax=axs2[0], label=True)
@@ -115,8 +115,8 @@ axs2 = np.atleast_1d(axs2)
 # templates_RCR = D00_helperFunctions.loadMultipleTemplates(series)
 # templates_RCR.append(D00_helperFunctions.loadSingleTemplate(series))
         
-plotSimSNRChi(templates_RCR, noiseRMS, type='Backlobe', ax=axs[0], cut=True, path=f'DeepLearning/data/5thpass/')
-plotSimSNRChi(templates_RCR, noiseRMS, type='Backlobe', ax=axs2[0], cut=True, path=f'DeepLearning/data/5thpass/')
+plotSimSNRChi(templates_RCR, noiseRMS, type='Backlobe', ax=axs[0], cut=True, path=f'DeepLearning/data/3rdpass/')
+plotSimSNRChi(templates_RCR, noiseRMS, type='Backlobe', ax=axs2[0], cut=True, path=f'DeepLearning/data/3rdpass/')
 
 D04C_CutInBacklobeRCR.plotRCRChiSNRCut(ax=axs[0], label=False)
 D04C_CutInBacklobeRCR.plotRCRChiSNRCut(ax=axs2[0], label=True)
