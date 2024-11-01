@@ -3,7 +3,8 @@ import numpy as np
 from pathlib import Path
 
 
-n_cores = 100   #Decenty sensitivity to RCRs, so don't overdo
+date = '10.30.24'
+n_cores = 5000   #Decenty sensitivity to RCRs, so don't overdo
 loc = 'MB'  #Or SP, not setup yet though
 # Need to change default distance and layer depth for SP, but for MB its fine right now
 if loc == 'MB':
@@ -12,8 +13,8 @@ if loc == 'MB':
     dB = 0 #Assume perfect reflector, although realistically it isn't quite that for MB
 amp = True
 amp_type = 200
-add_noise = False
-output_folder = f'SimpleFootprintSimulation/output/RCR/9.30.24/{amp_type}s/'
+add_noise = True
+output_folder = f'SimpleFootprintSimulation/output/RCR/10.30.24/{amp_type}s/'
 output_filename = f'RCR_{loc}_{depthLayer}m_{dB}dB_{amp_type}s_Noise{add_noise}'
 
 # Make directory if it doesn't exist
@@ -21,7 +22,7 @@ Path(output_folder).mkdir(parents=True, exist_ok=True)
 
 min_file = 0
 max_file = 1000     #For MB up to 4000, 1000 is reduced/broad for MB. For SP use IceTop (needs to be added)
-num_sims = 10
+num_sims = 100
 
 file_range = np.linspace(min_file, max_file, num_sims)
 

@@ -276,6 +276,7 @@ for evt, iE, x, y in runCoREAS(det, depthLayer, dB, attenuation_model):
             channelStopFilter.run(evt, station, det, prepend=0*units.ns, append=0*units.ns)
             eventWriter.run(evt, det)
 
+            """
             for iC, ch in enumerate(refl_LPDA_channels):
                 trace = station.get_channel(ch).get_trace()
                 axs[1][iC].plot(trace)
@@ -283,7 +284,7 @@ for evt, iE, x, y in runCoREAS(det, depthLayer, dB, attenuation_model):
             fig.savefig(savename)
             print(f'saved {savename}')
             quit()
-
+            """
 
     # Save every event for proper rate calculation
     # Now every event is saved regardless of if it triggers or not
