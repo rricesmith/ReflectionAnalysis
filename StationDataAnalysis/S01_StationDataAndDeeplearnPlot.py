@@ -67,7 +67,7 @@ for series in stations.keys():
 
         ############################################################################################
         # First plot is only station data, Chi v SNR
-        fig, axs = plt.subplots(1, len(data_to_plot), sharey=True, facecolor='w')
+        fig, axs = plt.subplots(1, 1, sharey=True, facecolor='w')
         axs = np.atleast_1d(axs)
 
         axs[0].hist2d(All_SNRs, All_RCR_Chi, bins=[SNRbins, maxCorrBins], norm=matplotlib.colors.LogNorm(), label=f'{np.sum(D04C_CutInBacklobeRCR.RCRChiSNRCutMask(All_SNRs, All_RCR_Chi))} Events Passing Cut')        
@@ -82,7 +82,7 @@ for series in stations.keys():
 
         ############################################################################################
         # Second plot is station data with simulated air showers
-        fig2, axs2 = plt.subplots(1, len(data_to_plot), sharey=True, facecolor='w')
+        fig2, axs2 = plt.subplots(1, 1, sharey=True, facecolor='w')
         axs2 = np.atleast_1d(axs2)
 
         plotSimSNRChi(templates_RCR, noiseRMS, ax=axs2[0], cut=True, path=f'DeepLearning/data/3rdpass/')
@@ -104,7 +104,7 @@ for series in stations.keys():
 
         ############################################################################################
         # Third plot adds backlobe onto total plot, and does separate of backlobe only
-        fig2, axs2 = plt.subplots(1, len(data_to_plot), sharey=True, facecolor='w')
+        fig2, axs2 = plt.subplots(1, 1, sharey=True, facecolor='w')
         axs2 = np.atleast_1d(axs2)
                 
         plotSimSNRChi(templates_RCR, noiseRMS, type='Backlobe', ax=axs[0], cut=True, path=f'DeepLearning/data/3rdpass/')
@@ -125,7 +125,7 @@ for series in stations.keys():
 
         ############################################################################################
         # Fourth plot shows the selected events from Time-ML cut
-        fig2, axs2 = plt.subplots(1, len(data_to_plot), sharey=True, facecolor='w')
+        fig2, axs2 = plt.subplots(1, 1, sharey=True, facecolor='w')
         axs2 = np.atleast_1d(axs2)
 
         axs[0].scatter(PassingCut_SNRs, PassingCut_RCR_Chi, label=f'{len(PassingCut_RCR_Chi)} Events Passing Time-ML Cut', facecolor='none', edgecolor='black')
@@ -148,7 +148,7 @@ for series in stations.keys():
 
         ############################################################################################
         # Fifth plot shows events from 2016
-        fig2, axs2 = plt.subplots(1, len(data_to_plot), sharey=True, facecolor='w')
+        fig2, axs2 = plt.subplots(1, 1, sharey=True, facecolor='w')
         axs2 = np.atleast_1d(axs2)
 
         axs[0].scatter(in2016_SNRs, in2016_RCR_Chi, label=f'{len(in2016_RCR_Chi)} Events from 2016', marker='*', facecolor='red', edgecolor='black')
