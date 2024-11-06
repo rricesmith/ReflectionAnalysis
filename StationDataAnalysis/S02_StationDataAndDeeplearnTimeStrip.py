@@ -20,7 +20,7 @@ def getTimestripAxs(yearStart=2014, yearEnd=2019):
     fig, axs = plt.subplots(1, delta_years, sharey=True, facecolor='w')
     return fig, axs
 
-def timestripScatter(times, data, yearStart=2014, yearEnd=2019, legend=None, marker=None, color=None, markersize=2 fig=None, axs=None):
+def timestripScatter(times, data, yearStart=2014, yearEnd=2019, legend=None, marker=None, color=None, markersize=2, fig=None, axs=None):
     # plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%Y'))
     # locator = mdates.AutoDateLocator(minticks=3, maxticks=4)    #Originally 5 and 10
     # plt.gca().xaxis.set_major_locator(locator)
