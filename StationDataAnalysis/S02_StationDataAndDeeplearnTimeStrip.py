@@ -104,7 +104,7 @@ if __name__ == "__main__":
             All_datetimes, MLCut_datetimes, ChiCut_datetimes = times
 
 
-            ic(len(All_datetimes), len(MLCut_datetimes), len(ChiCut_datetimes), len(in2016_Times))
+            ic(len(All_datetimes), len(MLCut_datetimes), len(ChiCut_datetimes), len(in2016_datetimes))
             All_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(All_datetimes)
             if not len(MLCut_datetimes) == 0:
                 MLCut_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(MLCut_datetimes)
@@ -126,7 +126,7 @@ if __name__ == "__main__":
                 # Plot the data
                 fig, axs = timestripScatter(All_datetimes, All_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='All data', marker='o', color='b', markersize=2)
                 plt.legend()
-                fig.suptitle(f'Station {station_id})')
+                fig.suptitle(f'Station {station_id} {yStart}-{yEnd}')
                 savename = f'{plotfolder}/Station{station_id}_Timestrip_AllData_{yStart}-{yEnd}.png'
                 plt.savefig(savename, format='png')
                 ic(f'Saved {savename}')
@@ -137,13 +137,13 @@ if __name__ == "__main__":
                 plt.savefig(savename, format='png')
                 ic(f'Saved {savename}')
 
-                timestripScatter(ChiCut_datetimes, ChiCut_RCR_Chi, yearStart=yEnd, yearEnd=yEnd, legend='Chi Cut', marker='o', color='g', markersize=2, fig=fig, axs=axs)
+                timestripScatter(ChiCut_datetimes, ChiCut_RCR_Chi, yearStart=yEnd, yearEnd=yEnd, legend='Chi Cut', marker='o', color='m', markersize=2, fig=fig, axs=axs)
                 plt.legend()
                 savename = f'{plotfolder}/Station{station_id}_Timestrip_ChiCut_{yStart}-{yEnd}.png'
                 plt.savefig(savename, format='png')
                 ic(f'Saved {savename}')
 
-                timestripScatter(in2016_datetimes, in2016_RCR_Chi, yearStart=yEnd, yearEnd=yEnd, legend='2016 Events', marker='*', color='b', markersize=2, fig=fig, axs=axs)
+                timestripScatter(in2016_datetimes, in2016_RCR_Chi, yearStart=yEnd, yearEnd=yEnd, legend='2016 Events', marker='*', color='k', markersize=4, fig=fig, axs=axs)
                 plt.legend()
                 savename = f'{plotfolder}/Station{station_id}_Timestrip_2016Events_{yStart}-{yEnd}.png'
                 plt.savefig(savename, format='png')
@@ -151,5 +151,5 @@ if __name__ == "__main__":
 
 
                 plt.close(fig)
-            quit()
+            # quit()
 
