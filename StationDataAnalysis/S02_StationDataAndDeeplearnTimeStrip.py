@@ -14,8 +14,9 @@ def getTimestripAxs(yearStart=2014, yearEnd=2019):
 
     timeMin = datetime.datetime(yearStart, 10, 1)
     timeMax = datetime.datetime(yearEnd, 6, 1)
-    delta_years = int(yearStart-yearStart)
+    delta_years = int(yearEnd-yearStart)
     delta_days = (timeMax - timeMin).days
+    ic(timeMin, timeMax, delta_years, delta_days)
 
     fig, axs = plt.subplots(1, delta_years, sharey=True, facecolor='w')
     return fig, axs
@@ -34,9 +35,11 @@ def timestripScatter(times, data, yearStart=2014, yearEnd=2019, legend=None, mar
     if axs == None:
         fig, axs = getTimestripAxs(yearStart, yearEnd)
 
+    ic(fig, axs, len(axs))
 
     for iA, ax in enumerate(axs):
-        ax.scatter(times, data, label=legend, marker=marker, color=color, markersize=markersize)
+        ic(times[0:10], data[0:10])
+        ax.scatter(times, data, label=legend, marker=marker, color=color, s=markersize)
         # ax.set_xlim(left=timeMin, right=timeMin + datetime.timedelta(days=365) * (iA+1))
         # ax.set_title(f'{}')
     plt.gcf().autofmt_xdate()
@@ -83,12 +86,12 @@ if __name__ == "__main__":
 
     for series in stations.keys():
         for station_id in stations[series]:
-                            station_data_folder = f'DeepLearning/data/{datapass}/Station{station_id}'
+            station_data_folder = f'DeepLearning/data/{datapass}/Station{station_id}'
 
             data = np.load(f'{station_data_folder}/FilteredStation{station_id}_Data_SNR_Chi.npy', allow_pickle=True)
             data_SnrChiCut = np.load(f'{station_data_folder}/FilteredStation{station_id}_Data_SnrChiCut.npy', allow_pickle=True)
             data_in2016 = np.load(f'{station_data_folder}/FilteredStation{station_id}_Data_In2016.npy', allow_pickle=True)
-            times = np.load(f'{station_data_folder}/FilteredStation{station_id}_Times.npy', allow_pickle=True)
+            times = np.load(f'{station_data_folder}/FilteredStation{station_id}_Data_Times.npy', allow_pickle=True)
 
             plotfolder = f'StationDataAnalysis/plots/Station_{station_id}'
             if not os.path.exists(plotfolder):
@@ -100,6 +103,8 @@ if __name__ == "__main__":
             in2016_SNRs, in2016_RCR_Chi, in2016_Azi, in2016_Zen, in2016_Traces, in2016_Times = data_in2016
             All_datetimes, MLCut_datetimes, ChiCut_datetimes= times
 
+            All_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(All_datetimes)
+
             # Plot the data
             fig, axs = timestripScatter(All_datetimes, All_RCR_Chi, yearStart=2014, yearEnd=2019, legend='All', marker='o', color='b', markersize=2)
             plt.legend()
@@ -107,8 +112,8 @@ if __name__ == "__main__":
             savename = f'{plotfolder}/Station{station_id}_Timestrip_AllData.png'
             plt.savefig(savename, format='png')
             ic(f'Saved {savename}')
-            fig.close()
-
+            plt.close(fig)
 
 
             quit()
+
