@@ -32,7 +32,7 @@ def timestripScatter(times, data, yearStart=2014, yearEnd=2019, legend=None, mar
     # delta_days = (timeMax - timeMin).days
 
     # fig, axs = plt.subplots(1, delta_years, sharey=True, facecolor='w')
-    if axs == None:
+    if np.all(axs) == None:
         fig, axs = getTimestripAxs(yearStart, yearEnd)
 
     ic(fig, axs, len(axs))
@@ -102,14 +102,18 @@ if __name__ == "__main__":
             in2016_SNRs, in2016_RCR_Chi, in2016_Azi, in2016_Zen, in2016_Traces, in2016_Times = data_in2016
             All_datetimes, MLCut_datetimes, ChiCut_datetimes = times
 
+
+            ic(len(All_datetimes), len(MLCut_datetimes), len(ChiCut_datetimes), len(in2016_Times))
             All_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(All_datetimes)
-            MLCut_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(MLCut_datetimes)
+            if not len(MLCut_datetimes) == 0:
+                MLCut_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(MLCut_datetimes)
             ChiCut_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(ChiCut_datetimes)
-            in2016_Times = np.vectorize(datetime.datetime.fromtimestamp)(in2016_Times)
+            if not len(in2016_Times) == 0:
+                in2016_Times = np.vectorize(datetime.datetime.fromtimestamp)(in2016_Times)
 
             # Plot the data
             fig, axs = timestripScatter(All_datetimes, All_RCR_Chi, yearStart=2014, yearEnd=2019, legend='All data', marker='o', color='b', markersize=2)
-            timestripScatter(MLCut_datetimes, MLCut_RCR_Chi, yearStart=2014, yearEnd=2019, legend='ML Cut', marker='o', color='r', markersize=2, fig=fig, axs=axs)
+            timestripScatter(ChiCut_datetimes, ChiCut_RCR_Chi, yearStart=2014, yearEnd=2019, legend='Chi Cut', marker='o', color='r', markersize=4, fig=fig, axs=axs)
             plt.legend()
             fig.suptitle(f'Station {station_id} All Data')
             savename = f'{plotfolder}/Station{station_id}_Timestrip_AllData.png'
