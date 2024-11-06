@@ -3,9 +3,8 @@ import matplotlib.pyplot as plt
 import matplotlib.colors
 from NuRadioReco.utilities import units
 import os
-from DeepLearning.D04B_reprocessNurPassingCut import plotSimSNRChi
+from DeepLearning.D04B_reprocessNurPassingCut import plotSimSNRChi, pT
 import DeepLearning.D00_helperFunctions as D00_helperFunctions
-
 from icecream import ic
 import DeepLearning.D04C_CutInBacklobeRCR as D04C_CutInBacklobeRCR
 from StationDataAnalysis.S00_FoundEventsSearchUtil import inStation2016
@@ -167,7 +166,26 @@ for series in stations.keys():
         fig2.savefig(savename)
         print(f'Saved {savename}')
 
+
+        plt.close(fig)
+        plt.close(fig2)
         ############################################################################################
+        # Plot all the traces found from 2016 and save the numpy traces for use as templates
+        for iT, traces in enumerate(in2016_Traces):
+            stationtime = in2016_Times[iT]
+            azi = in2016_Azi[iT]
+            zen = in2016_Zen[iT]
+            chi = in2016_RCR_Chi[iT]
+            SNR = in2016_SNRs[iT]
+
+
+            plotfolder = f'StationDataAnalysis/plots/Station_{station_id}/Events2016'
+            if not os.path.exists(plotfolder):
+                os.makedirs(plotfolder)
+            pT(traces, datetime.datetime.fromtimestamp(stationtime).strftime("%m-%d-%Y, %H:%M:%S") + f' Chi {chi:.2f} SNR {SNR:.2f}, {zen:.1f}Deg Zen {azi:.1f}Deg Azi', 
+                f'{plotfolder}/Event2016_{stationtime}_Chi{chi:.2f}_SNR{SNR:.2f}.png')
+            tracefolder = f'StationDataAnalysis/templates/Station_{station_id}'
+            np.save(f'{tracefolder}/Event2016_{stationtime}_Chi{chi:.2f}_SNR{SNR:.2f}.npy', traces)
 
 
     plt.close('all')
