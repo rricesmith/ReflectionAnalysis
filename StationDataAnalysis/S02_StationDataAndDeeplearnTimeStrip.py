@@ -19,6 +19,7 @@ def getTimestripAxs(yearStart=2014, yearEnd=2019):
     ic(timeMin, timeMax, delta_years, delta_days)
 
     fig, axs = plt.subplots(1, delta_years, sharey=True, facecolor='w')
+    axs = np.atleast_1d(axs)
     return fig, axs
 
 def timestripScatter(times, data, yearStart=2014, yearEnd=2019, legend=None, marker=None, color=None, markersize=2, fig=None, axs=None):
@@ -108,7 +109,7 @@ if __name__ == "__main__":
             if not len(MLCut_datetimes) == 0:
                 MLCut_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(MLCut_datetimes)
             ChiCut_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(ChiCut_datetimes)
-            if not len(in2016_Times) == 0:
+            if not len(in2016_datetimes) == 0:
                 in2016_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(in2016_datetimes)
 
 
