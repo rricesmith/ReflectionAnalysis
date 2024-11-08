@@ -33,7 +33,8 @@ def getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=1):
     delta_days = (timeMax - timeMin).days
     ic(timeMin, timeMax, delta_years, delta_days)
 
-    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, facecolor='w')
+    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, facecolor='w', squeeze=False)
+    ic(axs.shape, n_stations, delta_years)
     axs = np.atleast_2d(axs)
     return fig, axs
 
@@ -53,7 +54,7 @@ def timestripScatter(times, data, yearStart=2014, yearEnd=2019, legend=None, mar
     if np.all(axs) == None:
         fig, axs = getTimestripAxs(yearStart, yearEnd)
 
-    ic(fig, axs, len(axs))
+#    ic(fig, axs, len(axs))
 
     for iA, ax in enumerate(axs):
         ax.scatter(times, data, label=legend, marker=marker, color=color, s=markersize)
@@ -97,12 +98,12 @@ def timestripScatter(times, data, yearStart=2014, yearEnd=2019, legend=None, mar
 
 def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
     # Find days that correspond to high number of high chi events, which indicates high noise that day
-    ic(data)
+    # ic(data)
     datamask = data > chi_cut
 
     ctimes = times[datamask]
     cdata = data[datamask]
-    ic(len(times), len(ctimes), len(data), len(cdata))
+    # ic(len(times), len(ctimes), len(data), len(cdata))
 
 
     cluster_days = []
@@ -118,7 +119,7 @@ def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
             if n_day > n_cluster:
                 cluster_days.append(idate)
 
-    ic(len(cluster_days), cluster_days[0:10])
+    # ic(len(cluster_days), cluster_days[0:10])
     return cluster_days
 
 
@@ -142,6 +143,7 @@ if __name__ == "__main__":
 
 
     for series in stations.keys():
+        # continue
         for station_id in stations[series]:
             station_data_folder = f'DeepLearning/data/{datapass}/Station{station_id}'
 
@@ -234,9 +236,11 @@ if __name__ == "__main__":
         if not os.path.exists(plotfolder):
             os.makedirs(plotfolder)
 
+        ic(yStart, yEnd)
 
         fig_all, axs_all = getVerticalTimestripAxs(yearStart=yStart, yearEnd=yEnd, n_stations=len(stations_100s)+len(stations_200s))
         axs_all = np.atleast_2d(axs_all)
+        ic(axs_all.shape, axs_all[0].shape)
         i_station = 0
         for series in stations.keys():
             for station_id in stations[series]:
@@ -247,7 +251,7 @@ if __name__ == "__main__":
                 data_in2016 = np.load(f'{station_data_folder}/FilteredStation{station_id}_Data_In2016.npy', allow_pickle=True)
                 times = np.load(f'{station_data_folder}/FilteredStation{station_id}_Data_Times.npy', allow_pickle=True)
 
-                plotfolder = f'StationDataAnalysis/plots/Station_{station_id}/TimeStrips'
+#                plotfolder = f'StationDataAnalysis/plots/Station_{station_id}/TimeStrips'
                 if not os.path.exists(plotfolder):
                     os.makedirs(plotfolder)
 
@@ -276,16 +280,16 @@ if __name__ == "__main__":
                 # Plot all data
                 plotClusterTimes(ChiCut_datetimes, ChiCut_RCR_Chi, fig_all, axs_all[i_station], n_cluster=10, chi_cut=0.6)
                 timestripScatter(All_datetimes, All_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='All data', marker='o', color='k', markersize=2, fig=fig_all, axs=axs_all[i_station])
-                timestripScatter(MLCut_datetimes, MLCut_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='ML Cut', marker='o', color='b', markersize=2, fig=fig, axs=axs_all[i_station])
-                timestripScatter(ChiCut_datetimes, ChiCut_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='Chi Cut', marker='o', color='m', markersize=2, fig=fig, axs=axs_all[i_station])
-                timestripScatter(in2016_datetimes, in2016_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='2016 Events', marker='*', color='g', markersize=8, fig=fig, axs=axs_all[i_station])
+                timestripScatter(MLCut_datetimes, MLCut_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='ML Cut', marker='o', color='b', markersize=2, fig=fig_all, axs=axs_all[i_station])
+                timestripScatter(ChiCut_datetimes, ChiCut_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='Chi Cut', marker='o', color='m', markersize=2, fig=fig_all, axs=axs_all[i_station])
+                timestripScatter(in2016_datetimes, in2016_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='2016 Events', marker='*', color='g', markersize=8, fig=fig_all, axs=axs_all[i_station])
                 plt.legend()
 
                 # Title on middle plot
                 axs_all[i_station][int(len(axs_all[i_station])/2)].title.set_text(f'Station {station_id} {yStart}-{yEnd}')
-                savename = f'{plotfolder}/Timestrip_AllData_{yStart}-{yEnd}.png'
-                plt.savefig(savename, format='png')
-                ic(f'Saved {savename}')
-
 
                 i_station += 1
+
+        savename = f'{plotfolder}/Timestrip_AllData_{yStart}-{yEnd}.png'
+        plt.savefig(savename, format='png')
+        ic(f'Saved {savename}')
