@@ -104,11 +104,11 @@ def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
 
 
     cluster_days = []
-    for iD, idate in ctimes:
+    for iD, idate in enumerate(ctimes):
         if idate.day in cluster_days:
             continue
         n_day = 1
-        for jD, jdate in ctimes:
+        for jD, jdate in enumerate(ctimes):
             if (iD == jD) or (n_day > n_cluster) or (jdate.day in cluster_days):
                 continue
             if idate.day == jdate.day:
