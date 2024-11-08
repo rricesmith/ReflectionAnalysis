@@ -181,7 +181,7 @@ if __name__ == "__main__":
                     yEnd = years[iY+1]
 
                 # Plot the data
-                fig, axs = getTimestripAxs(yearStart, yearEnd)
+                fig, axs = getTimestripAxs(yStart, yEnd)
                 plotClusterTimes(All_datetimes, All_RCR_Chi, fig, axs, n_cluster=10, chi_cut=0.6)
                 timestripScatter(All_datetimes, All_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='All data', marker='o', color='k', markersize=2, fig=fig, axs=axs)
                 plt.legend()

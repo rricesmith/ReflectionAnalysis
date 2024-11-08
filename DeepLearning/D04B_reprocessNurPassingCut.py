@@ -98,41 +98,6 @@ def pT(traces, title, saveLoc, sampling_rate=2, show=False, average_fft_per_chan
     x = np.linspace(1, int(256 / sampling_rate), num=256)
     x_freq = np.fft.rfftfreq(len(x), d=(1 / sampling_rate*units.GHz)) / units.MHz
 
-    """ #Method for plotting a single plot
-    #fig, axs = plt.subplots(nrows=1, ncols=2, sharex=False)
-    plt.plot(x, traces[0]*100, color='orange')
-    plt.plot(x, traces[1]*100, color='blue')
-    plt.plot(x, traces[2]*100, color='purple')
-    plt.plot(x, traces[3]*100, color='green')
-    plt.xlabel('time [ns]',fontsize=18)
-    plt.ylabel('Amplitude (mV)')
-    plt.xlim(-3,260 / sampling_rate)
-    plt.title(title)
-    plt.savefig(saveLoc + '_Traces.png', format='png')
-    plt.clf()
-    plt.close()
-
-
-    freqs = []
-    for trace in traces:
-        freqtrace = np.abs(fft.time2freq(trace, sampling_rate*units.GHz))
-        freqs.append(freqtrace)
-    plt.plot(x_freq/1000, freqs[0], color='orange', label='Channel 0')
-    plt.plot(x_freq/1000, freqs[1], color='blue', label='Channel 1')
-    plt.plot(x_freq/1000, freqs[2], color='purple', label='Channel 2')
-    plt.plot(x_freq/1000, freqs[3], color='green', label='Channel 3')
-    plt.xlabel('Frequency [GHz]',fontsize=18)
-    plt.ylabel('Amplitude')
-#    axs[0][1].set_ylabel('Amplitude')
-    plt.xlim(-0.003, 1.050)
-    plt.xticks(size=13)
-    plt.title(title)
-    plt.savefig(saveLoc + '_Freqs.png', format='png')
-#    plt.savefig(f'DeepLearning/plots/Station_19/GoldenDay/NuSearchFreqs_{title}.png', format='png')
-    plt.clf()
-    plt.close()
-    return
-    """
 
 #    print(f'shape traces {np.shape(traces)}')
 
