@@ -95,6 +95,38 @@ def timestripScatter(times, data, yearStart=2014, yearEnd=2019, legend=None, mar
     return fig, axs
 
 
+def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
+    # Find days that correspond to high number of high chi events, which indicates high noise that day
+    datamask = data > chi_cut
+
+    ctimes = times[datamask]
+    cdata = data[datamask]
+
+
+    cluster_days = []
+    for iD, idate in ctimes:
+        if idate.day in cluster_days:
+            continue
+        n_day = 1
+        for jD, jdate in ctimes:
+            if (iD == jD) or (n_day > n_cluster) or (jdate.day in cluster_days):
+                continue
+            if idate.day == jdate.day:
+                n_day += 1
+            if n_day > n_cluster:
+                cluster_days.append(idate)
+
+    return cluster_days
+
+
+def plotClusterTimes(times, data, fig, axs, n_cluster=10, chi_cut=0.6):
+    cluster_days = findClusterTimes(times, data, n_cluster=n_cluster, chi_cut=chi_cut)
+
+    for iA, ax in enumerate(axs):
+        for cdate in cluster_days:
+            ax.axvspan(cdate, cdate + datetime.timedelta(days=1), color='r', alpha=0.5, hatch='/')
+
+    return
 
 
 if __name__ == "__main__":
@@ -136,6 +168,7 @@ if __name__ == "__main__":
             if not len(in2016_datetimes) == 0:
                 in2016_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(in2016_datetimes)
 
+            All_RCR_Chi = np.array(All_RCR_Chi)
 
             # Iterate through each year, then also plot all years at once
             years = [2014, 2015, 2016, 2017, 2018, 2019]
@@ -148,6 +181,7 @@ if __name__ == "__main__":
                     yEnd = years[iY+1]
 
                 # Plot the data
+                plotClusterTimes(All_datetimes, All_RCR_Chi, fig, axs, n_cluster=10, chi_cut=0.6)
                 fig, axs = timestripScatter(All_datetimes, All_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='All data', marker='o', color='k', markersize=2)
                 plt.legend()
                 fig.suptitle(f'Station {station_id} {yStart}-{yEnd}')
@@ -216,6 +250,7 @@ if __name__ == "__main__":
                 All_datetimes, MLCut_datetimes, ChiCut_datetimes = times
 
 
+
                 ic(len(All_datetimes), len(MLCut_datetimes), len(ChiCut_datetimes), len(in2016_datetimes))
                 if len(All_datetimes) == 0:
                     print(f'Skipping station {station_id} because no data')
@@ -227,7 +262,11 @@ if __name__ == "__main__":
                 if not len(in2016_datetimes) == 0:
                     in2016_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(in2016_datetimes)
 
+                All_RCR_Chi = np.array(All_RCR_Chi)
+
+
                 # Plot all data
+                plotClusterTimes(All_datetimes, All_RCR_Chi, fig, axs, n_cluster=10, chi_cut=0.6)
                 timestripScatter(All_datetimes, All_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='All data', marker='o', color='k', markersize=2, fig=fig_all, axs=axs_all[i_station])
                 timestripScatter(MLCut_datetimes, MLCut_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='ML Cut', marker='o', color='r', markersize=2, fig=fig, axs=axs_all[i_station])
                 timestripScatter(ChiCut_datetimes, ChiCut_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='Chi Cut', marker='o', color='m', markersize=2, fig=fig, axs=axs_all[i_station])
@@ -235,7 +274,7 @@ if __name__ == "__main__":
                 plt.legend()
 
                 # Title on middle plot
-                axs_all[i_station][int(len(axs_all[i_station])/2)].suptitle(f'Station {station_id} {yStart}-{yEnd}')
+                axs_all[i_station][int(len(axs_all[i_station])/2)].title.set_text(f'Station {station_id} {yStart}-{yEnd}')
                 savename = f'{plotfolder}/Timestrip_AllData_{yStart}-{yEnd}.png'
                 plt.savefig(savename, format='png')
                 ic(f'Saved {savename}')
