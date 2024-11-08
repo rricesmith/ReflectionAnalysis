@@ -236,6 +236,7 @@ if __name__ == "__main__":
 
 
         fig_all, axs_all = getVerticalTimestripAxs(yearStart=yStart, yearEnd=yEnd, n_stations=len(stations_100s)+len(stations_200s))
+        axs_all = np.atleast_2d(axs_all)
         i_station = 0
         for series in stations.keys():
             for station_id in stations[series]:
