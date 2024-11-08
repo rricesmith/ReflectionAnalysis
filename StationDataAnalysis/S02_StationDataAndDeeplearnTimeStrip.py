@@ -181,8 +181,9 @@ if __name__ == "__main__":
                     yEnd = years[iY+1]
 
                 # Plot the data
+                fig, axs = getTimestripAxs(yearStart, yearEnd)
                 plotClusterTimes(All_datetimes, All_RCR_Chi, fig, axs, n_cluster=10, chi_cut=0.6)
-                fig, axs = timestripScatter(All_datetimes, All_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='All data', marker='o', color='k', markersize=2)
+                timestripScatter(All_datetimes, All_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='All data', marker='o', color='k', markersize=2, fig=fig, axs=axs)
                 plt.legend()
                 fig.suptitle(f'Station {station_id} {yStart}-{yEnd}')
                 savename = f'{plotfolder}/Station{station_id}_Timestrip_AllData_{yStart}-{yEnd}.png'
@@ -266,7 +267,7 @@ if __name__ == "__main__":
 
 
                 # Plot all data
-                plotClusterTimes(All_datetimes, All_RCR_Chi, fig, axs, n_cluster=10, chi_cut=0.6)
+                plotClusterTimes(All_datetimes, All_RCR_Chi, fig_all, axs_all[i_station], n_cluster=10, chi_cut=0.6)
                 timestripScatter(All_datetimes, All_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='All data', marker='o', color='k', markersize=2, fig=fig_all, axs=axs_all[i_station])
                 timestripScatter(MLCut_datetimes, MLCut_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='ML Cut', marker='o', color='r', markersize=2, fig=fig, axs=axs_all[i_station])
                 timestripScatter(ChiCut_datetimes, ChiCut_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='Chi Cut', marker='o', color='m', markersize=2, fig=fig, axs=axs_all[i_station])
