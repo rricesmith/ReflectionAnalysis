@@ -2,8 +2,10 @@ import A00_SlurmUtil as slurm
 import os
 
 
-base_folder = '7thpass'
+# base_folder = '7thpass'
+base_folder = '2016pass'
 single_file = False
+template_date = '2016'  # switch to None when not doing so
 
 stations_100s = [13, 15, 18, 32]
 stations_200s = [14, 17, 19, 30]
@@ -23,12 +25,12 @@ for station in stations_100s:
                 continue    
             else:
                 filename = os.path.join(station_path, file)
-                cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp}'
+                cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp} --template_date {template_date}'
                 print(f'cmd {cmd}')
                 slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_{i}', partition='standard', runDirectory='run/')
                 i += 1
     else:
-        cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --amp {amp}'
+        cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --amp {amp} --template_date {template_date}'
         print(f'cmd {cmd}')
         slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_{i}', partition='standard', runDirectory='run/')
 
@@ -45,11 +47,11 @@ for station  in stations_200s:
                 continue    
             else:
                 filename = os.path.join(station_path, file)
-                cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp}'
+                cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp} --template_date {template_date}'
                 slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_{i}', partition='standard', runDirectory='run/')
                 i += 1
     else:
-        cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --amp {amp}'
+        cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --amp {amp} --template_date {template_date}'
         print(f'cmd {cmd}')
         slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_{i}', partition='standard', runDirectory='run/')
 
@@ -65,11 +67,11 @@ for station in stations_300s:
                 continue    
             else:
                 filename = os.path.join(station_path, file)
-                cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp} --first_ch {first_ch}'
+                cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp} --first_ch {first_ch} --template_date {template_date}'
                 slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_ch{first_ch}_{i}', partition='standard', runDirectory='run/')
                 i += 1
     else:
-        cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --amp {amp} --first_ch {first_ch}'
+        cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --amp {amp} --first_ch {first_ch} --template_date {template_date}'
         print(f'cmd {cmd}')
         slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_ch{first_ch}_{i}', partition='standard', runDirectory='run/')
 
@@ -82,11 +84,11 @@ for station in stations_300s:
                 continue    
             else:
                 filename = os.path.join(station_path, file)
-                cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp} --first_ch {first_ch}'
+                cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --single_file {filename} --amp {amp} --first_ch {first_ch} --template_date {template_date}'
                 slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_ch{first_ch}_{i}', partition='standard', runDirectory='run/')
                 i += 1
     else:
-        cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --amp {amp} --first_ch {first_ch}'
+        cmd = f'python DeepLearning/D04B_reprocessNurPassingCut.py {station} --folder {folder} --amp {amp} --first_ch {first_ch} --template_date {template_date}'
         print(f'cmd {cmd}')
         slurm.makeAndRunJob(cmd, jobName=f'Stn{station}_ch{first_ch}_{i}', partition='standard', runDirectory='run/')
 

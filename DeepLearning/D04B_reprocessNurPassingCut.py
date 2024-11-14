@@ -237,7 +237,7 @@ def loadTemplate(type='RCR', amp='200s'):
     quit()
 
 def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, plot=False, 
-              filter=False, BW=[80*units.MHz, 500*units.MHz], normalize=False, saveTimes=False, timeAdjust=True, cut=True):
+              filter=False, BW=[80*units.MHz, 500*units.MHz], normalize=False, saveTimes=False, timeAdjust=True, cut=True, template_date=None):
     if cut:
         import DeepLearning.D04C_CutInBacklobeRCR as D04C_CutInBacklobeRCR
     count = 0
@@ -273,22 +273,12 @@ def converter(nurFile, folder, savename, save_chans, station_id = 1, det=None, p
         print(f'normalizing to {Vrms} vrms')
 
     #Load 200s template
-    templates_RCR = D00_helperFunctions.loadSingleTemplate('200')
-    # templates_RCR = 'StationDataAnalysis/templates/reflectedCR_template_200series.pkl'
-    # templates_RCR = read_pickle(templates_RCR)
-    # for key in templates_RCR:
-    #     temp = templates_RCR[key]
-    # templates_RCR = temp
-
-    # Load series of templates
-    # template_series_RCR_location = 'DeepLearning/templates/RCR/'
-    # template_series_RCR = []
-    # for filename in os.listdir(template_series_RCR_location):
-    #     if filename.startswith('200s'):
-    #         temp = np.load(os.path.join(template_series_RCR_location, filename))
-    #         template_series_RCR.append(temp)
-    template_series_RCR = D00_helperFunctions.loadMultipleTemplates('200')
-    template_series_RCR.append(templates_RCR)
+    if template_date is None:
+        templates_RCR = D00_helperFunctions.loadSingleTemplate('200')
+        template_series_RCR = D00_helperFunctions.loadMultipleTemplates('200')
+        template_series_RCR.append(templates_RCR)
+    else:
+        templates_RCR = D00_helperFunctions.loadSingleTemplate('200', date=template_date)
 
     PassingCut_SNRs = []
     PassingCut_RCR_Chi = []
@@ -693,13 +683,15 @@ if __name__ == "__main__":
     parser.add_argument('--single_file', type=str, default=None, help='Single file to run on')
     parser.add_argument('--first_ch', type=int, default=0, help='First channel of 4 to save data from')
     parser.add_argument('--amp', type=str, default='200s', help='Amp type used')
+    parser.add_argument('--template_date', type=str, default=None, help='Template to use')
     args = parser.parse_args()
     station_id = args.station
     folder = args.folder
     single_file = args.single_file
     first_ch = args.first_ch
     amp = args.amp
-    
+    template_date = args.template_date
+
     if amp == '100s':
         noiseRMS = 20.0 * units.mV
     elif amp == '200s':
@@ -740,6 +732,6 @@ if __name__ == "__main__":
 
     saveChannels = np.arange(first_ch, first_ch+4)
     #converter(DataFiles, folder, f'Station{station_id}_Data', saveChannels, station_id = station_id, filter=False, saveTimes=True, plot=False)
-    converter(DataFiles, folder, savename, saveChannels, station_id = station_id, det=detector, filter=True, saveTimes=True, plot=False)
+    converter(DataFiles, folder, savename, saveChannels, station_id = station_id, det=detector, filter=True, saveTimes=True, plot=False, template_date=template_date)
 #    for file in DataFiles:
 #        converter(file, folder, f'FilteredStation{station_id}_Data', saveChannels, station_id = station_id, filter=True, saveTimes=True, plot=False)
