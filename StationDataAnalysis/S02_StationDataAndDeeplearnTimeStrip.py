@@ -33,7 +33,7 @@ def getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=1):
     delta_days = (timeMax - timeMin).days
     ic(timeMin, timeMax, delta_years, delta_days)
 
-    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, facecolor='w', squeeze=False)
+    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex=True, facecolor='w', squeeze=False)
     ic(axs.shape, n_stations, delta_years)
     axs = np.atleast_2d(axs)
     return fig, axs
