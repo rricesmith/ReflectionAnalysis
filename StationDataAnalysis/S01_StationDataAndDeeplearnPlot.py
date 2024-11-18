@@ -60,8 +60,11 @@ for series in stations.keys():
         in2016_SNRs, in2016_RCR_Chi, in2016_Azi, in2016_Zen, in2016_Traces, in2016_Times = data_in2016
 
 
-        templates_RCR = D00_helperFunctions.loadMultipleTemplates(series)
-        templates_RCR.append(D00_helperFunctions.loadSingleTemplate(series))
+        if datapass == '2016pass':
+            templates_RCR = D00_helperFunctions.loadMultipleTemplates(series, template_date='2016')
+        else:
+            templates_RCR = D00_helperFunctions.loadMultipleTemplates(series)
+            templates_RCR.append(D00_helperFunctions.loadSingleTemplate(series))
 
         ############################################################################################
         # First plot is only station data, Chi v SNR
