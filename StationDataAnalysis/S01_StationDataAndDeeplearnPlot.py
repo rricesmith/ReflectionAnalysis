@@ -24,13 +24,11 @@ def set_CHI_SNR_axis(ax, station_id):
     ax.set_ylabel('Avg Chi Highest Parallel Channels')
     return ax
 
-datapass = '7thpass'
+# datapass = '7thpass'
+datapass = '2016pass'
 stations_100s = [13, 15, 18, 32]
 stations_200s = [14, 17, 19, 30]
 stations = {100: stations_100s, 200: stations_200s}
-
-station_id = 30
-series = 200
 
 
 for series in stations.keys():
@@ -48,7 +46,7 @@ for series in stations.keys():
         data_SnrChiCut = np.load(f'{station_data_folder}/FilteredStation{station_id}_Data_SnrChiCut.npy', allow_pickle=True)
         data_in2016 = np.load(f'{station_data_folder}/FilteredStation{station_id}_Data_In2016.npy', allow_pickle=True)
 
-        plotfolder = f'StationDataAnalysis/plots/Station_{station_id}'
+        plotfolder = f'StationDataAnalysis/plots/{datapass}/Station_{station_id}'
         if not os.path.exists(plotfolder):
             os.makedirs(plotfolder)
 

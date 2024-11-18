@@ -131,8 +131,17 @@ def plotClusterTimes(times, data, fig, axs, n_cluster=10, chi_cut=0.6):
         for cdate in cluster_days:
             ax.axvspan(cdate, cdate + datetime.timedelta(days=1), color='r', alpha=0.5, hatch='/', zorder=-1)
     plt.gcf().autofmt_xdate()
-    return
+    return cluster_days
 
+def eventsPassedCluster(times, data, cluster_days):
+    # Find events that are not in the cluster days
+    passed_cluster_days = []
+    passed_cluster_data = []
+    for idate in times:
+        if not idate.day in cluster_days:
+            passed_cluster_days.append(idate)
+            passed_cluster_data.append(data)
+    return passed_cluster_days, passed_cluster_data
 
 if __name__ == "__main__":
 
@@ -190,7 +199,7 @@ if __name__ == "__main__":
 
                 # Plot the data
                 fig, axs = getTimestripAxs(yStart, yEnd)
-                plotClusterTimes(ChiCut_datetimes, ChiCut_RCR_Chi, fig, axs, n_cluster=10, chi_cut=0.6)
+                cluster_days = plotClusterTimes(ChiCut_datetimes, ChiCut_RCR_Chi, fig, axs, n_cluster=10, chi_cut=0.6)
                 timestripScatter(All_datetimes, All_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='All data', marker='o', color='k', markersize=2, fig=fig, axs=axs)
                 plt.legend()
                 fig.suptitle(f'Station {station_id} {yStart}-{yEnd}')
@@ -213,6 +222,13 @@ if __name__ == "__main__":
                 timestripScatter(in2016_datetimes, in2016_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='2016 Events', marker='*', color='g', markersize=8, fig=fig, axs=axs)
                 plt.legend()
                 savename = f'{plotfolder}/Station{station_id}_Timestrip_2016Events_{yStart}-{yEnd}.png'
+                plt.savefig(savename, format='png')
+                ic(f'Saved {savename}')
+
+                good_days, good_chi = eventsPassedCluster(ChiCut_datetimes, ChiCut_RCR_Chi, cluster_days)
+                timestripScatter(good_days, good_chi, yearStart=yStart, yearEnd=yEnd, legend='Events Passing Cluster Cut', marker='^', color='y', markersize=8, fig=fig, axs=axs)
+                plt.legend()
+                savename = f'{plotfolder}/Station{station_id}_Timestrip_EventsPassedCluster_{yStart}-{yEnd}.png'
                 plt.savefig(savename, format='png')
                 ic(f'Saved {savename}')
 
