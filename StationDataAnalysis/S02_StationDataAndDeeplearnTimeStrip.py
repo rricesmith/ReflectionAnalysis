@@ -124,13 +124,14 @@ def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
     return cluster_days
 
 
-def plotClusterTimes(times, data, fig, axs, n_cluster=10, chi_cut=0.6):
-    ic('finding cluster times')
-    cluster_days = findClusterTimes(times, data, n_cluster=n_cluster, chi_cut=chi_cut)
+def plotClusterTimes(times, data, fig, axs, cluster_days=None, n_cluster=10, chi_cut=0.6, color='r'):
+    if np.all(cluster_days) == None:
+        ic('finding cluster times')
+        cluster_days = findClusterTimes(times, data, n_cluster=n_cluster, chi_cut=chi_cut)
 
     for iA, ax in enumerate(axs):
         for cdate in cluster_days:
-            ax.axvspan(cdate, cdate + datetime.timedelta(days=1), color='r', alpha=0.5, hatch='/', zorder=-1)
+            ax.axvspan(cdate, cdate + datetime.timedelta(days=1), color=color, alpha=0.5, hatch='/', zorder=-1)
     plt.gcf().autofmt_xdate()
     return cluster_days
 
@@ -144,6 +145,40 @@ def eventsPassedCluster(times, data, cluster_days):
             passed_cluster_data.append(data[idate])
     return passed_cluster_days, passed_cluster_data
 
+def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1):
+    # times_dict        : {station_id: times}
+    # data_dict         : {station_id: data}
+    # coincidence_time  : window for coincidence in seconds
+
+    # Find events with coincidence times between multiple stations
+
+    coinc_days = {}
+    coinc_data = {}
+
+    station_ids = list(times_dict.keys())
+    for iS, station_id in enumerate(station_ids):
+        coinc_days[station_id] = []
+        coinc_data[station_id] = []
+        if station_id == station_ids[-1]:
+            break
+        for jS, station_id2 in enumerate(station_ids[iS+1:]):
+            for iD, date in enumerate(times_dict[station_id]):
+                if date in coinc_days[station_id]:
+                    continue
+                for jD, date2 in enumerate(times_dict[station_id2]):
+                    if abs(date - date2).seconds < coincidence_time:
+                        coinc_days[station_id].append(date)
+                        coinc_data[station_id].append(data_dict[station_id][iD])
+                        coinc_days[station_id2].append(date2)
+                        coinc_data[station_id2].append(data_dict[station_id2][jD])
+
+
+    return coinc_days, coinc_data
+    
+
+
+
+
 if __name__ == "__main__":
 
     # datapass = '7thpass'
@@ -152,10 +187,16 @@ if __name__ == "__main__":
     stations_200s = [14, 17, 19, 30]
     stations = {100: stations_100s, 200: stations_200s}
 
+    # Dictionary for finding coincidence events
+    times_dict = {}
+    data_dict = {}
 
     for series in stations.keys():
         # continue
         for station_id in stations[series]:
+            times_dict[station_id] = []
+            data_dict[station_id] = []
+
             station_data_folder = f'DeepLearning/data/{datapass}/Station{station_id}'
 
             data = np.load(f'{station_data_folder}/FilteredStation{station_id}_Data_SNR_Chi.npy', allow_pickle=True)
@@ -234,11 +275,31 @@ if __name__ == "__main__":
                 savename = f'{plotfolder}/Station{station_id}_Timestrip_EventsPassedCluster_{yStart}-{yEnd}.png'
                 plt.savefig(savename, format='png')
                 ic(f'Saved {savename}')
-
+                    
 
                 plt.close(fig)
                 # quit()
 
+                # Find coincidence events
+                if yStart == years[0] and yEnd == years[-1]:
+                    times_dict[station_id] = ChiCut_datetimes
+                    data_dict[station_id] = ChiCut_RCR_Chi
+
+
+    # Find coincidence events and plot
+    coinc_days, coinc_data = findCoincidenceEvents(times_dict, data_dict, coincidence_time=1)
+    fig_all, axs_all = getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=len(stations_100s)+len(stations_200s))
+    axs_all = np.atleast_2d(axs_all)
+    for i_station, station_id in enumerate(coinc_days.keys()):
+        plotClusterTimes(None, None, fig_all, axs_all[i_station], cluster_days=coinc_days[station_id], color='g')
+    savename = f'StationDataAnalysis/plots/CoincDaysTest.png'
+    plt.savefig(savename, format='png')
+    ic(f'Saved {savename}')
+
+
+
+
+    quit()
 
     # Plot all stations on a single timestrip
     # Iterate through each year, then also plot all years at once
