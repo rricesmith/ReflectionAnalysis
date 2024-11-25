@@ -33,7 +33,7 @@ def getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=1):
     delta_days = (timeMax - timeMin).days
     ic(timeMin, timeMax, delta_years, delta_days)
 
-    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex=True, facecolor='w', squeeze=False)
+    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex=True, facecolor='w', squeeze=False, figsize=(n_stations * 8, delta_years * 5))
     ic(axs.shape, n_stations, delta_years)
     axs = np.atleast_2d(axs)
     return fig, axs
@@ -183,7 +183,8 @@ if __name__ == "__main__":
 
     # datapass = '7thpass'
     datapass = '2016pass'
-    stations_100s = [13, 15, 18, 32]
+    # stations_100s = [13, 15, 18, 32]  # Station 32 data not compiled yet
+    stations_100s = [13, 15, 18]
     stations_200s = [14, 17, 19, 30]
     stations = {100: stations_100s, 200: stations_200s}
 
@@ -318,7 +319,7 @@ if __name__ == "__main__":
 
         ic(yStart, yEnd)
 
-        fig_all, axs_all = getVerticalTimestripAxs(yearStart=yStart, yearEnd=yEnd, n_stations=len(stations_100s)+len(stations_200s))
+        fig_all, axs_all = getVerticalTimestripAxs(yearStart=yStart, yearEnd=yEnd, n_stations=len(stations_100s)+len(stations_200s), sharex=True, sharey=True)
         axs_all = np.atleast_2d(axs_all)
         ic(axs_all.shape, axs_all[0].shape)
         i_station = 0
@@ -363,12 +364,15 @@ if __name__ == "__main__":
                 timestripScatter(MLCut_datetimes, MLCut_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='ML Cut', marker='o', color='b', markersize=2, fig=fig_all, axs=axs_all[i_station])
                 timestripScatter(ChiCut_datetimes, ChiCut_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='Chi Cut', marker='o', color='m', markersize=2, fig=fig_all, axs=axs_all[i_station])
                 timestripScatter(in2016_datetimes, in2016_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='2016 Events', marker='*', color='g', markersize=8, fig=fig_all, axs=axs_all[i_station])
-                plt.legend()
+                # plt.legend()
 
                 # Title on middle plot
-                axs_all[i_station][int(len(axs_all[i_station])/2)].title.set_text(f'Station {station_id} {yStart}-{yEnd}')
+                axs_all[i_station][0].tick_params(axis='y', labelleft=False)
+                axs_all[i_station][0].set_ylabel(f'Stn{station_id}')
 
                 i_station += 1
+
+        axs_all[0][int(len(axs_all[i_station])/2)].title.set_text(f'{yStart}-{yEnd}')
 
         savename = f'{plotfolder}/Timestrip_AllData_{yStart}-{yEnd}.png'
         plt.savefig(savename, format='png')
