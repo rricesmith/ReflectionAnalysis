@@ -145,7 +145,8 @@ def eventsPassedCluster(times, data, cluster_days):
 
 if __name__ == "__main__":
 
-    datapass = '7thpass'
+    # datapass = '7thpass'
+    datapass = '2016pass'
     stations_100s = [13, 15, 18, 32]
     stations_200s = [14, 17, 19, 30]
     stations = {100: stations_100s, 200: stations_200s}
@@ -161,7 +162,7 @@ if __name__ == "__main__":
             data_in2016 = np.load(f'{station_data_folder}/FilteredStation{station_id}_Data_In2016.npy', allow_pickle=True)
             times = np.load(f'{station_data_folder}/FilteredStation{station_id}_Data_Times.npy', allow_pickle=True)
 
-            plotfolder = f'StationDataAnalysis/plots/Station_{station_id}/TimeStrips'
+            plotfolder = f'StationDataAnalysis/plots/{datapass}/Station_{station_id}/TimeStrips'
             if not os.path.exists(plotfolder):
                 os.makedirs(plotfolder)
 
@@ -248,7 +249,7 @@ if __name__ == "__main__":
             yStart = years[iY]
             yEnd = years[iY+1]
 
-        plotfolder = f'StationDataAnalysis/plots/StackedTimeStrips'
+        plotfolder = f'StationDataAnalysis/plots/StackedTimeStrips/{datapass}'
         if not os.path.exists(plotfolder):
             os.makedirs(plotfolder)
 
