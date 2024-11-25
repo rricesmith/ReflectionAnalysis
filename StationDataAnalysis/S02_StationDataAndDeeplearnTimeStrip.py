@@ -57,6 +57,7 @@ def timestripScatter(times, data, yearStart=2014, yearEnd=2019, legend=None, mar
 #    ic(fig, axs, len(axs))
 
     for iA, ax in enumerate(axs):
+        # ic(len(times), len(data), legend, marker, color, markersize)
         ax.scatter(times, data, label=legend, marker=marker, color=color, s=markersize)
         # ax.set_xlim(left=timeMin, right=timeMin + datetime.timedelta(days=365) * (iA+1))
         # ax.set_title(f'{}')
@@ -137,10 +138,10 @@ def eventsPassedCluster(times, data, cluster_days):
     # Find events that are not in the cluster days
     passed_cluster_days = []
     passed_cluster_data = []
-    for idate in times:
-        if not idate.day in cluster_days:
-            passed_cluster_days.append(idate)
-            passed_cluster_data.append(data)
+    for idate, date in enumerate(times):
+        if not date.day in cluster_days:
+            passed_cluster_days.append(date)
+            passed_cluster_data.append(data[idate])
     return passed_cluster_days, passed_cluster_data
 
 if __name__ == "__main__":
@@ -227,6 +228,7 @@ if __name__ == "__main__":
                 ic(f'Saved {savename}')
 
                 good_days, good_chi = eventsPassedCluster(ChiCut_datetimes, ChiCut_RCR_Chi, cluster_days)
+                # ic(len(good_days), len(good_chi), good_days[0], good_chi[0], len(good_chi[0]))
                 timestripScatter(good_days, good_chi, yearStart=yStart, yearEnd=yEnd, legend='Events Passing Cluster Cut', marker='^', color='y', markersize=8, fig=fig, axs=axs)
                 plt.legend()
                 savename = f'{plotfolder}/Station{station_id}_Timestrip_EventsPassedCluster_{yStart}-{yEnd}.png'
@@ -310,3 +312,4 @@ if __name__ == "__main__":
         savename = f'{plotfolder}/Timestrip_AllData_{yStart}-{yEnd}.png'
         plt.savefig(savename, format='png')
         ic(f'Saved {savename}')
+
