@@ -159,6 +159,8 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1):
     for iS, station_id in enumerate(station_ids):
         coinc_days[station_id] = []
         coinc_data[station_id] = []
+
+    for iS, station_id in enumerate(station_ids):
         if station_id == station_ids[-1]:
             break
         for jS, station_id2 in enumerate(station_ids[iS+1:]):
