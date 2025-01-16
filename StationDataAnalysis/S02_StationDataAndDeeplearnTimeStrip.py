@@ -294,7 +294,7 @@ if __name__ == "__main__":
     fig_all, axs_all = getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=len(stations_100s)+len(stations_200s))
     axs_all = np.atleast_2d(axs_all)
     for i_station, station_id in enumerate(coinc_days.keys()):
-        plotClusterTimes(None, None, fig_all, axs_all[i_station], cluster_days=coinc_days[station_id], color='g')
+        plotClusterTimes(times_dict[station_id], data_dict[station_id], fig_all, axs_all[i_station], cluster_days=coinc_days[station_id], color='g')
     savename = f'StationDataAnalysis/plots/CoincDaysTest.png'
     plt.savefig(savename, format='png')
     ic(f'Saved {savename}')
