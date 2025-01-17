@@ -167,7 +167,7 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_day
 
     station_ids = list(times_dict.keys())
     for iS, station_id in enumerate(station_ids):
-        coinc_days[station_id] = []
+        coinc_dates[station_id] = []
         coinc_data[station_id] = []
 
     for iS, station_id in enumerate(station_ids):
@@ -178,13 +178,13 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_day
                 if cluster_days is not None:
                     if date.day in cluster_days:
                         continue
-                if date in coinc_days[station_id]:
+                if date in coinc_dates[station_id]:
                     continue
                 for jD, date2 in enumerate(times_dict[station_id2]):
                     if abs(date - date2).seconds < coincidence_time:
-                        coinc_days[station_id].append(date)
+                        coinc_dates[station_id].append(date)
                         coinc_data[station_id].append(data_dict[station_id][iD])
-                        coinc_days[station_id2].append(date2)
+                        coinc_dates[station_id2].append(date2)
                         coinc_data[station_id2].append(data_dict[station_id2][jD])
 
 
