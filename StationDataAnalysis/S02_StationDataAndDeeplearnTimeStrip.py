@@ -238,7 +238,7 @@ if __name__ == "__main__":
             All_RCR_Chi = np.array(All_RCR_Chi)
 
             # Iterate through each year, then also plot all years at once
-            # years = [2014, 2015, 2016, 2017, 2018, 2019]
+            years = [2014, 2015, 2016, 2017, 2018, 2019]
             for iY in range(len(years)):
                 # This skips all but doing all years for faster processing. Comment out to do all years
                 if not iY == len(years)-1:
