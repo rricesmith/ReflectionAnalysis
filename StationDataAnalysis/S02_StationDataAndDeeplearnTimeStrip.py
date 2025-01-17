@@ -131,7 +131,7 @@ def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
     return cluster_days, cluster_dates
 
 
-def plotClusterTimes(times, data, fig, axs, cluster_days=None, n_cluster=10, chi_cut=0.6, color='r'):
+def plotClusterTimes(times, data, fig, axs, cluster_dates=None, n_cluster=10, chi_cut=0.6, color='r'):
     # Plot the days of clustered event above a certain cut
 
     if np.all(cluster_days) == None:
@@ -162,7 +162,7 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_day
 
     # Find events with coincidence times between multiple stations
 
-    coinc_days = {}
+    coinc_dates = {}
     coinc_data = {}
 
     station_ids = list(times_dict.keys())
@@ -188,7 +188,7 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_day
                         coinc_data[station_id2].append(data_dict[station_id2][jD])
 
 
-    return coinc_days, coinc_data
+    return coinc_dates, coinc_data
     
 
 
@@ -306,13 +306,13 @@ if __name__ == "__main__":
 
 
     # Find coincidence events and plot
-    coinc_days, coinc_data = findCoincidenceEvents(times_dict, data_dict, coincidence_time=1)
+    coinc_dates, coinc_data = findCoincidenceEvents(times_dict, data_dict, coincidence_time=1)
     fig_all, axs_all = getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=len(stations_100s)+len(stations_200s))
     axs_all = np.atleast_2d(axs_all)
     for i_station, station_id in enumerate(coinc_days.keys()):
-        plotClusterTimes(None, None, fig_all, axs_all[i_station], cluster_days=coinc_days[station_id], color='g')
+        plotClusterTimes(None, None, fig_all, axs_all[i_station], cluster_dates=coinc_days[station_id], color='g')
         timestripScatter(times_dict[station_id], data_dict[station_id], yearStart=2014, yearEnd=2019, legend='Chi Cut', marker='^', color='y', markersize=2, fig=fig_all, axs=axs_all[i_station])
-        timestripScatter(coinc_days[station_id], coind_data[station_id], yearStart=2014, yearEnd=2019, legend='Coinc days', marker='d', color='b', markersize=4, fig=fig_all, axs=axs_all[i_station])
+        timestripScatter(coinc_dates[station_id], coinc_data[station_id], yearStart=2014, yearEnd=2019, legend='Coinc days', marker='d', color='b', markersize=4, fig=fig_all, axs=axs_all[i_station])
     savename = f'StationDataAnalysis/plots/CoincDaysTest.png'
     plt.legend()
     plt.savefig(savename, format='png')
