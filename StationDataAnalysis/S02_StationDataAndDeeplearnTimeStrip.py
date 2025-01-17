@@ -99,6 +99,11 @@ def timestripScatter(times, data, yearStart=2014, yearEnd=2019, legend=None, mar
 
 def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
     # Find days that correspond to high number of high chi events, which indicates high noise that day
+
+    # Returns:
+    # cluster_days : list of days that are considered high noise days
+    # cluster_dates : list of datetime objects that are the start of the high noise days
+
     # ic(data)
     datamask = data > chi_cut
 
@@ -107,6 +112,7 @@ def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
     # ic(len(times), len(ctimes), len(data), len(cdata))
 
 
+    cluster_dates = []
     cluster_days = []
     for iD, idate in enumerate(ctimes):
         if idate.day in cluster_days:
@@ -119,9 +125,10 @@ def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
                 n_day += 1
             if n_day > n_cluster:
                 cluster_days.append(idate.day)
+                cluster_dates.append(idate)
 
     # ic(len(cluster_days), cluster_days[0:10])
-    return cluster_days
+    return cluster_days, cluster_dates
 
 
 def plotClusterTimes(times, data, fig, axs, cluster_days=None, n_cluster=10, chi_cut=0.6, color='r'):
@@ -129,13 +136,13 @@ def plotClusterTimes(times, data, fig, axs, cluster_days=None, n_cluster=10, chi
 
     if np.all(cluster_days) == None:
         ic('finding cluster times')
-        cluster_days = findClusterTimes(times, data, n_cluster=n_cluster, chi_cut=chi_cut)
+        cluster_days, cluster_dates = findClusterTimes(times, data, n_cluster=n_cluster, chi_cut=chi_cut)
 
     for iA, ax in enumerate(axs):
-        for cdate in cluster_days:
+        for cdate in cluster_dates:
             ax.axvspan(cdate, cdate + datetime.timedelta(days=1), color=color, alpha=0.5, hatch='/', zorder=-1)
     plt.gcf().autofmt_xdate()
-    return cluster_days
+    return cluster_days, cluster_dates
 
 def eventsPassedCluster(times, data, cluster_days):
     # Find events that are not in the cluster days
@@ -254,7 +261,7 @@ if __name__ == "__main__":
 
                 # Plot the data
                 fig, axs = getTimestripAxs(yStart, yEnd)
-                cluster_days = plotClusterTimes(ChiCut_datetimes, ChiCut_RCR_Chi, fig, axs, n_cluster=10, chi_cut=0.6)
+                cluster_days, cluster_dates = plotClusterTimes(ChiCut_datetimes, ChiCut_RCR_Chi, fig, axs, n_cluster=10, chi_cut=0.6)
                 timestripScatter(All_datetimes, All_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='All data', marker='o', color='k', markersize=2, fig=fig, axs=axs)
                 plt.legend()
                 fig.suptitle(f'Station {station_id} {yStart}-{yEnd}')
