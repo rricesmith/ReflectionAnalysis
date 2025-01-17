@@ -166,6 +166,7 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_day
     coinc_data = {}
 
     station_ids = list(times_dict.keys())
+    ic(station_ids)
     for iS, station_id in enumerate(station_ids):
         coinc_dates[station_id] = []
         coinc_data[station_id] = []
@@ -304,11 +305,13 @@ if __name__ == "__main__":
                     times_dict[station_id] = ChiCut_datetimes
                     data_dict[station_id] = ChiCut_RCR_Chi
 
+    ic(times_dict.keys())
 
     # Find coincidence events and plot
     coinc_dates, coinc_data = findCoincidenceEvents(times_dict, data_dict, coincidence_time=1)
     fig_all, axs_all = getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=len(stations_100s)+len(stations_200s))
     axs_all = np.atleast_2d(axs_all)
+    ic(coinc_dates.keys())
     for i_station, station_id in enumerate(coinc_dates.keys()):
         plotClusterTimes(None, None, fig_all, axs_all[i_station], cluster_dates=coinc_dates[station_id], color='g')
         timestripScatter(times_dict[station_id], data_dict[station_id], yearStart=2014, yearEnd=2019, legend='Chi Cut', marker='^', color='y', markersize=2, fig=fig_all, axs=axs_all[i_station])
