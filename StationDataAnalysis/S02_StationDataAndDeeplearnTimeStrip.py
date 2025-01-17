@@ -134,7 +134,7 @@ def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
 def plotClusterTimes(times, data, fig, axs, cluster_dates=None, n_cluster=10, chi_cut=0.6, color='r'):
     # Plot the days of clustered event above a certain cut
 
-    if np.all(cluster_days) == None:
+    if np.all(cluster_dates) == None:
         ic('finding cluster times')
         cluster_days, cluster_dates = findClusterTimes(times, data, n_cluster=n_cluster, chi_cut=chi_cut)
 
