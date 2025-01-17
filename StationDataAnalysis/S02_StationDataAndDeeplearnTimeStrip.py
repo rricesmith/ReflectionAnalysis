@@ -147,10 +147,11 @@ def eventsPassedCluster(times, data, cluster_days):
             passed_cluster_data.append(data[idate])
     return passed_cluster_days, passed_cluster_data
 
-def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1):
+def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_days=None):
     # times_dict        : {station_id: times}
     # data_dict         : {station_id: data}
     # coincidence_time  : window for coincidence in seconds
+    # cluster_days      : list of days that are considered high noise days, to be ignored
 
     # Find events with coincidence times between multiple stations
 
@@ -167,6 +168,9 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1):
             break
         for jS, station_id2 in enumerate(station_ids[iS+1:]):
             for iD, date in enumerate(times_dict[station_id]):
+                if cluster_days is not None:
+                    if date.day in cluster_days:
+                        continue
                 if date in coinc_days[station_id]:
                     continue
                 for jD, date2 in enumerate(times_dict[station_id2]):
@@ -234,8 +238,11 @@ if __name__ == "__main__":
             All_RCR_Chi = np.array(All_RCR_Chi)
 
             # Iterate through each year, then also plot all years at once
-            years = [2014, 2015, 2016, 2017, 2018, 2019]
+            # years = [2014, 2015, 2016, 2017, 2018, 2019]
             for iY in range(len(years)):
+                # This skips all but doing all years for faster processing. Comment out to do all years
+                if not iY == len(years)-1:
+                    continue
                 if iY == len(years)-1:
                     yStart = years[0]
                     yEnd = years[-1]
@@ -296,8 +303,11 @@ if __name__ == "__main__":
     fig_all, axs_all = getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=len(stations_100s)+len(stations_200s))
     axs_all = np.atleast_2d(axs_all)
     for i_station, station_id in enumerate(coinc_days.keys()):
-        plotClusterTimes(times_dict[station_id], data_dict[station_id], fig_all, axs_all[i_station], cluster_days=coinc_days[station_id], color='g')
+        plotClusterTimes(None, None, fig_all, axs_all[i_station], cluster_days=coinc_days[station_id], color='g')
+        timestripScatter(times_dict[station_id], data_dict[station_id], yearStart=2014, yearEnd=2019, legend='Chi Cut', marker='^', color='y', markersize=2, fig=fig_all, axs=axs_all[i_station])
+        timestripScatter(coinc_days[station_id], coind_data[station_id], yearStart=2014, yearEnd=2019, legend='Coinc days', marker='d', color='b', markersize=4, fig=fig_all, axs=axs_all[i_station])
     savename = f'StationDataAnalysis/plots/CoincDaysTest.png'
+    plt.legend()
     plt.savefig(savename, format='png')
     ic(f'Saved {savename}')
 
