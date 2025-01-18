@@ -309,8 +309,6 @@ if __name__ == "__main__":
 
     # Find coincidence events and plot
     coinc_dates, coinc_data = findCoincidenceEvents(times_dict, data_dict, coincidence_time=1)
-    fig_all, axs_all = getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=len(stations_100s)+len(stations_200s))
-    axs_all = np.atleast_2d(axs_all)
     ic(coinc_dates.keys())
     years = [2014, 2015, 2016, 2017, 2018, 2019]
     for iY in range(len(years)):
@@ -320,16 +318,19 @@ if __name__ == "__main__":
         else:
             yStart = years[iY]
             yEnd = years[iY+1]
+        fig_all, axs_all = getVerticalTimestripAxs(yearStart=yStart, yearEnd=yEnd, n_stations=len(stations_100s)+len(stations_200s))
+        axs_all = np.atleast_2d(axs_all)
+
         for i_station, station_id in enumerate(coinc_dates.keys()):
             plotClusterTimes(None, None, fig_all, axs_all[i_station], cluster_dates=coinc_dates[station_id], color='g')
             timestripScatter(times_dict[station_id], data_dict[station_id], yearStart=yStart, yearEnd=yEnd, marker='^', color='y', markersize=2, fig=fig_all, axs=axs_all[i_station])
             timestripScatter(coinc_dates[station_id], coinc_data[station_id], yearStart=yEnd, yearEnd=yEnd, marker='d', color='b', markersize=4, fig=fig_all, axs=axs_all[i_station])
             axs_all[i_station][0].tick_params(axis='y', labelleft=False)
             axs_all[i_station][0].set_ylabel(f'Stn{station_id}')
-    savename = f'StationDataAnalysis/plots/CoincDaysTest.png'
-    plt.legend()
-    plt.savefig(savename, format='png')
-    ic(f'Saved {savename}')
+        savename = f'StationDataAnalysis/plots/CoincDaysTest_{yStart}-{yEnd}.png'
+        plt.legend()
+        plt.savefig(savename, format='png')
+        ic(f'Saved {savename}')
 
 
 
