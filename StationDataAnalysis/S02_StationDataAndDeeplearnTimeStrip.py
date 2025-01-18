@@ -33,7 +33,7 @@ def getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=1):
     delta_days = (timeMax - timeMin).days
     ic(timeMin, timeMax, delta_years, delta_days)
 
-    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex=True, facecolor='w', squeeze=False, figsize=(n_stations * 8, delta_years * 5))
+    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex='col', facecolor='w', squeeze=False, figsize=(n_stations * 8, delta_years * 5))
     ic(axs.shape, n_stations, delta_years)
     axs = np.atleast_2d(axs)
     return fig, axs
@@ -322,8 +322,8 @@ if __name__ == "__main__":
             yEnd = years[iY+1]
         for i_station, station_id in enumerate(coinc_dates.keys()):
             plotClusterTimes(None, None, fig_all, axs_all[i_station], cluster_dates=coinc_dates[station_id], color='g')
-            timestripScatter(times_dict[station_id], data_dict[station_id], yearStart=yStart, yearEnd=yEnd, legend='Chi Cut', marker='^', color='y', markersize=2, fig=fig_all, axs=axs_all[i_station])
-            timestripScatter(coinc_dates[station_id], coinc_data[station_id], yearStart=yEnd, yearEnd=yEnd, legend='Coinc days', marker='d', color='b', markersize=4, fig=fig_all, axs=axs_all[i_station])
+            timestripScatter(times_dict[station_id], data_dict[station_id], yearStart=yStart, yearEnd=yEnd, marker='^', color='y', markersize=2, fig=fig_all, axs=axs_all[i_station])
+            timestripScatter(coinc_dates[station_id], coinc_data[station_id], yearStart=yEnd, yearEnd=yEnd, marker='d', color='b', markersize=4, fig=fig_all, axs=axs_all[i_station])
             axs_all[i_station][0].tick_params(axis='y', labelleft=False)
             axs_all[i_station][0].set_ylabel(f'Stn{station_id}')
     savename = f'StationDataAnalysis/plots/CoincDaysTest.png'
