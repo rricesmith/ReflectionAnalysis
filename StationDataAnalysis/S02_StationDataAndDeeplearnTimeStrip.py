@@ -345,7 +345,7 @@ if __name__ == "__main__":
             textfile.write(f'{date}\t{coinc_data[station_id][iD]}\n')
         textfile.write('\n')
     textfile.close()
-    ic(f'saved {filename}'')
+    ic(f'saved {filename}')
 
     quit()
 
