@@ -33,7 +33,7 @@ def getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=1):
     delta_days = (timeMax - timeMin).days
     ic(timeMin, timeMax, delta_years, delta_days)
 
-    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex='col', facecolor='w', squeeze=False, figsize=(delta_years * 8, n_stations * 12))
+    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex='col', facecolor='w', squeeze=False, figsize=(delta_years * 12, n_stations * 5))
     ic(axs.shape, n_stations, delta_years)
     axs = np.atleast_2d(axs)
     return fig, axs
@@ -121,11 +121,11 @@ def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
         n_day = 1
         for jD, jdate in enumerate(ctimes[iD:]):
             jday = jdate.replace(second=0, minute=0, hour=0, microsecond=0)
-            if (iD == jD) or (n_day > n_cluster) or (jday in cluster_days):
+            if (n_day >= n_cluster) or (jday in cluster_days):
                 continue
             if iday == jday:
                 n_day += 1
-            if n_day > n_cluster:
+            if n_day >= n_cluster:
                 cluster_days.append(iday)
                 cluster_dates.append(idate)
 
@@ -181,14 +181,14 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_day
             break
         for jS, station_id2 in enumerate(station_ids[iS+1:]):
             for iD, date in enumerate(times_dict[station_id]):
-                day = date.replace(second=0, minute=0, hour=0, microsecond=0)
                 if cluster_days is not None:
+                    day = date.replace(second=0, minute=0, hour=0, microsecond=0)
                     if day in cluster_days:
                         # Don't consider events on high noise days
                         continue
                 for jD, date2 in enumerate(times_dict[station_id2]):
-                    if abs((date - date2).seconds) <= coincidence_time:
-                        ic(date, date2, abs((date - date2).seconds), station_id, station_id2)
+                    if abs((date - date2).total_seconds()) <= coincidence_time:
+                        ic(date, date2, abs((date - date2).total_seconds()), station_id, station_id2)
                         if not (date in coinc_dates[station_id]):
                             coinc_dates[station_id].append(date)
                             coinc_data[station_id].append(data_dict[station_id][iD])
