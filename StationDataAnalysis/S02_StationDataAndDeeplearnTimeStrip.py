@@ -150,7 +150,8 @@ def eventsPassedCluster(times, data, cluster_days):
     passed_cluster_days = []
     passed_cluster_data = []
     for idate, date in enumerate(times):
-        if not date.day in cluster_days:
+        if not date.day in cluster_days:)
+            ic(f'{date} with day {date.day} not in {cluster_days}')
             passed_cluster_days.append(date)
             passed_cluster_data.append(data[idate])
     return passed_cluster_days, passed_cluster_data
@@ -183,7 +184,7 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_day
                         continue
                 for jD, date2 in enumerate(times_dict[station_id2]):
                     if abs((date - date2).seconds) <= coincidence_time:
-                        ic(date, date2, abs((date - date2).seconds))
+                        ic(date, date2, abs((date - date2).seconds), station_id, station_id2)
                         if not (date in coinc_dates[station_id]):
                             coinc_dates[station_id].append(date)
                             coinc_data[station_id].append(data_dict[station_id][iD])
