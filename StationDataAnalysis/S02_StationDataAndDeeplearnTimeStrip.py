@@ -181,7 +181,7 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_day
             break
         for jS, station_id2 in enumerate(station_ids[iS+1:]):
             for iD, date in enumerate(times_dict[station_id]):
-                day = time.replace(second=0, minute=0, hour=0, microsecond=0)
+                day = date.replace(second=0, minute=0, hour=0, microsecond=0)
                 if cluster_days is not None:
                     if day in cluster_days:
                         # Don't consider events on high noise days
