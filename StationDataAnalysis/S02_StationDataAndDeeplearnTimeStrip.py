@@ -33,7 +33,7 @@ def getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=1):
     delta_days = (timeMax - timeMin).days
     ic(timeMin, timeMax, delta_years, delta_days)
 
-    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex='col', facecolor='w', squeeze=False, figsize=(delta_years * 8, n_stations * 5))
+    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex='col', facecolor='w', squeeze=False, figsize=(n_stations * 5, delta_years * 8))
     ic(axs.shape, n_stations, delta_years)
     axs = np.atleast_2d(axs)
     return fig, axs
@@ -140,8 +140,8 @@ def plotClusterTimes(times, data, fig, axs, cluster_days=None, cluster_dates=Non
 
     for iA, ax in enumerate(axs):
         for cdate in cluster_dates:
-            # ax.axvspan(cdate, cdate + datetime.timedelta(days=1), color=color, alpha=0.5, hatch='/', zorder=-1)
-            ax.axvline(cdate, ymin=0, ymax=0, color=color, alpha=1, zorder=-1)
+            ax.axvspan(cdate, cdate + datetime.timedelta(hours=1), color=color, alpha=0.5, hatch='/', zorder=-1)
+            # ax.axvline(cdate, ymin=0, ymax=0, color=color, alpha=1, zorder=-1)
     plt.gcf().autofmt_xdate()
     return cluster_days, cluster_dates
 
