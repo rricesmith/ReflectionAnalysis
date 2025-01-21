@@ -150,7 +150,7 @@ def eventsPassedCluster(times, data, cluster_days):
     passed_cluster_days = []
     passed_cluster_data = []
     for idate, date in enumerate(times):
-        if not date.day in cluster_days:)
+        if not date.day in cluster_days:
             ic(f'{date} with day {date.day} not in {cluster_days}')
             passed_cluster_days.append(date)
             passed_cluster_data.append(data[idate])
