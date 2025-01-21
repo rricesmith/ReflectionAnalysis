@@ -33,7 +33,7 @@ def getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=1):
     delta_days = (timeMax - timeMin).days
     ic(timeMin, timeMax, delta_years, delta_days)
 
-    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex='col', facecolor='w', squeeze=False, figsize=(n_stations * 8, delta_years * 5))
+    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex='col', facecolor='w', squeeze=False, figsize=(delta_years * 8, n_stations * 5))
     ic(axs.shape, n_stations, delta_years)
     axs = np.atleast_2d(axs)
     return fig, axs
@@ -140,7 +140,8 @@ def plotClusterTimes(times, data, fig, axs, cluster_days=None, cluster_dates=Non
 
     for iA, ax in enumerate(axs):
         for cdate in cluster_dates:
-            ax.axvspan(cdate, cdate + datetime.timedelta(days=1), color=color, alpha=0.5, hatch='/', zorder=-1)
+            # ax.axvspan(cdate, cdate + datetime.timedelta(days=1), color=color, alpha=0.5, hatch='/', zorder=-1)
+            ax.axvline(cdate, cdate, color=color, alpha=1, zorder=-1)
     plt.gcf().autofmt_xdate()
     return cluster_days, cluster_dates
 
@@ -178,15 +179,16 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_day
             for iD, date in enumerate(times_dict[station_id]):
                 if cluster_days is not None:
                     if date.day in cluster_days:
+                        # Don't consider events on high noise days
                         continue
-                if date in coinc_dates[station_id]:
-                    continue
                 for jD, date2 in enumerate(times_dict[station_id2]):
-                    if abs(date - date2).seconds < coincidence_time:
-                        coinc_dates[station_id].append(date)
-                        coinc_data[station_id].append(data_dict[station_id][iD])
-                        coinc_dates[station_id2].append(date2)
-                        coinc_data[station_id2].append(data_dict[station_id2][jD])
+                    if abs((date - date2).seconds) < coincidence_time:
+                        if not (date in coinc_dates[station_id]):
+                            coinc_dates[station_id].append(date)
+                            coinc_data[station_id].append(data_dict[station_id][iD])
+                        if not (date2 in coinc_dates[station_id2]):
+                            coinc_dates[station_id2].append(date2)
+                            coinc_data[station_id2].append(data_dict[station_id2][jD])
 
 
     return coinc_dates, coinc_data
