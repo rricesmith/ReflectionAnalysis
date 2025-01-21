@@ -33,7 +33,7 @@ def getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=1):
     delta_days = (timeMax - timeMin).days
     ic(timeMin, timeMax, delta_years, delta_days)
 
-    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex='col', facecolor='w', squeeze=False, figsize=(n_stations * 8, delta_years * 8))
+    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex='col', facecolor='w', squeeze=False, figsize=(delta_years * 8, n_stations * 12))
     ic(axs.shape, n_stations, delta_years)
     axs = np.atleast_2d(axs)
     return fig, axs
@@ -115,16 +115,18 @@ def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
     cluster_dates = []
     cluster_days = []
     for iD, idate in enumerate(ctimes):
-        if idate.day in cluster_days:
+        iday = idate.replace(second=0, minute=0, hour=0, microsecond=0)
+        if iday in cluster_days:
             continue
         n_day = 1
         for jD, jdate in enumerate(ctimes[iD:]):
-            if (iD == jD) or (n_day > n_cluster) or (jdate.day in cluster_days):
+            jday = jdate.replace(second=0, minute=0, hour=0, microsecond=0)
+            if (iD == jD) or (n_day > n_cluster) or (jday in cluster_days):
                 continue
-            if idate.day == jdate.day:
+            if iday == jday:
                 n_day += 1
             if n_day > n_cluster:
-                cluster_days.append(idate.day)
+                cluster_days.append(iday)
                 cluster_dates.append(idate)
 
     # ic(len(cluster_days), cluster_days[0:10])
@@ -150,9 +152,10 @@ def eventsPassedCluster(times, data, cluster_days):
     passed_cluster_days = []
     passed_cluster_data = []
     for idate, date in enumerate(times):
-        if not date.day in cluster_days:
-            ic(f'{date} with day {date.day} not in {cluster_days}')
-            passed_cluster_days.append(date)
+        day = date.replace(second=0, minute=0, hour=0, microsecond=0)
+        if not day in cluster_days:
+            ic(f'{date} with day {day} not in {cluster_days}')
+            passed_cluster_days.append(day)
             passed_cluster_data.append(data[idate])
     return passed_cluster_days, passed_cluster_data
 
@@ -178,8 +181,9 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_day
             break
         for jS, station_id2 in enumerate(station_ids[iS+1:]):
             for iD, date in enumerate(times_dict[station_id]):
+                day = time.replace(second=0, minute=0, hour=0, microsecond=0)
                 if cluster_days is not None:
-                    if date.day in cluster_days:
+                    if day in cluster_days:
                         # Don't consider events on high noise days
                         continue
                 for jD, date2 in enumerate(times_dict[station_id2]):
