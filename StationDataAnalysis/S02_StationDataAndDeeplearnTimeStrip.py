@@ -141,7 +141,7 @@ def plotClusterTimes(times, data, fig, axs, cluster_days=None, cluster_dates=Non
     for iA, ax in enumerate(axs):
         for cdate in cluster_dates:
             # ax.axvspan(cdate, cdate + datetime.timedelta(days=1), color=color, alpha=0.5, hatch='/', zorder=-1)
-            ax.axvline(cdate, cdate, color=color, alpha=1, zorder=-1)
+            ax.axvline(cdate, ymin=0, ymax=0, color=color, alpha=1, zorder=-1)
     plt.gcf().autofmt_xdate()
     return cluster_days, cluster_dates
 
