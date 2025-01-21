@@ -33,7 +33,7 @@ def getVerticalTimestripAxs(yearStart=2014, yearEnd=2019, n_stations=1):
     delta_days = (timeMax - timeMin).days
     ic(timeMin, timeMax, delta_years, delta_days)
 
-    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex='col', facecolor='w', squeeze=False, figsize=(n_stations * 5, delta_years * 8))
+    fig, axs = plt.subplots(n_stations, delta_years, sharey=True, sharex='col', facecolor='w', squeeze=False, figsize=(n_stations * 8, delta_years * 8))
     ic(axs.shape, n_stations, delta_years)
     axs = np.atleast_2d(axs)
     return fig, axs
@@ -182,7 +182,8 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_day
                         # Don't consider events on high noise days
                         continue
                 for jD, date2 in enumerate(times_dict[station_id2]):
-                    if abs((date - date2).seconds) < coincidence_time:
+                    if abs((date - date2).seconds) <= coincidence_time:
+                        ic(date, date2, abs((date - date2).seconds))
                         if not (date in coinc_dates[station_id]):
                             coinc_dates[station_id].append(date)
                             coinc_data[station_id].append(data_dict[station_id][iD])
@@ -310,7 +311,7 @@ if __name__ == "__main__":
     ic(times_dict.keys())
 
     # Find coincidence events and plot
-    coinc_dates, coinc_data = findCoincidenceEvents(times_dict, data_dict, coincidence_time=1)
+    coinc_dates, coinc_data = findCoincidenceEvents(times_dict, data_dict, coincidence_time=0.1)
     ic(coinc_dates.keys())
     years = [2014, 2015, 2016, 2017, 2018, 2019]
     for iY in range(len(years)):
@@ -335,7 +336,16 @@ if __name__ == "__main__":
         ic(f'Saved {savename}')
 
 
-
+    # Same coinc date times to text document
+    filename = f'StationDataAnalysis/plots/CoincDaysTest.txt'
+    textfile = open(filename, 'w')
+    for station_id in coinc_dates.keys():
+        textfile.write(f'Station {station_id} Coincidence Days\n\n')
+        for iD, date in enumerate(coinc_dates[station_id]):
+            textfile.write(f'{date}\t{coinc_data[station_id][iD]}\n')
+        textfile.write('\n')
+    textfile.close()
+    ic(f'saved {filename}'')
 
     quit()
 
