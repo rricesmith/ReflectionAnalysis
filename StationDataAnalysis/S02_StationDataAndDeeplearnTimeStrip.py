@@ -97,7 +97,7 @@ def timestripScatter(times, data, yearStart=2014, yearEnd=2019, legend=None, mar
     return fig, axs
 
 
-def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
+def findClusterTimes(times, data, n_cluster=20, chi_cut=0.6):
     # Find days that correspond to high number of high chi events, which indicates high noise that day
 
     # Returns:
@@ -270,7 +270,7 @@ if __name__ == "__main__":
 
                 # Plot the data
                 fig, axs = getTimestripAxs(yStart, yEnd)
-                cluster_days, cluster_dates = plotClusterTimes(ChiCut_datetimes, ChiCut_RCR_Chi, fig, axs, n_cluster=10)
+                cluster_days, cluster_dates = plotClusterTimes(ChiCut_datetimes, ChiCut_RCR_Chi, fig, axs)
                 timestripScatter(All_datetimes, All_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='All data', marker='o', color='k', markersize=2, fig=fig, axs=axs)
                 plt.legend()
                 fig.suptitle(f'Station {station_id} {yStart}-{yEnd}')
