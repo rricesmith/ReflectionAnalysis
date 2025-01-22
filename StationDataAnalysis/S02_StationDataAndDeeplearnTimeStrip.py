@@ -257,8 +257,8 @@ if __name__ == "__main__":
             years = [2014, 2015, 2016, 2017, 2018, 2019]
             for iY in range(len(years)):
                 # This skips all but doing all years for faster processing. Comment out to do all years
-                if not iY == len(years)-1:
-                    continue
+                # if not iY == len(years)-1:
+                #     continue
                 if iY == len(years)-1:
                     yStart = years[0]
                     yEnd = years[-1]
@@ -339,7 +339,7 @@ if __name__ == "__main__":
             axs_all[i_station][0].set_ylabel(f'Stn{station_id}')
             for iA, ax in enumerate(axs_all[i_station]):
                 ax.set_ylim(bottom=0, top=1)
-                ax.set_xlim(left=datetime.datetime(yStart+iA, 9, 1), right=datetime.datetime(yEnd+1+iA, 5, 1))
+                ax.set_xlim(left=datetime.datetime(yStart+iA, 9, 1), right=datetime.datetime(yStart+1+iA, 5, 1))
                 ax.xaxis.set_major_locator(plt.MaxNLocator(3))
         savename = f'StationDataAnalysis/plots/CoincDaysTest_{yStart}-{yEnd}.png'
         # plt.legend()
