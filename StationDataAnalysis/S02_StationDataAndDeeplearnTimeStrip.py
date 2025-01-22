@@ -133,7 +133,7 @@ def findClusterTimes(times, data, n_cluster=10, chi_cut=0.6):
     return cluster_days, cluster_dates
 
 
-def plotClusterTimes(times, data, fig, axs, cluster_days=None, cluster_dates=None, n_cluster=10, chi_cut=0.6, color='r'):
+def plotClusterTimes(times, data, fig, axs, cluster_days=None, cluster_dates=None, n_cluster=10, chi_cut=0.7, color='r'):
     # Plot the days of clustered event above a certain cut
 
     if np.all(cluster_dates) == None:
@@ -270,7 +270,7 @@ if __name__ == "__main__":
 
                 # Plot the data
                 fig, axs = getTimestripAxs(yStart, yEnd)
-                cluster_days, cluster_dates = plotClusterTimes(ChiCut_datetimes, ChiCut_RCR_Chi, fig, axs, n_cluster=10, chi_cut=0.6)
+                cluster_days, cluster_dates = plotClusterTimes(ChiCut_datetimes, ChiCut_RCR_Chi, fig, axs, n_cluster=10)
                 timestripScatter(All_datetimes, All_RCR_Chi, yearStart=yStart, yearEnd=yEnd, legend='All data', marker='o', color='k', markersize=2, fig=fig, axs=axs)
                 plt.legend()
                 fig.suptitle(f'Station {station_id} {yStart}-{yEnd}')
@@ -328,15 +328,21 @@ if __name__ == "__main__":
             yEnd = years[iY+1]
         fig_all, axs_all = getVerticalTimestripAxs(yearStart=yStart, yearEnd=yEnd, n_stations=len(stations_100s)+len(stations_200s))
         axs_all = np.atleast_2d(axs_all)
+        ic(axs_all.shape, axs_all[0].shape, yStart, yEnd)
 
         for i_station, station_id in enumerate(coinc_dates.keys()):
+            ic(i_station, station_id)
             plotClusterTimes(None, None, fig_all, axs_all[i_station], cluster_dates=coinc_dates[station_id], color='g')
             timestripScatter(times_dict[station_id], data_dict[station_id], yearStart=yStart, yearEnd=yEnd, marker='^', color='y', markersize=2, fig=fig_all, axs=axs_all[i_station])
             timestripScatter(coinc_dates[station_id], coinc_data[station_id], yearStart=yEnd, yearEnd=yEnd, marker='d', color='b', markersize=4, fig=fig_all, axs=axs_all[i_station])
             axs_all[i_station][0].tick_params(axis='y', labelleft=False)
             axs_all[i_station][0].set_ylabel(f'Stn{station_id}')
+            for iA, ax in enumerate(axs_all[i_station]):
+                ax.set_ylim(bottom=0, top=1)
+                ax.set_xlim(left=datetime.datetime(yStart+iA, 9, 1), right=datetime.datetime(yEnd+1+iA, 5, 1))
+                ax.xaxis.set_major_locator(plt.MaxNLocator(3))
         savename = f'StationDataAnalysis/plots/CoincDaysTest_{yStart}-{yEnd}.png'
-        plt.legend()
+        # plt.legend()
         plt.savefig(savename, format='png')
         ic(f'Saved {savename}')
 
