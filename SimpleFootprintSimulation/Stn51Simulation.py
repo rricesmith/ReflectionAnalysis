@@ -134,6 +134,7 @@ add_noise = args.add_noise
 
 # Get files for simulation
 input_files = pullFilesForSimulation('IceTop', min_energy, max_energy, num_icetop=num_icetop, icetop_sin=sin2)
+ic(f'files for running {input_files}')
 
 # Setup detector
 # det = detector.Detector(json_filename=f'configurations/station51_InfAir.json', assume_inf=False, antenna_by_depth=False)
@@ -213,7 +214,7 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
             threshold_low_5 = {key: value * -5 for key, value in preAmpVrms_per_channel.items()}
 
         ic(preAmpVrms_per_channel, postAmpVrms_per_channel, threshold_high_3_5, threshold_high_5)
-        quit()
+        # quit()
 
     if simulationSelector.run(evt, station.get_sim_station(), det):
 
