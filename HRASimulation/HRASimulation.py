@@ -62,10 +62,8 @@ input_files = pullFilesForSimulation('MB', min_file, max_file)
 # det = detector.Detector('../NuRadioMC/NuRadioReco/detector/ARIANNA/arianna_detector_db.json', 'json')   #Relative path from running folder
 # Have to use a custom detector file rather than one in NuRadioReco as CoREAS throws events around the position 0,0
 # Therefore the json is configured to be centered on station G/18, the approximate center of the detector, and then thrown in a large enough area to cover all stations
-det = detector.Detector('HRASimulation/HRAStationLayoutForCoREAS.json', 'json')   #Relative path from running folder
-
-
-det.update(datetime.datetime(2018, 10, 1))
+# det = detector.Detector('HRASimulation/HRAStationLayoutForCoREAS.json', 'json')   #Relative path from running folder
+# det.update(datetime.datetime(2018, 10, 1))
 
 all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52]
 all_stations_reflected = [113, 114, 115, 117, 118, 119, 130, 132, 152]
@@ -126,6 +124,9 @@ def run_stations(stations_list, mode='direct'):
         eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
         eventWriter.begin(output_filename + f'_station{station_id}.nur')
 
+        det = detector.Detector('HRASimulation/HRAStationLayoutForCoREAS.json', 'json')   #Relative path from running folder
+        det.update(datetime.datetime(2018, 10, 1))
+
         for iE, evt in enumerate(readCoREAS.run(detector=det, ray_type=mode, layer_depth=576, layer_dB=0.7, attenuation_model='MB_freq')):
             logger.info("processing event {:d} with id {:d}".format(iE, evt.get_id()))
 
@@ -133,7 +134,6 @@ def run_stations(stations_list, mode='direct'):
 
             station = evt.get_station(station_id)
             station.set_station_time(datetime.datetime(2018, 10, 1))
-            det.update(station.get_station_time())
 
             eventTypeIdentifier.run(evt, station, mode='forced', forced_event_type='cosmic_ray')
             # channelAddCableDelay.run(evt, station, det, mode='add')   # Not sure if necessary
