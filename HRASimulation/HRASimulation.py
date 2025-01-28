@@ -65,7 +65,7 @@ input_files = pullFilesForSimulation('MB', min_file, max_file)
 det = detector.Detector('HRASimulation/HRAStationLayoutForCoREAS.json', 'json')   #Relative path from running folder
 
 
-det.update(astropy.time.Time('2017-1-1'))
+det.update(datetime.datetime(2018, 10, 1))
 
 all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52]
 all_stations_reflected = [113, 114, 115, 117, 118, 119, 130, 132, 152]
