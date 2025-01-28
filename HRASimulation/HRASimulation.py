@@ -67,6 +67,7 @@ det = detector.Detector('HRASimulation/HRAStationLayoutForCoREAS.json', 'json') 
 det.update(astropy.time.Time('2017-1-1'))
 
 all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52]
+all_stations_reflected = [113, 114, 115, 117, 118, 119, 130, 132, 152]
 
 # Indicate channels for simulation
 primary_LPDA_channels = [0, 1, 2, 3]   #Downward for all stations except 32, which is upward
@@ -115,7 +116,8 @@ for station_id in all_stations:
 # Start simulation
 # Because CoREAS only simulates one station at a time, need to simulate each station in order using the same seed
 # All events will be saved, therefore all events will be in order compared to each other across files
-for station_id in all_stations:
+def run_stations(stations_list):
+# for station_id in all_stations:
     readCoREAS = NuRadioReco.modules.io.coreas.readCoREAS.readCoREAS()
     readCoREAS.begin(input_files, station_id, n_cores=n_cores, max_distance=distance*units.km, seed=seed)
     eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
@@ -238,3 +240,6 @@ for station_id in all_stations:
     nevents = eventWriter.end()
     dt = readCoREAS.end()
     print(f"Finished processing Station {station_id}, {nevents} events processed, {dt} seconds elapsed")
+
+run_stations(all_stations)
+run_stations(all_stations_reflected)
