@@ -14,6 +14,7 @@ import NuRadioReco.modules.ARIANNA.hardwareResponseIncorporator
 import NuRadioReco.modules.channelAddCableDelay
 import NuRadioReco.modules.channelLengthAdjuster
 import NuRadioReco.modules.triggerTimeAdjuster
+import NuRadioReco.modules.correlationDirectionFitter
 import astropy
 import argparse
 import NuRadioReco.modules.io.eventWriter
@@ -98,6 +99,8 @@ channelResampler.begin()
 triggerTimeAdjuster = NuRadioReco.modules.triggerTimeAdjuster.triggerTimeAdjuster()
 triggerTimeAdjuster.begin(trigger_name=f'primary_LPDA_2of4_3.5sigma')
 
+correlationDirectionFitter = NuRadioReco.modules.correlationDirectionFitter.correlationDirectionFitter()
+correlationDirectionFitter.begin(debug=False)
 
 
 preAmpVrms_per_channel = {}
@@ -215,6 +218,13 @@ for station_id in all_stations:
                 triggerTimeAdjuster.run(evt, station, det)
                 # channelResampler.run(evt, station, det, 1*units.GHz)
                 channelStopFilter.run(evt, station, det, prepend=0*units.ns, append=0*units.ns)
+                correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
+
+                # Testing
+                sim_station = station.get_sim_station()
+                ic(sim_station.get_parameter(stnp.zenith)/units.deg, sim_station.get_parameter(stnp.azimuth)/units.deg)
+                ic(station.get_parameter(stnp.zenith)/units.deg, station.get_parameter(stnp.azimuth)/units.deg)
+                quit()
         # Save every event for rate calculation
         eventWriter.run(evt, det)
 
