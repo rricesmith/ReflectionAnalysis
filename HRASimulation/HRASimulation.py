@@ -126,7 +126,7 @@ def run_stations(stations_list, mode='direct'):
     eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
     eventWriter.begin(output_filename + f'_station{station_id}.nur')
 
-    for iE, evt in enumerate(readCoREAS.run(detector=det, ray_type=mode, layer_depth=576, dB=0.7, attenuation_model='MB_freq')):
+    for iE, evt in enumerate(readCoREAS.run(detector=det, ray_type=mode, layer_depth=576, layer_dB=0.7, attenuation_model='MB_freq')):
         logger.info("processing event {:d} with id {:d}".format(iE, evt.get_id()))
 
         # for station in evt.get_stations():
