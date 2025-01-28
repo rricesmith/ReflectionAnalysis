@@ -230,10 +230,10 @@ def run_stations(stations_list, mode='direct'):
                     correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
 
                     # Testing
-                    sim_station = station.get_sim_station()
-                    ic(sim_station.get_parameter(stnp.zenith)/units.deg, sim_station.get_parameter(stnp.azimuth)/units.deg)
-                    ic(station.get_parameter(stnp.zenith)/units.deg, station.get_parameter(stnp.azimuth)/units.deg)
-                    quit()
+                    # sim_station = station.get_sim_station()
+                    # ic(sim_station.get_parameter(stnp.zenith)/units.deg, sim_station.get_parameter(stnp.azimuth)/units.deg)
+                    # ic(station.get_parameter(stnp.zenith)/units.deg, station.get_parameter(stnp.azimuth)/units.deg)
+                    # quit()
             # Save every event for rate calculation
             eventWriter.run(evt)
 
@@ -247,6 +247,5 @@ def run_stations(stations_list, mode='direct'):
         dt = readCoREAS.end()
         print(f"Finished processing Station {station_id}, {nevents} events processed, {dt} seconds elapsed")
 
-run_stations([30], mode='direct')
 run_stations(all_stations, mode='direct')
 run_stations(all_stations_reflected, mode='reflected')
