@@ -128,10 +128,10 @@ def run_stations(stations_list, mode='direct'):
         for iE, evt in enumerate(readCoREAS.run(detector=det, ray_type=mode, layer_depth=576, layer_dB=0.7, attenuation_model='MB_freq')):
             logger.info("processing event {:d} with id {:d}".format(iE, evt.get_id()))
 
-            det.update(datetime.datetime(2018, 10, 1))
-            ic(det.__current_time)
-            ic(det.__valid_t0)
-            ic(det.__valid_t1)
+            # det.update(datetime.datetime(2018, 10, 1))
+            # ic(det.__current_time)
+            # ic(det.__valid_t0)
+            # ic(det.__valid_t1)
 
             # for station in evt.get_stations():
 
@@ -235,7 +235,7 @@ def run_stations(stations_list, mode='direct'):
                     # ic(station.get_parameter(stnp.zenith)/units.deg, station.get_parameter(stnp.azimuth)/units.deg)
                     # quit()
             # Save every event for rate calculation
-            eventWriter.run(evt, det)
+            eventWriter.run(evt)
 
             # Save every event for proper rate calculation
             # Now every event is saved regardless of if it triggers or not
