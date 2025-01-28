@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 
 
-date_sim = '10.24.24'
+date_sim = '1.27.25'
 n_cores = 100   #Decenty sensitivity to RCRs, so don't overdo
 distance = 10 #km, want a large enough area that all stations will be covered and then some
 add_noise = False

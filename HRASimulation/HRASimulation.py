@@ -23,6 +23,7 @@ import os
 import datetime
 from icecream import ic
 from scipy import constants
+from NuRadioReco.framework.parameters import stationParameters as stnp
 
 from NuRadioReco.detector import detector
 from NuRadioReco.detector import generic_detector
@@ -221,10 +222,10 @@ for station_id in all_stations:
                 correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
 
                 # Testing
-                sim_station = station.get_sim_station()
-                ic(sim_station.get_parameter(stnp.zenith)/units.deg, sim_station.get_parameter(stnp.azimuth)/units.deg)
-                ic(station.get_parameter(stnp.zenith)/units.deg, station.get_parameter(stnp.azimuth)/units.deg)
-                quit()
+                # sim_station = station.get_sim_station()
+                # ic(sim_station.get_parameter(stnp.zenith)/units.deg, sim_station.get_parameter(stnp.azimuth)/units.deg)
+                # ic(station.get_parameter(stnp.zenith)/units.deg, station.get_parameter(stnp.azimuth)/units.deg)
+                # quit()
         # Save every event for rate calculation
         eventWriter.run(evt, det)
 
