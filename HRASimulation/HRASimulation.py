@@ -118,131 +118,131 @@ for station_id in all_stations:
 # Because CoREAS only simulates one station at a time, need to simulate each station in order using the same seed
 # All events will be saved, therefore all events will be in order compared to each other across files
 def run_stations(stations_list, mode='direct'):
-# for station_id in all_stations:
-    # readCoREAS = NuRadioReco.modules.io.coreas.readCoREAS.readCoREAS()
-    # readCoREAS.begin(input_files, station_id, n_cores=n_cores, max_distance=distance*units.km, seed=seed)
-    readCoREAS = NuRadioReco.modules.io.coreas.readCoREASStationGrid.readCoREAS()
-    readCoREAS.begin(input_files, (-distance/2)*units.km, (distance/2)*units.km, (-distance/2)*units.km, (distance/2)*units.km, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.WARNING)
-    eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
-    eventWriter.begin(output_filename + f'_station{station_id}.nur')
+    for station_id in stations_list:
+        # readCoREAS = NuRadioReco.modules.io.coreas.readCoREAS.readCoREAS()
+        # readCoREAS.begin(input_files, station_id, n_cores=n_cores, max_distance=distance*units.km, seed=seed)
+        readCoREAS = NuRadioReco.modules.io.coreas.readCoREASStationGrid.readCoREAS()
+        readCoREAS.begin(input_files, (-distance/2)*units.km, (distance/2)*units.km, (-distance/2)*units.km, (distance/2)*units.km, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.WARNING)
+        eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
+        eventWriter.begin(output_filename + f'_station{station_id}.nur')
 
-    for iE, evt in enumerate(readCoREAS.run(detector=det, ray_type=mode, layer_depth=576, layer_dB=0.7, attenuation_model='MB_freq')):
-        logger.info("processing event {:d} with id {:d}".format(iE, evt.get_id()))
+        for iE, evt in enumerate(readCoREAS.run(detector=det, ray_type=mode, layer_depth=576, layer_dB=0.7, attenuation_model='MB_freq')):
+            logger.info("processing event {:d} with id {:d}".format(iE, evt.get_id()))
 
-        # for station in evt.get_stations():
+            # for station in evt.get_stations():
 
-        station = evt.get_station(station_id)
-        station.set_station_time(datetime.datetime(2018, 10, 1))
-        det.update(station.get_station_time())
+            station = evt.get_station(station_id)
+            station.set_station_time(datetime.datetime(2018, 10, 1))
+            det.update(station.get_station_time())
 
-        eventTypeIdentifier.run(evt, station, mode='forced', forced_event_type='cosmic_ray')
-        # channelAddCableDelay.run(evt, station, det, mode='add')   # Not sure if necessary
-        efieldToVoltageConverter.run(evt, station, det)
-        channelResampler.run(evt, station, det, 2*units.GHz)
-
-
-        if preAmpVrms_per_channel[station_id] == {}:
-            # Get noise levels for simulation
-            preAmpVrms, postAmpVrms = calculateNoisePerChannel(det, station=station, amp=True, hardwareResponseIncorporator=hardwareResponseIncorporator, channelBandPassFilter=channelBandPassFilter)
-            preAmpVrms_per_channel[station_id] = preAmpVrms
-            threshold_high_3_5 = {key: value * 3.5 for key, value in postAmpVrms.items()}
-            threshold_low_3_5 = {key: value * -3.5 for key, value in postAmpVrms.items()}
-            threshold_high_4_4 = {key: value * 4.4 for key, value in postAmpVrms.items()}
-            threshold_low_4_4 = {key: value * -4.4 for key, value in postAmpVrms.items()}
-
-            ic(preAmpVrms, postAmpVrms, threshold_high_3_5, threshold_high_4_4)
-            thresholds_high[station_id][3.5] = threshold_high_3_5
-            thresholds_high[station_id][4.4] = threshold_high_4_4
-            thresholds_low[station_id][3.5] = threshold_low_3_5
-            thresholds_low[station_id][4.4] = threshold_low_4_4
-
-            # quit()
-
-        if simulationSelector.run(evt, station.get_sim_station(), det):
-
-            # efieldToVoltageConverter.run(evt, station, det)
-
-            if add_noise:
-                channelGenericNoiseAdder.run(evt, station, det, type='rayleigh', amplitude=preAmpVrms_per_channel[station_id])
-
-            hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
+            eventTypeIdentifier.run(evt, station, mode='forced', forced_event_type='cosmic_ray')
+            # channelAddCableDelay.run(evt, station, det, mode='add')   # Not sure if necessary
+            efieldToVoltageConverter.run(evt, station, det)
+            channelResampler.run(evt, station, det, 2*units.GHz)
 
 
-            if station_id == 52:
-                highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][3.5], 
-                                    threshold_low=thresholds_low[station_id][3.5],
-                                    coinc_window = 40*units.ns,
-                                    triggered_channels=secondary_LPDA_channels,
-                                    number_concidences=2,
-                                    trigger_name=f'primary_LPDA_2of4_3.5sigma')
-            else:
-                highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][3.5], 
-                                    threshold_low=thresholds_low[station_id][3.5],
-                                    coinc_window = 40*units.ns,
-                                    triggered_channels=primary_LPDA_channels,
-                                    number_concidences=2,
-                                    trigger_name=f'primary_LPDA_2of4_3.5sigma')
+            if preAmpVrms_per_channel[station_id] == {}:
+                # Get noise levels for simulation
+                preAmpVrms, postAmpVrms = calculateNoisePerChannel(det, station=station, amp=True, hardwareResponseIncorporator=hardwareResponseIncorporator, channelBandPassFilter=channelBandPassFilter)
+                preAmpVrms_per_channel[station_id] = preAmpVrms
+                threshold_high_3_5 = {key: value * 3.5 for key, value in postAmpVrms.items()}
+                threshold_low_3_5 = {key: value * -3.5 for key, value in postAmpVrms.items()}
+                threshold_high_4_4 = {key: value * 4.4 for key, value in postAmpVrms.items()}
+                threshold_low_4_4 = {key: value * -4.4 for key, value in postAmpVrms.items()}
 
+                ic(preAmpVrms, postAmpVrms, threshold_high_3_5, threshold_high_4_4)
+                thresholds_high[station_id][3.5] = threshold_high_3_5
+                thresholds_high[station_id][4.4] = threshold_high_4_4
+                thresholds_low[station_id][3.5] = threshold_low_3_5
+                thresholds_low[station_id][4.4] = threshold_low_4_4
 
+                # quit()
 
-            if station.get_trigger(f'primary_LPDA_2of4_3.5sigma').has_triggered():
+            if simulationSelector.run(evt, station.get_sim_station(), det):
+
+                # efieldToVoltageConverter.run(evt, station, det)
+
+                if add_noise:
+                    channelGenericNoiseAdder.run(evt, station, det, type='rayleigh', amplitude=preAmpVrms_per_channel[station_id])
+
+                hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
+
 
                 if station_id == 52:
-                    # For station 52, primary and secondary are reveresed due to ordering of channels that are upward/downward
-                    # Upward are primary, downward are secondary
+                    highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][3.5], 
+                                        threshold_low=thresholds_low[station_id][3.5],
+                                        coinc_window = 40*units.ns,
+                                        triggered_channels=secondary_LPDA_channels,
+                                        number_concidences=2,
+                                        trigger_name=f'primary_LPDA_2of4_3.5sigma')
+                else:
                     highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][3.5], 
                                         threshold_low=thresholds_low[station_id][3.5],
                                         coinc_window = 40*units.ns,
                                         triggered_channels=primary_LPDA_channels,
                                         number_concidences=2,
-                                        trigger_name=f'secondary_LPDA_2of4_3.5sigma')
-
-                    highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][4.4],
-                                        threshold_low=thresholds_low[station_id][4.4],
-                                        coinc_window = 40*units.ns,
-                                        triggered_channels=primary_LPDA_channels,
-                                        number_concidences=2,
-                                        trigger_name=f'secondary_LPDA_2of4_4.4sigma')
-
-                    highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][4.4], 
-                                        threshold_low=thresholds_low[station_id][4.4],
-                                        coinc_window = 40*units.ns,
-                                        triggered_channels=secondary_LPDA_channels,
-                                        number_concidences=2,
-                                        trigger_name=f'primary_LPDA_2of4_4.4sigma')
+                                        trigger_name=f'primary_LPDA_2of4_3.5sigma')
 
 
-                else:
-                    highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][4.4],
-                                        threshold_low=thresholds_low[station_id][4.4],
-                                        coinc_window = 40*units.ns,
-                                        triggered_channels=primary_LPDA_channels,
-                                        number_concidences=2,
-                                        trigger_name=f'primary_LPDA_2of4_4.4sigma')
+
+                if station.get_trigger(f'primary_LPDA_2of4_3.5sigma').has_triggered():
+
+                    if station_id == 52:
+                        # For station 52, primary and secondary are reveresed due to ordering of channels that are upward/downward
+                        # Upward are primary, downward are secondary
+                        highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][3.5], 
+                                            threshold_low=thresholds_low[station_id][3.5],
+                                            coinc_window = 40*units.ns,
+                                            triggered_channels=primary_LPDA_channels,
+                                            number_concidences=2,
+                                            trigger_name=f'secondary_LPDA_2of4_3.5sigma')
+
+                        highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][4.4],
+                                            threshold_low=thresholds_low[station_id][4.4],
+                                            coinc_window = 40*units.ns,
+                                            triggered_channels=primary_LPDA_channels,
+                                            number_concidences=2,
+                                            trigger_name=f'secondary_LPDA_2of4_4.4sigma')
+
+                        highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][4.4], 
+                                            threshold_low=thresholds_low[station_id][4.4],
+                                            coinc_window = 40*units.ns,
+                                            triggered_channels=secondary_LPDA_channels,
+                                            number_concidences=2,
+                                            trigger_name=f'primary_LPDA_2of4_4.4sigma')
 
 
-                triggerTimeAdjuster.run(evt, station, det)
-                # channelResampler.run(evt, station, det, 1*units.GHz)
-                channelStopFilter.run(evt, station, det, prepend=0*units.ns, append=0*units.ns)
-                correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
-
-                # Testing
-                # sim_station = station.get_sim_station()
-                # ic(sim_station.get_parameter(stnp.zenith)/units.deg, sim_station.get_parameter(stnp.azimuth)/units.deg)
-                # ic(station.get_parameter(stnp.zenith)/units.deg, station.get_parameter(stnp.azimuth)/units.deg)
-                # quit()
-        # Save every event for rate calculation
-        eventWriter.run(evt, det)
-
-        # Save every event for proper rate calculation
-        # Now every event is saved regardless of if it triggers or not
-        # When checking events in nur, now check if station.has_triggered()
-        # eventWriter.run(evt, det)
+                    else:
+                        highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][4.4],
+                                            threshold_low=thresholds_low[station_id][4.4],
+                                            coinc_window = 40*units.ns,
+                                            triggered_channels=primary_LPDA_channels,
+                                            number_concidences=2,
+                                            trigger_name=f'primary_LPDA_2of4_4.4sigma')
 
 
-    nevents = eventWriter.end()
-    dt = readCoREAS.end()
-    print(f"Finished processing Station {station_id}, {nevents} events processed, {dt} seconds elapsed")
+                    triggerTimeAdjuster.run(evt, station, det)
+                    # channelResampler.run(evt, station, det, 1*units.GHz)
+                    channelStopFilter.run(evt, station, det, prepend=0*units.ns, append=0*units.ns)
+                    correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
+
+                    # Testing
+                    # sim_station = station.get_sim_station()
+                    # ic(sim_station.get_parameter(stnp.zenith)/units.deg, sim_station.get_parameter(stnp.azimuth)/units.deg)
+                    # ic(station.get_parameter(stnp.zenith)/units.deg, station.get_parameter(stnp.azimuth)/units.deg)
+                    # quit()
+            # Save every event for rate calculation
+            eventWriter.run(evt, det)
+
+            # Save every event for proper rate calculation
+            # Now every event is saved regardless of if it triggers or not
+            # When checking events in nur, now check if station.has_triggered()
+            # eventWriter.run(evt, det)
+
+
+        nevents = eventWriter.end()
+        dt = readCoREAS.end()
+        print(f"Finished processing Station {station_id}, {nevents} events processed, {dt} seconds elapsed")
 
 run_stations(all_stations, mode='direct')
 run_stations(all_stations_reflected, mode='reflected')
