@@ -1,6 +1,7 @@
 from NuRadioReco.utilities import units
 import NuRadioReco.modules.io.coreas.readCoREAS
-import NuRadioReco.modules.io.coreas.readCoREASStationGrid
+# import NuRadioReco.modules.io.coreas.readCoREASStationGrid
+import readCoREASStationGrid    # Use local version saved in this repository
 import NuRadioReco.modules.io.coreas.simulationSelector
 import NuRadioReco.modules.efieldToVoltageConverter
 import NuRadioReco.modules.channelGenericNoiseAdder
@@ -66,8 +67,9 @@ input_files = pullFilesForSimulation('MB', min_file, max_file)
 det = detector.Detector('HRASimulation/HRAStationLayoutForCoREAS.json', 'json')   #Relative path from running folder
 det.update(datetime.datetime(2018, 10, 1))
 
-all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52]
-all_stations_reflected = [113, 114, 115, 117, 118, 119, 130, 132, 152]
+all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
+# all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52]
+# all_stations_reflected = [113, 114, 115, 117, 118, 119, 130, 132, 152]
 
 # Indicate channels for simulation
 primary_LPDA_channels = [0, 1, 2, 3]   #Downward for all stations except 32, which is upward
@@ -120,23 +122,24 @@ for station_id in all_stations_reflected:
 # Start simulation
 # Because CoREAS only simulates one station at a time, need to simulate each station in order using the same seed
 # All events will be saved, therefore all events will be in order compared to each other across files
-def run_stations(stations_list, mode='direct'):
-    for station_id in stations_list:
-        # readCoREAS = NuRadioReco.modules.io.coreas.readCoREAS.readCoREAS()
-        # readCoREAS.begin(input_files, station_id, n_cores=n_cores, max_distance=distance*units.km, seed=seed)
-        readCoREAS = NuRadioReco.modules.io.coreas.readCoREASStationGrid.readCoREAS()
-        readCoREAS.begin(input_files, (-distance/2)*units.km, (distance/2)*units.km, (-distance/2)*units.km, (distance/2)*units.km, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.WARNING)
-        eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
-        eventWriter.begin(output_filename + f'_station{station_id}.nur')
+def run_stations(stations_list, mode='by_depth'):
+
+    readCoREAS = NuRadioReco.modules.io.coreas.readCoREASStationGrid.readCoREAS()
+    readCoREAS.begin(input_files, (-distance/2)*units.km, (distance/2)*units.km, (-distance/2)*units.km, (distance/2)*units.km, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.WARNING)
+    eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
+    eventWriter.begin(output_filename + f'.nur')
 
 
-        ic(f'Starting station {station_id} simulation')
-        for evt, iE, x, y in readCoREAS.run(detector=det, ray_type=mode, layer_depth=576, layer_dB=0.7, attenuation_model='MB_freq', output_mode=2):
-            logger.info(f"processing event {iE} with id {evt.get_id()} at position {x}, {y}")
 
-            evt.set_parameter(evtp.coreas_x, x)
-            evt.set_parameter(evtp.coreas_y, y)
+    for evt, iE, x, y in readCoREAS.run(detector=det, ray_type=mode, layer_depth=576, layer_dB=0, attenuation_model='MB_freq', output_mode=2):
+        logger.info(f"processing event {iE} with id {evt.get_id()} at position {x}, {y}")
 
+        evt.set_parameter(evtp.coreas_x, x)
+        evt.set_parameter(evtp.coreas_y, y)
+
+        for station_id in stations_list:
+            ic(f'Starting station {station_id} simulation')
+    
             # det.update(datetime.datetime(2018, 10, 1))
             # ic(det.__current_time)
             # ic(det.__valid_t0)
@@ -253,9 +256,10 @@ def run_stations(stations_list, mode='direct'):
             # eventWriter.run(evt, det)
 
 
-        nevents = eventWriter.end()
-        dt = readCoREAS.end()
-        print(f"Finished processing Station {station_id}, {nevents} events processed, {dt} seconds elapsed")
+    nevents = eventWriter.end()
+    dt = readCoREAS.end()
+    print(f"Finished processing Station {station_id}, {nevents} events processed, {dt} seconds elapsed")
 
-run_stations(all_stations, mode='direct')
-run_stations(all_stations_reflected, mode='reflected')
+# run_stations(all_stations, mode='direct')
+# run_stations(all_stations_reflected, mode='reflected')
+run_stations()

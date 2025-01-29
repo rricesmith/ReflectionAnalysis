@@ -58,8 +58,11 @@ class readCoREAS:
         n_cores: number of cores (integer)
             the number of random core positions to generate for each input file
         shape: string
-            shape of area in which core positions are distributed, 'square' or 'triangle' configured currently
+            shape of area in which core positions are distributed, 'square', 'triangle', 'uniform', or 'linear' configured currently
             if triangle, area is considered to be area with vertices (xmin, ymin), (xmax, ymin), (0.5(xmax-xmin), ymax)
+            linear produces cores in a line along (xmin, ymin) to (xmax, ymax) spacred by n_cores
+            uniform produces an evenly spaced rectangular grid of throws
+            radial produces a distribution spaced evenly in sqrt(radius) over a circle centered on (xmin, ymin) (xmax, ymax), with diameter=xmax-xmin, leading to equal throws per radius
         seed: int (default: None)
             Seed for the random number generation. If None is passed, no seed is set
         """
@@ -93,6 +96,7 @@ class readCoREAS:
         ray_type: string
             'refracted' for modification of direct signals to deep antennas
             'reflected' for modification of reflected signals
+            'by_depth' for modification of signals based on if they are above or below a reflective layer
         refl_layer_depth: positive float
             If using a reflective layer, depth of the reflective layer in meters
         reflective_dB: float
@@ -110,6 +114,7 @@ class readCoREAS:
 
         # Untested configuration
         if ray_type == 'reflected':
+            # DEPRECIATED? Remove possible
             ant_ice_position[2] = 2 * refl_layer_depth + ant_ice_position[2]
             refr_zenith = np.pi - refr_zenith
         ray = np.array(ant_surface_position) - np.array(ant_ice_position)
@@ -118,24 +123,52 @@ class readCoREAS:
 #        print(f'ant surface position {ant_surface_position} and ice position {ant_ice_position} creates ray {ray} for dist of {dist_traveled}')
 
 #        efield_adjust = cr_xmax / (cr_xmax + dist_traveled)
-        efield_adjust = 1
 #        print(f'efield adjust from cr xmax {efield_adjust} due to crxmax {cr_xmax} and dist traveled {dist_traveled}')
-        if attenuation_model == 'MB_flat':
+        if attenuation_model == None:
+            efield_adjust = 1
+        elif attenuation_model == 'MB_flat':
             att_length = 420*units.m
-            efield_adjust *= np.exp(-dist_traveled / att_length)
+            efield_adjust = np.exp(-np.abs(dist_traveled) / att_length)
         elif attenuation_model == 'MB_freq':
-            freqs = electric_field.get_frequencies() * units.GHz
+#            freqs = electric_field.get_frequencies() * units.GHz
+            freqs = electric_field.get_frequencies()
             att_length = 460 * units.m - 180 * units.m / units.GHz * freqs / units.GHz
             att_length[att_length <= 0] = 1
-            efield_adjust *= np.exp(-dist_traveled / att_length)
+            efield_adjust = np.exp(-dist_traveled / (att_length/units.m) )
 #            print(f'efield adjust from atten {np.exp(-dist_traveled / att_length)} of dist {dist_traveled}')
             efield_adjust[att_length <= 0] = 0	#Remove negative attenuation lenghts
-        elif not attenuation_model == None:
+            efield_adjust[efield_adjust > 1] = 1 #Remove increases in electric field
+
+#            plt.plot(freqs/units.MHz, np.abs(electric_field.get_frequency_spectrum()[0]), label='Pre-att 0')
+#            plt.plot(freqs/units.MHz, np.abs(electric_field.get_frequency_spectrum()[1]), label='Pre-att 1')
+#            plt.plot(freqs/units.MHz, np.abs(electric_field.get_frequency_spectrum()[2]), label='Pre-att 2')
+
+        else:
             print(f'There exists no attenuation model {attenuation_model}')
             quit()
 
+        """
+        pre_val = 0
+        for iF, fre in enumerate(freqs):
+#            print(f'our fre is {fre/units.MHz} and has truth value {190 <= fre/units.MHz <= 200}')
+            if 190 <= fre/units.MHz <= 200:
+                for i in range(20):
+                    pre_val += np.abs(electric_field.get_frequency_spectrum()[2])[iF+10-i]               
+                break 
+        """
+
+        """
+        plt.plot(freqs/units.MHz,efield_adjust)
+        plt.xlabel('MHz')
+        plt.show()
+
+        plt.plot(freqs/units.MHz, att_length)
+        plt.show()
+#        quit()
+        """
+
 #        print(f'ray type {ray_type} and ice position {ant_ice_position[2]} and refl depth {refl_layer_depth}')
-        if ray_type == 'reflected' or (force_dB and np.abs(ant_ice_position[2]) > refl_layer_depth):
+        if ray_type == 'reflected' or force_dB or (np.abs(ant_ice_position[2]) > np.abs(refl_layer_depth)):
 #            print(f'db adjust triggered')
             efield_adjust *= 10**(-reflective_dB / 20)
 #        if force_dB and np.abs(ant_ice_position[2]) > refl_layer_depth:
@@ -144,12 +177,34 @@ class readCoREAS:
         electric_field.set_frequency_spectrum(electric_field.get_frequency_spectrum() * efield_adjust, electric_field.get_sampling_rate())
 #        electric_field.set_parameter(efp.zenith, refr_zenith)
 
+        """
+        post_val = 0
+        for iF, fre in enumerate(freqs):
+            if 190 <= fre/units.MHz <= 200:
+                for i in range(20):
+                    post_val += np.abs(electric_field.get_frequency_spectrum()[2])[iF+10-i]               
+                break 
+
+        if pre_val == 0:
+            pre_val = 1
+        print(f'pre at {pre_val}, post {post_val}, ratio {post_val/pre_val} compared to 200MHz att of {efield_adjust[iF]} for dist traveled of {dist_traveled} and att length {att_length[iF]}')
+
+        plt.plot(freqs/units.MHz, np.abs(electric_field.get_frequency_spectrum()[0]), label='Post-att 0')
+        plt.plot(freqs/units.MHz, np.abs(electric_field.get_frequency_spectrum()[1]), label='Post-att 1')
+        plt.plot(freqs/units.MHz, np.abs(electric_field.get_frequency_spectrum()[2]), label='Post-att 2')
+        plt.plot(freqs/units.MHz,efield_adjust, color='black', label='E field reduction')
+        plt.legend()
+        plt.xlabel('Freqs (MHz)')
+        plt.yscale('log')
+        plt.show()
+        """
+
         return electric_field
 
 
     @register_run()
 #    def run(self, detector, ray_type='direct', antenna_depth=0*units.m, layer_depth=0*units.m, layer_dB=0, output_mode=0):
-    def run(self, detector, ray_type='direct', layer_depth=0*units.m, layer_dB=0, force_dB = False, attenuation_model=None, output_mode=0):
+    def run(self, detector, ray_type='direct', layer_depth=-300*units.m, layer_dB=0, force_dB = False, attenuation_model=None, output_mode=0):
         """
         Read in a random sample of stations from a CoREAS file.
         For each position the closest observer is selected and a simulated
@@ -160,9 +215,10 @@ class readCoREAS:
         detector: Detector object
             Detector description of the detector that shall be simulated
         ray_type: string
-            'direct' for direct surface observers and surface antennas
-            'refracted' for getting observer locations based off of refraction to antenna depth
-            'reflected' for getting observer locations based off of refraction and reflection at a reflective layer
+            'direct'    : direct surface observers and surface antennas
+            'refracted' : get observer locations based off of refraction to antenna depth
+            'reflected' : get observer locations based off of refraction and reflection at a reflective layer
+            'by_depth'  : get observer locations depending upon if observer is above or below layer_depth
         antenna_depth: positive float
             Depth of antenna considered for non-direct ray types in meters
         layer_depth: positive float
@@ -232,6 +288,34 @@ class readCoREAS:
                 c_X = s * v1[0] + t * v2[0] + u * v3[0]
                 c_Y = s * v1[1] + t * v2[1] + u * v3[1]
                 cores = np.stack([c_X, c_Y, np.zeros(self.__n_cores)], axis=1)
+            elif self.__shape == 'linear':
+                #generate core positions along a line bisecting a rectangle
+                x = np.linspace(self.__area[0], self.__area[1], num=self.__n_cores)                
+                y = np.linspace(self.__area[2], self.__area[3], num=self.__n_cores)
+                cores = np.stack([x, y, np.zeros(self.__n_cores)], axis=1)                                
+            elif self.__shape == 'uniform':
+                square_cores = int(np.sqrt(self.__n_cores))
+                xs = np.linspace(self.__area[0], self.__area[1], num=square_cores)
+                ys = np.linspace(self.__area[2], self.__area[3], num=square_cores)
+                x = []
+                y = []
+                for i in range(square_cores):
+                    for j in range(square_cores):
+                        x.append(xs[i])
+                        y.append(ys[j])
+#                x = np.array(x)
+#                y = np.array(y)
+                cores = np.stack([x, y, np.zeros_like(x)], axis=1)
+            elif self.__shape == 'radial':
+#                diameter = np.sqrt( (self.__area[0] - self.__area[1])**2 + (self.__area[2] - self.__area[3])**2 )
+                diameter = self.__area[0] - self.__area[1]
+                r = diameter / 2 * np.sqrt(self.__random_generator.random(size=self.__n_cores))
+                theta = self.__random_generator.random(size=self.__n_cores) * 2 * np.pi
+                x_center = (self.__area[0] + self.__area[1])/2
+                y_center = (self.__area[2] + self.__area[3])/2
+                x = x_center + r * np.cos(theta)
+                y = y_center + r * np.sin(theta)
+                cores = np.stack([x, y, np.zeros(self.__n_cores)], axis=1)
             else:
                 self.logger.debug(f'Only shapes square and triangle configured, no {self.__shape} setup')
                 raise NotImplementedError
@@ -270,6 +354,7 @@ class readCoREAS:
                             refracted_zenith = np.arcsin( np.sin(zenith) / n_ice) * units.rad
 #                            print(f'check :  zenith {zenith} refracted {refracted_zenith}')
                             if ray_type == 'reflected':
+                                # Depreciated? Remove possible
                                 antenna_depth = 2 * layer_depth - antenna_depth
                             refr_dist_from_station = antenna_depth * np.tan(refracted_zenith)
 
@@ -296,7 +381,8 @@ class readCoREAS:
 #                        station_locations.append([ det_station_position, [channel_ids] ] )
                         for channel_id in channel_ids:
                             station_locations.append( [ det_station_position, [channel_id] ] )
-                    station_locations = np.array(station_locations)
+                    # station_locations = np.array(station_locations)
+                    station_locations = station_locations
 
 #                    print(f'check : core locations {station_locations}')
                     
