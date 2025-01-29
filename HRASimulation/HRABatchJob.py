@@ -4,8 +4,8 @@ from pathlib import Path
 
 
 date_sim = '1.27.25'
-n_cores = 100   #Decenty sensitivity to RCRs, so don't overdo
-distance = 10 #km, want a large enough area that all stations will be covered and then some
+n_cores = 50   #Decenty sensitivity to RCRs, so don't overdo
+distance = 5 #km, want a large enough area that all stations will be covered and then some
 add_noise = False
 output_folder = f'HRASimulation/output/HRA/{date_sim}/'
 output_filename = f'HRA_Noise{add_noise}_{distance}km'

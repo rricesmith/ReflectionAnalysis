@@ -25,6 +25,7 @@ import datetime
 from icecream import ic
 from scipy import constants
 from NuRadioReco.framework.parameters import stationParameters as stnp
+from NuRadioReco.framework.parameters import eventParameters as evtp
 
 from NuRadioReco.detector import detector
 from NuRadioReco.detector import generic_detector
@@ -129,8 +130,12 @@ def run_stations(stations_list, mode='direct'):
         eventWriter.begin(output_filename + f'_station{station_id}.nur')
 
 
-        for iE, evt in enumerate(readCoREAS.run(detector=det, ray_type=mode, layer_depth=576, layer_dB=0.7, attenuation_model='MB_freq')):
-            logger.info("processing event {:d} with id {:d}".format(iE, evt.get_id()))
+        ic(f'Starting station {station_id} simulation')
+        for evt, iE, x, y in readCoREAS.run(detector=det, ray_type=mode, layer_depth=576, layer_dB=0.7, attenuation_model='MB_freq', output_mode=2):
+            logger.info(f"processing event {iE} with id {evt.get_id()} at position {x}, {y}")
+
+            evt.set_parameter(evtp.coreas_x, x)
+            evt.set_parameter(evtp.coreas_y, y)
 
             # det.update(datetime.datetime(2018, 10, 1))
             # ic(det.__current_time)
@@ -165,7 +170,8 @@ def run_stations(stations_list, mode='direct'):
 
                 # quit()
 
-            if simulationSelector.run(evt, station.get_sim_station(), det):
+            # if simulationSelector.run(evt, station.get_sim_station(), det):
+            if True:
 
                 # efieldToVoltageConverter.run(evt, station, det)
 
