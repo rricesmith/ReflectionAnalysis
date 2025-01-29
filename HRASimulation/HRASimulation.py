@@ -111,6 +111,10 @@ for station_id in all_stations:
     preAmpVrms_per_channel[station_id] = {}
     thresholds_high[station_id] = {}
     thresholds_low[station_id] = {}
+for station_id in all_stations_reflected:
+    preAmpVrms_per_channel[station_id] = {}
+    thresholds_high[station_id] = {}
+    thresholds_low[station_id] = {}
 
 # Start simulation
 # Because CoREAS only simulates one station at a time, need to simulate each station in order using the same seed
