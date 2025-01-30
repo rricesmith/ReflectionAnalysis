@@ -262,4 +262,4 @@ def run_stations(stations_list, mode='by_depth'):
 
 # run_stations(all_stations, mode='direct')
 # run_stations(all_stations_reflected, mode='reflected')
-run_stations()
+run_stations(all_stations)
