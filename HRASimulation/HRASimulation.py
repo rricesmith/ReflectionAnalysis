@@ -133,7 +133,7 @@ def run_stations(stations_list, mode='by_depth'):
 
 
     for evt, iE, x, y in readCoREAS.run(detector=det, ray_type=mode, layer_depth=576, layer_dB=0, attenuation_model='MB_freq', output_mode=2):
-        logger.info(f"processing event {iE} with id {evt.get_id()} at position {x}, {y}")
+        ic(f"processing event {iE} with id {evt.get_id()} at position {x}, {y}")
 
         evt.set_parameter(evtp.coreas_x, x)
         evt.set_parameter(evtp.coreas_y, y)
@@ -248,18 +248,19 @@ def run_stations(stations_list, mode='by_depth'):
                     # ic(sim_station.get_parameter(stnp.zenith)/units.deg, sim_station.get_parameter(stnp.azimuth)/units.deg)
                     # ic(station.get_parameter(stnp.zenith)/units.deg, station.get_parameter(stnp.azimuth)/units.deg)
                     # quit()
-            # Save every event for rate calculation
-            eventWriter.run(evt)
+        # Save every event for rate calculation
+        eventWriter.run(evt)
+        
 
-            # Save every event for proper rate calculation
-            # Now every event is saved regardless of if it triggers or not
-            # When checking events in nur, now check if station.has_triggered()
-            # eventWriter.run(evt, det)
+        # Save every event for proper rate calculation
+        # Now every event is saved regardless of if it triggers or not
+        # When checking events in nur, now check if station.has_triggered()
+        # eventWriter.run(evt, det)
 
 
     nevents = eventWriter.end()
     dt = readCoREAS.end()
-    print(f"Finished processing Station {station_id}, {nevents} events processed, {dt} seconds elapsed")
+    ic(f"Finished processing All stations, {nevents} events processed, {dt} seconds elapsed")
 
 # run_stations(all_stations, mode='direct')
 # run_stations(all_stations_reflected, mode='reflected')
