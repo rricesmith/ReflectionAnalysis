@@ -124,7 +124,8 @@ for station_id in all_stations:
 # All events will be saved, therefore all events will be in order compared to each other across files
 def run_stations(stations_list, mode='by_depth'):
 
-    readCoREAS = NuRadioReco.modules.io.coreas.readCoREASStationGrid.readCoREAS()
+    # readCoREAS = NuRadioReco.modules.io.coreas.readCoREASStationGrid.readCoREAS()
+    readCoREAS = readCoREASStationGrid.readCoREAS()
     readCoREAS.begin(input_files, (-distance/2)*units.km, (distance/2)*units.km, (-distance/2)*units.km, (distance/2)*units.km, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.WARNING)
     eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
     eventWriter.begin(output_filename + f'.nur')
