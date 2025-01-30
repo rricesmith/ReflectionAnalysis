@@ -67,10 +67,6 @@ input_files = pullFilesForSimulation('MB', min_file, max_file)
 det = detector.Detector('HRASimulation/HRAStationLayoutForCoREAS.json', 'json')   #Relative path from running folder
 det.update(datetime.datetime(2018, 10, 1))
 
-all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
-# all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52]
-# all_stations_reflected = [113, 114, 115, 117, 118, 119, 130, 132, 152]
-
 # Indicate channels for simulation
 primary_LPDA_channels = [0, 1, 2, 3]   #Downward for all stations except 32, which is upward
 secondary_LPDA_channels = [4, 5, 6, 7]     #Only on station 52
@@ -107,6 +103,10 @@ correlationDirectionFitter = NuRadioReco.modules.correlationDirectionFitter.corr
 correlationDirectionFitter.begin(debug=False)
 
 
+all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
+# all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52]
+# all_stations_reflected = [113, 114, 115, 117, 118, 119, 130, 132, 152]
+
 preAmpVrms_per_channel = {}
 thresholds_high = {}
 thresholds_low = {}
@@ -114,10 +114,10 @@ for station_id in all_stations:
     preAmpVrms_per_channel[station_id] = {}
     thresholds_high[station_id] = {}
     thresholds_low[station_id] = {}
-for station_id in all_stations_reflected:
-    preAmpVrms_per_channel[station_id] = {}
-    thresholds_high[station_id] = {}
-    thresholds_low[station_id] = {}
+# for station_id in all_stations_reflected:
+#     preAmpVrms_per_channel[station_id] = {}
+#     thresholds_high[station_id] = {}
+#     thresholds_low[station_id] = {}
 
 # Start simulation
 # Because CoREAS only simulates one station at a time, need to simulate each station in order using the same seed
