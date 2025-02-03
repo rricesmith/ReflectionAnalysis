@@ -126,7 +126,7 @@ def getBinnedTriggerRate(HRAeventList):
     min_energy = 17
     max_energy = 20.1
     e_bins = 10**np.arange(min_energy, max_energy, 0.5) * units.eV
-    z_bins = np.arange(0, 1, 0.1)
+    z_bins = np.arange(0, 1.01, 0.1)
     z_bins = np.arccos(z_bins)
     z_bins[np.isnan(z_bins)] = 0
     z_bins = z_bins * units.rad
