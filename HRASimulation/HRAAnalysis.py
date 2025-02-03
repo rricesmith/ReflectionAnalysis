@@ -141,7 +141,9 @@ def getBinnedTriggerRate(HRAeventList):
         n_throws += 1
         for station_id in event.directTriggers():
             energy_bin = np.digitize(event.getEnergy(), e_bins)
+            ic(energy_bin, event.getEnergy(), e_bins)
             zenith_bin = np.digitize(event.getAngles()[0], z_bins)
+            ic(zenith_bin, event.getAngles()[0], z_bins)
             if station_id not in direct_trigger_rate_dict:
                 direct_trigger_rate_dict[station_id] = np.zeros((len(e_bins), len(z_bins)))
             direct_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
