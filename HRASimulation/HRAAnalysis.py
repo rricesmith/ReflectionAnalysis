@@ -126,10 +126,11 @@ def getBinnedTriggerRate(HRAeventList):
     min_energy = 17
     max_energy = 20.1
     e_bins = 10**np.arange(min_energy, max_energy, 0.5) * units.eV
-    z_bins = np.arange(0, 1.01, 0.1)
+    z_bins = np.arange(0, 1.01, 0.2)
     z_bins = np.arccos(z_bins)
     z_bins[np.isnan(z_bins)] = 0
     z_bins = z_bins * units.rad
+    z_bins = np.sort(z_bins)
     ic(e_bins, z_bins)
 
     # Create a dictionary for the event rate per station
@@ -187,15 +188,31 @@ def set_bad_imshow(array, value):
     return ma, cmap
 
 
-def imshowRate(rate, e_bins, z_bins, title, savename, colorbar_label='Evts/km^2/yr'):
+def imshowRate(rate, e_bins, cos_bins, title, savename, colorbar_label='Evts/km^2/yr'):
 
     rate, cmap = set_bad_imshow(rate, 0)
 
     fig, ax = plt.subplots()
-    im = ax.imshow(rate, aspect='auto', origin='lower', extent=[min(e_bins), max(e_bins), min(z_bins)/units.deg, max(z_bins)/units.deg], cmap=cmap)
+
+    rate[1,:] = 100
+    rate[:, 5] = 200
+
+    im = ax.imshow(rate, aspect='auto', origin='lower', extent=[min(e_bins), max(e_bins), min(cos_bins), max(cos_bins)], norm=matplotlib.colors.LogNorm(), cmap=cmap)
+
+    # Since the y-axis is not evenly spaced in zenith, need to adjust axis labels
+    ax_labels = []
+    for c in cos_bins:
+        z = np.rad2deg(np.arccos(c))
+        if np.isnan(z):
+            z = 0
+        ax_labels.append('{:.0f}'.format(np.rad2deg(z)))
+    ax = plt.gca()
+    ax.set_yticks(cos_bins)
+    ax.set_yticklabels(ax_labels)
+
     ax.set_xlabel('log10(E/eV)')
     ax.set_ylabel('Zenith Angle (deg)')
-    fig.colorbar(im, ax=ax, label='Event Rate')
+    fig.colorbar(im, ax=ax, label=colorbar_label)
     ax.set_title(title)
     fig.savefig(savename)
     ic(f'Saved {savename}')
@@ -209,6 +226,7 @@ if __name__ == "__main__":
     direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins = getBinnedTriggerRate(HRAeventList)
 
     logE_bins = np.log10(e_bins/units.eV)
+    cos_bins = np.cos(z_bins)
 
     direct_event_rate = {}
     for station_id in direct_trigger_rate_dict:
@@ -220,8 +238,8 @@ if __name__ == "__main__":
     savename = f'HRASimulation/plots/2.3.25/'
     os.makedirs(savename, exist_ok=True)
     for station_id in direct_event_rate:
-        imshowRate(direct_event_rate[station_id], logE_bins, z_bins, f'Direct Event Rate for Station {station_id}', f'{savename}direct_event_rate_{station_id}.png')
-        imshowRate(direct_trigger_rate_dict[station_id], logE_bins, z_bins, f'Direct Event Rate for Station {station_id}', f'{savename}direct_event_rate_{station_id}.png', colorbar_label='Trigger Rate')
+        imshowRate(direct_event_rate[station_id], logE_bins, cos_bins, f'Direct Event Rate for Station {station_id}', f'{savename}direct_event_rate_{station_id}.png', colorbar_label=f'Evts/km^2/yr, Sum {np.sum(direct_event_rate[station_id]):.3f}')
+        imshowRate(direct_trigger_rate_dict[station_id], logE_bins, cos_bins, f'Direct Event Rate for Station {station_id}', f'{savename}direct_event_rate_{station_id}.png', colorbar_label='Trigger Rate')
     for station_id in reflected_event_rate:
-        imshowRate(reflected_event_rate[station_id], logE_bins, z_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png')
-        imshowRate(reflected_trigger_rate_dict[station_id], logE_bins, z_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png', colorbar_label='Trigger Rate')
+        imshowRate(reflected_event_rate[station_id], logE_bins, cos_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png', colorbar_label=f'Evts/km^2/yr, Sum {np.sum(direct_event_rate[station_id]):.3f}')
+        imshowRate(reflected_trigger_rate_dict[station_id], logE_bins, cos_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png', colorbar_label='Trigger Rate')
