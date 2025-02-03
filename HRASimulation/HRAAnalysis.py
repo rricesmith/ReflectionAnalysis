@@ -98,7 +98,7 @@ class HRAevent:
 def getHRAevents(nur_files):
     # Input a list of nur files to get a list of HRAevent objects
 
-    eventReader = NuRadioReco.modules.io.eventWriter.eventReader()
+    eventReader = NuRadioReco.modules.io.eventReader.eventReader()
     HRAeventList = []
     for file in nur_files:
         eventReader.begin(file)
