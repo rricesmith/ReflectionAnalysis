@@ -190,7 +190,7 @@ def imshowRate(rate, e_bins, z_bins, title, savename, colorbar_label='Evts/km^2/
     rate, cmap = set_bad_imshow(rate, 0)
 
     fig, ax = plt.subplots()
-    im = ax.imshow(rate, aspect='auto', origin='lower', extent=[min(e_bins), max(e_bins), min(z_bins)/units.deg, max(z_bins)/units.deg], aspect='auto', cmap=cmap)
+    im = ax.imshow(rate, aspect='auto', origin='lower', extent=[min(e_bins), max(e_bins), min(z_bins)/units.deg, max(z_bins)/units.deg], cmap=cmap)
     ax.set_xlabel('log10(E/eV)')
     ax.set_ylabel('Zenith Angle (deg)')
     fig.colorbar(im, ax=ax, label='Event Rate')
@@ -215,10 +215,11 @@ if __name__ == "__main__":
     for station_id in reflected_trigger_rate_dict:
         reflected_event_rate[station_id] = getEventRate(reflected_trigger_rate_dict[station_id], e_bins, z_bins)
 
-    savename = f'HRASimulation/plots/2.3.25'
+    savename = f'HRASimulation/plots/2.3.25/'
+    os.makedirs(savename, exist_ok=True)
     for station_id in direct_event_rate:
-        imshowRate(direct_event_rate[station_id], logE_bins, z_bins, f'Direct Event Rate for Station {station_id}', f'{savename}/direct_event_rate_{station_id}.png')
-        imshowRate(direct_trigger_rate_dict[station_id], logE_bins, z_bins, f'Direct Event Rate for Station {station_id}', f'{savename}/direct_event_rate_{station_id}.png', colorbar_label='Trigger Rate')
+        imshowRate(direct_event_rate[station_id], logE_bins, z_bins, f'Direct Event Rate for Station {station_id}', f'{savename}direct_event_rate_{station_id}.png')
+        imshowRate(direct_trigger_rate_dict[station_id], logE_bins, z_bins, f'Direct Event Rate for Station {station_id}', f'{savename}direct_event_rate_{station_id}.png', colorbar_label='Trigger Rate')
     for station_id in reflected_event_rate:
-        imshowRate(reflected_event_rate[station_id], logE_bins, z_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}/reflected_event_rate_{station_id}.png')
-        imshowRate(reflected_trigger_rate_dict[station_id], logE_bins, z_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}/reflected_event_rate_{station_id}.png', colorbar_label='Trigger Rate')
+        imshowRate(reflected_event_rate[station_id], logE_bins, z_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png')
+        imshowRate(reflected_trigger_rate_dict[station_id], logE_bins, z_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png', colorbar_label='Trigger Rate')
