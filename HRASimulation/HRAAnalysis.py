@@ -1,7 +1,13 @@
 from NuRadioReco.utilities import units
 from NuRadioReco.framework.parameters import eventParameters as evtp
 from NuRadioReco.framework.parameters import showerParameters as shp
-
+import NuRadioReco.modules.io.eventReader
+from icecream import ic
+import os
+import numpy as np
+import astrotools.auger as auger
+import matplotlib.colors
+import matplotlib.pyplot as plt
 
 class HRAevent:
     def __init__(self, event):
@@ -10,16 +16,33 @@ class HRAevent:
 
         self.coreas_x = event.get_parameter(evtp.coreas_x) 
         self.coreas_y = event.get_parameter(evtp.coreas_y)
-        self.event_id = event.get_parameter(event.get_id())
+        self.event_id = event.get_id()
         self.station_triggers = []
         self.secondary_station_triggers = []
 
-        sim_shower = evt.get_sim_shower(0)
+        sim_shower = event.get_sim_shower(0)
         self.energy = sim_shower[shp.energy]
         self.zenith = sim_shower[shp.zenith]
         self.azimuth = sim_shower[shp.azimuth]
         ic(self.event_id, self.energy, self.zenith, self.azimuth)
 
+        # Only doing the 3.5sigma triggers to begin with
+        for station in event.get_stations():
+            if station.has_triggered():
+                self.addTrigger(station.get_id())
+                if station.get_id() == 52:
+                    if station.has_triggered(trigger_name='secondary_LPDA_2of4_3.5sigma'):
+                        self.addSecondaryTrigger(station.get_id())
+
+        self.direct_triggers = []
+        for station_id in self.station_triggers:
+            if station_id < 100:
+                self.direct_triggers.append(station_id)
+
+        self.reflected_triggers = []
+        for station_id in self.station_triggers:
+            if station_id > 100:
+                self.reflected_triggers.append(station_id)
 
     def getCoreasPosition(self):
         return self.coreas_x, self.coreas_y
@@ -38,6 +61,12 @@ class HRAevent:
 
     def secondaryTriggers(self):
         return self.secondary_station_triggers
+    
+    def directTriggers(self):
+        return self.direct_triggers
+    
+    def reflectedTriggers(self):
+        return self.reflected_triggers
 
     def addTrigger(self, station_id):
         if station_id not in self.station_triggers:
@@ -47,4 +76,149 @@ class HRAevent:
         if station_id not in self.secondary_station_triggers:
             self.secondary_station_triggers.append(station_id)
 
+    def hasCoincidence(self):
+        return len(self.station_triggers) > 0
+
+    def hasSecondaryCoincidence(self):
+        return (len(self.station_triggers) + len(self.secondary_station_triggers)) > 0
+
+    def hasTriggered(self, station_id=None):
+        if station_id is None:
+            return len(self.station_triggers) > 0
+        return station_id in self.station_triggers
+
+    def inEnergyZenithBin(self, e_low, e_high, z_low, z_high):
+        return e_low <= self.energy <= e_high and z_low <= self.zenith <= z_high
     
+
+
+
+
+
+def getHRAevents(nur_files):
+    # Input a list of nur files to get a list of HRAevent objects
+
+    eventReader = NuRadioReco.modules.io.eventWriter.eventReader()
+    HRAeventList = []
+    for file in nur_files:
+        eventReader.begin(file)
+        for event in eventReader.run():
+            HRAeventList.append(HRAevent(event))
+        eventReader.end()
+
+    return HRAeventList
+
+
+def getHRAeventsFromDir(directory):
+    # Input a directory to get a list of HRAevent objects from all nur files in that directory
+
+    nur_files = []
+    for file in os.listdir(directory):
+        if file.endswith('.nur'):
+            nur_files.append(os.path.join(directory, file))
+
+    return getHRAevents(nur_files)
+
+def getBinnedTriggerRate(HRAeventList):
+    # Input a list of HRAevent objects to get the event rate in each energy-zenith bin
+
+    # Define the bins
+    min_energy = 17
+    max_energy = 20.1
+    e_bins = 10**np.arange(min_energy, max_energy, 0.5) * units.eV
+    z_bins = np.arange(0, 1, 0.1)
+    z_bins = np.arccos(z_bins)
+    z_bins[np.isnan(z_bins)] = 0
+    z_bins = z_bins * units.rad
+    ic(e_bins, z_bins)
+
+    # Create a dictionary for the event rate per station
+    direct_trigger_rate_dict = {}
+    reflected_trigger_rate_dict = {}
+    n_throws = 0
+
+    for event in HRAeventList:
+        n_throws += 1
+        for station_id in event.directTriggers():
+            energy_bin = np.digitize(event.getEnergy(), e_bins)
+            zenith_bin = np.digitize(event.getAngles()[0], z_bins)
+            if station_id not in direct_trigger_rate_dict:
+                direct_trigger_rate_dict[station_id] = np.zeros((len(e_bins), len(z_bins)))
+            direct_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
+        for station_id in event.reflectedTriggers():
+            energy_bin = np.digitize(event.getEnergy(), e_bins)
+            zenith_bin = np.digitize(event.getAngles()[0], z_bins)
+            if station_id not in reflected_trigger_rate_dict:
+                reflected_trigger_rate_dict[station_id] = np.zeros((len(e_bins), len(z_bins)))
+            reflected_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
+
+    # Normalise the event rate
+    for station_id in direct_trigger_rate_dict:
+        direct_trigger_rate_dict[station_id] /= n_throws
+    for station_id in reflected_trigger_rate_dict:
+        reflected_trigger_rate_dict[station_id] /= n_throws
+
+    return direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins
+
+def getEventRate(trigger_rate, e_bins, z_bins, max_distance=2.5*units.km):
+    # Input a single trigger rate list to get the event rate in each energy-zenith bin
+
+    logE_bins = np.log10(e_bins/units.eV)
+    area = np.pi * max_distance**2
+    
+    event_rates = np.zeros((len(e_bins), len(z_bins)))
+
+    for i in range(len(e_bins)-1):
+        for j in range(len(z_bins)-1):
+
+            high_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j+1]/units.deg, area=trigger_rate[i][j]*(area/units.km**2))
+            low_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j]/units.deg, area=trigger_rate[i][j]*(area/units.km**2))
+            event_rates[i][j] = high_flux - low_flux
+
+    return event_rates
+
+
+def set_bad_imshow(array, value):
+    ma = np.ma.masked_where(array == value, array)
+    cmap = matplotlib.cm.viridis
+    cmap.set_bad(color='white')
+    return ma, cmap
+
+
+def imshowRate(rate, e_bins, z_bins, title, savename, colorbar_label='Evts/km^2/yr'):
+
+    rate, cmap = set_bad_imshow(rate, 0)
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(rate, aspect='auto', origin='lower', extent=[min(e_bins), max(e_bins), min(z_bins)/units.deg, max(z_bins)/units.deg], aspect='auto', cmap=cmap)
+    ax.set_xlabel('log10(E/eV)')
+    ax.set_ylabel('Zenith Angle (deg)')
+    fig.colorbar(im, ax=ax, label='Event Rate')
+    ax.set_title(title)
+    fig.savefig(savename)
+    ic(f'Saved {savename}')
+    plt.close(fig)
+    return
+
+if __name__ == "__main__":
+
+    sim_folder = 'HRASimulation/output/HRA/1.27.25/'
+    HRAeventList = getHRAeventsFromDir(sim_folder)
+    direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins = getBinnedTriggerRate(HRAeventList)
+
+    logE_bins = np.log10(e_bins/units.eV)
+
+    direct_event_rate = {}
+    for station_id in direct_trigger_rate_dict:
+        direct_event_rate[station_id] = getEventRate(direct_trigger_rate_dict[station_id], e_bins, z_bins)
+    reflected_event_rate = {}
+    for station_id in reflected_trigger_rate_dict:
+        reflected_event_rate[station_id] = getEventRate(reflected_trigger_rate_dict[station_id], e_bins, z_bins)
+
+    savename = f'HRASimulation/plots/2.3.25'
+    for station_id in direct_event_rate:
+        imshowRate(direct_event_rate[station_id], logE_bins, z_bins, f'Direct Event Rate for Station {station_id}', f'{savename}/direct_event_rate_{station_id}.png')
+        imshowRate(direct_trigger_rate_dict[station_id], logE_bins, z_bins, f'Direct Event Rate for Station {station_id}', f'{savename}/direct_event_rate_{station_id}.png', colorbar_label='Trigger Rate')
+    for station_id in reflected_event_rate:
+        imshowRate(reflected_event_rate[station_id], logE_bins, z_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}/reflected_event_rate_{station_id}.png')
+        imshowRate(reflected_trigger_rate_dict[station_id], logE_bins, z_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}/reflected_event_rate_{station_id}.png', colorbar_label='Trigger Rate')
