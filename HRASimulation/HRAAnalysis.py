@@ -298,6 +298,17 @@ if __name__ == "__main__":
         imshowRate(direct_event_rate[station_id], logE_bins, cos_bins, f'Direct Event Rate for Station {station_id}', f'{savename}direct_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.sum(direct_event_rate[station_id]):.3f}')
     for station_id in reflected_event_rate:
         imshowRate(reflected_trigger_rate_dict[station_id], logE_bins, cos_bins, f'Reflected Trigger Rate for Station {station_id}', f'{savename}reflected_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
-        imshowRate(reflected_event_rate[station_id], logE_bins, cos_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.sum(direct_event_rate[station_id]):.3f}')
+        imshowRate(reflected_event_rate[station_id], logE_bins, cos_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.sum(reflected_event_rate[station_id]):.3f}')
 
+
+    # Coincidence plots
+    bad_stations = [52]
+    trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations)
+    event_rate_coincidence = {}
+    for i in trigger_rate_coincidence:
+        imshowRate(trigger_rate_coincidence[i], logE_bins, cos_bins, f'Trigger Rate for {i} Coincidences', f'{savename}trigger_rate_coincidence_{i}.png', colorbar_label='Trigger Rate')
+        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
+
+    for i in event_rate_coincidence:
+        imshowRate(event_rate_coincidence[i], logE_bins, cos_bins, f'Event Rate for {i} Coincidences', f'{savename}event_rate_coincidence_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
 
