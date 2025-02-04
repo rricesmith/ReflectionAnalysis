@@ -76,11 +76,18 @@ class HRAevent:
         if station_id not in self.secondary_station_triggers:
             self.secondary_station_triggers.append(station_id)
 
-    def hasCoincidence(self):
-        return len(self.station_triggers) > 0
+    def hasCoincidence(self, num=1, bad_stations=None):
+        # Bad Stations should be a list of station IDs that are not to be included in the coincidence
+        if bad_stations is not None:
+            coinc = len(self.station_triggers)
+            for station_id in bad_stations
+                if station_id in self.station_triggers:
+                    coinc -= 1
+            return coinc > num
+        return len(self.station_triggers) > num
 
     def hasSecondaryCoincidence(self):
-        return (len(self.station_triggers) + len(self.secondary_station_triggers)) > 0
+        return (len(self.station_triggers) + len(self.secondary_station_triggers)) > 1
 
     def hasTriggered(self, station_id=None):
         if station_id is None:
@@ -119,10 +126,8 @@ def getHRAeventsFromDir(directory):
 
     return getHRAevents(nur_files)
 
-def getBinnedTriggerRate(HRAeventList):
-    # Input a list of HRAevent objects to get the event rate in each energy-zenith bin
-
-    # Define the bins
+def getEnergyZenithBins():
+    # Define the bins that are constant
     min_energy = 17
     max_energy = 20.1
     e_bins = 10**np.arange(min_energy, max_energy, 0.5) * units.eV
@@ -133,18 +138,39 @@ def getBinnedTriggerRate(HRAeventList):
     z_bins = np.sort(z_bins)
     ic(e_bins, z_bins)
 
+    return e_bins, z_bins
+
+def getnThrows(HRAeventList):
+    # Returns the number of throws in each energy-zenith bin
+    e_bins, z_bins = getEnergyZenithBins()
+
+    n_throws = np.zeros((len(e_bins), len(z_bins))
+
+    for event in HRAeventList:
+        energy_bin = np.digitize(event.getEnergy(), e_bins)
+        zenith_bin = np.digitize(event.getAngles()[0], z_bins)
+        n_throws[energy_bin][zenith_bin] += 1
+
+    return n_throws    
+
+def getBinnedTriggerRate(HRAeventList, num_coincidence=0):
+    # Input a list of HRAevent objects to get the event rate in each energy-zenith bin
+
+    e_bins, z_bins = getEnergyZenithBins()
+
     # Create a dictionary for the event rate per station
     direct_trigger_rate_dict = {}
     reflected_trigger_rate_dict = {}
-    n_throws = 0
+    n_throws = getnThrows(HRAeventList)
 
     for event in HRAeventList:
         n_throws += 1
+        if not event.hasCoincidence(num_coincidence):
+            # Event not triggered or meeting coincidence bar
+            continue
         for station_id in event.directTriggers():
             energy_bin = np.digitize(event.getEnergy(), e_bins)
-            ic(energy_bin, event.getEnergy(), e_bins)
             zenith_bin = np.digitize(event.getAngles()[0], z_bins)
-            ic(zenith_bin, event.getAngles()[0], z_bins)
             if station_id not in direct_trigger_rate_dict:
                 direct_trigger_rate_dict[station_id] = np.zeros((len(e_bins), len(z_bins)))
             direct_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
@@ -163,27 +189,51 @@ def getBinnedTriggerRate(HRAeventList):
 
     return direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins
 
+def getEventRateArray(e_bins, z_bins):
+    # Returns an array of the event rate in each energy-zenith bin in evts/km^2/yr
+    if e_bins[0] > 100:
+        logE_bins = np.log10(e_bins/units.eV)
+    else:
+        logE_bins = e_bins
+    eventRateArray = np.zeros((len(e_bins), len(z_bins)))
+    for i in range(len(e_bins)-1):
+        for j in range(len(z_bins)-1):
+            high_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j+1]/units.deg, area=1)
+            low_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j]/units.deg, area=1)
+            eventRateArray[i][j] = high_flux - low_flux
+
+    return eventRateArray
+
+
 def getEventRate(trigger_rate, e_bins, z_bins, max_distance=2.5*units.km):
     # Input a single trigger rate list to get the event rate in each energy-zenith bin
 
     logE_bins = np.log10(e_bins/units.eV)
     area = np.pi * max_distance**2
     
-    event_rates = np.zeros((len(e_bins), len(z_bins)))
+    eventRateArray = getEventRateArray(e_bins, z_bins)
 
-    for i in range(len(e_bins)-1):
-        for j in range(len(z_bins)-1):
+    return eventRateArray * trigger_rate * area
 
-            high_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j+1]/units.deg, area=trigger_rate[i][j]*(area/units.km**2))
-            low_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j]/units.deg, area=trigger_rate[i][j]*(area/units.km**2))
-            event_rates[i][j] = high_flux - low_flux
-
-    return event_rates
-
-def getCoincidences(HRAeventList):
+def getCoincidencesTriggerRates(HRAeventList, bad_stations):
     # Return a list of coincidence events
-    # As a pair of the event and the mask of its coincidences, as well as station_id index for the mask
-    return
+    # As well as a dictionary of the trigger rate array for each number of coincidences
+    e_bins, z_bins = getEnergyZenithBins()
+    n_throws = getnThrows(HRAeventList)
+
+    trigger_rate_coincidence =  {}
+    for i in [2, 3, 4, 5, 6, 7, 8]:
+        trigger_rate_coincidence[i] = np.zeros((len(e_bins), len(z_bins)))
+        for event in HRAeventList:
+            if not event.hasCoincidence(i, bad_stations):
+                # Event not triggered or meeting coincidence bar
+                continue
+            energy_bin = np.digitize(event.getEnergy(), e_bins)
+            zenith_bin = np.digitize(event.getAngles()[0], z_bins)
+            trigger_rate_coincidence[i][energy_bin][zenith_bin] += 1
+        trigger_rate_coincidence[i] /= n_throws
+
+    return trigger_rate_coincidence
 
 def set_bad_imshow(array, value):
     ma = np.ma.masked_where(array == value, array)
@@ -234,9 +284,11 @@ if __name__ == "__main__":
 
     direct_event_rate = {}
     for station_id in direct_trigger_rate_dict:
+        ic(station_id)
         direct_event_rate[station_id] = getEventRate(direct_trigger_rate_dict[station_id], e_bins, z_bins)
     reflected_event_rate = {}
     for station_id in reflected_trigger_rate_dict:
+        ic(station_id)
         reflected_event_rate[station_id] = getEventRate(reflected_trigger_rate_dict[station_id], e_bins, z_bins)
 
     savename = f'HRASimulation/plots/2.3.25/'
