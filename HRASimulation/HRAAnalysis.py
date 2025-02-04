@@ -147,8 +147,8 @@ def getnThrows(HRAeventList):
     n_throws = np.zeros((len(e_bins), len(z_bins)))
 
     for event in HRAeventList:
-        energy_bin = np.digitize(event.getEnergy(), e_bins)
-        zenith_bin = np.digitize(event.getAngles()[0], z_bins)
+        energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
+        zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
         n_throws[energy_bin][zenith_bin] += 1
 
     return n_throws    
@@ -169,14 +169,14 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0):
             # Event not triggered or meeting coincidence bar
             continue
         for station_id in event.directTriggers():
-            energy_bin = np.digitize(event.getEnergy(), e_bins)
-            zenith_bin = np.digitize(event.getAngles()[0], z_bins)
+            energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
+            zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
             if station_id not in direct_trigger_rate_dict:
                 direct_trigger_rate_dict[station_id] = np.zeros((len(e_bins), len(z_bins)))
             direct_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
         for station_id in event.reflectedTriggers():
-            energy_bin = np.digitize(event.getEnergy(), e_bins)
-            zenith_bin = np.digitize(event.getAngles()[0], z_bins)
+            energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
+            zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
             if station_id not in reflected_trigger_rate_dict:
                 reflected_trigger_rate_dict[station_id] = np.zeros((len(e_bins), len(z_bins)))
             reflected_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
@@ -223,14 +223,14 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations):
     n_throws = getnThrows(HRAeventList)
 
     trigger_rate_coincidence =  {}
-    for i in [2, 3, 4, 5, 6, 7, 8]:
+    for i in [2, 3, 4, 5, 6, 7]:
         trigger_rate_coincidence[i] = np.zeros((len(e_bins), len(z_bins)))
         for event in HRAeventList:
             if not event.hasCoincidence(i, bad_stations):
                 # Event not triggered or meeting coincidence bar
                 continue
-            energy_bin = np.digitize(event.getEnergy(), e_bins)
-            zenith_bin = np.digitize(event.getAngles()[0], z_bins)
+            energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
+            zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
             trigger_rate_coincidence[i][energy_bin][zenith_bin] += 1
         trigger_rate_coincidence[i] /= n_throws
 
@@ -243,7 +243,10 @@ def set_bad_imshow(array, value):
     return ma, cmap
 
 
-def imshowRate(rate, e_bins, cos_bins, title, savename, colorbar_label='Evts/yr'):
+def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
+
+    e_bins, z_bins = getEnergyZenithBins()
+    cos_bins = np.cos(z_bins)
 
     rate, cmap = set_bad_imshow(rate, 0)
 
@@ -256,11 +259,8 @@ def imshowRate(rate, e_bins, cos_bins, title, savename, colorbar_label='Evts/yr'
 
     # Since the y-axis is not evenly spaced in zenith, need to adjust axis labels
     ax_labels = []
-    for c in cos_bins:
-        z = np.rad2deg(np.arccos(c))
-        if np.isnan(z):
-            z = 0
-        ax_labels.append('{:.0f}'.format(z))
+    for z in z_bins:
+        ax_labels.append('{:.0f}'.format(z/units.deg))
     ax = plt.gca()
     ax.set_yticks(cos_bins)
     ax.set_yticklabels(ax_labels)
@@ -322,5 +322,6 @@ if __name__ == "__main__":
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
 
     for i in event_rate_coincidence:
+        ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
         imshowRate(event_rate_coincidence[i], logE_bins, cos_bins, f'Event Rate for {i} Coincidences', f'{savename}event_rate_coincidence_norefl_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
 
