@@ -80,7 +80,7 @@ class HRAevent:
         # Bad Stations should be a list of station IDs that are not to be included in the coincidence
         if bad_stations is not None:
             coinc = len(self.station_triggers)
-            for station_id in bad_stations
+            for station_id in bad_stations:
                 if station_id in self.station_triggers:
                     coinc -= 1
             return coinc > num
@@ -144,7 +144,7 @@ def getnThrows(HRAeventList):
     # Returns the number of throws in each energy-zenith bin
     e_bins, z_bins = getEnergyZenithBins()
 
-    n_throws = np.zeros((len(e_bins), len(z_bins))
+    n_throws = np.zeros((len(e_bins), len(z_bins)))
 
     for event in HRAeventList:
         energy_bin = np.digitize(event.getEnergy(), e_bins)
