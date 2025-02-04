@@ -277,29 +277,43 @@ def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
 if __name__ == "__main__":
 
     sim_folder = 'HRASimulation/output/HRA/1.27.25/'
-    HRAeventList = getHRAeventsFromDir(sim_folder)
-    direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins = getBinnedTriggerRate(HRAeventList)
+    numpy_folder = 'HRASimulation/output/HRA/1.27.25/numpy/' # For saving data to not have to reprocess
+    save_folder = f'HRASimulation/plots/2.3.25/'
+    os.makedirs(save_folder, exist_ok=True)
+
+    if not os.path.exists(numpy_folder):
+        os.makedirs(numpy_folder)
+    if os.path.exists(f'{numpy_folder}HRAeventList.npy'):        
+        HRAeventList = np.load(f'{numpy_folder}HRAeventList.npy', allow_pickle=True)
+        direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins = np.load(f'{numpy_folder}trigger_rate_dict.npy', allow_pickle=True)
+    
+
+    else:
+        HRAeventList = getHRAeventsFromDir(sim_folder)
+        direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins = getBinnedTriggerRate(HRAeventList)
+        direct_event_rate = {}
+        for station_id in direct_trigger_rate_dict:
+            ic(station_id)
+            direct_event_rate[station_id] = getEventRate(direct_trigger_rate_dict[station_id], e_bins, z_bins)
+        reflected_event_rate = {}
+        for station_id in reflected_trigger_rate_dict:
+            ic(station_id)
+            reflected_event_rate[station_id] = getEventRate(reflected_trigger_rate_dict[station_id], e_bins, z_bins)
+
+        np.save(f'{numpy_folder}HRAeventList.npy', HRAeventList)
+        np.save(f'{numpy_folder}trigger_rate_dict.npy', [direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins])
+
 
     logE_bins = np.log10(e_bins/units.eV)
     cos_bins = np.cos(z_bins)
 
-    direct_event_rate = {}
-    for station_id in direct_trigger_rate_dict:
-        ic(station_id)
-        direct_event_rate[station_id] = getEventRate(direct_trigger_rate_dict[station_id], e_bins, z_bins)
-    reflected_event_rate = {}
-    for station_id in reflected_trigger_rate_dict:
-        ic(station_id)
-        reflected_event_rate[station_id] = getEventRate(reflected_trigger_rate_dict[station_id], e_bins, z_bins)
 
-    savename = f'HRASimulation/plots/2.3.25/'
-    os.makedirs(savename, exist_ok=True)
     for station_id in direct_event_rate:
-        imshowRate(direct_trigger_rate_dict[station_id], logE_bins, cos_bins, f'Direct Trigger Rate for Station {station_id}', f'{savename}direct_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
-        imshowRate(direct_event_rate[station_id], logE_bins, cos_bins, f'Direct Event Rate for Station {station_id}', f'{savename}direct_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.sum(direct_event_rate[station_id]):.3f}')
+        imshowRate(direct_trigger_rate_dict[station_id], f'Direct Trigger Rate for Station {station_id}', f'{save_folder}direct_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
+        imshowRate(direct_event_rate[station_id], f'Direct Event Rate for Station {station_id}', f'{save_folder}direct_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.sum(direct_event_rate[station_id]):.3f}')
     for station_id in reflected_event_rate:
-        imshowRate(reflected_trigger_rate_dict[station_id], logE_bins, cos_bins, f'Reflected Trigger Rate for Station {station_id}', f'{savename}reflected_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
-        imshowRate(reflected_event_rate[station_id], logE_bins, cos_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.sum(reflected_event_rate[station_id]):.3f}')
+        imshowRate(reflected_trigger_rate_dict[station_id], f'Reflected Trigger Rate for Station {station_id}', f'{save_folder}reflected_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
+        imshowRate(reflected_event_rate[station_id], f'Reflected Event Rate for Station {station_id}', f'{save_folder}reflected_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.sum(reflected_event_rate[station_id]):.3f}')
 
 
     # Coincidence plots with reflections
@@ -307,21 +321,21 @@ if __name__ == "__main__":
     trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations)
     event_rate_coincidence = {}
     for i in trigger_rate_coincidence:
-        imshowRate(trigger_rate_coincidence[i], logE_bins, cos_bins, f'Trigger Rate for {i} Coincidences', f'{savename}trigger_rate_coincidence_{i}.png', colorbar_label='Trigger Rate')
+        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences', f'{save_folder}trigger_rate_coincidence_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
 
     for i in event_rate_coincidence:
-        imshowRate(event_rate_coincidence[i], logE_bins, cos_bins, f'Event Rate for {i} Coincidences', f'{savename}event_rate_coincidence_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
+        imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences', f'{save_folder}event_rate_coincidence_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
 
     # Coincidence plots without reflections
     bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
     trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations)
     event_rate_coincidence = {}
     for i in trigger_rate_coincidence:
-        imshowRate(trigger_rate_coincidence[i], logE_bins, cos_bins, f'Trigger Rate for {i} Coincidences, no refl', f'{savename}trigger_rate_coincidence_norefl_{i}.png', colorbar_label='Trigger Rate')
+        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, no refl', f'{save_folder}trigger_rate_coincidence_norefl_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
 
     for i in event_rate_coincidence:
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
-        imshowRate(event_rate_coincidence[i], logE_bins, cos_bins, f'Event Rate for {i} Coincidences', f'{savename}event_rate_coincidence_norefl_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
+        imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences', f'{save_folder}event_rate_coincidence_norefl_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
 
