@@ -180,6 +180,10 @@ def getEventRate(trigger_rate, e_bins, z_bins, max_distance=2.5*units.km):
 
     return event_rates
 
+def getCoincidences(HRAeventList):
+    # Return a list of coincidence events
+    # As a pair of the event and the mask of its coincidences, as well as station_id index for the mask
+    return
 
 def set_bad_imshow(array, value):
     ma = np.ma.masked_where(array == value, array)
@@ -188,14 +192,14 @@ def set_bad_imshow(array, value):
     return ma, cmap
 
 
-def imshowRate(rate, e_bins, cos_bins, title, savename, colorbar_label='Evts/km^2/yr'):
+def imshowRate(rate, e_bins, cos_bins, title, savename, colorbar_label='Evts/yr'):
 
     rate, cmap = set_bad_imshow(rate, 0)
 
     fig, ax = plt.subplots()
 
-    rate[1,:] = 100
-    rate[:, 5] = 200
+    # rate[1,:] = 100
+    # rate[:, 0] = 200
 
     im = ax.imshow(rate, aspect='auto', origin='lower', extent=[min(e_bins), max(e_bins), min(cos_bins), max(cos_bins)], norm=matplotlib.colors.LogNorm(), cmap=cmap)
 
@@ -205,7 +209,7 @@ def imshowRate(rate, e_bins, cos_bins, title, savename, colorbar_label='Evts/km^
         z = np.rad2deg(np.arccos(c))
         if np.isnan(z):
             z = 0
-        ax_labels.append('{:.0f}'.format(np.rad2deg(z)))
+        ax_labels.append('{:.0f}'.format(z))
     ax = plt.gca()
     ax.set_yticks(cos_bins)
     ax.set_yticklabels(ax_labels)
@@ -238,8 +242,10 @@ if __name__ == "__main__":
     savename = f'HRASimulation/plots/2.3.25/'
     os.makedirs(savename, exist_ok=True)
     for station_id in direct_event_rate:
-        imshowRate(direct_event_rate[station_id], logE_bins, cos_bins, f'Direct Event Rate for Station {station_id}', f'{savename}direct_event_rate_{station_id}.png', colorbar_label=f'Evts/km^2/yr, Sum {np.sum(direct_event_rate[station_id]):.3f}')
-        imshowRate(direct_trigger_rate_dict[station_id], logE_bins, cos_bins, f'Direct Event Rate for Station {station_id}', f'{savename}direct_event_rate_{station_id}.png', colorbar_label='Trigger Rate')
+        imshowRate(direct_trigger_rate_dict[station_id], logE_bins, cos_bins, f'Direct Trigger Rate for Station {station_id}', f'{savename}direct_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
+        imshowRate(direct_event_rate[station_id], logE_bins, cos_bins, f'Direct Event Rate for Station {station_id}', f'{savename}direct_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.sum(direct_event_rate[station_id]):.3f}')
     for station_id in reflected_event_rate:
-        imshowRate(reflected_event_rate[station_id], logE_bins, cos_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png', colorbar_label=f'Evts/km^2/yr, Sum {np.sum(direct_event_rate[station_id]):.3f}')
-        imshowRate(reflected_trigger_rate_dict[station_id], logE_bins, cos_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png', colorbar_label='Trigger Rate')
+        imshowRate(reflected_trigger_rate_dict[station_id], logE_bins, cos_bins, f'Reflected Trigger Rate for Station {station_id}', f'{savename}reflected_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
+        imshowRate(reflected_event_rate[station_id], logE_bins, cos_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.sum(direct_event_rate[station_id]):.3f}')
+
+
