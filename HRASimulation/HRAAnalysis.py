@@ -200,6 +200,7 @@ def getEventRateArray(e_bins, z_bins):
         for j in range(len(z_bins)-1):
             high_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j+1]/units.deg, area=1)
             low_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j]/units.deg, area=1)
+            ic(logE_bins[i], logE_bins[i+1], z_bins[j+1]/units.deg, z_bins[j]/units.deg, high_flux, low_flux)
             eventRateArray[i][j] = high_flux - low_flux
 
     return eventRateArray
@@ -301,8 +302,8 @@ if __name__ == "__main__":
         imshowRate(reflected_event_rate[station_id], logE_bins, cos_bins, f'Reflected Event Rate for Station {station_id}', f'{savename}reflected_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.sum(reflected_event_rate[station_id]):.3f}')
 
 
-    # Coincidence plots
-    bad_stations = [52]
+    # Coincidence plots with reflections
+    bad_stations = [32, 52, 132, 152]
     trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations)
     event_rate_coincidence = {}
     for i in trigger_rate_coincidence:
@@ -311,4 +312,15 @@ if __name__ == "__main__":
 
     for i in event_rate_coincidence:
         imshowRate(event_rate_coincidence[i], logE_bins, cos_bins, f'Event Rate for {i} Coincidences', f'{savename}event_rate_coincidence_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
+
+    # Coincidence plots without reflections
+    bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
+    trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations)
+    event_rate_coincidence = {}
+    for i in trigger_rate_coincidence:
+        imshowRate(trigger_rate_coincidence[i], logE_bins, cos_bins, f'Trigger Rate for {i} Coincidences, no refl', f'{savename}trigger_rate_coincidence_norefl_{i}.png', colorbar_label='Trigger Rate')
+        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
+
+    for i in event_rate_coincidence:
+        imshowRate(event_rate_coincidence[i], logE_bins, cos_bins, f'Event Rate for {i} Coincidences', f'{savename}event_rate_coincidence_norefl_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
 
