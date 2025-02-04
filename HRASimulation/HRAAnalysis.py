@@ -213,7 +213,7 @@ def getEventRate(trigger_rate, e_bins, z_bins, max_distance=2.5*units.km):
     
     eventRateArray = getEventRateArray(e_bins, z_bins)
 
-    return eventRateArray * trigger_rate * area
+    return eventRateArray * trigger_rate * area/units.km**2
 
 def getCoincidencesTriggerRates(HRAeventList, bad_stations):
     # Return a list of coincidence events
