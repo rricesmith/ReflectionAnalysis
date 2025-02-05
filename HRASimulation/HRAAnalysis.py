@@ -288,7 +288,7 @@ if __name__ == "__main__":
     if os.path.exists(f'{numpy_folder}HRAeventList.npy'):        
         HRAeventList = np.load(f'{numpy_folder}HRAeventList.npy', allow_pickle=True)
         direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins = np.load(f'{numpy_folder}trigger_rate_dict.npy', allow_pickle=True)
-    
+        direct_event_rate, reflected_event_rate = np.load(f'{numpy_folder}event_rate_dict.npy', allow_pickle=True)
 
     else:
         HRAeventList = getHRAeventsFromDir(sim_folder)
@@ -304,7 +304,7 @@ if __name__ == "__main__":
 
         np.save(f'{numpy_folder}HRAeventList.npy', HRAeventList)
         np.save(f'{numpy_folder}trigger_rate_dict.npy', [direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins])
-
+        np.save(f'{numpy_folder}event_rate_dict.npy', [direct_event_rate, reflected_event_rate])
 
     logE_bins = np.log10(e_bins/units.eV)
     cos_bins = np.cos(z_bins)
