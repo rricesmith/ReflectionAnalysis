@@ -10,7 +10,7 @@ import matplotlib.colors
 import matplotlib.pyplot as plt
 
 class HRAevent:
-    def __init__(self, event):
+    def __init__(self, event, DEBUG=False):
         # event should be the NuRadioReco event object
         # All parameters should have NuRadioReco units attached
 
@@ -24,7 +24,8 @@ class HRAevent:
         self.energy = sim_shower[shp.energy]
         self.zenith = sim_shower[shp.zenith]
         self.azimuth = sim_shower[shp.azimuth]
-        ic(self.event_id, self.energy, self.zenith, self.azimuth)
+        if DEBUG:
+            ic(self.event_id, self.energy, self.zenith, self.azimuth)
 
         # Only doing the 3.5sigma triggers to begin with
         for station in event.get_stations():
@@ -255,18 +256,19 @@ def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
     # rate[1,:] = 100
     # rate[:, 0] = 200
 
-    im = ax.imshow(rate, aspect='auto', origin='lower', extent=[min(e_bins), max(e_bins), min(cos_bins), max(cos_bins)], norm=matplotlib.colors.LogNorm(), cmap=cmap)
+    # im = ax.imshow(rate, aspect='auto', origin='lower', extent=[min(e_bins), max(e_bins), min(cos_bins), max(cos_bins)], norm=matplotlib.colors.LogNorm(), cmap=cmap)
+    im = ax.imshow(rate, aspect='auto', origin='upper', extent=[min(e_bins), max(e_bins), min(cos_bins), max(cos_bins)], norm=matplotlib.colors.LogNorm(), cmap=cmap)
 
     # Since the y-axis is not evenly spaced in zenith, need to adjust axis labels
     ax_labels = []
     for z in z_bins:
         ax_labels.append('{:.0f}'.format(z/units.deg))
-    ax = plt.gca()
+    # ax = plt.gca() # Removing to attempt to fix tick problems
     ax.set_yticks(cos_bins)
     ax.set_yticklabels(ax_labels)
+    ax.set_ylabel('Zenith Angle (deg)')
 
     ax.set_xlabel('log10(E/eV)')
-    ax.set_ylabel('Zenith Angle (deg)')
     fig.colorbar(im, ax=ax, label=colorbar_label)
     ax.set_title(title)
     fig.savefig(savename)
@@ -321,10 +323,12 @@ if __name__ == "__main__":
     trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations)
     event_rate_coincidence = {}
     for i in trigger_rate_coincidence:
+        if not np.any(trigger_rate_coincidence[i] > 0):
+            ic(f'No events for {i} coincidences')
+            continue
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences', f'{save_folder}trigger_rate_coincidence_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
-
-    for i in event_rate_coincidence:
+        ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
         imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences', f'{save_folder}event_rate_coincidence_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
 
     # Coincidence plots without reflections
@@ -332,10 +336,12 @@ if __name__ == "__main__":
     trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations)
     event_rate_coincidence = {}
     for i in trigger_rate_coincidence:
+        if not np.any(trigger_rate_coincidence[i] > 0):
+            ic(f'No events for {i} coincidences')
+            continue
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, no refl', f'{save_folder}trigger_rate_coincidence_norefl_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
-
-    for i in event_rate_coincidence:
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
         imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences', f'{save_folder}event_rate_coincidence_norefl_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
+
 
