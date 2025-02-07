@@ -136,7 +136,7 @@ def getHRAeventsFromDir(directory):
 
 def getEnergyZenithBins():
     # Define the bins that are constant
-    min_energy = 17
+    min_energy = 16.5
     max_energy = 20.1
     e_bins = 10**np.arange(min_energy, max_energy, 0.5) * units.eV
     z_bins = np.arange(0, 1.01, 0.2)
@@ -276,6 +276,7 @@ def set_bad_imshow(array, value):
 def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
 
     e_bins, z_bins = getEnergyZenithBins()
+    e_bins = np.log10(e_bins/units.eV)
     cos_bins = np.cos(z_bins)
 
     rate, cmap = set_bad_imshow(rate, 0)
