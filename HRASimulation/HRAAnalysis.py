@@ -206,6 +206,7 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False):
             continue
         combined_trigger_rate['reflected'] += reflected_trigger_rate_dict[station_id]
         combined_throws += n_throws
+    combined_trigger_rate['reflected'] /= combined_throws
 
     # Normalise the event rate
     for station_id in direct_trigger_rate_dict:
