@@ -161,7 +161,7 @@ def getnThrows(HRAeventList):
 
     return n_throws    
 
-def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, combine_stations=[]):
+def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False):
     # Input a list of HRAevent objects to get the event rate in each energy-zenith bin
 
     e_bins, z_bins = getEnergyZenithBins()
@@ -189,13 +189,31 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, c
                 reflected_trigger_rate_dict[station_id] = np.zeros((len(e_bins), len(z_bins)))
             reflected_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
 
+    # Create an array of the combined rate of a single station using statistics of all stations, ignoring 52 and 32
+    combined_trigger_rate = {}
+    combined_trigger_rate['direct'] = np.zeros((len(e_bins), len(z_bins)))
+    combined_trigger_rate['reflected'] = np.zeros((len(e_bins), len(z_bins)))
+    combined_throws = 0
+    for station_id in direct_trigger_rate_dict:
+        if station_id in [32, 52]:
+            continue
+        combined_trigger_rate['direct'] += direct_trigger_rate_dict[station_id]
+        combined_throws += n_throws
+    combined_trigger_rate['direct'] /= combined_throws
+    combined_throws = 0
+    for station_id in reflected_trigger_rate_dict:
+        if station_id in [132, 152]:
+            continue
+        combined_trigger_rate['reflected'] += reflected_trigger_rate_dict[station_id]
+        combined_throws += n_throws
+
     # Normalise the event rate
     for station_id in direct_trigger_rate_dict:
         direct_trigger_rate_dict[station_id] /= n_throws
     for station_id in reflected_trigger_rate_dict:
         reflected_trigger_rate_dict[station_id] /= n_throws
 
-    return direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins
+    return direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins
 
 def getEventRateArray(e_bins, z_bins):
     # Returns an array of the event rate in each energy-zenith bin in evts/km^2/yr
@@ -297,12 +315,12 @@ if __name__ == "__main__":
         os.makedirs(numpy_folder)
     if os.path.exists(f'{numpy_folder}HRAeventList.npy'):        
         HRAeventList = np.load(f'{numpy_folder}HRAeventList.npy', allow_pickle=True)
-        direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins = np.load(f'{numpy_folder}trigger_rate_dict.npy', allow_pickle=True)
-        direct_event_rate, reflected_event_rate = np.load(f'{numpy_folder}event_rate_dict.npy', allow_pickle=True)
+        direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins = np.load(f'{numpy_folder}trigger_rate_dict.npy', allow_pickle=True)
+        direct_event_rate, reflected_event_rate, combined_event_rate = np.load(f'{numpy_folder}event_rate_dict.npy', allow_pickle=True)
 
     else:
         HRAeventList = getHRAeventsFromDir(sim_folder)
-        direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins = getBinnedTriggerRate(HRAeventList)
+        direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins = getBinnedTriggerRate(HRAeventList)
         direct_event_rate = {}
         for station_id in direct_trigger_rate_dict:
             ic(station_id)
@@ -312,9 +330,13 @@ if __name__ == "__main__":
             ic(station_id)
             reflected_event_rate[station_id] = getEventRate(reflected_trigger_rate_dict[station_id], e_bins, z_bins)
 
+        combined_event_rate = {}
+        combined_event_rate['direct'] = getEventRate(combined_trigger_rate['direct'], e_bins, z_bins)
+        combined_event_rate['reflected'] = getEventRate(combined_trigger_rate['reflected'], e_bins, z_bins)
+
         np.save(f'{numpy_folder}HRAeventList.npy', HRAeventList)
-        np.save(f'{numpy_folder}trigger_rate_dict.npy', [direct_trigger_rate_dict, reflected_trigger_rate_dict, e_bins, z_bins])
-        np.save(f'{numpy_folder}event_rate_dict.npy', [direct_event_rate, reflected_event_rate])
+        np.save(f'{numpy_folder}trigger_rate_dict.npy', [direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins])
+        np.save(f'{numpy_folder}event_rate_dict.npy', [direct_event_rate, reflected_event_rate, combined_event_rate])
 
     logE_bins = np.log10(e_bins/units.eV)
     cos_bins = np.cos(z_bins)
@@ -322,10 +344,16 @@ if __name__ == "__main__":
 
     for station_id in direct_event_rate:
         imshowRate(direct_trigger_rate_dict[station_id], f'Direct Trigger Rate for Station {station_id}', f'{save_folder}direct_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
-        imshowRate(direct_event_rate[station_id], f'Direct Event Rate for Station {station_id}', f'{save_folder}direct_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.sum(direct_event_rate[station_id]):.3f}')
+        imshowRate(direct_event_rate[station_id], f'Direct Event Rate for Station {station_id}', f'{save_folder}direct_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(direct_event_rate[station_id]):.3f}')
     for station_id in reflected_event_rate:
         imshowRate(reflected_trigger_rate_dict[station_id], f'Reflected Trigger Rate for Station {station_id}', f'{save_folder}reflected_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
-        imshowRate(reflected_event_rate[station_id], f'Reflected Event Rate for Station {station_id}', f'{save_folder}reflected_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.sum(reflected_event_rate[station_id]):.3f}')
+        imshowRate(reflected_event_rate[station_id], f'Reflected Event Rate for Station {station_id}', f'{save_folder}reflected_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(reflected_event_rate[station_id]):.3f}')
+
+    # Combined trigger rate and event rate plots
+    imshowRate(combined_trigger_rate['direct'], 'Combined Direct Trigger Rate', f'{save_folder}combined_direct_trigger_rate.png', colorbar_label='Trigger Rate')
+    imshowRate(combined_event_rate['direct'], 'Combined Direct Event Rate', f'{save_folder}combined_direct_event_rate.png', colorbar_label=f'Evts/yr, Sum {np.nansum(combined_event_rate["direct"]):.3f}')
+    imshowRate(combined_trigger_rate['reflected'], 'Combined Reflected Trigger Rate', f'{save_folder}combined_reflected_trigger_rate.png', colorbar_label='Trigger Rate')
+    imshowRate(combined_event_rate['reflected'], 'Combined Reflected Event Rate', f'{save_folder}combined_reflected_event_rate.png', colorbar_label=f'Evts/yr, Sum {np.nansum(combined_event_rate["reflected"]):.3f}')
 
 
     # Coincidence plots with reflections
@@ -336,10 +364,10 @@ if __name__ == "__main__":
         if not np.any(trigger_rate_coincidence[i] > 0):
             ic(f'No events for {i} coincidences')
             continue
-        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences', f'{save_folder}trigger_rate_coincidence_{i}.png', colorbar_label='Trigger Rate')
+        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, w/Refl', f'{save_folder}trigger_rate_coincidence_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
-        imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences', f'{save_folder}event_rate_coincidence_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
+        imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences, w/Refl', f'{save_folder}event_rate_coincidence_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
 
     # Coincidence plots without reflections
     bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
@@ -349,10 +377,10 @@ if __name__ == "__main__":
         if not np.any(trigger_rate_coincidence[i] > 0):
             ic(f'No events for {i} coincidences')
             continue
-        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, no refl', f'{save_folder}trigger_rate_coincidence_norefl_{i}.png', colorbar_label='Trigger Rate')
+        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, w/o Refl', f'{save_folder}trigger_rate_coincidence_norefl_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
-        imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences', f'{save_folder}event_rate_coincidence_norefl_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
+        imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences w/o Refl', f'{save_folder}event_rate_coincidence_norefl_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
 
 
     # Coincidence with reflection and station 52 upwards LPDA
@@ -363,10 +391,10 @@ if __name__ == "__main__":
         if not np.any(trigger_rate_coincidence[i] > 0):
             ic(f'No events for {i} coincidences')
             continue
-        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, with 52 up', f'{save_folder}trigger_rate_coincidence_52up_{i}.png', colorbar_label='Trigger Rate')
+        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate, {i} Coincidences, 52 upward forced w/Refl', f'{save_folder}trigger_rate_coincidence_52up_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
-        imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences', f'{save_folder}event_rate_coincidence_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
+        imshowRate(event_rate_coincidence[i], f'Event Rate, {i} Coincidences, 52 upward forced w/Refl', f'{save_folder}event_rate_coincidence_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
 
     # Coincidence without reflection and station 52 upwards LPDA
     bad_stations = [32, 113, 114, 115, 117, 118, 119, 130, 132, 152]
@@ -376,7 +404,7 @@ if __name__ == "__main__":
         if not np.any(trigger_rate_coincidence[i] > 0):
             ic(f'No events for {i} coincidences')
             continue
-        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, no refl, with 52 up', f'{save_folder}trigger_rate_coincidence_norefl_52up_{i}.png', colorbar_label='Trigger Rate')
+        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate, {i} Coincidences, 52 upward forced w/o Refl', f'{save_folder}trigger_rate_coincidence_norefl_52up_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
-        imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences', f'{save_folder}event_rate_coincidence_norefl_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
+        imshowRate(event_rate_coincidence[i], f'Event Rate, {i} Coincidences, 52 upward forced w/o Refl', f'{save_folder}event_rate_coincidence_norefl_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
