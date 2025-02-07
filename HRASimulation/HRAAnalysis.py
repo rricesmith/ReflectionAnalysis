@@ -29,11 +29,14 @@ class HRAevent:
 
         # Only doing the 3.5sigma triggers to begin with
         for station in event.get_stations():
-            if station.has_triggered():
+            if station.has_triggered() and not station.get_id() == 52:
                 self.addTrigger(station.get_id())
-                if station.get_id() == 52:
-                    if station.has_triggered(trigger_name='secondary_LPDA_2of4_3.5sigma'):
-                        self.addSecondaryTrigger(station.get_id())
+            elif station.get_id() == 52:
+                # Primary is downward for station 52, secondary is upward
+                if station.has_triggered(trigger_name='primary_LPDA_2of4_3.5sigma'):
+                    self.addTrigger(station.get_id())
+                if station.has_triggered(trigger_name='secondary_LPDA_2of4_3.5sigma'):
+                    self.addSecondaryTrigger(station.get_id())
 
         self.direct_triggers = []
         for station_id in self.station_triggers:
@@ -77,15 +80,21 @@ class HRAevent:
         if station_id not in self.secondary_station_triggers:
             self.secondary_station_triggers.append(station_id)
 
-    def hasCoincidence(self, num=1, bad_stations=None):
+    def hasCoincidence(self, num=1, bad_stations=None, use_secondary=False):
         # Bad Stations should be a list of station IDs that are not to be included in the coincidence
+        n_coinc = len(self.station_triggers)
+        if use_secondary:
+            n_coinc += len(self.secondary_station_triggers)
+            n_coinc -= self.hasTriggered(station_id=52)
         if bad_stations is not None:
-            coinc = len(self.station_triggers)
             for station_id in bad_stations:
-                if station_id in self.station_triggers:
-                    coinc -= 1
-            return coinc > num
-        return len(self.station_triggers) > num
+                if station_id in self.station_triggers and station_id != 52:
+                    n_coinc -= 1
+                elif station_id == 52 and use_secondary:
+                    if station_id in self.secondary_station_triggers:
+                        n_coinc -= 1
+            return n_coinc > num
+        return n_coinc > num
 
     def hasSecondaryCoincidence(self):
         return (len(self.station_triggers) + len(self.secondary_station_triggers)) > 1
@@ -154,7 +163,7 @@ def getnThrows(HRAeventList):
 
     return n_throws    
 
-def getBinnedTriggerRate(HRAeventList, num_coincidence=0):
+def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False):
     # Input a list of HRAevent objects to get the event rate in each energy-zenith bin
 
     e_bins, z_bins = getEnergyZenithBins()
@@ -166,7 +175,7 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0):
 
     for event in HRAeventList:
         n_throws += 1
-        if not event.hasCoincidence(num_coincidence):
+        if not event.hasCoincidence(num_coincidence, use_secondary=use_secondary):
             # Event not triggered or meeting coincidence bar
             continue
         for station_id in event.directTriggers():
@@ -217,7 +226,7 @@ def getEventRate(trigger_rate, e_bins, z_bins, max_distance=2.5*units.km):
 
     return eventRateArray * trigger_rate * area/units.km**2
 
-def getCoincidencesTriggerRates(HRAeventList, bad_stations):
+def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False):
     # Return a list of coincidence events
     # As well as a dictionary of the trigger rate array for each number of coincidences
     e_bins, z_bins = getEnergyZenithBins()
@@ -227,7 +236,7 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations):
     for i in [2, 3, 4, 5, 6, 7]:
         trigger_rate_coincidence[i] = np.zeros((len(e_bins), len(z_bins)))
         for event in HRAeventList:
-            if not event.hasCoincidence(i, bad_stations):
+            if not event.hasCoincidence(i, bad_stations, use_secondary):
                 # Event not triggered or meeting coincidence bar
                 continue
             energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
@@ -345,3 +354,28 @@ if __name__ == "__main__":
         imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences', f'{save_folder}event_rate_coincidence_norefl_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
 
 
+    # Coincidence with reflection and station 52 upwards LPDA
+    bad_stations = [32, 132, 152]
+    trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=True)
+    event_rate_coincidence = {}
+    for i in trigger_rate_coincidence:
+        if not np.any(trigger_rate_coincidence[i] > 0):
+            ic(f'No events for {i} coincidences')
+            continue
+        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, with 52 up', f'{save_folder}trigger_rate_coincidence_52up_{i}.png', colorbar_label='Trigger Rate')
+        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
+        ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
+        imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences', f'{save_folder}event_rate_coincidence_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
+
+    # Coincidence without reflection and station 52 upwards LPDA
+    bad_stations = [32, 113, 114, 115, 117, 118, 119, 130, 132, 152]
+    trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=True)
+    event_rate_coincidence = {}
+    for i in trigger_rate_coincidence:
+        if not np.any(trigger_rate_coincidence[i] > 0):
+            ic(f'No events for {i} coincidences')
+            continue
+        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, no refl, with 52 up', f'{save_folder}trigger_rate_coincidence_norefl_52up_{i}.png', colorbar_label='Trigger Rate')
+        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
+        ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
+        imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences', f'{save_folder}event_rate_coincidence_norefl_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.sum(event_rate_coincidence[i]):.3f}')
