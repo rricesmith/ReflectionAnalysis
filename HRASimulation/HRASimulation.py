@@ -262,6 +262,9 @@ def run_stations(stations_list, mode='by_depth'):
     dt = readCoREAS.end()
     ic(f"Finished processing All stations, {nevents} events processed, {dt} seconds elapsed")
 
-# run_stations(all_stations, mode='direct')
-# run_stations(all_stations_reflected, mode='reflected')
-run_stations(all_stations)
+
+if __name__ == "__main__":
+
+    # run_stations(all_stations, mode='direct')
+    # run_stations(all_stations_reflected, mode='reflected')
+    run_stations(all_stations)

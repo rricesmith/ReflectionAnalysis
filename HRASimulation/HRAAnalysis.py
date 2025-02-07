@@ -136,7 +136,7 @@ def getHRAeventsFromDir(directory):
 
 def getEnergyZenithBins():
     # Define the bins that are constant
-    min_energy = 16.5
+    min_energy = 16.0
     max_energy = 20.1
     e_bins = 10**np.arange(min_energy, max_energy, 0.5) * units.eV
     z_bins = np.arange(0, 1.01, 0.2)
