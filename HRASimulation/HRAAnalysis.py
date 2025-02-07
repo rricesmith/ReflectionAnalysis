@@ -293,6 +293,7 @@ def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
     ax_labels = []
     for z in z_bins:
         ax_labels.append('{:.0f}'.format(z/units.deg))
+    ax_labels.reverse()
     # ax = plt.gca() # Removing to attempt to fix tick problems
     ax.set_yticks(cos_bins)
     ax.set_yticklabels(ax_labels)
