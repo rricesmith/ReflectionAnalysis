@@ -29,14 +29,12 @@ class HRAevent:
 
         # Only doing the 3.5sigma triggers to begin with
         for station in event.get_stations():
-            if station.has_triggered() and not station.get_id() == 52:
+            if station.has_triggered():
                 self.addTrigger(station.get_id())
-            elif station.get_id() == 52:
-                # Primary is downward for station 52, secondary is upward
-                if station.has_triggered(trigger_name='primary_LPDA_2of4_3.5sigma'):
-                    self.addTrigger(station.get_id())
-                if station.has_triggered(trigger_name='secondary_LPDA_2of4_3.5sigma'):
-                    self.addSecondaryTrigger(station.get_id())
+                # For station 52, primary is upward and secondary is downward
+                if station.get_id() == 52 and station.has_trigger(trigger_name='secondary_LPDA_2of4_3.5sigma'):
+                    if station.has_triggered(trigger_name='secondary_LPDA_2of4_3.5sigma'):
+                        self.addSecondaryTrigger(station.get_id())
 
         self.direct_triggers = []
         for station_id in self.station_triggers:
@@ -163,7 +161,7 @@ def getnThrows(HRAeventList):
 
     return n_throws    
 
-def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False):
+def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, combine_stations=[]):
     # Input a list of HRAevent objects to get the event rate in each energy-zenith bin
 
     e_bins, z_bins = getEnergyZenithBins()
@@ -226,7 +224,7 @@ def getEventRate(trigger_rate, e_bins, z_bins, max_distance=2.5*units.km):
 
     return eventRateArray * trigger_rate * area/units.km**2
 
-def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False):
+def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None):
     # Return a list of coincidence events
     # As well as a dictionary of the trigger rate array for each number of coincidences
     e_bins, z_bins = getEnergyZenithBins()
@@ -238,6 +236,9 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False)
         for event in HRAeventList:
             if not event.hasCoincidence(i, bad_stations, use_secondary):
                 # Event not triggered or meeting coincidence bar
+                continue
+            if force_station is not None and force_station not in event.station_triggers:
+                # Event not triggered by the station we want
                 continue
             energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
             zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
@@ -356,7 +357,7 @@ if __name__ == "__main__":
 
     # Coincidence with reflection and station 52 upwards LPDA
     bad_stations = [32, 132, 152]
-    trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=True)
+    trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=52)
     event_rate_coincidence = {}
     for i in trigger_rate_coincidence:
         if not np.any(trigger_rate_coincidence[i] > 0):
@@ -369,7 +370,7 @@ if __name__ == "__main__":
 
     # Coincidence without reflection and station 52 upwards LPDA
     bad_stations = [32, 113, 114, 115, 117, 118, 119, 130, 132, 152]
-    trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=True)
+    trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=52)
     event_rate_coincidence = {}
     for i in trigger_rate_coincidence:
         if not np.any(trigger_rate_coincidence[i] > 0):
