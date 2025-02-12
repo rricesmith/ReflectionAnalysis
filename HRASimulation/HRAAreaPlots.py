@@ -28,6 +28,7 @@ if __name__ == "__main__":
         direct_event_rate, reflected_event_rate, combined_event_rate = np.load(f'{numpy_folder}event_rate_dict.npy', allow_pickle=True)
     else:
         ic('No numpy file found.  Please run HRAAnalysis.py first')
+        quit()
 
 
     if HRAeventList[0][0].weight == np.nan:
