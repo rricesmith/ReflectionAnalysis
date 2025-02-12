@@ -8,6 +8,7 @@ import numpy as np
 import astrotools.auger as auger
 import matplotlib.colors
 import matplotlib.pyplot as plt
+import configparser
 
 class HRAevent:
     def __init__(self, event, DEBUG=False):
@@ -19,6 +20,7 @@ class HRAevent:
         self.event_id = event.get_id()
         self.station_triggers = []
         self.secondary_station_triggers = []
+        self.weight = [np.nan, np.nan] # Primary, secondary
 
         sim_shower = event.get_sim_shower(0)
         self.energy = sim_shower[shp.energy]
@@ -105,8 +107,18 @@ class HRAevent:
     def inEnergyZenithBin(self, e_low, e_high, z_low, z_high):
         return e_low <= self.energy <= e_high and z_low <= self.zenith <= z_high
     
+    def setWeight(self, weight, primary=True):
+        if primary:
+            self.weight[0] = weight
+        else:
+            self.weight[1] = weight
 
 
+    def getWeight(self, primary=True):
+        if primary:
+            return self.weight[0]
+        else:
+            return self.weight[1]
 
 
 
@@ -243,6 +255,27 @@ def getEventRate(trigger_rate, e_bins, z_bins, max_distance=2.5*units.km):
 
     return eventRateArray * trigger_rate * area/units.km**2
 
+def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, max_distance=2.5*units.km):
+    # Set the event rate weight for each event in the HRAeventList
+
+    e_bins, z_bins = getEnergyZenithBins()
+    eventRateArray = getEventRateArray(e_bins, z_bins)
+    n_throws = getnThrows(HRAeventList)
+
+    area = np.pi * max_distance**2
+
+    for event in HRAeventList:
+        energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
+        zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
+        event_rate = eventRateArray[energy_bin][zenith_bin]
+
+        n_trig = trigger_rate_array[energy_bin][zenith_bin] * n_throws
+
+        event.setWeight(event_rate * trigger_rate_array[energy_bin][zenith_bin] * (area/units.km**2) / n_trig)
+
+    return
+
+
 def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None):
     # Return a list of coincidence events
     # As well as a dictionary of the trigger rate array for each number of coincidences
@@ -279,7 +312,8 @@ def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
     e_bins = np.log10(e_bins/units.eV)
     cos_bins = np.cos(z_bins)
 
-    rate, cmap = set_bad_imshow(rate, 0)
+
+    rate, cmap = set_bad_imshow(rate.T, 0)
 
     fig, ax = plt.subplots()
 
@@ -295,6 +329,7 @@ def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
         ax_labels.append('{:.0f}'.format(z/units.deg))
     ax_labels.reverse()
     # ax = plt.gca() # Removing to attempt to fix tick problems
+    ic(cos_bins, ax_labels)
     ax.set_yticks(cos_bins)
     ax.set_yticklabels(ax_labels)
     ax.set_ylabel('Zenith Angle (deg)')
@@ -307,11 +342,53 @@ def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
     plt.close(fig)
     return
 
+def getXYWeights(HRAeventList, bad_stations=None, use_secondary=False):
+    # Get a list of the events x/y with associated event rate as a weight
+
+    x = []
+    y = []
+    weights = []
+
+
+    for event in HRAeventList:
+        x, y = event.getCoreasPosition()
+        # Need to get the event rate corresponding to each event, previously calculated
+
+        if event.hasCoincidence(0, bad_stations, use_secondary):
+            x.append(x)
+            y.append(y)
+            weights.append(event.getWeight())
+
+    return x, y, weights
+
+def histAreaRate(x, y, weights, title, savename, colorbar_label='Evts/yr', radius=2.5*units.km):
+    x_bins, y_bins = np.linspace(-radius/units.km, radius/units.km, 100), np.linspace(radius/units.km, radius/units.km, 100)
+
+    fig, ax = plt.subplots()
+
+    h, xedges, yedges, im = ax.hist2d(x, y, bins=(x_bins, y_bins), weights=weights, cmap='viridis', norm=matplotlib.colors.LogNorm())
+
+    ax.set_xlabel('x (km)')
+    ax.set_ylabel('y (km)')
+    fig.colorbar(im, ax=ax, label=colorbar_label)
+    ax.set_title(title)
+    fig.savefig(savename)
+    ic(f'Saved {savename}')
+    plt.close(fig)
+    return
+
+
 if __name__ == "__main__":
 
-    sim_folder = 'HRASimulation/output/HRA/1.27.25/'
-    numpy_folder = 'HRASimulation/output/HRA/1.27.25/numpy/' # For saving data to not have to reprocess
-    save_folder = f'HRASimulation/plots/2.3.25/'
+    # sim_folder = 'HRASimulation/output/HRA/1.27.25/'
+    # numpy_folder = 'HRASimulation/output/HRA/1.27.25/numpy/' # For saving data to not have to reprocess
+    # save_folder = f'HRASimulation/plots/2.3.25/'
+    config = configparser.ConfigParser()
+    config.read('HRASimulation/config.ini')
+    sim_folder = config['DEFAULT']['sim_folder']
+    numpy_folder = config['DEFAULT']['numpy_folder']
+    save_folder = config['DEFAULT']['save_folder']
+
     os.makedirs(save_folder, exist_ok=True)
 
     if not os.path.exists(numpy_folder):
@@ -328,10 +405,12 @@ if __name__ == "__main__":
         for station_id in direct_trigger_rate_dict:
             ic(station_id)
             direct_event_rate[station_id] = getEventRate(direct_trigger_rate_dict[station_id], e_bins, z_bins)
+            setHRAeventListRateWeight(HRAeventList, direct_trigger_rate_dict[station_id])
         reflected_event_rate = {}
         for station_id in reflected_trigger_rate_dict:
             ic(station_id)
             reflected_event_rate[station_id] = getEventRate(reflected_trigger_rate_dict[station_id], e_bins, z_bins)
+            setHRAeventListRateWeight(HRAeventList, reflected_trigger_rate_dict[station_id])
 
         combined_event_rate = {}
         combined_event_rate['direct'] = getEventRate(combined_trigger_rate['direct'], e_bins, z_bins)

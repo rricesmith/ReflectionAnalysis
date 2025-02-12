@@ -185,7 +185,7 @@ def run_stations(stations_list, mode='by_depth'):
                 hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
 
 
-                if station_id == 52:
+                if station_id == 52 or station_id == 152:
                     highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][3.5], 
                                         threshold_low=thresholds_low[station_id][3.5],
                                         coinc_window = 40*units.ns,
@@ -204,7 +204,7 @@ def run_stations(stations_list, mode='by_depth'):
 
                 if station.get_trigger(f'primary_LPDA_2of4_3.5sigma').has_triggered():
 
-                    if station_id == 52:
+                    if station_id == 52 or station_id == 152:
                         # For station 52, primary and secondary are reveresed due to ordering of channels that are upward/downward
                         # Upward are primary, downward are secondary
                         highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][3.5], 
