@@ -385,9 +385,9 @@ if __name__ == "__main__":
     # save_folder = f'HRASimulation/plots/2.3.25/'
     config = configparser.ConfigParser()
     config.read('HRASimulation/config.ini')
-    sim_folder = config['DEFAULT']['sim_folder']
-    numpy_folder = config['DEFAULT']['numpy_folder']
-    save_folder = config['DEFAULT']['save_folder']
+    sim_folder = config['FOLDERS']['sim_folder']
+    numpy_folder = config['FOLDERS']['numpy_folder']
+    save_folder = config['FOLDERS']['save_folder']
 
     os.makedirs(save_folder, exist_ok=True)
 

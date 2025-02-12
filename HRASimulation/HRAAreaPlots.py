@@ -15,9 +15,9 @@ import configparser
 if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read('HRASimulation/config.ini')
-    sim_folder = config['DEFAULT']['sim_folder']
-    numpy_folder = config['DEFAULT']['numpy_folder']
-    save_folder = config['DEFAULT']['save_folder']
+    sim_folder = config['FOLDERS']['sim_folder']
+    numpy_folder = config['FOLDERS']['numpy_folder']
+    save_folder = config['FOLDERS']['save_folder']
 
 
     os.makedirs(save_folder, exist_ok=True)
