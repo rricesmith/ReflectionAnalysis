@@ -10,7 +10,7 @@ import matplotlib.colors
 import matplotlib.pyplot as plt
 import HRASimulation.HRAAnalysis as HRAAnalysis
 import configparser
-
+from HRASimulation.HRAAnalysis import HRAevent
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
