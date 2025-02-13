@@ -31,7 +31,7 @@ if __name__ == "__main__":
         quit()
 
 
-    if HRAeventList.weight[0][0] == np.nan:
+    if HRAeventList[0].weight[0] == np.nan:
         ic('Weights not yet set, run HRAAnalysis.py first')
         quit()
 
