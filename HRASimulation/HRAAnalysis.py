@@ -20,7 +20,7 @@ class HRAevent:
         self.event_id = event.get_id()
         self.station_triggers = []
         self.secondary_station_triggers = []
-        self.weight = [np.nan, np.nan] # Primary, secondary
+        self.weight = {} # Dictionary of list of weights for primary and secondary triggers for each station
 
         sim_shower = event.get_sim_shower(0)
         self.energy = sim_shower[shp.energy]
@@ -31,6 +31,7 @@ class HRAevent:
 
         # Only doing the 3.5sigma triggers to begin with
         for station in event.get_stations():
+            self.weight[station.get_id()] = [np.nan, np.nan]
             if station.has_triggered():
                 self.addTrigger(station.get_id())
                 # For station 52, primary is upward and secondary is downward
@@ -107,19 +108,24 @@ class HRAevent:
     def inEnergyZenithBin(self, e_low, e_high, z_low, z_high):
         return e_low <= self.energy <= e_high and z_low <= self.zenith <= z_high
     
-    def setWeight(self, weight, primary=True):
+    def setWeight(self, weight, weight_name, primary=True):
+        if weight_name not in self.weight:
+            # Weights can be station ids, or can be a string such as 'all reflected', or '52 with direct only'
+            self.weight[weight_name] = [np.nan, np.nan]
         if primary:
-            self.weight[0] = weight
+            self.weight[station_id][0] = weight
         else:
-            self.weight[1] = weight
+            self.weight[station_id][1] = weight
 
 
-    def getWeight(self, primary=True):
+    def getWeight(self, weight_name, primary=True):
         if primary:
-            return self.weight[0]
+            return self.weight[weight_name][0]
         else:
-            return self.weight[1]
+            return self.weight[weight_name][1]
 
+    def hasWeight(self, weight_name):
+        return weight_name in self.weight
 
 
 def getHRAevents(nur_files):
@@ -255,7 +261,7 @@ def getEventRate(trigger_rate, e_bins, z_bins, max_distance=2.5*units.km):
 
     return eventRateArray * trigger_rate * area/units.km**2
 
-def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, max_distance=2.5*units.km):
+def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max_distance=2.5*units.km):
     # Set the event rate weight for each event in the HRAeventList
 
     e_bins, z_bins = getEnergyZenithBins()
@@ -270,8 +276,10 @@ def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, max_distance=2.5
         event_rate = eventRateArray[energy_bin][zenith_bin]
 
         n_trig = trigger_rate_array[energy_bin][zenith_bin] * n_throws
-
-        event.setWeight(event_rate * trigger_rate_array[energy_bin][zenith_bin] * (area/units.km**2) / n_trig)
+        if n_trig == 0:
+            event.setWeight(0, weight_name)
+        else:
+            event.setWeight(event_rate * trigger_rate_array[energy_bin][zenith_bin] * (area/units.km**2) / n_trig, weight_name)
 
     return
 
@@ -342,7 +350,7 @@ def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
     plt.close(fig)
     return
 
-def getXYWeights(HRAeventList, bad_stations=None, use_secondary=False):
+def getXYWeights(HRAeventList, weight_name, use_secondary=False):
     # Get a list of the events x/y with associated event rate as a weight
 
     x = []
@@ -354,12 +362,11 @@ def getXYWeights(HRAeventList, bad_stations=None, use_secondary=False):
         x, y = event.getCoreasPosition()
         # Need to get the event rate corresponding to each event, previously calculated
 
-        if event.hasCoincidence(0, bad_stations, use_secondary):
-            x.append(x)
-            y.append(y)
-            weights.append(event.getWeight())
+        x.append(x)
+        y.append(y)
+        weights.append(event.getWeight(weight_name, use_secondary))    # Append all events because non-triggering events have a weight of zero    
 
-    return x, y, weights
+    return np.array(x), np.array(y), np.array(weights)
 
 def histAreaRate(x, y, weights, title, savename, colorbar_label='Evts/yr', radius=2.5*units.km):
     x_bins, y_bins = np.linspace(-radius/units.km, radius/units.km, 100), np.linspace(radius/units.km, radius/units.km, 100)
@@ -405,16 +412,19 @@ if __name__ == "__main__":
         for station_id in direct_trigger_rate_dict:
             ic(station_id)
             direct_event_rate[station_id] = getEventRate(direct_trigger_rate_dict[station_id], e_bins, z_bins)
-            setHRAeventListRateWeight(HRAeventList, direct_trigger_rate_dict[station_id])
+            setHRAeventListRateWeight(HRAeventList, direct_trigger_rate_dict[station_id], weight_name=station_id)
         reflected_event_rate = {}
         for station_id in reflected_trigger_rate_dict:
             ic(station_id)
             reflected_event_rate[station_id] = getEventRate(reflected_trigger_rate_dict[station_id], e_bins, z_bins)
-            setHRAeventListRateWeight(HRAeventList, reflected_trigger_rate_dict[station_id])
+            setHRAeventListRateWeight(HRAeventList, reflected_trigger_rate_dict[station_id], weight_name=station_id)
 
         combined_event_rate = {}
         combined_event_rate['direct'] = getEventRate(combined_trigger_rate['direct'], e_bins, z_bins)
         combined_event_rate['reflected'] = getEventRate(combined_trigger_rate['reflected'], e_bins, z_bins)
+        setHRAeventListRateWeight(HRAeventList, combined_trigger_rate['direct'], weight_name='combined_direct')
+        setHRAeventListRateWeight(HRAeventList, combined_trigger_rate['reflected'], weight_name='combined_reflected')
+
 
         np.save(f'{numpy_folder}HRAeventList.npy', HRAeventList)
         np.save(f'{numpy_folder}trigger_rate_dict.npy', [direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins])
@@ -448,6 +458,7 @@ if __name__ == "__main__":
             continue
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, w/Refl', f'{save_folder}trigger_rate_coincidence_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
+        setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_wrefl')
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
         imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences, w/Refl', f'{save_folder}event_rate_coincidence_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
 
@@ -461,6 +472,7 @@ if __name__ == "__main__":
             continue
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, w/o Refl', f'{save_folder}trigger_rate_coincidence_norefl_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
+        setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_norefl')
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
         imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences w/o Refl', f'{save_folder}event_rate_coincidence_norefl_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
 
@@ -475,6 +487,7 @@ if __name__ == "__main__":
             continue
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate, {i} Coincidences, 52 upward forced w/Refl', f'{save_folder}trigger_rate_coincidence_52up_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
+        setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_wrefl')
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
         imshowRate(event_rate_coincidence[i], f'Event Rate, {i} Coincidences, 52 upward forced w/Refl', f'{save_folder}event_rate_coincidence_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
 
@@ -488,5 +501,6 @@ if __name__ == "__main__":
             continue
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate, {i} Coincidences, 52 upward forced w/o Refl', f'{save_folder}trigger_rate_coincidence_norefl_52up_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
+        setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_norefl')
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
         imshowRate(event_rate_coincidence[i], f'Event Rate, {i} Coincidences, 52 upward forced w/o Refl', f'{save_folder}event_rate_coincidence_norefl_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
