@@ -426,7 +426,7 @@ if __name__ == "__main__":
         setHRAeventListRateWeight(HRAeventList, combined_trigger_rate['reflected'], weight_name='combined_reflected')
 
 
-        np.save(f'{numpy_folder}HRAeventList.npy', HRAeventList)
+        # np.save(f'{numpy_folder}HRAeventList.npy', HRAeventList)
         np.save(f'{numpy_folder}trigger_rate_dict.npy', [direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins])
         np.save(f'{numpy_folder}event_rate_dict.npy', [direct_event_rate, reflected_event_rate, combined_event_rate])
 
@@ -504,3 +504,8 @@ if __name__ == "__main__":
         setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_norefl')
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
         imshowRate(event_rate_coincidence[i], f'Event Rate, {i} Coincidences, 52 upward forced w/o Refl', f'{save_folder}event_rate_coincidence_norefl_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
+
+
+    # Resave to save the weights
+    if not os.path.exists(f'{numpy_folder}HRAeventList.npy'):        
+        np.save(f'{numpy_folder}HRAeventList.npy', HRAeventList)
