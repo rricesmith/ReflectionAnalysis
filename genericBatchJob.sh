@@ -19,7 +19,9 @@ export PYTHONPATH=$Radio:$PYTHONPATH
 module load python/3.8.0
 cd $ReflectiveAnalysis
 
-python StationDataAnalysis/S02_StationDataAndDeeplearnTimeStrip.py
+python HRASimulation/HRAAnalysis.py
+python HRASimulation/HRAAreaPlots.py
+# python StationDataAnalysis/S02_StationDataAndDeeplearnTimeStrip.py
 # python DeepLearning/SimpleSNR_Chi_plot.py
 # python DeepLearning/D04B_reprocessNurPassingCut.py 30
 # python DeepLearning/D01_convertSimNurToNpy.py
