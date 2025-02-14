@@ -376,14 +376,14 @@ def histAreaRate(x, y, weights, title, savename, colorbar_label='Evts/yr', radiu
     fig, ax = plt.subplots()
 
     # h, xedges, yedges = np.histogram2d(x, y, bins=(x_bins, y_bins), weights=weights)
-    norm = matplotlib.colors.LogNorm(vmin=10**-4, vmax=100)
+    norm = matplotlib.colors.LogNorm(vmin=np.min(weights[np.nonzero(weights)]), vmax=np.max(weights)*5)
     h, xedges, yedges, im = ax.hist2d(x, y, bins=(x_bins, y_bins), weights=weights, cmap='viridis', norm=norm)
     # h, cmap = set_bad_imshow(h, 0)
     # extent = [yedges[0], yedges[-1], xedges[0], xedges[-1]]
     # im = ax.imshow(h, extent=extent, norm=matplotlib.colors.LogNorm(), cmap=cmap)
 
-    ax.set_xlabel('x (km)')
-    ax.set_ylabel('y (km)')
+    ax.set_xlabel('x (m)')
+    ax.set_ylabel('y (m)')
     fig.colorbar(im, ax=ax, label=colorbar_label)
     # plt.colorbar(label=colorbar_label)
     ax.set_title(title)
