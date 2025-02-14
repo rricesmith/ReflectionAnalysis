@@ -113,9 +113,9 @@ class HRAevent:
             # Weights can be station ids, or can be a string such as 'all reflected', or '52 with direct only'
             self.weight[weight_name] = [np.nan, np.nan]
         if primary:
-            self.weight[station_id][0] = weight
+            self.weight[weight_name][0] = weight
         else:
-            self.weight[station_id][1] = weight
+            self.weight[weight_name][1] = weight
 
 
     def getWeight(self, weight_name, primary=True):
