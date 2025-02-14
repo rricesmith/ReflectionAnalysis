@@ -383,8 +383,8 @@ def histAreaRate(x, y, weights, title, savename, colorbar_label='Evts/yr', radiu
 
     ax.set_xlabel('x (km)')
     ax.set_ylabel('y (km)')
-    # fig.colorbar(im, ax=ax, label=colorbar_label)
-    plt.colorbar(label=colorbar_label)
+    fig.colorbar(im, ax=ax, label=colorbar_label)
+    # plt.colorbar(label=colorbar_label)
     ax.set_title(title)
     fig.savefig(savename)
     ic(f'Saved {savename}')
