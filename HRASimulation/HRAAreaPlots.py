@@ -45,13 +45,13 @@ if __name__ == "__main__":
     bad_stations = [32, 52, 132, 152]
     savename = f'{save_folder}AreaReflected.png'
     x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name='combined_reflected')
-    HRAAnalysis.histAreaRate(x, y, weight, save_folder)
+    HRAAnalysis.histAreaRate(x, y, weight, "Combined Reflected", save_folder)
     ic(f'Saved {savename}')
 
     bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
     savename = f'{save_folder}AreaDirect.png'
     x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name='combined_direct')
-    HRAAnalysis.histAreaRate(x, y, weight, save_folder)
+    HRAAnalysis.histAreaRate(x, y, weight, "Combined Direct", save_folder)
     ic(f'Saved {savename}')
 
 
@@ -63,7 +63,7 @@ if __name__ == "__main__":
             continue
         savename = f'{save_folder}AreaDirect_coinc{i}.png'
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
-        HRAAnalysis.histAreaRate(x, y, weight, save_folder)
+        HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/Refl',save_folder)
         ic(f'Saved {savename}')
 
     # Same but without reflections
@@ -74,7 +74,7 @@ if __name__ == "__main__":
             continue
         savename = f'{save_folder}AreaDirect_coinc{i}.png'
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
-        HRAAnalysis.histAreaRate(x, y, weight, save_folder)
+        HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/o Refl', save_folder)
         ic(f'Saved {savename}')
 
     # Plots with reflection and station 52
@@ -85,7 +85,7 @@ if __name__ == "__main__":
             continue
         savename = f'{save_folder}Area_52up_wrefl_coinc{i}.png'
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
-        HRAAnalysis.histAreaRate(x, y, weight, save_folder)
+        HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/52up w/Refl',save_folder)
         ic(f'Saved {savename}')
 
     # Plots without reflection and station 52
@@ -96,5 +96,5 @@ if __name__ == "__main__":
             continue
         savename = f'{save_folder}Area_52up_norefl_coinc{i}.png'
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
-        HRAAnalysis.histAreaRate(x, y, weight, save_folder)
+        HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/52up w/o Refl',save_folder)
         ic(f'Saved {savename}')
