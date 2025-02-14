@@ -190,7 +190,7 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False):
     n_throws = getnThrows(HRAeventList)
 
     for event in HRAeventList:
-        n_throws += 1
+        # n_throws += 1
         if not event.hasCoincidence(num_coincidence, use_secondary=use_secondary):
             # Event not triggered or meeting coincidence bar
             continue
@@ -211,14 +211,16 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False):
     combined_trigger_rate = {}
     combined_trigger_rate['direct'] = np.zeros((len(e_bins), len(z_bins)))
     combined_trigger_rate['reflected'] = np.zeros((len(e_bins), len(z_bins)))
-    combined_throws = 0
+    # combined_throws = 0
+    combined_throws = np.zeros_like(n_throws)
     for station_id in direct_trigger_rate_dict:
         if station_id in [32, 52]:
             continue
         combined_trigger_rate['direct'] += direct_trigger_rate_dict[station_id]
         combined_throws += n_throws
     combined_trigger_rate['direct'] /= combined_throws
-    combined_throws = 0
+    # combined_throws = 0
+    combined_throws = np.zeros_like(n_throws)
     for station_id in reflected_trigger_rate_dict:
         if station_id in [132, 152]:
             continue
@@ -275,7 +277,7 @@ def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max
         zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
         event_rate = eventRateArray[energy_bin][zenith_bin]
 
-        n_trig = trigger_rate_array[energy_bin][zenith_bin] * n_throws
+        n_trig = trigger_rate_array[energy_bin][zenith_bin] * n_throws[energy_bin][zenith_bin]
         if n_trig == 0:
             event.setWeight(0, weight_name)
         else:
