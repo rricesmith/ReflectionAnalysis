@@ -371,7 +371,7 @@ def getXYWeights(HRAeventList, weight_name, use_primary=True):
     return np.array(x), np.array(y), np.array(weights)
 
 def histAreaRate(x, y, weights, title, savename, colorbar_label='Evts/yr', radius=2.5*units.km):
-    x_bins, y_bins = np.linspace(-radius/units.m, radius/units.m, 100), np.linspace(radius/units.m, radius/units.m, 100)
+    x_bins, y_bins = np.linspace(-radius/units.m, radius/units.m, 100), np.linspace(-radius/units.m, radius/units.m, 100)
 
     fig, ax = plt.subplots()
 
