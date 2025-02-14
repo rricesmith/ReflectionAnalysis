@@ -352,7 +352,7 @@ def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
     plt.close(fig)
     return
 
-def getXYWeights(HRAeventList, weight_name, use_secondary=False):
+def getXYWeights(HRAeventList, weight_name, use_primary=True):
     # Get a list of the events x/y with associated event rate as a weight
 
     x = []
@@ -366,7 +366,7 @@ def getXYWeights(HRAeventList, weight_name, use_secondary=False):
 
         x.append(cor_x)
         y.append(cor_y)
-        weights.append(event.getWeight(weight_name, use_secondary))    # Append all events because non-triggering events have a weight of zero    
+        weights.append(event.getWeight(weight_name, use_primary))    # Append all events because non-triggering events have a weight of zero    
 
     return np.array(x), np.array(y), np.array(weights)
 
