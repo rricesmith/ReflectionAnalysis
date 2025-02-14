@@ -44,13 +44,13 @@ if __name__ == "__main__":
 
     bad_stations = [32, 52, 132, 152]
     savename = f'{save_folder}AreaReflected.png'
-    x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name='reflected')
+    x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name='combined_reflected')
     HRAAnalysis.histAreaRate(x, y, weight, save_folder)
     ic(f'Saved {savename}')
 
     bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
     savename = f'{save_folder}AreaDirect.png'
-    x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name='direct')
+    x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name='combined_direct')
     HRAAnalysis.histAreaRate(x, y, weight, save_folder)
     ic(f'Saved {savename}')
 
