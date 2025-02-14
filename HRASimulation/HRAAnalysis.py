@@ -361,11 +361,11 @@ def getXYWeights(HRAeventList, weight_name, use_secondary=False):
 
 
     for event in HRAeventList:
-        x, y = event.getCoreasPosition()
+        cor_x, cor_y = event.getCoreasPosition()
         # Need to get the event rate corresponding to each event, previously calculated
 
-        x.append(x)
-        y.append(y)
+        x.append(cor_x)
+        y.append(cor_y)
         weights.append(event.getWeight(weight_name, use_secondary))    # Append all events because non-triggering events have a weight of zero    
 
     return np.array(x), np.array(y), np.array(weights)
