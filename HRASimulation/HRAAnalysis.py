@@ -370,7 +370,30 @@ def getXYWeights(HRAeventList, weight_name, use_primary=True):
 
     return np.array(x), np.array(y), np.array(weights)
 
-def histAreaRate(x, y, weights, title, savename, colorbar_label='Evts/yr', radius=2.5*units.km):
+def getDirectReflTriggered(HRAeventList, use_primary=True):
+    # Return two lists of the stations that were direct triggered and reflected triggered
+    stations = [13, 14, 15, 17, 18, 19, 30, 32, 52]
+    refl_stations = [113, 114, 115, 117, 118, 119, 130, 132, 152]
+
+    direct_triggered = []
+    reflected_triggered = []
+
+    for event in HRAeventList:
+        if stations == [] and refl_stations == []:
+            break
+        if event.hasTriggered():
+            for station_id in event.directTriggers():
+                if station_id in stations:
+                    direct_triggered.append(station_id)
+                    stations.remove(station_id)
+            for station_id in event.reflectedTriggers():
+                if station_id in refl_stations:
+                    reflected_triggered.append(station_id)
+                    refl_stations.remove(station_id)
+
+    return direct_triggered, reflected_triggered
+
+def histAreaRate(x, y, weights, title, savename, dir_trig=[], refl_trig=[], exclude=[], colorbar_label='Evts/yr', radius=2.5*units.km):
     x_bins, y_bins = np.linspace(-radius/units.m, radius/units.m, 100), np.linspace(-radius/units.m, radius/units.m, 100)
 
     fig, ax = plt.subplots()
@@ -385,6 +408,8 @@ def histAreaRate(x, y, weights, title, savename, colorbar_label='Evts/yr', radiu
     ax.set_xlabel('x (m)')
     ax.set_ylabel('y (m)')
     fig.colorbar(im, ax=ax, label=colorbar_label)
+    ax = plotStationLocations(ax, triggered=dir_trig, exclude=exclude, reflected_triggers=refl_trig)
+    ax.legend()
     # plt.colorbar(label=colorbar_label)
     ax.set_title(title)
     fig.savefig(savename)
@@ -392,6 +417,32 @@ def histAreaRate(x, y, weights, title, savename, colorbar_label='Evts/yr', radiu
     plt.close(fig)
     return
 
+def plotStationLocations(ax, triggered=[], exclude=[], reflected_triggers=[]):
+    station_locations = {13: [1044.4451, -91.337], 14: [610.4495, 867.118], 15: [-530.8272, -749.382], 17: [503.6394, -805.116], 
+                         18: [0, 0], 19: [-371.9322, 950.705], 30: [-955.2426, 158.383], 32: [463.6215, -893.988], 52: [436.7442, 168.904]}
+
+    for station_id in station_locations:
+        if station_id in exclude:
+            continue
+        if station_id in triggered:
+            if station_id in reflected_triggers:
+                ax.scatter(station_locations[station_id][0], station_locations[station_id][1], 's', edgecolors='red', markersize=12, facecolors='none')
+                ax.text(station_locations[station_id][0], station_locations[station_id][1], f'{station_id}', fontsize=10, color='red')
+            else:
+                ax.scatter(station_locations[station_id][0], station_locations[station_id][1], 's', edgecolors='purple', markersize=12, facecolors='none')
+                ax.text(station_locations[station_id][0], station_locations[station_id][1], f'{station_id}', fontsize=10, color='purple')
+
+        else:
+            ax.scatter(station_locations[station_id][0], station_locations[station_id][1], 's', edgecolors='black', markersize=12, facecolors='none')
+            ax.text(station_locations[station_id][0], station_locations[station_id][1], f'{station_id}', fontsize=10, color='black')
+
+    # ax.scatter([], [], 's', edgecolors='black', markersize=12, facecolors='none', label='')
+    if len(triggered) > 0:
+        ax.scatter([], [], 's', edgecolors='purple', markersize=12, facecolors='none', label='BL Triggered')
+    if len(reflected_triggers) > 0:
+        ax.scatter([], [], 's', edgecolors='red', markersize=12, facecolors='none', label='Refl Triggered')
+
+    return ax
 
 if __name__ == "__main__":
 
