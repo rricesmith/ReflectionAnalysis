@@ -379,17 +379,15 @@ def getDirectReflTriggered(HRAeventList, use_primary=True):
     reflected_triggered = []
 
     for event in HRAeventList:
-        if stations == [] and refl_stations == []:
+        if len(stations) == len(direct_triggered) and len(refl_stations) == len(reflected_triggered):
             break
         if event.hasTriggered():
             for station_id in event.directTriggers():
-                if station_id in stations:
+                if station_id in stations and station_id not in direct_triggered:
                     direct_triggered.append(station_id)
-                    stations.remove(station_id)
             for station_id in event.reflectedTriggers():
-                if station_id in refl_stations:
+                if station_id in refl_stations and station_id not in reflected_triggered:
                     reflected_triggered.append(station_id)
-                    refl_stations.remove(station_id)
 
     return direct_triggered, reflected_triggered
 

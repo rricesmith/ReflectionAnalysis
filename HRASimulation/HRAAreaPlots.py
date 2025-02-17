@@ -37,6 +37,7 @@ if __name__ == "__main__":
         quit()
 
     dir_trig, refl_trig = HRAAnalysis.getDirectReflTriggered(HRAeventList)
+    relf_trig = np.array(refl_trig) - 100 # Subtract 100 to get the station number
 
     # Plot the area of the HRA
     save_folder = f'{save_folder}Area/'
