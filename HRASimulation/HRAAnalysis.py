@@ -427,8 +427,8 @@ def plotStationLocations(ax, triggered=[], exclude=[], reflected_triggers=[]):
                 ax.scatter(station_locations[station_id][0], station_locations[station_id][1], marker='s', edgecolors='red', s=12, facecolors='none')
                 ax.text(station_locations[station_id][0], station_locations[station_id][1], f'{station_id}', fontsize=10, color='red')
             else:
-                ax.scatter(station_locations[station_id][0], station_locations[station_id][1], marker='s', edgecolors='purple', s=12, facecolors='none')
-                ax.text(station_locations[station_id][0], station_locations[station_id][1], f'{station_id}', fontsize=10, color='purple')
+                ax.scatter(station_locations[station_id][0], station_locations[station_id][1], marker='s', edgecolors='orange', s=12, facecolors='none')
+                ax.text(station_locations[station_id][0], station_locations[station_id][1], f'{station_id}', fontsize=10, color='orange')
 
         else:
             ax.scatter(station_locations[station_id][0], station_locations[station_id][1], marker='s', edgecolors='black', s=12, facecolors='none')
@@ -436,7 +436,7 @@ def plotStationLocations(ax, triggered=[], exclude=[], reflected_triggers=[]):
 
     # ax.scatter([], [], 's', edgecolors='black', markersize=12, facecolors='none', label='')
     if len(triggered) > 0:
-        ax.scatter([], [], marker='s', edgecolors='purple', s=12, facecolors='none', label='BL Triggered')
+        ax.scatter([], [], marker='s', edgecolors='orange', s=12, facecolors='none', label='BL Triggered')
     if len(reflected_triggers) > 0:
         ax.scatter([], [], marker='s', edgecolors='red', s=12, facecolors='none', label='Refl Triggered')
 
