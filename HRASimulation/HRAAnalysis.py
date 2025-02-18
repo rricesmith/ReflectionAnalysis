@@ -33,10 +33,15 @@ class HRAevent:
         for station in event.get_stations():
             self.weight[station.get_id()] = [np.nan, np.nan]
             if station.has_triggered():
-                self.addTrigger(station.get_id())
+                # Doing 4.4 sigma trigger now
+                if station.has_trigger(trigger_name='LPDA_2of4_4.4sigma'):
+                    self.addTrigger(station.get_id())
+                # self.addTrigger(station.get_id())
                 # For station 52, primary is upward and secondary is downward
-                if station.get_id() == 52 and station.has_trigger(trigger_name='secondary_LPDA_2of4_3.5sigma'):
-                    if station.has_triggered(trigger_name='secondary_LPDA_2of4_3.5sigma'):
+                # if station.get_id() == 52 and station.has_trigger(trigger_name='secondary_LPDA_2of4_3.5sigma'):
+                #     if station.has_triggered(trigger_name='secondary_LPDA_2of4_3.5sigma'):
+                if station.get_id() == 52 and station.has_trigger(trigger_name='secondary_LPDA_2of4_4.4sigma'):
+                    if station.has_triggered(trigger_name='secondary_LPDA_2of4_4.4sigma'):
                         self.addSecondaryTrigger(station.get_id())
 
         self.direct_triggers = []
@@ -247,8 +252,10 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False):
     # Normalise the event rate
     for station_id in direct_trigger_rate_dict:
         direct_trigger_rate_dict[station_id] /= n_throws
+        direct_trigger_rate_dict[station_id][np.isnan(direct_trigger_rate_dict[station_id])] = 0
     for station_id in reflected_trigger_rate_dict:
         reflected_trigger_rate_dict[station_id] /= n_throws
+        reflected_trigger_rate_dict[station_id][np.isnan(reflected_trigger_rate_dict[station_id])] = 0
 
     return direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins
 
@@ -261,8 +268,13 @@ def getEventRateArray(e_bins, z_bins):
     eventRateArray = getEnergyZenithArray()
     for i in range(len(e_bins)-1):
         for j in range(len(z_bins)-1):
-            high_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j+1]/units.deg, area=1)
-            low_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j]/units.deg, area=1)
+            # Old method did full geometric exposure, pi*(1+cos)(1-cos)
+            # auger.event_rate has 2pi(1-cos), so correcting factor added
+            # TODO find out argument why this needs to be included
+            high_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j+1]/units.deg, area=1*0.5*(1+np.cos(z_bins[j+1])))
+            low_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j]/units.deg, area=1*0.5*(1+np.cos(z_bins[j])))
+            # high_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j+1]/units.deg, area=1)
+            # low_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j]/units.deg, area=1)
             # ic(logE_bins[i], logE_bins[i+1], z_bins[j+1]/units.deg, z_bins[j]/units.deg, high_flux, low_flux)
             eventRateArray[i][j] = high_flux - low_flux
 
@@ -288,6 +300,7 @@ def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max
 
     area = np.pi * max_distance**2
 
+    # Event weight = event_rate_bin / n_triggers_bin
     for event in HRAeventList:
         energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
         zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
@@ -350,10 +363,10 @@ def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
     fig, ax = plt.subplots()
 
     # rate[1,:] = 100
-    # rate[:, 0] = 200
+    # rate[:, 2] = 200
 
-    # im = ax.imshow(rate, aspect='auto', origin='lower', extent=[min(e_bins), max(e_bins), min(cos_bins), max(cos_bins)], norm=matplotlib.colors.LogNorm(), cmap=cmap)
-    im = ax.imshow(rate, aspect='auto', origin='upper', extent=[min(e_bins), max(e_bins), min(cos_bins), max(cos_bins)], norm=matplotlib.colors.LogNorm(), cmap=cmap)
+    im = ax.imshow(rate, aspect='auto', origin='lower', extent=[min(e_bins), max(e_bins), min(cos_bins), max(cos_bins)], norm=matplotlib.colors.LogNorm(), cmap=cmap)
+    # im = ax.imshow(rate, aspect='auto', origin='upper', extent=[min(e_bins), max(e_bins), min(cos_bins), max(cos_bins)], norm=matplotlib.colors.LogNorm(), cmap=cmap)
 
     # Since the y-axis is not evenly spaced in zenith, need to adjust axis labels
     ax_labels = []

@@ -48,7 +48,7 @@ def singleBinERate(eLow, eHigh, zLow, zHigh, Aeff):
 #    low = auger.event_rate(eLow, eHigh, zLow, Aeff)
 #Need geometric exposure?
     #Full geometric exposure is pi * (1+cos)(1-cos)
-    #auger.event_rate has 2*pi*1-cos, so just need to remove 2 and add other factor
+    #auger.event_rate has 2*pi*(1-cos), so just need to remove 2 and add other factor
     high = auger.event_rate(eLow, eHigh, zHigh, Aeff * 0.5*(1 + np.cos(np.deg2rad(zHigh))))
     low = auger.event_rate(eLow, eHigh, zLow, Aeff * 0.5*(1 + np.cos(np.deg2rad(zLow))))
 
