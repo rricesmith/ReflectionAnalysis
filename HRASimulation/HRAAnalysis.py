@@ -170,7 +170,7 @@ def getEnergyZenithArray():
     # Returns an array of the energy-zenith bins
     e_bins, z_bins = getEnergyZenithBins()
 
-    return np.zeros(len(e_bins)-1, len(z_bins)-1)
+    return np.zeros((len(e_bins)-1, len(z_bins)-1))
 
 def getnThrows(HRAeventList):
     # Returns the number of throws in each energy-zenith bin
