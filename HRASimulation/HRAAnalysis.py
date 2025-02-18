@@ -179,8 +179,8 @@ def getnThrows(HRAeventList):
     n_throws = getEnergyZenithArray()
 
     for event in HRAeventList:
-        energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
-        zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
+        energy_bin = np.digitize(event.getEnergy(), e_bins)
+        zenith_bin = np.digitize(event.getAngles()[0], z_bins)
         n_throws[energy_bin][zenith_bin] += 1
 
     return n_throws    
@@ -201,14 +201,14 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False):
             # Event not triggered or meeting coincidence bar
             continue
         for station_id in event.directTriggers():
-            energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
-            zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
+            energy_bin = np.digitize(event.getEnergy(), e_bins)
+            zenith_bin = np.digitize(event.getAngles()[0], z_bins)
             if station_id not in direct_trigger_rate_dict:
                 direct_trigger_rate_dict[station_id] = getEnergyZenithArray()
             direct_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
         for station_id in event.reflectedTriggers():
-            energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
-            zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
+            energy_bin = np.digitize(event.getEnergy(), e_bins)
+            zenith_bin = np.digitize(event.getAngles()[0], z_bins)
             if station_id not in reflected_trigger_rate_dict:
                 reflected_trigger_rate_dict[station_id] = getEnergyZenithArray()
             reflected_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
@@ -279,8 +279,8 @@ def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max
     area = np.pi * max_distance**2
 
     for event in HRAeventList:
-        energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
-        zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
+        energy_bin = np.digitize(event.getEnergy(), e_bins)
+        zenith_bin = np.digitize(event.getAngles()[0], z_bins)
         event_rate = eventRateArray[energy_bin][zenith_bin]
 
         n_trig = trigger_rate_array[energy_bin][zenith_bin] * n_throws[energy_bin][zenith_bin]
@@ -308,8 +308,8 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False,
             if force_station is not None and force_station not in event.station_triggers:
                 # Event not triggered by the station we want
                 continue
-            energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
-            zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
+            energy_bin = np.digitize(event.getEnergy(), e_bins)
+            zenith_bin = np.digitize(event.getAngles()[0], z_bins)
             trigger_rate_coincidence[i][energy_bin][zenith_bin] += 1
         trigger_rate_coincidence[i] /= n_throws
 
