@@ -166,11 +166,17 @@ def getEnergyZenithBins():
 
     return e_bins, z_bins
 
+def getEnergyZenithArray():
+    # Returns an array of the energy-zenith bins
+    e_bins, z_bins = getEnergyZenithBins()
+
+    return np.zeros(len(e_bins)-1), np.zeros(len(z_bins)-1)
+
 def getnThrows(HRAeventList):
     # Returns the number of throws in each energy-zenith bin
     e_bins, z_bins = getEnergyZenithBins()
 
-    n_throws = np.zeros((len(e_bins), len(z_bins)))
+    n_throws = getEnergyZenithArray()
 
     for event in HRAeventList:
         energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
@@ -198,19 +204,19 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False):
             energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
             zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
             if station_id not in direct_trigger_rate_dict:
-                direct_trigger_rate_dict[station_id] = np.zeros((len(e_bins), len(z_bins)))
+                direct_trigger_rate_dict[station_id] = getEnergyZenithArray()
             direct_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
         for station_id in event.reflectedTriggers():
             energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
             zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
             if station_id not in reflected_trigger_rate_dict:
-                reflected_trigger_rate_dict[station_id] = np.zeros((len(e_bins), len(z_bins)))
+                reflected_trigger_rate_dict[station_id] = getEnergyZenithArray()
             reflected_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
 
     # Create an array of the combined rate of a single station using statistics of all stations, ignoring 52 and 32
     combined_trigger_rate = {}
-    combined_trigger_rate['direct'] = np.zeros((len(e_bins), len(z_bins)))
-    combined_trigger_rate['reflected'] = np.zeros((len(e_bins), len(z_bins)))
+    combined_trigger_rate['direct'] = getEnergyZenithArray()
+    combined_trigger_rate['reflected'] = getEnergyZenithArray()
     # combined_throws = 0
     combined_throws = np.zeros_like(n_throws)
     for station_id in direct_trigger_rate_dict:
@@ -242,7 +248,7 @@ def getEventRateArray(e_bins, z_bins):
         logE_bins = np.log10(e_bins/units.eV)
     else:
         logE_bins = e_bins
-    eventRateArray = np.zeros((len(e_bins), len(z_bins)))
+    eventRateArray = getEnergyZenithArray()
     for i in range(len(e_bins)-1):
         for j in range(len(z_bins)-1):
             high_flux = auger.event_rate(logE_bins[i], logE_bins[i+1], zmax=z_bins[j+1]/units.deg, area=1)
@@ -294,7 +300,7 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False,
 
     trigger_rate_coincidence =  {}
     for i in [2, 3, 4, 5, 6, 7]:
-        trigger_rate_coincidence[i] = np.zeros((len(e_bins), len(z_bins)))
+        trigger_rate_coincidence[i] = getEnergyZenithArray()
         for event in HRAeventList:
             if not event.hasCoincidence(i, bad_stations, use_secondary):
                 # Event not triggered or meeting coincidence bar
