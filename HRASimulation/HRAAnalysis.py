@@ -34,7 +34,7 @@ class HRAevent:
             self.weight[station.get_id()] = [np.nan, np.nan]
             if station.has_triggered():
                 # Doing 4.4 sigma trigger now
-                if station.has_trigger(trigger_name='LPDA_2of4_4.4sigma'):
+                if station.has_trigger(trigger_name='primary_LPDA_2of4_4.4sigma'):
                     self.addTrigger(station.get_id())
                 # self.addTrigger(station.get_id())
                 # For station 52, primary is upward and secondary is downward
@@ -449,6 +449,14 @@ def histAreaRate(x, y, weights, title, savename, dir_trig=[], refl_trig=[], excl
     ic(f'Saved {savename}')
     plt.close(fig)
     return
+
+def plotRateWithError(trigger_rates, HRAeventList, savename, title, colorbar_label='Evts/yr', radius=2.5*units.km):
+    # Plot the rate summed in zenith with error bars
+    e_bins, z_bins = getEnergyZenithBins()
+
+
+    return
+
 
 def plotStationLocations(ax, triggered=[], reflected_triggers=[], exclude=[]):
     station_locations = {13: [1044.4451, -91.337], 14: [610.4495, 867.118], 15: [-530.8272, -749.382], 17: [503.6394, -805.116], 
