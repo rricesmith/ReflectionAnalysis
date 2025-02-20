@@ -214,7 +214,7 @@ def run_stations(stations_list, mode='by_depth'):
 
 
 
-                if station.get_trigger(f'primary_LPDA_2of4_{[trigger_sigmas[0]]}sigma').has_triggered():
+                if station.get_trigger(f'primary_LPDA_2of4_{trigger_sigmas[0]}sigma').has_triggered():
 
                     if station_id == 52 or station_id == 152:
                         # For station 52, primary and secondary are reveresed due to ordering of channels that are upward/downward
@@ -224,7 +224,7 @@ def run_stations(stations_list, mode='by_depth'):
                                             coinc_window = 40*units.ns,
                                             triggered_channels=primary_LPDA_channels,
                                             number_concidences=2,
-                                            trigger_name=f'secondary_LPDA_2of4_{[trigger_sigmas[0]]}sigma')
+                                            trigger_name=f'secondary_LPDA_2of4_{trigger_sigmas[0]}sigma')
                         for sigma in trigger_sigmas[1:]:
                             highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][sigma], 
                                                 threshold_low=thresholds_low[station_id][sigma],

@@ -8,7 +8,7 @@ n_cores = 100   #Decenty sensitivity to RCRs, so don't overdo
 distance = 6 #km, diameter of throws. 5km has triggers at edges still, so can go farther out
 add_noise = True
 # output_folder = f'HRASimulation/output/HRA/{date_sim}/'
-output_folder = f'/dfs8/sbarwick_lab/ariannaproject/rricesmi/HRASimulations/{date_sim}/'
+output_folder = f'/dfs8/sbarwick_lab/ariannaproject/rricesmi/HRASimulations/{date_sim}/'    # Saving to shared folder due to size of simulations
 output_filename = f'HRA_Noise{add_noise}_{distance}km'
 
 # Make directory if it doesn't exist
