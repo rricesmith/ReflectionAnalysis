@@ -69,6 +69,7 @@ det.update(datetime.datetime(2018, 10, 1))
 
 # Indicate channels for simulation
 primary_LPDA_channels = [0, 1, 2, 3]   #Downward for all stations except 32, which is upward
+primary_LPDA_channels_52upward = [4, 5]
 secondary_LPDA_channels = [4, 5, 6, 7]     #Only on station 52
 
 # initialize all modules that are needed for processing
@@ -106,6 +107,8 @@ correlationDirectionFitter.begin(debug=False)
 all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
 # all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52]
 # all_stations_reflected = [113, 114, 115, 117, 118, 119, 130, 132, 152]
+
+trigger_sigmas = [3.5, 4, 4.5, 5, 5.5, 6]
 
 preAmpVrms_per_channel = {}
 thresholds_high = {}
@@ -161,16 +164,25 @@ def run_stations(stations_list, mode='by_depth'):
                 # Get noise levels for simulation
                 preAmpVrms, postAmpVrms = calculateNoisePerChannel(det, station=station, amp=True, hardwareResponseIncorporator=hardwareResponseIncorporator, channelBandPassFilter=channelBandPassFilter)
                 preAmpVrms_per_channel[station_id] = preAmpVrms
-                threshold_high_3_5 = {key: value * 3.5 for key, value in postAmpVrms.items()}
-                threshold_low_3_5 = {key: value * -3.5 for key, value in postAmpVrms.items()}
-                threshold_high_4_4 = {key: value * 4.4 for key, value in postAmpVrms.items()}
-                threshold_low_4_4 = {key: value * -4.4 for key, value in postAmpVrms.items()}
 
-                ic(preAmpVrms, postAmpVrms, threshold_high_3_5, threshold_high_4_4)
-                thresholds_high[station_id][3.5] = threshold_high_3_5
-                thresholds_high[station_id][4.4] = threshold_high_4_4
-                thresholds_low[station_id][3.5] = threshold_low_3_5
-                thresholds_low[station_id][4.4] = threshold_low_4_4
+                for sigma in trigger_sigmas:
+                    threshold_high = {key: value * sigma for key, value in postAmpVrms.items()}
+                    threshold_low = {key: value * -sigma for key, value in postAmpVrms.items()}
+                    thresholds_high[station_id][sigma] = threshold_high
+                    thresholds_low[station_id][sigma] = threshold_low
+
+                # threshold_high_3_5 = {key: value * 3.5 for key, value in postAmpVrms.items()}
+                # threshold_low_3_5 = {key: value * -3.5 for key, value in postAmpVrms.items()}
+                # threshold_high_4_4 = {key: value * 4.4 for key, value in postAmpVrms.items()}
+                # threshold_low_4_4 = {key: value * -4.4 for key, value in postAmpVrms.items()}
+
+                # ic(preAmpVrms, postAmpVrms, threshold_high_3_5, threshold_high_4_4)
+                # thresholds_high[station_id][3.5] = threshold_high_3_5
+                # thresholds_high[station_id][4.4] = threshold_high_4_4
+                # thresholds_low[station_id][3.5] = threshold_low_3_5
+                # thresholds_low[station_id][4.4] = threshold_low_4_4
+
+
 
                 # quit()
 
@@ -186,57 +198,57 @@ def run_stations(stations_list, mode='by_depth'):
 
 
                 if station_id == 52 or station_id == 152:
-                    highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][3.5], 
-                                        threshold_low=thresholds_low[station_id][3.5],
+                    highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][trigger_sigmas[0]], 
+                                        threshold_low=thresholds_low[station_id][trigger_sigmas[0]],
                                         coinc_window = 40*units.ns,
-                                        triggered_channels=secondary_LPDA_channels,
+                                        triggered_channels=primary_LPDA_channels_52upward,
                                         number_concidences=2,
-                                        trigger_name=f'primary_LPDA_2of4_3.5sigma')
+                                        trigger_name=f'primary_LPDA_2of4_{trigger_sigmas[0]}sigma')
                 else:
-                    highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][3.5], 
-                                        threshold_low=thresholds_low[station_id][3.5],
+                    highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][trigger_sigmas[0]], 
+                                        threshold_low=thresholds_low[station_id][trigger_sigmas[0]],
                                         coinc_window = 40*units.ns,
                                         triggered_channels=primary_LPDA_channels,
                                         number_concidences=2,
-                                        trigger_name=f'primary_LPDA_2of4_3.5sigma')
+                                        trigger_name=f'primary_LPDA_2of4_{trigger_sigmas[0]}sigma')
 
 
 
-                if station.get_trigger(f'primary_LPDA_2of4_3.5sigma').has_triggered():
+                if station.get_trigger(f'primary_LPDA_2of4_{[trigger_sigmas[0]]}sigma').has_triggered():
 
                     if station_id == 52 or station_id == 152:
                         # For station 52, primary and secondary are reveresed due to ordering of channels that are upward/downward
                         # Upward are primary, downward are secondary
-                        highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][3.5], 
-                                            threshold_low=thresholds_low[station_id][3.5],
+                        highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][trigger_sigmas[0]], 
+                                            threshold_low=thresholds_low[station_id][trigger_sigmas[0]],
                                             coinc_window = 40*units.ns,
                                             triggered_channels=primary_LPDA_channels,
                                             number_concidences=2,
-                                            trigger_name=f'secondary_LPDA_2of4_3.5sigma')
+                                            trigger_name=f'secondary_LPDA_2of4_{[trigger_sigmas[0]]}sigma')
+                        for sigma in trigger_sigmas[1:]:
+                            highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][sigma], 
+                                                threshold_low=thresholds_low[station_id][sigma],
+                                                coinc_window = 40*units.ns,
+                                                triggered_channels=primary_LPDA_channels_52upward,
+                                                number_concidences=2,
+                                                trigger_name=f'primary_LPDA_2of4_{sigma}sigma')
 
-                        highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][4.4],
-                                            threshold_low=thresholds_low[station_id][4.4],
-                                            coinc_window = 40*units.ns,
-                                            triggered_channels=primary_LPDA_channels,
-                                            number_concidences=2,
-                                            trigger_name=f'secondary_LPDA_2of4_4.4sigma')
-
-                        highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][4.4], 
-                                            threshold_low=thresholds_low[station_id][4.4],
-                                            coinc_window = 40*units.ns,
-                                            triggered_channels=secondary_LPDA_channels,
-                                            number_concidences=2,
-                                            trigger_name=f'primary_LPDA_2of4_4.4sigma')
+                            highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][sigma], 
+                                                threshold_low=thresholds_low[station_id][sigma],
+                                                coinc_window = 40*units.ns,
+                                                triggered_channels=primary_LPDA_channels,
+                                                number_concidences=2,
+                                                trigger_name=f'secondary_LPDA_2of4_{sigma}sigma')
 
 
                     else:
-                        highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][4.4],
-                                            threshold_low=thresholds_low[station_id][4.4],
-                                            coinc_window = 40*units.ns,
-                                            triggered_channels=primary_LPDA_channels,
-                                            number_concidences=2,
-                                            trigger_name=f'primary_LPDA_2of4_4.4sigma')
-
+                        for sigma in trigger_sigmas[1:]:
+                            highLowThreshold.run(evt, station, det, threshold_high=thresholds_high[station_id][sigma], 
+                                                threshold_low=thresholds_low[station_id][sigma],
+                                                coinc_window = 40*units.ns,
+                                                triggered_channels=primary_LPDA_channels,
+                                                number_concidences=2,
+                                                trigger_name=f'primary_LPDA_2of4_{sigma}sigma')
 
                     triggerTimeAdjuster.run(evt, station, det)
                     # channelResampler.run(evt, station, det, 1*units.GHz)

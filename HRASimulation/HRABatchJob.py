@@ -3,11 +3,12 @@ import numpy as np
 from pathlib import Path
 
 
-date_sim = '1.27.25'
-n_cores = 50   #Decenty sensitivity to RCRs, so don't overdo
-distance = 5 #km, want a large enough area that all stations will be covered and then some
-add_noise = False
-output_folder = f'HRASimulation/output/HRA/{date_sim}/'
+date_sim = '2.20.25'
+n_cores = 100   #Decenty sensitivity to RCRs, so don't overdo
+distance = 6 #km, diameter of throws. 5km has triggers at edges still, so can go farther out
+add_noise = True
+# output_folder = f'HRASimulation/output/HRA/{date_sim}/'
+output_folder = f'/dfs8/sbarwick_lab/ariannaproject/rricesmi/HRASimulations/{date_sim}/'
 output_filename = f'HRA_Noise{add_noise}_{distance}km'
 
 # Make directory if it doesn't exist
@@ -15,7 +16,7 @@ Path(output_folder).mkdir(parents=True, exist_ok=True)
 
 min_file = 0
 max_file = 1000     #For MB up to 4000, 1000 is reduced/broad for MB
-num_sims = 20       # How many simulations to break up into
+num_sims = 50       # How many simulations to break up into
 
 file_range = np.linspace(min_file, max_file, num_sims)
 
