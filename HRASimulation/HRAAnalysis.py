@@ -60,6 +60,7 @@ class HRAevent:
 
         self.reflected_triggers = {}
         for sigma in self.trigger_sigmas:
+            self.reflected_triggers[sigma] = []
             for station_id in self.station_triggers[sigma]:
                 if station_id > 100:
                     self.reflected_triggers[sigma].append(station_id)
