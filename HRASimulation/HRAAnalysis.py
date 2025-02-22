@@ -535,6 +535,7 @@ if __name__ == "__main__":
     numpy_folder = config['FOLDERS']['numpy_folder']
     save_folder = config['FOLDERS']['save_folder']
     plot_sigma = float(config['PLOTPARAMETERS']['trigger_sigma'])
+    ic(plot_sigma)
 
     os.makedirs(save_folder, exist_ok=True)
 
