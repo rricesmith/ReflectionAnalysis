@@ -488,8 +488,8 @@ def plotRateWithError(eventRate, errorRate, savename, title):
     for iZ in range(len(z_bins)-1):
         ax.fill_between((e_bins[1:]+e_bins[:-1])/2, eventRate[:,iZ] - errorRate[:,iZ], eventRate[:,iZ] + errorRate[:,iZ], alpha=0.5, label=f'{z_bins[iZ]/units.deg:.1f}-{z_bins[iZ+1]/units.deg:.1f}')
 
-    ax.xlabel('log10(E/eV)')
-    ax.ylabel('Evts/Yr')
+    ax.set_xlabel('log10(E/eV)')
+    ax.set_ylabel('Evts/Yr')
     ax.legend()
     ax.title(title)
     fig.savefig(savename)
