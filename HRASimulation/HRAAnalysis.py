@@ -491,7 +491,7 @@ def plotRateWithError(eventRate, errorRate, savename, title):
     ax.set_xlabel('log10(E/eV)')
     ax.set_ylabel('Evts/Yr')
     ax.legend()
-    ax.title(title)
+    ax.set_title(title)
     fig.savefig(savename)
     ic(f'Saved {savename}')
     plt.close(fig)
@@ -534,6 +534,7 @@ if __name__ == "__main__":
     sim_folder = config['FOLDERS']['sim_folder']
     numpy_folder = config['FOLDERS']['numpy_folder']
     save_folder = config['FOLDERS']['save_folder']
+    plot_sigma = int(config['PLOTPARAMETERS']['trigger_sigma'])
 
     os.makedirs(save_folder, exist_ok=True)
 
