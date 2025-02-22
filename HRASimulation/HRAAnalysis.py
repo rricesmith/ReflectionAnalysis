@@ -329,7 +329,7 @@ def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max
     return
 
 
-def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None, sigm=5):
+def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None, sigma=5):
     # Return a list of coincidence events
     # As well as a dictionary of the trigger rate array for each number of coincidences
     e_bins, z_bins = getEnergyZenithBins()
