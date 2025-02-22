@@ -18,9 +18,7 @@ class HRAevent:
         self.coreas_x = event.get_parameter(evtp.coreas_x) 
         self.coreas_y = event.get_parameter(evtp.coreas_y)
         self.event_id = event.get_id()
-        self.station_triggers = []
-        self.secondary_station_triggers = []
-        self.weight = {} # Dictionary of list of weights for primary and secondary triggers for each station
+        self.weight = {} # Dictionary of list of weights for primary and secondary triggers for each station and sigma
 
         sim_shower = event.get_sim_shower(0)
         self.energy = sim_shower[shp.energy]
@@ -29,30 +27,42 @@ class HRAevent:
         if DEBUG:
             ic(self.event_id, self.energy, self.zenith, self.azimuth)
 
+        self.trigger_sigmas = [3.5, 4, 4.5, 5, 5.5, 6]
+        for sigma in self.trigger_sigmas:
+            self.weight[sigma] = {}
+        self.station_triggers = {}
+        self.secondary_station_triggers = {}
+        for sigma in self.trigger_sigmas:
+            self.station_triggers[sigma] = []
+            self.secondary_station_triggers[sigma] = []
         # Only doing the 3.5sigma triggers to begin with
         for station in event.get_stations():
-            self.weight[station.get_id()] = [np.nan, np.nan]
+            for sigma in self.trigger_sigmas:
+                self.weight[sigma][station.get_id()] = [np.nan, np.nan]
             if station.has_triggered():
-                # Doing 4.4 sigma trigger now
-                if station.has_trigger(trigger_name='primary_LPDA_2of4_4.4sigma'):
-                    self.addTrigger(station.get_id())
-                # self.addTrigger(station.get_id())
-                # For station 52, primary is upward and secondary is downward
-                # if station.get_id() == 52 and station.has_trigger(trigger_name='secondary_LPDA_2of4_3.5sigma'):
-                #     if station.has_triggered(trigger_name='secondary_LPDA_2of4_3.5sigma'):
-                if station.get_id() == 52 and station.has_trigger(trigger_name='secondary_LPDA_2of4_4.4sigma'):
-                    if station.has_triggered(trigger_name='secondary_LPDA_2of4_4.4sigma'):
-                        self.addSecondaryTrigger(station.get_id())
 
-        self.direct_triggers = []
-        for station_id in self.station_triggers:
-            if station_id < 100:
-                self.direct_triggers.append(station_id)
+                for sigma in self.trigger_sigmas:
+                    if station.has_triggered(trigger_name=f'primary_LPDA_2of4_{sigma}sigma'):
+                        self.addTrigger(station.get_id(), sigma)
 
-        self.reflected_triggers = []
-        for station_id in self.station_triggers:
-            if station_id > 100:
-                self.reflected_triggers.append(station_id)
+                if station.get_id() == 52:
+                    for sigma in self.trigger_sigmas:
+                        if station.has_triggered(trigger_name=f'secondary_LPDA_2of4_{sigma}sigma'):
+                            self.addSecondaryTrigger(station.get_id(), sigma)
+
+
+        self.direct_triggers = {}
+        for sigma in self.trigger_sigmas:
+            self.direct_triggers[sigma] = []
+            for station_id in self.station_triggers[sigma]:
+                if station_id < 100:
+                    self.direct_triggers[sigma].append(station_id)
+
+        self.reflected_triggers = {}
+        for sigma in self.trigger_sigmas:
+            for station_id in self.station_triggers[sigma]:
+                if station_id > 100:
+                    self.reflected_triggers[sigma].append(station_id)
 
     def getCoreasPosition(self):
         return self.coreas_x, self.coreas_y
@@ -72,48 +82,48 @@ class HRAevent:
     def secondaryTriggers(self):
         return self.secondary_station_triggers
     
-    def directTriggers(self):
-        return self.direct_triggers
+    def directTriggers(self, sigma=5):
+        return self.direct_triggers[sigma]
     
-    def reflectedTriggers(self):
-        return self.reflected_triggers
+    def reflectedTriggers(self, sigma=5):
+        return self.reflected_triggers[sigma]
 
-    def addTrigger(self, station_id):
-        if station_id not in self.station_triggers:
-            self.station_triggers.append(station_id)
+    def addTrigger(self, station_id, sigma):
+        if station_id not in self.station_triggers[sigma]:
+            self.station_triggers[sigma].append(station_id)
 
-    def addSecondaryTrigger(self, station_id):
-        if station_id not in self.secondary_station_triggers:
-            self.secondary_station_triggers.append(station_id)
+    def addSecondaryTrigger(self, station_id, sigma):
+        if station_id not in self.station_triggers[sigma]:
+            self.station_triggers[sigma].append(station_id)
 
-    def hasCoincidence(self, num=1, bad_stations=None, use_secondary=False):
+    def hasCoincidence(self, num=1, bad_stations=None, use_secondary=False, sigma=5):
         # Bad Stations should be a list of station IDs that are not to be included in the coincidence
-        n_coinc = len(self.station_triggers)
+        n_coinc = len(self.station_triggers[sigma])
         if use_secondary:
-            n_coinc += len(self.secondary_station_triggers)
+            n_coinc += len(self.secondary_station_triggers[sigma])
             n_coinc -= self.hasTriggered(station_id=52)
         if bad_stations is not None:
             for station_id in bad_stations:
-                if station_id in self.station_triggers and station_id != 52:
+                if station_id in self.station_triggers[sigma] and station_id != 52:
                     n_coinc -= 1
                 elif station_id == 52 and use_secondary:
-                    if station_id in self.secondary_station_triggers:
-                        n_coinc -= 1
+                    if station_id in self.secondary_station_triggers[sigma]:
+                        n_coinc -= 1    
             return n_coinc > num
         return n_coinc > num
 
-    def hasSecondaryCoincidence(self):
-        return (len(self.station_triggers) + len(self.secondary_station_triggers)) > 1
+    def hasSecondaryCoincidence(self, sigma=5):
+        return (len(self.station_triggers[sigma]) + len(self.secondary_station_triggers[sigma])) > 1
 
-    def hasTriggered(self, station_id=None):
+    def hasTriggered(self, station_id=None, sigma=5):
         if station_id is None:
-            return len(self.station_triggers) > 0
-        return station_id in self.station_triggers
+            return len(self.station_triggers[sigma]) > 0
+        return station_id in self.station_triggers[sigma]
 
     def inEnergyZenithBin(self, e_low, e_high, z_low, z_high):
         return e_low <= self.energy <= e_high and z_low <= self.zenith <= z_high
     
-    def setWeight(self, weight, weight_name, primary=True):
+    def setWeight(self, weight, weight_name, primary=True, sigma=5):
         if weight_name not in self.weight:
             # Weights can be station ids, or can be a string such as 'all reflected', or '52 with direct only'
             self.weight[weight_name] = [np.nan, np.nan]
@@ -123,11 +133,11 @@ class HRAevent:
             self.weight[weight_name][1] = weight
 
 
-    def getWeight(self, weight_name, primary=True):
+    def getWeight(self, weight_name, primary=True, sigma=5):
         if primary:
-            return self.weight[weight_name][0]
+            return self.weight[sigma][weight_name][0]
         else:
-            return self.weight[weight_name][1]
+            return self.weight[sigma][weight_name][1]
 
     def hasWeight(self, weight_name):
         return weight_name in self.weight
@@ -194,7 +204,7 @@ def getnThrows(HRAeventList):
     return n_throws    
 
 
-def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False):
+def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, sigma=5):
     # Input a list of HRAevent objects to get the event rate in each energy-zenith bin
 
     e_bins, z_bins = getEnergyZenithBins()
@@ -206,10 +216,10 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False):
 
     for event in HRAeventList:
         # n_throws += 1
-        if not event.hasCoincidence(num_coincidence, use_secondary=use_secondary):
+        if not event.hasCoincidence(num_coincidence, use_secondary=use_secondary, sigma=sigma):
             # Event not triggered or meeting coincidence bar
             continue
-        for station_id in event.directTriggers():
+        for station_id in event.directTriggers(sigma=sigma):
             energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
             zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
             if energy_bin < 0 or zenith_bin < 0 or energy_bin >= len(e_bins) or zenith_bin >= len(z_bins):
@@ -218,7 +228,7 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False):
             if station_id not in direct_trigger_rate_dict:
                 direct_trigger_rate_dict[station_id] = getEnergyZenithArray()
             direct_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
-        for station_id in event.reflectedTriggers():
+        for station_id in event.reflectedTriggers(sigma=sigma):
             energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
             zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
             if energy_bin < 0 or zenith_bin < 0 or energy_bin >= len(e_bins) or zenith_bin >= len(z_bins):
@@ -291,7 +301,7 @@ def getEventRate(trigger_rate, e_bins, z_bins, max_distance=3.0*units.km):
 
     return eventRateArray * trigger_rate * area/units.km**2
 
-def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max_distance=3.0*units.km):
+def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max_distance=3.0*units.km, sigma=5):
     # Set the event rate weight for each event in the HRAeventList
 
     e_bins, z_bins = getEnergyZenithBins()
@@ -311,14 +321,14 @@ def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max
 
         n_trig = trigger_rate_array[energy_bin][zenith_bin] * n_throws[energy_bin][zenith_bin]
         if n_trig == 0:
-            event.setWeight(0, weight_name)
+            event.setWeight(0, weight_name, sigma=sigma)
         else:
-            event.setWeight(event_rate * trigger_rate_array[energy_bin][zenith_bin] * (area/units.km**2) / n_trig, weight_name)
+            event.setWeight(event_rate * trigger_rate_array[energy_bin][zenith_bin] * (area/units.km**2) / n_trig, weight_name, sigma=sigma)
 
     return
 
 
-def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None):
+def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None, sigm=5):
     # Return a list of coincidence events
     # As well as a dictionary of the trigger rate array for each number of coincidences
     e_bins, z_bins = getEnergyZenithBins()
@@ -328,7 +338,7 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False,
     for i in [2, 3, 4, 5, 6, 7]:
         trigger_rate_coincidence[i] = getEnergyZenithArray()
         for event in HRAeventList:
-            if not event.hasCoincidence(i, bad_stations, use_secondary):
+            if not event.hasCoincidence(i, bad_stations, use_secondary, sigma=sigma):
                 # Event not triggered or meeting coincidence bar
                 continue
             if force_station is not None and force_station not in event.station_triggers:
