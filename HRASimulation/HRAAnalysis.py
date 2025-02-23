@@ -140,8 +140,8 @@ class HRAevent:
         else:
             return self.weight[sigma][weight_name][1]
 
-    def hasWeight(self, weight_name):
-        return weight_name in self.weight
+    def hasWeight(self, weight_name, sigma=5):
+        return weight_name in self.weight[sigma]
 
 
 def getHRAevents(nur_files):
