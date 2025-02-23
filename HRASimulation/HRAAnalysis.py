@@ -342,7 +342,7 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False,
             if not event.hasCoincidence(i, bad_stations, use_secondary, sigma=sigma):
                 # Event not triggered or meeting coincidence bar
                 continue
-            if force_station is not None and force_station not in event.station_triggers:
+            if force_station is not None and force_station not in event.station_triggers[sigma]:
                 # Event not triggered by the station we want
                 continue
             energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
