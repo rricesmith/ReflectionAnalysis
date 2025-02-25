@@ -130,12 +130,13 @@ def run_stations(stations_list, mode='by_depth'):
     # readCoREAS = NuRadioReco.modules.io.coreas.readCoREASStationGrid.readCoREAS()
     readCoREAS = readCoREASStationGrid.readCoREAS()
     readCoREAS.begin(input_files, (-distance/2)*units.km, (distance/2)*units.km, (-distance/2)*units.km, (distance/2)*units.km, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.WARNING)
+    # readCoREAS.begin(input_files, (-distance/2)*units.km, (distance/2)*units.km, (-distance/2)*units.km, (distance/2)*units.km, n_cores=n_cores, shape='uniform', seed=seed, log_level=logging.WARNING)
     eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
     eventWriter.begin(output_filename + f'.nur')
 
 
 
-    for evt, iE, x, y in readCoREAS.run(detector=det, ray_type=mode, layer_depth=576, layer_dB=0, attenuation_model='MB_freq', output_mode=2):
+    for evt, iE, x, y in readCoREAS.run(detector=det, ray_type=mode, layer_depth=-576*units.m, layer_dB=0, attenuation_model='MB_freq', output_mode=2):
         ic(f"processing event {iE} with id {evt.get_id()} at position {x}, {y}")
 
         evt.set_parameter(evtp.coreas_x, x)

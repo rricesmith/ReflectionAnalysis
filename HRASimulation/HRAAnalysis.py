@@ -480,13 +480,16 @@ def getErrorEventRates(trigger_rate, HRAeventList, max_distance=3.0*units.km):
 def plotRateWithError(eventRate, errorRate, savename, title):
     # Plot the rate summed in zenith with error bars
     e_bins, z_bins = getEnergyZenithBins()
+    e_bins = np.log10(e_bins/units.eV)
 
     fig, ax = plt.subplots()
 
+    eventRate[np.isnan(eventRate)] = 0
+    errorRate[np.isnan(errorRate)] = 0
     ax.fill_between((e_bins[1:]+e_bins[:-1])/2, np.sum(eventRate - errorRate,axis=1), np.sum(eventRate + errorRate,axis=1), alpha=0.5, label=f'{np.sum(eventRate):.2f} +/- {np.sum(errorRate):.2f} Evts/Yr')
 
     for iZ in range(len(z_bins)-1):
-        ax.fill_between((e_bins[1:]+e_bins[:-1])/2, eventRate[:,iZ] - errorRate[:,iZ], eventRate[:,iZ] + errorRate[:,iZ], alpha=0.5, label=f'{z_bins[iZ]/units.deg:.1f}-{z_bins[iZ+1]/units.deg:.1f}')
+        ax.fill_between((e_bins[1:]+e_bins[:-1])/2, eventRate[:,iZ] - errorRate[:,iZ], eventRate[:,iZ] + errorRate[:,iZ], alpha=0.5, label=f'{z_bins[iZ]/units.deg:.1f}-{z_bins[iZ+1]/units.deg:.1f}deg')
 
     ax.set_xlabel('log10(E/eV)')
     ax.set_ylabel('Evts/Yr')
