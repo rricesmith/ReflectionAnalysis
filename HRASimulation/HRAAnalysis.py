@@ -292,7 +292,7 @@ def getEventRateArray(e_bins, z_bins):
     return eventRateArray
 
 
-def getEventRate(trigger_rate, e_bins, z_bins, max_distance=3.0*units.km):
+def getEventRate(trigger_rate, e_bins, z_bins, max_distance=6.0*units.km):
     # Input a single trigger rate list to get the event rate in each energy-zenith bin
 
     logE_bins = np.log10(e_bins/units.eV)
@@ -302,7 +302,7 @@ def getEventRate(trigger_rate, e_bins, z_bins, max_distance=3.0*units.km):
 
     return eventRateArray * trigger_rate * area/units.km**2
 
-def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max_distance=3.0*units.km, sigma=5):
+def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max_distance=6.0*units.km, sigma=5):
     # Set the event rate weight for each event in the HRAeventList
 
     e_bins, z_bins = getEnergyZenithBins()
@@ -437,8 +437,8 @@ def getDirectReflTriggered(HRAeventList, use_primary=True):
 
     return direct_triggered, reflected_triggered
 
-def histAreaRate(x, y, weights, title, savename, dir_trig=[], refl_trig=[], exclude=[], colorbar_label='Evts/yr', radius=3.0*units.km):
-    x_bins, y_bins = np.linspace(-radius/units.m, radius/units.m, 100), np.linspace(-radius/units.m, radius/units.m, 100)
+def histAreaRate(x, y, weights, title, savename, dir_trig=[], refl_trig=[], exclude=[], colorbar_label='Evts/yr', max_distance=6.0*units.km):
+    x_bins, y_bins = np.linspace(-max_distance/units.m, max_distance/units.m, 100), np.linspace(-max_distance/units.m, max_distance/units.m, 100)
 
     fig, ax = plt.subplots()
 
@@ -462,7 +462,7 @@ def histAreaRate(x, y, weights, title, savename, dir_trig=[], refl_trig=[], excl
     return
 
 
-def getErrorEventRates(trigger_rate, HRAeventList, max_distance=3.0*units.km):
+def getErrorEventRates(trigger_rate, HRAeventList, max_distance=6.0*units.km):
     # Return the event rate array as well as an array of the error in each bin
     # Error is capped at 100% of the event rate, for bins with 1 trigger going to 0 event rate
 
