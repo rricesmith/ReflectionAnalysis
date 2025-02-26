@@ -16,7 +16,8 @@ Path(output_folder).mkdir(parents=True, exist_ok=True)
 
 min_file = 0
 max_file = 1000     #For MB up to 4000, 1000 is reduced/broad for MB
-num_sims = 50       # How many simulations to break up into
+num_sims = int(n_cores/2)
+# num_sims = 50       # How many simulations to break up into
 
 file_range = np.linspace(min_file, max_file, num_sims)
 
