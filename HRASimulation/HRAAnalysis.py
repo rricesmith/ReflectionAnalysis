@@ -1,6 +1,7 @@
 from NuRadioReco.utilities import units
 from NuRadioReco.framework.parameters import eventParameters as evtp
 from NuRadioReco.framework.parameters import showerParameters as shp
+from NuRadioReco.framework.parameters import stationParameters as stnp
 import NuRadioReco.modules.io.eventReader
 from icecream import ic
 import os
@@ -24,6 +25,14 @@ class HRAevent:
         self.energy = sim_shower[shp.energy]
         self.zenith = sim_shower[shp.zenith]
         self.azimuth = sim_shower[shp.azimuth]
+
+        self.recon_zenith = {}
+        self.recon_azimuth = {}
+        for station in event.get_stations():
+            if station.has_triggered():
+                self.recon_zenith[station.get_id()] = station.get_parameter(stnp.zenith)
+                self.recon_azimuth[station.get_id()] = station.get_parameter(stnp.azimuth)
+
         if DEBUG:
             ic(self.event_id, self.energy, self.zenith, self.azimuth)
 
@@ -142,6 +151,7 @@ class HRAevent:
 
     def hasWeight(self, weight_name, sigma=5):
         return weight_name in self.weight[sigma]
+    
 
 
 def getHRAevents(nur_files):
@@ -502,6 +512,96 @@ def plotRateWithError(eventRate, errorRate, savename, title):
     return
 
 
+def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=True):
+    # Get a list of the events x/y with associated event rate as a weight
+
+    zenith = []
+    recon_zenith = []
+    azimuth = []
+    recon_azimuth = []
+    weights = []
+
+    if not isinstance(station_ids, list):
+        station_ids = [station_ids]
+
+    for event in HRAeventList:
+        zenith.append(event.getAngles()[0])
+        azimuth.append(event.getAngles()[1])
+        weights.append(event.getWeight(weight_name, use_primary))    # Append all events because non-triggering events have a weight of zero    
+
+        # if station_id in event.recon_zenith:
+        if np.in1d(station_ids, list(event.recon_zenith.keys())).all():
+            recon_zenith.append(event.recon_zenith[station_id])
+            recon_azimuth.append(event.recon_azimuth[station_id])
+        else:
+            recon_zenith.append(np.nan)
+            recon_azimuth.append(np.nan)
+
+    return np.array(zenith), np.array(recon_zenith), np.array(azimuth), np.array(recon_azimuth), np.array(weights)
+
+
+def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title, savename, colorbar_label='Evts/yr'):
+    if max(zenith) < 10:
+        zenith = np.rad2deg(zenith)
+        recon_zenith = np.rad2deg(recon_zenith)
+        azimuth = np.rad2deg(azimuth)
+        recon_azimuth = np.rad2deg(recon_azimuth)
+    
+    zenith_bins, azimuth_bins = np.linspace(0, 90, 100), np.linspace(0, 360, 100)
+    ax, fig = plt.subplots(nrows=1, ncols=2)
+
+    norm = matplotlib.colors.LogNorm(vmin=np.min(weights[np.nonzero(weights)]), vmax=np.max(weights)*5)
+    h, xedges, yedges, im = fig[0].hist2d(zenith, recon_zenith, bins=(zenith_bins, zenith_bins), weights=weights, cmap='viridis', norm=norm)
+    fig[0].set_xlabel('True Zenith (deg)')
+    fig[0].set_ylabel('Reconstructed Zenith (deg)')
+    fig[0].set_title('Zenith')
+    fig[0].set_aspect('equal')
+    fig[0].set_xlim(0, 90)
+    fig[0].set_ylim(0, 90)
+    fig[0].grid()
+
+    h, xedges, yedges, im = fig[1].hist2d(azimuth, recon_azimuth, bins=(azimuth_bins, azimuth_bins), weights=weights, cmap='viridis', norm=norm)
+    fig[1].set_xlabel('True Azimuth (deg)')
+    fig[1].set_ylabel('Reconstructed Azimuth (deg)')
+    fig[1].set_title('Azimuth')
+    fig[1].set_aspect('equal')
+    fig[1].set_xlim(0, 360)
+    fig[1].set_ylim(0, 360)
+    fig[1].grid()
+
+    fig[0].colorbar(im, ax=fig[0], label=colorbar_label)
+    fig[1].colorbar(im, ax=fig[1], label=colorbar_label)
+    plt.suptitle(title)
+
+    plt.savefig(savename)
+    ic(f'Saved {savename}')
+    plt.close()
+
+    # Also plot the difference in true and reconstructed angles
+    zenith_diff = np.abs(zenith - recon_zenith)
+    azimuth_diff = np.abs(azimuth - recon_azimuth)
+
+    fig, ax = plt.subplots(nrows=1, ncols=2)
+
+    diff_bins = np.linspace(-90, 90, 100)
+
+    h, xedges, yedges, im = ax[0].hist(zenith_diff, bins=diff_bins, weights=weights)
+    ax[0].set_xlabel('True - Reconstructed Zenith (deg)')
+    ax[0].set_ylabel('Evts')
+    ax[0].set_title('Zenith')
+
+    h, xedges, yedges, im = ax[1].hist(azimuth_diff, bins=diff_bins, weights=weights)
+    ax[1].set_xlabel('True - Reconstructed Azimuth (deg)')
+    ax[1].set_ylabel('Evts')
+    ax[1].set_title('Azimuth')
+
+    plt.suptitle(f'{title} Difference in True and Reconstructed Angles')
+    plt.savefig(savename.replace('.png', '_diff.png'))
+    ic(f'Saved {savename.replace(".png", "_diff.png")}')
+    plt.close()
+
+    return
+
 def plotStationLocations(ax, triggered=[], reflected_triggers=[], exclude=[]):
     station_locations = {13: [1044.4451, -91.337], 14: [610.4495, 867.118], 15: [-530.8272, -749.382], 17: [503.6394, -805.116], 
                          18: [0, 0], 19: [-371.9322, 950.705], 30: [-955.2426, 158.383], 32: [463.6215, -893.988], 52: [436.7442, 168.904]}
@@ -666,6 +766,25 @@ if __name__ == "__main__":
         imshowRate(event_rate_coincidence[i], f'Event Rate, {i} Coincidences, 52 upward forced w/o Refl', f'{save_folder}event_rate_coincidence_norefl_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
         event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList)
         plotRateWithError(event_rate_coincidence[i], event_rate_error, f'{save_folder}error_rate/event_rate_coincidence_norefl_52up_error_{i}.png', f'Event Rate Error for {i} Coincidences, 52 upward forced w/o Refl')
+
+
+    # Plot the zenith and azimuth reconstruction
+    angle_save_folder = f'{save_folder}recon_angles/'
+    if not os.path.exists(angle_save_folder):
+        os.makedirs(angle_save_folder)
+    for station_id in direct_event_rate:
+        zenith, recon_zenith, azimuth, recon_azimuth, weights = getAnglesReconWeights(HRAeventList, f'{station_id}', station_id)
+        histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for Station {station_id}', f'{angle_save_folder}recon_angles_{station_id}.png')
+    
+    # Also plot angles for combination of all reflected and direct stations together
+    zenith, recon_zenith, azimuth, recon_azimuth, weights = getAnglesReconWeights(HRAeventList, 'combined_backlobe', [13, 14, 15, 17, 18, 19, 30])
+    histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for Combined Backlobe Stations', f'{angle_save_folder}recon_angles_combined_backlobe.png')
+
+    zenith, recon_zenith, azimuth, recon_azimuth, weights = getAnglesReconWeights(HRAeventList, 'combined_reflected', [113, 114, 115, 117, 118, 119, 130])
+    histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for Combined Reflected Stations', f'{angle_save_folder}recon_angles_combined_reflected.png')
+
+
+
 
 
     # Resave to save the weights
