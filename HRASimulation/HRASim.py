@@ -254,7 +254,11 @@ def run_stations(stations_list, mode='by_depth'):
                     triggerTimeAdjuster.run(evt, station, det)
                     # channelResampler.run(evt, station, det, 1*units.GHz)
                     channelStopFilter.run(evt, station, det, prepend=0*units.ns, append=0*units.ns)
-                    correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg])
+
+                    if station_id == 52 or station_id == 152:
+                        correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg], channel_pairs=((secondary_LPDA_channels[0], secondary_LPDA_channels[2]), (secondary_LPDA_channels[1], secondary_LPDA_channels[3])))
+                    else:
+                        correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg], channel_pairs=((primary_LPDA_channels[0], primary_LPDA_channels[2]), (primary_LPDA_channels[1], primary_LPDA_channels[3])))
 
                     # Testing
                     # sim_station = station.get_sim_station()
