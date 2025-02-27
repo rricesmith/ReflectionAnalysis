@@ -165,7 +165,7 @@ def getHRAevents(nur_files):
             HRAeventList.append(HRAevent(event))
         eventReader.end()
 
-    return HRAeventList
+    return np.array(HRAeventList)
 
 
 def getHRAeventsFromDir(directory):
