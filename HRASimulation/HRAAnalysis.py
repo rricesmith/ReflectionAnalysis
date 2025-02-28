@@ -512,8 +512,9 @@ def plotRateWithError(eventRate, errorRate, savename, title):
     return
 
 
-def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=True):
+def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=True, sigma=5):
     # Get a list of the events x/y with associated event rate as a weight
+    # station_ids can be a single station or a list of stations
 
     zenith = []
     recon_zenith = []
@@ -527,7 +528,7 @@ def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=Tr
     for event in HRAeventList:
         zenith.append(event.getAngles()[0])
         azimuth.append(event.getAngles()[1])
-        weights.append(event.getWeight(weight_name, use_primary))    # Append all events because non-triggering events have a weight of zero    
+        weights.append(event.getWeight(weight_name, use_primary, sigma))    # Append all events because non-triggering events have a weight of zero    
 
         # if station_id in event.recon_zenith:
         if np.in1d(station_ids, list(event.recon_zenith.keys())).all():
@@ -773,7 +774,7 @@ if __name__ == "__main__":
     if not os.path.exists(angle_save_folder):
         os.makedirs(angle_save_folder)
     for station_id in direct_event_rate:
-        zenith, recon_zenith, azimuth, recon_azimuth, weights = getAnglesReconWeights(HRAeventList, f'{station_id}', station_id)
+        zenith, recon_zenith, azimuth, recon_azimuth, weights = getAnglesReconWeights(HRAeventList, station_id, station_id)
         histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for Station {station_id}', f'{angle_save_folder}recon_angles_{station_id}.png')
     
     # Also plot angles for combination of all reflected and direct stations together
