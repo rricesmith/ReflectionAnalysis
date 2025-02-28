@@ -27,6 +27,7 @@ from icecream import ic
 from scipy import constants
 from NuRadioReco.framework.parameters import stationParameters as stnp
 from NuRadioReco.framework.parameters import eventParameters as evtp
+from HRASimulation.HRAAnalysis import HRAevent
 
 from NuRadioReco.detector import detector
 from NuRadioReco.detector import generic_detector
@@ -134,6 +135,7 @@ def run_stations(stations_list, mode='by_depth'):
     eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
     eventWriter.begin(output_filename + f'.nur')
 
+    HRAEventList = []
 
 
     for evt, iE, x, y in readCoREAS.run(detector=det, ray_type=mode, layer_depth=-576*units.m, layer_dB=0, attenuation_model='MB_freq', output_mode=2):
@@ -268,6 +270,9 @@ def run_stations(stations_list, mode='by_depth'):
         # Save every event for rate calculation
         eventWriter.run(evt)
         
+        # Save event in condensed format as well
+        HRAEventList.append(HRAevent(evt))
+
 
         # Save every event for proper rate calculation
         # Now every event is saved regardless of if it triggers or not
@@ -278,6 +283,9 @@ def run_stations(stations_list, mode='by_depth'):
     nevents = eventWriter.end()
     dt = readCoREAS.end()
     ic(f"Finished processing All stations, {nevents} events processed, {dt} seconds elapsed")
+
+    HRAEventList = np.array(HRAEventList)
+    np.save(output_filename + f'_HRAeventList.npy', HRAEventList)
 
 
 if __name__ == "__main__":
