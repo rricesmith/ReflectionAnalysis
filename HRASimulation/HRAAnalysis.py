@@ -780,7 +780,7 @@ if __name__ == "__main__":
         histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for Station {station_id}', f'{angle_save_folder}recon_angles_{station_id}.png')
     
     # Also plot angles for combination of all reflected and direct stations together
-    zenith, recon_zenith, azimuth, recon_azimuth, weights = getAnglesReconWeights(HRAeventList, 'combined_backlobe', [13, 14, 15, 17, 18, 19, 30])
+    zenith, recon_zenith, azimuth, recon_azimuth, weights = getAnglesReconWeights(HRAeventList, 'combined_direct', [13, 14, 15, 17, 18, 19, 30])
     histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for Combined Backlobe Stations', f'{angle_save_folder}recon_angles_combined_backlobe.png')
 
     zenith, recon_zenith, azimuth, recon_azimuth, weights = getAnglesReconWeights(HRAeventList, 'combined_reflected', [113, 114, 115, 117, 118, 119, 130])
