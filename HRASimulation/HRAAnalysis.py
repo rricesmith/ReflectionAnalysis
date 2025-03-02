@@ -549,7 +549,7 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
         recon_azimuth = np.rad2deg(recon_azimuth)
     
     zenith_bins, azimuth_bins = np.linspace(0, 90, 100), np.linspace(0, 360, 100)
-    ax, fig = plt.subplots(nrows=1, ncols=2)
+    fig, ax = plt.subplots(nrows=1, ncols=2)
 
     norm = matplotlib.colors.LogNorm(vmin=np.min(weights[np.nonzero(weights)]), vmax=np.max(weights)*5)
     h, xedges, yedges, im = ax[0].hist2d(zenith, recon_zenith, bins=(zenith_bins, zenith_bins), weights=weights, cmap='viridis', norm=norm)
