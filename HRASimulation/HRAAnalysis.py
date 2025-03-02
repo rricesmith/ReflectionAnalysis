@@ -588,12 +588,12 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
 
     diff_bins = np.linspace(-90, 90, 100)
 
-    h, xedges, yedges, im = ax[0].hist(zenith_diff, bins=diff_bins, weights=weights)
+    h, xedges, im = ax[0].hist(zenith_diff, bins=diff_bins, weights=weights)
     ax[0].set_xlabel('True - Reconstructed Zenith (deg)')
     ax[0].set_ylabel('Evts')
     ax[0].set_title('Zenith')
 
-    h, xedges, yedges, im = ax[1].hist(azimuth_diff, bins=diff_bins, weights=weights)
+    h, xedges, im = ax[1].hist(azimuth_diff, bins=diff_bins, weights=weights)
     ax[1].set_xlabel('True - Reconstructed Azimuth (deg)')
     ax[1].set_ylabel('Evts')
     ax[1].set_title('Azimuth')
