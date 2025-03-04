@@ -328,7 +328,7 @@ def histAreaRate(x, y, weights, title, savename, dir_trig=[], refl_trig=[], excl
     ax.set_title(title)
     fig.savefig(savename)
     ic(f'Saved {savename}')
-    plt.close(fig)
+    plt.close('all')
     return
 
 

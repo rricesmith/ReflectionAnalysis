@@ -71,7 +71,7 @@ if __name__ == "__main__":
         if not HRAeventList[0].hasWeight(weight_name):
             ic(f'Weight {weight_name} not found')
             continue
-        savename = f'{save_folder}AreaDirect_coinc{i}.png'
+        savename = f'{save_folder}AreaDirect_norefl_coinc{i}.png'
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
         HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/o Refl', savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
         ic(f'Saved {savename}')
