@@ -10,7 +10,8 @@ import matplotlib.colors
 import matplotlib.pyplot as plt
 import HRASimulation.HRAAnalysis as HRAAnalysis
 import configparser
-from HRASimulation.HRAAnalysis import HRAevent
+from HRASimulation.HRAEventObject import HRAevent
+from HRASimulation.HRANurToNpy import loadHRAfromH5
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
@@ -22,13 +23,9 @@ if __name__ == "__main__":
 
     os.makedirs(save_folder, exist_ok=True)
 
-    if os.path.exists(f'{numpy_folder}HRAeventList.npy'):        
-        HRAeventList = np.load(f'{numpy_folder}HRAeventList.npy', allow_pickle=True)
-        direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins = np.load(f'{numpy_folder}trigger_rate_dict.npy', allow_pickle=True)
-        direct_event_rate, reflected_event_rate, combined_event_rate = np.load(f'{numpy_folder}event_rate_dict.npy', allow_pickle=True)
-    else:
-        ic('No numpy file found.  Please run HRAAnalysis.py first')
-        quit()
+    HRAeventList = loadHRAfromH5(f'{numpy_folder}HRAeventList.h5')
+    direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins = np.load(f'{numpy_folder}trigger_rate_dict.npy', allow_pickle=True)
+    direct_event_rate, reflected_event_rate, combined_event_rate = np.load(f'{numpy_folder}event_rate_dict.npy', allow_pickle=True)
 
 
     # Testing if one station, 13, has weights set
