@@ -271,20 +271,20 @@ def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
 def getXYWeights(HRAeventList, weight_name, use_primary=True):
     # Get a list of the events x/y with associated event rate as a weight
 
-    x = []
-    y = []
-    weights = []
+    x = np.zeros(len(HRAeventList))
+    y = np.zeros(len(HRAeventList))
+    weights = np.zeros(len(HRAeventList))
 
 
-    for event in HRAeventList:
+    for iE, event in enumerate(HRAeventList):
         cor_x, cor_y = event.getCoreasPosition()
         # Need to get the event rate corresponding to each event, previously calculated
 
-        x.append(cor_x)
-        y.append(cor_y)
-        weights.append(event.getWeight(weight_name, use_primary))    # Append all events because non-triggering events have a weight of zero    
+        x[iE] = cor_x
+        y[iE] = cor_y
+        weights[iE] = event.getWeight(weight_name, use_primary)    # Append all events because non-triggering events have a weight of zero    
 
-    return np.array(x), np.array(y), np.array(weights)
+    return x, y, weights
 
 def getDirectReflTriggered(HRAeventList, use_primary=True):
     # Return two lists of the stations that were direct triggered and reflected triggered
