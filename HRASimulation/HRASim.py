@@ -57,6 +57,8 @@ add_noise = args.add_noise
 distance = args.distance
 seed = args.seed
 
+ic(f'Simulation parameters are: {output_filename}, {n_cores}, {min_file}, {max_file}, {add_noise}, {distance}, {seed}')
+
 # Get files for simulation
 input_files = pullFilesForSimulation('MB', min_file, max_file)
 
@@ -145,7 +147,7 @@ def run_stations(stations_list, mode='by_depth'):
         evt.set_parameter(evtp.coreas_y, y)
 
         for station_id in stations_list:
-            ic(f'Starting station {station_id} simulation')
+            # ic(f'Starting station {station_id} simulation')
     
             # det.update(datetime.datetime(2018, 10, 1))
             # ic(det.__current_time)
@@ -262,6 +264,10 @@ def run_stations(stations_list, mode='by_depth'):
                     else:
                         correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0*units.deg, 180*units.deg], channel_pairs=((primary_LPDA_channels[0], primary_LPDA_channels[2]), (primary_LPDA_channels[1], primary_LPDA_channels[3])))
 
+
+            ic(f'{station_id} Triggered {station.has_triggered()}')
+
+
                     # Testing
                     # sim_station = station.get_sim_station()
                     # ic(sim_station.get_parameter(stnp.zenith)/units.deg, sim_station.get_parameter(stnp.azimuth)/units.deg)
@@ -279,6 +285,7 @@ def run_stations(stations_list, mode='by_depth'):
         # When checking events in nur, now check if station.has_triggered()
         # eventWriter.run(evt, det)
 
+    quit()
 
     nevents = eventWriter.end()
     dt = readCoREAS.end()
