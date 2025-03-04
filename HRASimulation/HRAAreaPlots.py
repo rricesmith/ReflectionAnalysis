@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
     savename = f'{save_folder}AreaDirect.png'
-    x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name='combined_direct')
+    weight = HRAAnalysis.getWeights(HRAeventList, weight_name='combined_direct', in_array=weight)
     HRAAnalysis.histAreaRate(x, y, weight, "Combined Direct", savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
     ic(f'Saved {savename}')
 
@@ -62,7 +62,7 @@ if __name__ == "__main__":
             ic(f'Weight {weight_name} not found')
             continue
         savename = f'{save_folder}AreaDirect_coinc{i}.png'
-        x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
+        weight = HRAAnalysis.getWeights(HRAeventList, weight_name=weight_name, in_array=weight)
         HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/Refl',savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
         ic(f'Saved {savename}')
         del x, y, weight
@@ -75,7 +75,7 @@ if __name__ == "__main__":
             ic(f'Weight {weight_name} not found')
             continue
         savename = f'{save_folder}AreaDirect_norefl_coinc{i}.png'
-        x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
+        weight = HRAAnalysis.getWeights(HRAeventList, weight_name=weight_name, in_array=weight)
         HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/o Refl', savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
         ic(f'Saved {savename}')
         del x, y, weight
@@ -88,7 +88,7 @@ if __name__ == "__main__":
             ic(f'Weight {weight_name} not found')
             continue
         savename = f'{save_folder}Area_52up_wrefl_coinc{i}.png'
-        x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
+        weight = HRAAnalysis.getWeights(HRAeventList, weight_name=weight_name, in_array=weight)
         HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/52up w/Refl',savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
         ic(f'Saved {savename}')
         del x, y, weight
@@ -101,7 +101,7 @@ if __name__ == "__main__":
             ic(f'Weight {weight_name} not found')
             continue
         savename = f'{save_folder}Area_52up_norefl_coinc{i}.png'
-        x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
+        weight = HRAAnalysis.getWeights(HRAeventList, weight_name=weight_name, in_array=weight)
         HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/52up w/o Refl',savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
         ic(f'Saved {savename}')
         del x, y, weight
