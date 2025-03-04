@@ -64,6 +64,7 @@ if __name__ == "__main__":
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
         HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/Refl',savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
         ic(f'Saved {savename}')
+        del x, y, weight
 
     # Same but without reflections
     for i in [2, 3, 4, 5, 6, 7]:
@@ -75,6 +76,7 @@ if __name__ == "__main__":
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
         HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/o Refl', savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
         ic(f'Saved {savename}')
+        del x, y, weight
 
     # Plots with reflection and station 52
     for i in [2, 3, 4, 5, 6, 7]:
@@ -86,6 +88,7 @@ if __name__ == "__main__":
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
         HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/52up w/Refl',savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
         ic(f'Saved {savename}')
+        del x, y, weight
 
     # Plots without reflection and station 52
     for i in [2, 3, 4, 5, 6, 7]:
@@ -97,3 +100,4 @@ if __name__ == "__main__":
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
         HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/52up w/o Refl',savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
         ic(f'Saved {savename}')
+        del x, y, weight
