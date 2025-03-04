@@ -11,8 +11,8 @@ import matplotlib.colors
 import matplotlib.pyplot as plt
 import configparser
 import HRASimulation.HRAAnalysis as HRAA
-
-
+import h5py
+import pickle
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
@@ -94,4 +94,16 @@ if __name__ == "__main__":
             continue
         HRAA.setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_norefl')
 
-    np.save(f'{numpy_folder}HRAeventList.npy', HRAeventList)
+    # np.save(f'{numpy_folder}HRAeventList.npy', HRAeventList)
+
+    # Attempt to save as h5py file instead
+    with h5py.File(f'{numpy_folder}HRAeventList.h5', 'w') as hf:
+        for i, obj in enumerate(HRAeventList):
+            # Serialize if needed
+            if not isinstance(obj, np.ndarray):
+                obj_bytes = pickle.dumps(obj)
+                dt = h5py.special_dtype(vlen=np.dtype('uint8'))
+                dset = hf.create_dataset(f'object_{i}', (1,), dtype=dt)
+                dset[0] = np.frombuffer(obj_bytes, dtype='uint8')
+            else:
+                hf.create_dataset(f'object_{i}', data=obj)  

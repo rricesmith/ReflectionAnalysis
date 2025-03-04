@@ -188,7 +188,7 @@ def getEnergyZenithBins():
     z_bins[np.isnan(z_bins)] = 0
     z_bins = z_bins * units.rad
     z_bins = np.sort(z_bins)
-    ic(e_bins, z_bins)
+    # ic(e_bins, z_bins)
 
     return e_bins, z_bins
 
