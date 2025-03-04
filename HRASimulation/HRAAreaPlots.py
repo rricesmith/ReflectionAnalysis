@@ -55,6 +55,7 @@ if __name__ == "__main__":
 
 
     # Plot the area of the HRA for coinc reflections
+    bad_stations = [32, 52, 132, 152]
     for i in [2, 3, 4, 5, 6, 7]:
         weight_name=f'{i}_coincidence_wrefl'
         if not HRAeventList[0].hasWeight(weight_name):
@@ -67,6 +68,7 @@ if __name__ == "__main__":
         del x, y, weight
 
     # Same but without reflections
+    bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
     for i in [2, 3, 4, 5, 6, 7]:
         weight_name=f'{i}_coincidence_norefl'
         if not HRAeventList[0].hasWeight(weight_name):
@@ -79,6 +81,7 @@ if __name__ == "__main__":
         del x, y, weight
 
     # Plots with reflection and station 52
+    bad_stations = [32, 113, 114, 115, 117, 118, 119, 130, 132, 152]
     for i in [2, 3, 4, 5, 6, 7]:
         weight_name=f'{i}_coincidence_52up_wrefl'
         if not HRAeventList[0].hasWeight(weight_name):
@@ -90,7 +93,8 @@ if __name__ == "__main__":
         ic(f'Saved {savename}')
         del x, y, weight
 
-    # Plots without reflection and station 52
+    # Plots without reflection and with station 52
+    bad_stations = [32, 113, 114, 115, 117, 118, 119, 130, 132, 152]
     for i in [2, 3, 4, 5, 6, 7]:
         weight_name=f'{i}_coincidence_52up_norefl'
         if not HRAeventList[0].hasWeight(weight_name):
