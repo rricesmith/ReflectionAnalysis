@@ -10,11 +10,28 @@ import astrotools.auger as auger
 import matplotlib.colors
 import matplotlib.pyplot as plt
 import configparser
-import HRASimulation.HRAAnalysis as HRAA
 import h5py
 import pickle
+from HRASimulation.HRAEventObject import HRAevent
+
+def loadHRAfromH5(filename):
+    HRAeventList = []
+    with h5py.File(filename, 'r') as hf:
+        for i in range(len(hf.keys())):
+            if i % 1000 == 0:
+                ic(i)
+            dataset = hf[f'object_{i}']
+            if isinstance(dataset, h5py.Dataset) and dataset.dtype != h5py.special_dtype(vlen=np.dtype('uint8')):
+                obj = dataset[...]
+            else:
+                obj_bytes = dataset[0]
+                obj = pickle.loads(obj_bytes.tobytes())
+            HRAeventList.append(obj)
+    return HRAeventList
 
 if __name__ == "__main__":
+    import HRASimulation.HRAAnalysis as HRAA
+
     config = configparser.ConfigParser()
     config.read('HRASimulation/config.ini')
     sim_folder = config['FOLDERS']['sim_folder']
