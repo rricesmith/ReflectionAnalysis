@@ -285,7 +285,6 @@ def run_stations(stations_list, mode='by_depth'):
         # When checking events in nur, now check if station.has_triggered()
         # eventWriter.run(evt, det)
 
-    quit()
 
     nevents = eventWriter.end()
     dt = readCoREAS.end()
