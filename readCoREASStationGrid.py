@@ -416,9 +416,10 @@ class readCoREAS:
                             distance = distances[index]
                             key = list(corsika['CoREAS']['observers'].keys())[index]
                             self.logger.debug(
-                                "generating core at ground ({:.0f}, {:.0f}), rel to station ({:.0f}, {:.0f}) of raw station loc ~{:.0f}, vBvvB({:.0f}, {:.0f}) with dcore {:.0f} and ddmax {:.0f}, nearest simulated station is {:.0f}m away at ground ({:.0f}, {:.0f}), vBvvB({:.0f}, {:.0f})".format(
+                                "generating core at ground ({:.0f}, {:.0f}), rel to station{:.0f} ({:.0f}, {:.0f}) of raw station loc ~{:.0f}, vBvvB({:.0f}, {:.0f}) with dcore {:.0f} and ddmax {:.0f}, nearest simulated station is {:.0f}m away at ground ({:.0f}, {:.0f}), vBvvB({:.0f}, {:.0f})".format(
                                     cores[iCore][0],
                                     cores[iCore][1],
+                                    station_id,
                                     core_rel_to_station[0],
                                     core_rel_to_station[1],
                                     station_locations[0],
