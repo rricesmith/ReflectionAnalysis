@@ -132,7 +132,8 @@ def run_stations(stations_list, mode='by_depth'):
 
     # readCoREAS = NuRadioReco.modules.io.coreas.readCoREASStationGrid.readCoREAS()
     readCoREAS = readCoREASStationGrid.readCoREAS()
-    readCoREAS.begin(input_files, (-distance/2)*units.km, (distance/2)*units.km, (-distance/2)*units.km, (distance/2)*units.km, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.WARNING)
+    readCoREAS.begin(input_files, (-distance/2)*1000, (distance/2)*1000, (-distance/2)*1000, (distance/2)*1000, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.WARNING)
+    # readCoREAS.begin(input_files, (-distance/2)*units.km, (distance/2)*units.km, (-distance/2)*units.km, (distance/2)*units.km, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.WARNING)
     # readCoREAS.begin(input_files, (-distance/2)*units.km, (distance/2)*units.km, (-distance/2)*units.km, (distance/2)*units.km, n_cores=n_cores, shape='uniform', seed=seed, log_level=logging.WARNING)
     eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
     eventWriter.begin(output_filename + f'.nur')
