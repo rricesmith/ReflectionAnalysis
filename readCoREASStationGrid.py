@@ -416,25 +416,10 @@ class readCoREAS:
                             distance = distances[index]
                             key = list(corsika['CoREAS']['observers'].keys())[index]
                             self.logger.debug(
-                                "generating core at ground ({:.0f}, {:.0f}), rel to station{:.0f} ({:.0f}, {:.0f}) of raw station loc ~({:.0f}, {:.0f}), vBvvB({:.0f}, {:.0f}) with dcore {:.0f} and ddmax {:.0f}, nearest simulated station is {:.0f}m away at ground ({:.0f}, {:.0f}), vBvvB({:.0f}, {:.0f})".format(
-                                    cores[iCore][0],
-                                    cores[iCore][1],
-                                    station_id,
-                                    core_rel_to_station[0],
-                                    core_rel_to_station[1],
-                                    station_locations[0][0],
-                                    station_locations[0][1],
-                                    core_rel_to_station_vBvvB[0],
-                                    core_rel_to_station_vBvvB[1],
-                                    dcore,
-                                    ddmax,
-                                    distance,
-                                    positions[index][0],
-                                    positions[index][1],
-                                    positions_vBvvB[index][0],
-                                    positions_vBvvB[index][1]
+                                f"generating core at ground ({cores[iCore][0]:.0f}, {cores[iCore][1]:.0f}), rel to station{station_id} ({core_rel_to_station[0]}, {core_rel_to_station[1]}) of raw station loc ~({station_locations[0][0]}, {station_locations[0][1]})
+                                , vBvvB({core_rel_to_station_vBvvB[0]}, {core_rel_to_station_vBvvB[1]}) with dcore {dcore} and ddmax {ddmax}, nearest simulated station is {distance}m 
+                                away at ground ({positions[index][0]}, {positions[index][1]}), vBvvB({positions_vBvvB[index][0]}, {positions_vBvvB[index][1]})"
                                 )
-                            )
                             t_event_structure = time.time()
                             observer = corsika['CoREAS']['observers'].get(key)
 
