@@ -325,8 +325,7 @@ class readCoREAS:
 
             station_ids = detector.get_station_ids()
             for iCore, core in enumerate(cores):
-                ic(core, self.__area, x, y, r, theta, x_center, y_center)
-                continue
+                ic(core)
                 t = time.time()
                 evt = NuRadioReco.framework.event.Event(self.__current_input_file, iCore)  # create empty event
                 sim_shower = coreas.make_sim_shower(corsika)
