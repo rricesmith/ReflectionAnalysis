@@ -370,6 +370,7 @@ def plotRateWithError(eventRate, errorRate, savename, title):
 
     ax.set_xlabel('log10(E/eV)')
     ax.set_ylabel('Evts/Yr')
+    ax.set_ylim(bottom=0)
     ax.legend()
     ax.set_title(title)
     fig.savefig(savename)

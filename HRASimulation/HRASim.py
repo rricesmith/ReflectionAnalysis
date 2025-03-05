@@ -27,6 +27,7 @@ from icecream import ic
 from scipy import constants
 from NuRadioReco.framework.parameters import stationParameters as stnp
 from NuRadioReco.framework.parameters import eventParameters as evtp
+from NuRadioReco.framework.parameters import showerParameters as shp
 from HRASimulation.HRAAnalysis import HRAevent
 
 from NuRadioReco.detector import detector
@@ -147,9 +148,12 @@ def run_stations(stations_list, mode='by_depth'):
 
     for evt, iE, x, y in readCoREAS.run(detector=det, ray_type=mode, layer_depth=-576*units.m, layer_dB=0, attenuation_model='MB_freq', output_mode=2):
         ic(f"processing event {iE} with id {evt.get_id()} at position {x}, {y}")
+        sim_shower = evt.get_sim_shower(0)
+        ic(f'Event parameters are: Eng {sim_shower[shp.energy]/units.eV}eV, Zen {sim_shower[shp.zenith]/units.deg}deg, Azi {sim_shower[shp.azimuth]/units.deg}deg')
 
         evt.set_parameter(evtp.coreas_x, x)
         evt.set_parameter(evtp.coreas_y, y)
+
 
         for station_id in stations_list:
             # ic(f'Starting station {station_id} simulation')
