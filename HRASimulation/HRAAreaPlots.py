@@ -42,13 +42,13 @@ if __name__ == "__main__":
 
     for station in dir_trig:
         savename = f'{save_folder}AreaDirect_{station}.png'
-        weight = HRAAnalysis.getWeights(HRAeventList, weight_name=station)
+        x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
         HRAAnalysis.histAreaRate(x, y, weight, f'{station} Direct', savename, dir_trig=dir_trig, refl_trig=refl_trig)
         ic(f'Saved {savename}')
 
     for station in refl_trig:
         savename = f'{save_folder}AreaReflected_{station}.png'
-        weight = HRAAnalysis.getWeights(HRAeventList, weight_name=station)
+        x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
         HRAAnalysis.histAreaRate(x, y, weight, f'{station} Reflected', savename, dir_trig=dir_trig, refl_trig=refl_trig)
         ic(f'Saved {savename}')
 
