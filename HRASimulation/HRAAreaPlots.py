@@ -34,12 +34,25 @@ if __name__ == "__main__":
         quit()
 
     dir_trig, refl_trig = HRAAnalysis.getDirectReflTriggered(HRAeventList)
-    relf_trig = np.array(refl_trig) - 100 # Subtract 100 to get the station number
 
     # Plot the area of the HRA
     save_folder = f'{save_folder}Area/'
     os.makedirs(save_folder, exist_ok=True)
 
+
+    for station in dir_trig:
+        savename = f'{save_folder}AreaDirect_{station}.png'
+        weight = HRAAnalysis.getWeights(HRAeventList, weight_name=station)
+        HRAAnalysis.histAreaRate(x, y, weight, f'{station} Direct', savename, dir_trig=dir_trig, refl_trig=refl_trig)
+        ic(f'Saved {savename}')
+
+    for station in refl_trig:
+        savename = f'{save_folder}AreaReflected_{station}.png'
+        weight = HRAAnalysis.getWeights(HRAeventList, weight_name=station)
+        HRAAnalysis.histAreaRate(x, y, weight, f'{station} Reflected', savename, dir_trig=dir_trig, refl_trig=refl_trig)
+        ic(f'Saved {savename}')
+
+    relf_trig = np.array(refl_trig) - 100 # Subtract 100 to get the station number for plot numbers
 
     bad_stations = [32, 52, 132, 152]
     savename = f'{save_folder}AreaReflected.png'
