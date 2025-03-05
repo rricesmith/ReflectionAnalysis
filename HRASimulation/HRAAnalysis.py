@@ -234,9 +234,6 @@ def set_bad_imshow(array, value):
 
 def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
 
-    if not np.any(rate > 0):
-        ic('No events in rate array')
-        return
 
     e_bins, z_bins = getEnergyZenithBins()
     e_bins = np.log10(e_bins/units.eV)
@@ -317,9 +314,6 @@ def getDirectReflTriggered(HRAeventList, use_primary=True):
     return direct_triggered, reflected_triggered
 
 def histAreaRate(x, y, weights, title, savename, dir_trig=[], refl_trig=[], exclude=[], colorbar_label='Evts/yr', max_distance=6.0*units.km):
-    if not np.any(weights > 0):
-        ic('No events in rate array')
-        return
 
     x_bins, y_bins = np.linspace(-max_distance/units.m, max_distance/units.m, 100), np.linspace(-max_distance/units.m, max_distance/units.m, 100)
 
