@@ -133,9 +133,9 @@ def run_stations(stations_list, mode='by_depth'):
 
     # readCoREAS = NuRadioReco.modules.io.coreas.readCoREASStationGrid.readCoREAS()
     readCoREAS = readCoREASStationGrid.readCoREAS()
-    # readCoREAS.begin(input_files, (-distance/2)*1000, (distance/2)*1000, (-distance/2)*1000, (distance/2)*1000, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.DEBUG)
+    readCoREAS.begin(input_files, (-distance/2)*1000, (distance/2)*1000, (-distance/2)*1000, (distance/2)*1000, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.DEBUG)
 
-    readCoREAS.begin(input_files, -6000, -5000, -100, 100, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.DEBUG)
+    # readCoREAS.begin(input_files, -6000, -5000, -100, 100, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.DEBUG)
 
 
     # readCoREAS.begin(input_files, (-distance/2)*units.km, (distance/2)*units.km, (-distance/2)*units.km, (distance/2)*units.km, n_cores=n_cores, shape='radial', seed=seed, log_level=logging.WARNING)
