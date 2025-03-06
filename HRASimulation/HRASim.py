@@ -179,6 +179,9 @@ def run_stations(stations_list, mode='by_depth'):
                 preAmpVrms, postAmpVrms = calculateNoisePerChannel(det, station=station, amp=True, hardwareResponseIncorporator=hardwareResponseIncorporator, channelBandPassFilter=channelBandPassFilter)
                 preAmpVrms_per_channel[station_id] = preAmpVrms
 
+                ic(f'Station {station_id} has preAmpVrms {preAmpVrms}')
+                ic(f'Station {station_id} has postAmpVrms {postAmpVrms}')
+
                 for sigma in trigger_sigmas:
                     threshold_high = {key: value * sigma for key, value in postAmpVrms.items()}
                     threshold_low = {key: value * -sigma for key, value in postAmpVrms.items()}
