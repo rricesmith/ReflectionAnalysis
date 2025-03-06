@@ -453,7 +453,7 @@ class readCoREAS:
                                 if not ray_type == 'direct':
 #                                    print(f'efield channels {efield.get_channel_ids()} for chids {ch_ids}')
                                     channel_dict = detector.get_channel(station_id, efield.get_channel_ids()[0])
-                                    ant_surf_pos = [channel_dict['ant_position_x'],channel_dict['ant_position_y'],channel_dict['ant_position_z']]
+                                    ant_surf_pos = np.array([channel_dict['ant_position_x'],channel_dict['ant_position_y'],channel_dict['ant_position_z']]) + det_station_position
                                     efield = self.modify_eField(efield, station_position, ant_surf_pos, corsika['CoREAS'].attrs['DepthOfShowerMaximum'], 
                                                                 ray_type, layer_depth, layer_dB, force_dB, attenuation_model)
 #                                main_station.set_sim_station(sim_station)
