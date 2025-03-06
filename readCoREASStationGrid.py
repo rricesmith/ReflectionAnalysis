@@ -327,9 +327,6 @@ class readCoREAS:
             station_ids = detector.get_station_ids()
             for iCore, core in enumerate(cores):
                 ic(core)
-                # TEST CODE, REMOVE
-                cores[iCore][0] += 10000
-                cores[iCore][1] += 10000
                 t = time.time()
                 evt = NuRadioReco.framework.event.Event(self.__current_input_file, iCore)  # create empty event
                 sim_shower = coreas.make_sim_shower(corsika)
@@ -341,9 +338,6 @@ class readCoREAS:
                 for station_id in station_ids:
                     # convert into vxvxB frame to calculate closests simulated station to detecor station
                     det_station_position = detector.get_absolute_position(station_id)
-                    # TEST CODE, REMOVE
-                    det_station_position[0] += 10000
-                    det_station_position[1] += 10000
                     det_station_position[2] = 0
                     channel_ids = detector.get_channel_ids(station_id)
                     # check if we have any are doing reflected or refracted signals. If not continue as normal
@@ -481,9 +475,6 @@ class readCoREAS:
                     self.__t += time.time() - t
                     if(evt_seen):
                         self.__t_event_structure += time.time() - t_event_structure
-                        # TEST, REMOVE
-                        cores[iCore][0] += -10000
-                        cores[iCore][1] += -10000
                     yield evt, self.__current_input_file, cores[iCore][0], cores[iCore][1]
                 else:
                     self.logger.debug("output mode > 2 not implemented")
