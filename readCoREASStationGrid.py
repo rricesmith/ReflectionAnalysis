@@ -119,6 +119,7 @@ class readCoREAS:
             refr_zenith = np.pi - refr_zenith
         ray = np.array(ant_surface_position) - np.array(ant_ice_position)
         dist_traveled = np.sqrt(ray[0]**2 + ray[1]**2 + ray[2]**2)
+        ic(ant_surface_position, ant_ice_position, dist_traveled)
 #        print(f'refr zen {refr_zenith}, ray zenith is {np.arctan(ray[2]/np.sqrt(ray[0]**2+ray[1]**2) )}')
 #        print(f'ant surface position {ant_surface_position} and ice position {ant_ice_position} creates ray {ray} for dist of {dist_traveled}')
 
