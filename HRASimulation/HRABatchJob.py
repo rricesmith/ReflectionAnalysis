@@ -10,7 +10,7 @@ sim_folder = config['FOLDERS']['sim_folder']
 
 
 n_cores = 5   #Decenty sensitivity to RCRs, so don't overdo
-distance = 12 #km, diameter of throws. 5km has triggers at edges still, so can go farther out
+distance = 6 #km, diameter of throws. 5km has triggers at edges still, so can go farther out
 add_noise = True
 # date_sim = '2.25.25'
 # output_folder = f'HRASimulation/output/HRA/{date_sim}/'
