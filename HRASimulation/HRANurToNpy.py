@@ -37,6 +37,8 @@ if __name__ == "__main__":
     sim_folder = config['FOLDERS']['sim_folder']
     numpy_folder = config['FOLDERS']['numpy_folder']
     save_folder = config['FOLDERS']['save_folder']
+    diameter = config['SIMPARAMETERS']['diameter']
+    max_distance = float(diameter)/2*units.km
     plot_sigma = float(config['PLOTPARAMETERS']['trigger_sigma'])
     ic(plot_sigma)
 
@@ -51,18 +53,18 @@ if __name__ == "__main__":
     for station_id in direct_trigger_rate_dict:
         ic(station_id)
         direct_event_rate[station_id] = HRAA.getEventRate(direct_trigger_rate_dict[station_id], e_bins, z_bins)
-        HRAA.setHRAeventListRateWeight(HRAeventList, direct_trigger_rate_dict[station_id], weight_name=station_id)
+        HRAA.setHRAeventListRateWeight(HRAeventList, direct_trigger_rate_dict[station_id], weight_name=station_id, max_distance=max_distance)
     reflected_event_rate = {}
     for station_id in reflected_trigger_rate_dict:
         ic(station_id)
         reflected_event_rate[station_id] = HRAA.getEventRate(reflected_trigger_rate_dict[station_id], e_bins, z_bins)
-        HRAA.setHRAeventListRateWeight(HRAeventList, reflected_trigger_rate_dict[station_id], weight_name=station_id)
+        HRAA.setHRAeventListRateWeight(HRAeventList, reflected_trigger_rate_dict[station_id], weight_name=station_id, max_distance=max_distance)
 
     combined_event_rate = {}
     combined_event_rate['direct'] = HRAA.getEventRate(combined_trigger_rate['direct'], e_bins, z_bins)
     combined_event_rate['reflected'] = HRAA.getEventRate(combined_trigger_rate['reflected'], e_bins, z_bins)
-    HRAA.setHRAeventListRateWeight(HRAeventList, combined_trigger_rate['direct'], weight_name='combined_direct')
-    HRAA.setHRAeventListRateWeight(HRAeventList, combined_trigger_rate['reflected'], weight_name='combined_reflected')
+    HRAA.setHRAeventListRateWeight(HRAeventList, combined_trigger_rate['direct'], weight_name='combined_direct', max_distance=max_distance)
+    HRAA.setHRAeventListRateWeight(HRAeventList, combined_trigger_rate['reflected'], weight_name='combined_reflected', max_distance=max_distance)
 
 
     np.save(f'{numpy_folder}trigger_rate_dict.npy', [direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins])
@@ -77,7 +79,7 @@ if __name__ == "__main__":
         if not np.any(trigger_rate_coincidence[i] > 0):
             ic(f'No events for {i} coincidences')
             continue
-        HRAA.setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_wrefl')
+        HRAA.setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_wrefl', max_distance=max_distance)
 
     # Coincidence plots without reflections
     bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
@@ -87,7 +89,7 @@ if __name__ == "__main__":
         if not np.any(trigger_rate_coincidence[i] > 0):
             ic(f'No events for {i} coincidences')
             continue
-        HRAA.setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_norefl')
+        HRAA.setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_norefl', max_distance=max_distance)
 
 
     # Coincidence with reflection and station 52 upwards LPDA
@@ -98,7 +100,7 @@ if __name__ == "__main__":
         if not np.any(trigger_rate_coincidence[i] > 0):
             ic(f'No events for {i} coincidences')
             continue
-        HRAA.setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_wrefl')
+        HRAA.setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_wrefl', max_distance=max_distance)
 
 
     # Coincidence without reflection and station 52 upwards LPDA
@@ -109,7 +111,7 @@ if __name__ == "__main__":
         if not np.any(trigger_rate_coincidence[i] > 0):
             ic(f'No events for {i} coincidences')
             continue
-        HRAA.setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_norefl')
+        HRAA.setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_norefl', max_distance=max_distance)
 
     # np.save(f'{numpy_folder}HRAeventList.npy', HRAeventList)
 

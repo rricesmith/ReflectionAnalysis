@@ -19,6 +19,8 @@ if __name__ == "__main__":
     sim_folder = config['FOLDERS']['sim_folder']
     numpy_folder = config['FOLDERS']['numpy_folder']
     save_folder = config['FOLDERS']['save_folder']
+    diameter = config['SIMPARAMETERS']['diameter']
+    max_distance = float(diameter)/2*units.km
 
 
     os.makedirs(save_folder, exist_ok=True)
@@ -34,6 +36,7 @@ if __name__ == "__main__":
         quit()
 
     dir_trig, refl_trig = HRAAnalysis.getDirectReflTriggered(HRAeventList)
+    refl_trig = np.array(refl_trig)
 
     # Plot the area of the HRA
     save_folder = f'{save_folder}Area/'
@@ -43,27 +46,28 @@ if __name__ == "__main__":
     for station in dir_trig:
         savename = f'{save_folder}AreaDirect_{station}.png'
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
-        HRAAnalysis.histAreaRate(x, y, weight, f'{station} Direct', savename, dir_trig=dir_trig, refl_trig=refl_trig)
+        HRAAnalysis.histAreaRate(x, y, weight, f'{station} Direct', savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
         ic(f'Saved {savename}')
 
     for station in refl_trig:
         savename = f'{save_folder}AreaReflected_{station}.png'
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
-        HRAAnalysis.histAreaRate(x, y, weight, f'{station} Reflected', savename, dir_trig=dir_trig, refl_trig=refl_trig)
+        HRAAnalysis.histAreaRate(x, y, weight, f'{station} Reflected', savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
         ic(f'Saved {savename}')
 
     relf_trig = np.array(refl_trig) - 100 # Subtract 100 to get the station number for plot numbers
+    ic(dir_trig, refl_trig)
 
     bad_stations = [32, 52, 132, 152]
     savename = f'{save_folder}AreaReflected.png'
     x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name='combined_reflected')
-    HRAAnalysis.histAreaRate(x, y, weight, "Combined Reflected", savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
+    HRAAnalysis.histAreaRate(x, y, weight, "Combined Reflected", savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
     ic(f'Saved {savename}')
 
     bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
     savename = f'{save_folder}AreaDirect.png'
     weight = HRAAnalysis.getWeights(HRAeventList, weight_name='combined_direct', in_array=weight)
-    HRAAnalysis.histAreaRate(x, y, weight, "Combined Direct", savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
+    HRAAnalysis.histAreaRate(x, y, weight, "Combined Direct", savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
     ic(f'Saved {savename}')
 
 
@@ -76,7 +80,7 @@ if __name__ == "__main__":
             continue
         savename = f'{save_folder}AreaDirect_coinc{i}.png'
         weight = HRAAnalysis.getWeights(HRAeventList, weight_name=weight_name, in_array=weight)
-        HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/Refl',savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
+        HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/Refl',savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
         ic(f'Saved {savename}')
 
     # Same but without reflections
@@ -88,7 +92,7 @@ if __name__ == "__main__":
             continue
         savename = f'{save_folder}AreaDirect_norefl_coinc{i}.png'
         weight = HRAAnalysis.getWeights(HRAeventList, weight_name=weight_name, in_array=weight)
-        HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/o Refl', savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
+        HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/o Refl', savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
         ic(f'Saved {savename}')
 
     # Plots with reflection and station 52
@@ -100,7 +104,7 @@ if __name__ == "__main__":
             continue
         savename = f'{save_folder}Area_52up_wrefl_coinc{i}.png'
         weight = HRAAnalysis.getWeights(HRAeventList, weight_name=weight_name, in_array=weight)
-        HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/52up w/Refl',savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
+        HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/52up w/Refl',savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
         ic(f'Saved {savename}')
 
     # Plots without reflection and with station 52
@@ -112,5 +116,5 @@ if __name__ == "__main__":
             continue
         savename = f'{save_folder}Area_52up_norefl_coinc{i}.png'
         weight = HRAAnalysis.getWeights(HRAeventList, weight_name=weight_name, in_array=weight)
-        HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/52up w/o Refl',savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations)
+        HRAAnalysis.histAreaRate(x, y, weight, f'{i} Coinc w/52up w/o Refl',savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
         ic(f'Saved {savename}')

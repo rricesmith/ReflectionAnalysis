@@ -305,17 +305,17 @@ def getDirectReflTriggered(HRAeventList, use_primary=True):
             break
         if event.hasTriggered():
             for station_id in event.directTriggers():
-                if station_id in stations and station_id not in direct_triggered:
+                if station_id in stations and not station_id in direct_triggered:
                     direct_triggered.append(station_id)
             for station_id in event.reflectedTriggers():
-                if station_id in refl_stations and station_id not in reflected_triggered:
+                if station_id in refl_stations and not station_id in reflected_triggered:
                     reflected_triggered.append(station_id)
 
     return direct_triggered, reflected_triggered
 
 def histAreaRate(x, y, weights, title, savename, dir_trig=[], refl_trig=[], exclude=[], colorbar_label='Evts/yr', max_distance=6.0*units.km):
 
-    x_bins, y_bins = np.linspace(-max_distance/units.m, max_distance/units.m, 100), np.linspace(-max_distance/units.m, max_distance/units.m, 100)
+    x_bins, y_bins = np.linspace(-max_distance/units.m, max_distance/units.m, 50), np.linspace(-max_distance/units.m, max_distance/units.m, 50)
 
     fig, ax = plt.subplots()
 
@@ -339,13 +339,15 @@ def histAreaRate(x, y, weights, title, savename, dir_trig=[], refl_trig=[], excl
     return
 
 
-def getErrorEventRates(trigger_rate, HRAeventList, max_distance=6.0*units.km):
+def getErrorEventRates(trigger_rate, HRAeventList, max_distance=6.0*units.km, combined=False):
     # Return the event rate array as well as an array of the error in each bin
     # Error is capped at 100% of the event rate, for bins with 1 trigger going to 0 event rate
 
     e_bins, z_bins = getEnergyZenithBins()
     n_throws = getnThrows(HRAeventList)
 
+    if combined == True:
+        n_throws *= 7       # Assuming no station 52/32 or 152/132 used, 7 direct or 7 reflected stations in sum
 
     # Need to get n_trig per bin
     n_trig = trigger_rate * n_throws    
@@ -370,6 +372,7 @@ def plotRateWithError(eventRate, errorRate, savename, title):
 
     ax.set_xlabel('log10(E/eV)')
     ax.set_ylabel('Evts/Yr')
+    ax.set_yscale('log')
     ax.set_ylim(bottom=0)
     ax.legend()
     ax.set_title(title)
@@ -398,13 +401,19 @@ def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=Tr
         azimuth.append(event.getAngles()[1])
         weights.append(event.getWeight(weight_name, use_primary, sigma))    # Append all events because non-triggering events have a weight of zero    
 
-        # if station_id in event.recon_zenith:
-        if np.in1d(station_ids, list(event.recon_zenith.keys())).all():
-            recon_zenith.append(event.recon_zenith[station_id])
-            recon_azimuth.append(event.recon_azimuth[station_id])
-        else:
-            recon_zenith.append(np.nan)
-            recon_azimuth.append(np.nan)
+        # Add reconstructed angles, and average if detected in multiple stations
+        recon_zenith.append(0)
+        recon_azimuth.append(0)
+        i = 0
+        for station_id in station_ids:
+            if station_id in list(event.recon_zenith.keys()):
+                i += 1
+                recon_zenith[-1] += event.recon_zenith[station_id]
+                recon_azimuth[-1] += event.recon_azimuth[station_id]
+        if i == 0:
+            i = 1
+        recon_zenith[-1] /= len(i)
+        recon_azimuth[-1] /= len(i)
 
     return np.array(zenith), np.array(recon_zenith), np.array(azimuth), np.array(recon_azimuth), np.array(weights)
 
@@ -421,6 +430,7 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
 
     norm = matplotlib.colors.LogNorm(vmin=np.min(weights[np.nonzero(weights)]), vmax=np.max(weights)*5)
     h, xedges, yedges, im = ax[0].hist2d(zenith, recon_zenith, bins=(zenith_bins, zenith_bins), weights=weights, cmap='viridis', norm=norm)
+    ax[0].plt([0, 90], [0, 90], 'k--')
     ax[0].set_xlabel('True Zenith (deg)')
     ax[0].set_ylabel('Reconstructed Zenith (deg)')
     ax[0].set_title('Zenith')
@@ -428,9 +438,10 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
     ax[0].set_xlim(0, 90)
     ax[0].set_ylim(0, 90)
     ax[0].grid()
-    fig.colorbar(im, ax=ax[0], label=colorbar_label)
+    # fig.colorbar(im, ax=ax[0], label=colorbar_label)
 
     h, xedges, yedges, im = ax[1].hist2d(azimuth, recon_azimuth, bins=(azimuth_bins, azimuth_bins), weights=weights, cmap='viridis', norm=norm)
+    ax[1].plt([0, 360], [0, 360], 'k--')
     ax[1].set_xlabel('True Azimuth (deg)')
     ax[1].set_ylabel('Reconstructed Azimuth (deg)')
     ax[1].set_title('Azimuth')
@@ -449,8 +460,8 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
     plt.close()
 
     # Also plot the difference in true and reconstructed angles
-    zenith_diff = np.abs(zenith - recon_zenith)
-    azimuth_diff = np.abs(azimuth - recon_azimuth)
+    zenith_diff = zenith - recon_zenith
+    azimuth_diff = azimuth - recon_azimuth
 
     fig, ax = plt.subplots(nrows=1, ncols=2)
 
@@ -458,12 +469,13 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
 
     h, xedges, im = ax[0].hist(zenith_diff, bins=diff_bins, weights=weights)
     ax[0].set_xlabel('True - Reconstructed Zenith (deg)')
-    ax[0].set_ylabel('Evts')
+    ax[0].set_ylabel('Evts/Yr')
     ax[0].set_title('Zenith')
 
+    diff_bins = np.linspace(-360, 360, 100)
     h, xedges, im = ax[1].hist(azimuth_diff, bins=diff_bins, weights=weights)
     ax[1].set_xlabel('True - Reconstructed Azimuth (deg)')
-    ax[1].set_ylabel('Evts')
+    ax[1].set_ylabel('Evts/Yr')
     ax[1].set_title('Azimuth')
 
     plt.suptitle(f'{title} Difference in True and Reconstructed Angles')
@@ -508,6 +520,8 @@ if __name__ == "__main__":
     sim_folder = config['FOLDERS']['sim_folder']
     numpy_folder = config['FOLDERS']['numpy_folder']
     save_folder = config['FOLDERS']['save_folder']
+    diameter = config['SIMPARAMETERS']['diameter']
+    max_distance = float(diameter)/2*units.km
     plot_sigma = float(config['PLOTPARAMETERS']['trigger_sigma'])
     ic(plot_sigma)
 
@@ -530,22 +544,22 @@ if __name__ == "__main__":
     for station_id in direct_event_rate:
         imshowRate(direct_trigger_rate_dict[station_id], f'Direct Trigger Rate for Station {station_id}', f'{save_folder}direct_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
         imshowRate(direct_event_rate[station_id], f'Direct Event Rate for Station {station_id}', f'{save_folder}direct_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(direct_event_rate[station_id]):.3f}')
-        event_rate_error = getErrorEventRates(direct_trigger_rate_dict[station_id], HRAeventList)
+        event_rate_error = getErrorEventRates(direct_trigger_rate_dict[station_id], HRAeventList, max_distance=max_distance)
         plotRateWithError(direct_event_rate[station_id], event_rate_error, f'{save_folder}error_rate/direct_event_rate_error_{station_id}.png', f'Direct Event Rate Error for Station {station_id}')
     for station_id in reflected_event_rate:
         imshowRate(reflected_trigger_rate_dict[station_id], f'Reflected Trigger Rate for Station {station_id}', f'{save_folder}reflected_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
         imshowRate(reflected_event_rate[station_id], f'Reflected Event Rate for Station {station_id}', f'{save_folder}reflected_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(reflected_event_rate[station_id]):.3f}')
-        event_rate_error = getErrorEventRates(reflected_trigger_rate_dict[station_id], HRAeventList)
+        event_rate_error = getErrorEventRates(reflected_trigger_rate_dict[station_id], HRAeventList, max_distance=max_distance)
         plotRateWithError(reflected_event_rate[station_id], event_rate_error, f'{save_folder}error_rate/reflected_event_rate_error_{station_id}.png', f'Reflected Event Rate Error for Station {station_id}')
 
     # Combined trigger rate and event rate plots
     imshowRate(combined_trigger_rate['direct'], 'Combined Direct Trigger Rate', f'{save_folder}combined_direct_trigger_rate.png', colorbar_label='Trigger Rate')
     imshowRate(combined_event_rate['direct'], 'Combined Direct Event Rate', f'{save_folder}combined_direct_event_rate.png', colorbar_label=f'Evts/yr, Sum {np.nansum(combined_event_rate["direct"]):.3f}')
-    event_rate_error = getErrorEventRates(combined_trigger_rate['direct'], HRAeventList)
+    event_rate_error = getErrorEventRates(combined_trigger_rate['direct'], HRAeventList, max_distance=max_distance, combined=True)
     plotRateWithError(combined_event_rate['direct'], event_rate_error, f'{save_folder}error_rate/combined_direct_event_rate_error.png', 'Combined Direct Event Rate Error')
     imshowRate(combined_trigger_rate['reflected'], 'Combined Reflected Trigger Rate', f'{save_folder}combined_reflected_trigger_rate.png', colorbar_label='Trigger Rate')
     imshowRate(combined_event_rate['reflected'], 'Combined Reflected Event Rate', f'{save_folder}combined_reflected_event_rate.png', colorbar_label=f'Evts/yr, Sum {np.nansum(combined_event_rate["reflected"]):.3f}')
-    event_rate_error = getErrorEventRates(combined_trigger_rate['reflected'], HRAeventList)
+    event_rate_error = getErrorEventRates(combined_trigger_rate['reflected'], HRAeventList, max_distance=max_distance, combined=True)
     plotRateWithError(combined_event_rate['reflected'], event_rate_error, f'{save_folder}error_rate/combined_reflected_event_rate_error.png', 'Combined Reflected Event Rate Error')
 
     # Coincidence plots with reflections
@@ -557,11 +571,11 @@ if __name__ == "__main__":
             ic(f'No events for {i} coincidences')
             continue
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, w/Refl', f'{save_folder}trigger_rate_coincidence_{i}.png', colorbar_label='Trigger Rate')
-        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
-        # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_wrefl')
+        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins, max_distance=max_distance)
+        # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_wrefl', max_distance=max_distance)
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
         imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences, w/Refl', f'{save_folder}event_rate_coincidence_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
-        event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList)
+        event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList, max_distance=max_distance)
         plotRateWithError(event_rate_coincidence[i], event_rate_error, f'{save_folder}error_rate/event_rate_coincidence_error_{i}.png', f'Event Rate Error for {i} Coincidences')
 
     # Coincidence plots without reflections
@@ -573,11 +587,11 @@ if __name__ == "__main__":
             ic(f'No events for {i} coincidences')
             continue
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, w/o Refl', f'{save_folder}trigger_rate_coincidence_norefl_{i}.png', colorbar_label='Trigger Rate')
-        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
-        # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_norefl')
+        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins, max_distance=max_distance)
+        # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_norefl', max_distance=max_distance)
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
         imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences w/o Refl', f'{save_folder}event_rate_coincidence_norefl_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
-        event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList)
+        event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList, max_distance=max_distance)
         plotRateWithError(event_rate_coincidence[i], event_rate_error, f'{save_folder}error_rate/event_rate_coincidence_norefl_error_{i}.png', f'Event Rate Error for {i} Coincidences w/o Refl')
 
 
@@ -590,11 +604,11 @@ if __name__ == "__main__":
             ic(f'No events for {i} coincidences')
             continue
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate, {i} Coincidences, 52 upward forced w/Refl', f'{save_folder}trigger_rate_coincidence_52up_{i}.png', colorbar_label='Trigger Rate')
-        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
-        # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_wrefl')
+        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins, max_distance=max_distance)
+        # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_wrefl', max_distance=max_distance)
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
         imshowRate(event_rate_coincidence[i], f'Event Rate, {i} Coincidences, 52 upward forced w/Refl', f'{save_folder}event_rate_coincidence_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
-        event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList)
+        event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList, max_distance=max_distance)
         plotRateWithError(event_rate_coincidence[i], event_rate_error, f'{save_folder}error_rate/event_rate_coincidence_52up_error_{i}.png', f'Event Rate Error for {i} Coincidences, 52 upward forced w/Refl')
 
 
@@ -607,11 +621,11 @@ if __name__ == "__main__":
             ic(f'No events for {i} coincidences')
             continue
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate, {i} Coincidences, 52 upward forced w/o Refl', f'{save_folder}trigger_rate_coincidence_norefl_52up_{i}.png', colorbar_label='Trigger Rate')
-        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins)
-        # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_norefl')
+        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins, max_distance=max_distance)
+        # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_norefl', max_distance=max_distance)
         ic(event_rate_coincidence[i]), np.sum(event_rate_coincidence[i])
         imshowRate(event_rate_coincidence[i], f'Event Rate, {i} Coincidences, 52 upward forced w/o Refl', f'{save_folder}event_rate_coincidence_norefl_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
-        event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList)
+        event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList, max_distance=max_distance)
         plotRateWithError(event_rate_coincidence[i], event_rate_error, f'{save_folder}error_rate/event_rate_coincidence_norefl_52up_error_{i}.png', f'Event Rate Error for {i} Coincidences, 52 upward forced w/o Refl')
 
 
