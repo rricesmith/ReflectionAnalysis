@@ -40,7 +40,7 @@ if __name__ == "__main__":
     diameter = config['SIMPARAMETERS']['diameter']
     max_distance = float(diameter)/2*units.km
     trigger_sigma = float(config['PLOTPARAMETERS']['trigger_sigma'])
-    trigger_sigma_52 = float(config['PLOTPARAMETERS']['trigger_sigma_52'])
+    trigger_sigma_52 = float(config['PLOTPARAMETERS']['trigger_sigma_stn52'])
     ic(trigger_sigma)
 
     os.makedirs(save_folder, exist_ok=True)
