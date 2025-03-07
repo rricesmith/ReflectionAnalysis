@@ -75,7 +75,7 @@ def getnThrows(HRAeventList):
     return n_throws    
 
 
-def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, sigma=5):
+def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, sigma=4.5, sigma_52=6):
     # Input a list of HRAevent objects to get the event rate in each energy-zenith bin
 
     e_bins, z_bins = getEnergyZenithBins()
@@ -87,10 +87,10 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, s
 
     for event in HRAeventList:
         # n_throws += 1
-        if not event.hasCoincidence(num_coincidence, use_secondary=use_secondary, sigma=sigma):
+        if not event.hasCoincidence(num_coincidence, use_secondary=use_secondary, sigma=sigma, sigma_52=sigma_52):
             # Event not triggered or meeting coincidence bar
             continue
-        for station_id in event.directTriggers(sigma=sigma):
+        for station_id in event.directTriggers(sigma=sigma, sigma_52=sigma_52):
             energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
             zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
             if energy_bin < 0 or zenith_bin < 0 or energy_bin >= len(e_bins) or zenith_bin >= len(z_bins):
@@ -99,7 +99,7 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, s
             if station_id not in direct_trigger_rate_dict:
                 direct_trigger_rate_dict[station_id] = getEnergyZenithArray()
             direct_trigger_rate_dict[station_id][energy_bin][zenith_bin] += 1
-        for station_id in event.reflectedTriggers(sigma=sigma):
+        for station_id in event.reflectedTriggers(sigma=sigma, sigma_52=sigma_52):
             energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
             zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
             if energy_bin < 0 or zenith_bin < 0 or energy_bin >= len(e_bins) or zenith_bin >= len(z_bins):
@@ -121,6 +121,7 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, s
         combined_trigger_rate['direct'] += direct_trigger_rate_dict[station_id]
         combined_throws += n_throws
     combined_trigger_rate['direct'] /= combined_throws
+    combined_trigger_rate['direct'][np.isnan(combined_trigger_rate['direct'])] = 0
     # combined_throws = 0
     combined_throws = np.zeros_like(n_throws)
     for station_id in reflected_trigger_rate_dict:
@@ -129,6 +130,38 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, s
         combined_trigger_rate['reflected'] += reflected_trigger_rate_dict[station_id]
         combined_throws += n_throws
     combined_trigger_rate['reflected'] /= combined_throws
+    combined_trigger_rate['reflected'][np.isnan(combined_trigger_rate['reflected'])] = 0
+
+    # Also get rates for 100s and 200s separately
+    stn_100s_trigger_rate = {}
+    stns_100 = [13, 15, 18]
+    stn_100s_trigger_rate['direct'] = getEnergyZenithArray()
+    stn_100s_trigger_rate['reflected'] = getEnergyZenithArray()
+    combined_throws = np.zeros_like(n_throws)
+    for station_id in stns_100:
+        stn_100s_trigger_rate['direct'] += direct_trigger_rate_dict[station_id]
+        stn_100s_trigger_rate['reflected'] += reflected_trigger_rate_dict[station_id+100]
+        combined_throws += n_throws
+    stn_100s_trigger_rate['direct'] /= combined_throws
+    stn_100s_trigger_rate['reflected'] /= combined_throws
+    stn_100s_trigger_rate['direct'][np.isnan(stn_100s_trigger_rate['direct'])] = 0
+    stn_100s_trigger_rate['reflected'][np.isnan(stn_100s_trigger_rate['reflected'])] = 0
+
+    stn_200s_trigger_rate = {}
+    stns_200 = [14, 17, 19, 30]
+    stn_200s_trigger_rate['direct'] = getEnergyZenithArray()
+    stn_200s_trigger_rate['reflected'] = getEnergyZenithArray()
+    combined_throws = np.zeros_like(n_throws)
+    for station_id in stns_200:
+        stn_200s_trigger_rate['direct'] += direct_trigger_rate_dict[station_id]
+        stn_200s_trigger_rate['reflected'] += reflected_trigger_rate_dict[station_id+100]
+        combined_throws += n_throws
+    stn_200s_trigger_rate['direct'] /= combined_throws
+    stn_200s_trigger_rate['reflected'] /= combined_throws
+    stn_200s_trigger_rate['direct'][np.isnan(stn_200s_trigger_rate['direct'])] = 0
+    stn_200s_trigger_rate['reflected'][np.isnan(stn_200s_trigger_rate['reflected'])] = 0
+
+
 
     # Normalise the event rate
     for station_id in direct_trigger_rate_dict:
@@ -138,7 +171,7 @@ def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, s
         reflected_trigger_rate_dict[station_id] /= n_throws
         reflected_trigger_rate_dict[station_id][np.isnan(reflected_trigger_rate_dict[station_id])] = 0
 
-    return direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins
+    return direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, stn_100s_trigger_rate, stn_200s_trigger_rate, e_bins, z_bins
 
 def getEventRateArray(e_bins, z_bins):
     # Returns an array of the event rate in each energy-zenith bin in evts/km^2/yr
@@ -172,7 +205,7 @@ def getEventRate(trigger_rate, e_bins, z_bins, max_distance=6.0*units.km):
 
     return eventRateArray * trigger_rate * area/units.km**2
 
-def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max_distance=6.0*units.km, sigma=5):
+def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max_distance=6.0*units.km, sigma=4.5):
     # Set the event rate weight for each event in the HRAeventList
 
     e_bins, z_bins = getEnergyZenithBins()
@@ -199,7 +232,7 @@ def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max
     return
 
 
-def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None, sigma=5):
+def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None, sigma=4.5, sigma_52=6):
     # Return a list of coincidence events
     # As well as a dictionary of the trigger rate array for each number of coincidences
     e_bins, z_bins = getEnergyZenithBins()
@@ -209,7 +242,7 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False,
     for i in [2, 3, 4, 5, 6, 7]:
         trigger_rate_coincidence[i] = getEnergyZenithArray()
         for event in HRAeventList:
-            if not event.hasCoincidence(i, bad_stations, use_secondary, sigma=sigma):
+            if not event.hasCoincidence(i, bad_stations, use_secondary, sigma=sigma, sigma_52=sigma_52):
                 # Event not triggered or meeting coincidence bar
                 continue
             if force_station is not None and force_station not in event.station_triggers[sigma]:
@@ -373,7 +406,7 @@ def plotRateWithError(eventRate, errorRate, savename, title):
     ax.set_xlabel('log10(E/eV)')
     ax.set_ylabel('Evts/Yr')
     ax.set_yscale('log')
-    ax.set_ylim(bottom=0)
+    ax.set_ylim(bottom=10**-3)
     ax.legend()
     ax.set_title(title)
     fig.savefig(savename)
@@ -383,7 +416,7 @@ def plotRateWithError(eventRate, errorRate, savename, title):
     return
 
 
-def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=True, sigma=5):
+def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=True, sigma=4.5):
     # Get a list of the events x/y with associated event rate as a weight
     # station_ids can be a single station or a list of stations
 
@@ -430,7 +463,7 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
 
     norm = matplotlib.colors.LogNorm(vmin=np.min(weights[np.nonzero(weights)]), vmax=np.max(weights)*5)
     h, xedges, yedges, im = ax[0].hist2d(zenith, recon_zenith, bins=(zenith_bins, zenith_bins), weights=weights, cmap='viridis', norm=norm)
-    ax[0].plt([0, 90], [0, 90], 'k--')
+    ax[0].plt([0, 90], [0, 90], color='black', linestyle='--')
     ax[0].set_xlabel('True Zenith (deg)')
     ax[0].set_ylabel('Reconstructed Zenith (deg)')
     ax[0].set_title('Zenith')
@@ -441,7 +474,7 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
     # fig.colorbar(im, ax=ax[0], label=colorbar_label)
 
     h, xedges, yedges, im = ax[1].hist2d(azimuth, recon_azimuth, bins=(azimuth_bins, azimuth_bins), weights=weights, cmap='viridis', norm=norm)
-    ax[1].plt([0, 360], [0, 360], 'k--')
+    ax[1].plt([0, 360], [0, 360], color='black', linestyle='--')
     ax[1].set_xlabel('True Azimuth (deg)')
     ax[1].set_ylabel('Reconstructed Azimuth (deg)')
     ax[1].set_title('Azimuth')
@@ -532,7 +565,7 @@ if __name__ == "__main__":
         quit()
     # HRAeventList = np.load(f'{numpy_folder}HRAeventList.npy', allow_pickle=True)
     HRAeventList = loadHRAfromH5(f'{numpy_folder}HRAeventList.h5')
-    direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins = np.load(f'{numpy_folder}trigger_rate_dict.npy', allow_pickle=True)
+    direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, stn_100s_trigger_rate, stn_200s_trigger_rate, e_bins, z_bins = np.load(f'{numpy_folder}trigger_rate_dict.npy', allow_pickle=True)
     direct_event_rate, reflected_event_rate, combined_event_rate = np.load(f'{numpy_folder}event_rate_dict.npy', allow_pickle=True)
 
     logE_bins = np.log10(e_bins/units.eV)
@@ -553,10 +586,32 @@ if __name__ == "__main__":
         plotRateWithError(reflected_event_rate[station_id], event_rate_error, f'{save_folder}error_rate/reflected_event_rate_error_{station_id}.png', f'Reflected Event Rate Error for Station {station_id}')
 
     # Combined trigger rate and event rate plots
+
+    imshowRate(stn_100s_trigger_rate['direct'], '100s Direct Trigger Rate', f'{save_folder}100s_direct_trigger_rate.png', colorbar_label='Trigger Rate')
+    imshowRate(combined_event_rate['100s_direct'], '100s Direct Event Rate', f'{save_folder}100s_direct_event_rate.png', colorbar_label=f'Evts/yr, Sum {np.nansum(combined_event_rate["100s_direct"]):.3f}')
+    event_rate_error = getErrorEventRates(stn_100s_trigger_rate['_direct'], HRAeventList, max_distance=max_distance, combined=True)
+    plotRateWithError(combined_event_rate['100s_direct'], event_rate_error, f'{save_folder}error_rate/100s_direct_event_rate_error.png', '100s Direct Event Rate Error')
+
+    imshowRate(stn_100s_trigger_rate['reflected'], '100s Reflected Trigger Rate', f'{save_folder}100s_reflected_trigger_rate.png', colorbar_label='Trigger Rate')
+    imshowRate(combined_event_rate['100s_reflected'], '100s Reflected Event Rate', f'{save_folder}100s_reflected_event_rate.png', colorbar_label=f'Evts/yr, Sum {np.nansum(combined_event_rate["100s_reflected"]):.3f}')
+    event_rate_error = getErrorEventRates(stn_100s_trigger_rate['reflected'], HRAeventList, max_distance=max_distance, combined=True)
+    plotRateWithError(combined_event_rate['100s_reflected'], event_rate_error, f'{save_folder}error_rate/100s_reflected_event_rate_error.png', '100s Reflected Event Rate Error')
+
+    imshowRate(stn_200s_trigger_rate['direct'], '200s Direct Trigger Rate', f'{save_folder}200s_direct_trigger_rate.png', colorbar_label='Trigger Rate')
+    imshowRate(combined_event_rate['200s_direct'], '200s Direct Event Rate', f'{save_folder}200s_direct_event_rate.png', colorbar_label=f'Evts/yr, Sum {np.nansum(combined_event_rate["200s_direct"]):.3f}')
+    event_rate_error = getErrorEventRates(stn_200s_trigger_rate['direct'], HRAeventList, max_distance=max_distance, combined=True)
+    plotRateWithError(combined_event_rate['200s_direct'], event_rate_error, f'{save_folder}error_rate/200s_direct_event_rate_error.png', '200s Direct Event Rate Error')
+
+    imshowRate(stn_200s_trigger_rate['reflected'], '200s Reflected Trigger Rate', f'{save_folder}200s_reflected_trigger_rate.png', colorbar_label='Trigger Rate')
+    imshowRate(combined_event_rate['200s_reflected'], '200s Reflected Event Rate', f'{save_folder}200s_reflected_event_rate.png', colorbar_label=f'Evts/yr, Sum {np.nansum(combined_event_rate["200s_reflected"]):.3f}')
+    event_rate_error = getErrorEventRates(stn_200s_trigger_rate['reflected'], HRAeventList, max_distance=max_distance, combined=True)
+    plotRateWithError(combined_event_rate['200s_reflected'], event_rate_error, f'{save_folder}error_rate/200s_reflected_event_rate_error.png', '200s Reflected Event Rate Error')
+
     imshowRate(combined_trigger_rate['direct'], 'Combined Direct Trigger Rate', f'{save_folder}combined_direct_trigger_rate.png', colorbar_label='Trigger Rate')
     imshowRate(combined_event_rate['direct'], 'Combined Direct Event Rate', f'{save_folder}combined_direct_event_rate.png', colorbar_label=f'Evts/yr, Sum {np.nansum(combined_event_rate["direct"]):.3f}')
     event_rate_error = getErrorEventRates(combined_trigger_rate['direct'], HRAeventList, max_distance=max_distance, combined=True)
     plotRateWithError(combined_event_rate['direct'], event_rate_error, f'{save_folder}error_rate/combined_direct_event_rate_error.png', 'Combined Direct Event Rate Error')
+
     imshowRate(combined_trigger_rate['reflected'], 'Combined Reflected Trigger Rate', f'{save_folder}combined_reflected_trigger_rate.png', colorbar_label='Trigger Rate')
     imshowRate(combined_event_rate['reflected'], 'Combined Reflected Event Rate', f'{save_folder}combined_reflected_event_rate.png', colorbar_label=f'Evts/yr, Sum {np.nansum(combined_event_rate["reflected"]):.3f}')
     event_rate_error = getErrorEventRates(combined_trigger_rate['reflected'], HRAeventList, max_distance=max_distance, combined=True)

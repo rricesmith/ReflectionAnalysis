@@ -39,8 +39,9 @@ if __name__ == "__main__":
     save_folder = config['FOLDERS']['save_folder']
     diameter = config['SIMPARAMETERS']['diameter']
     max_distance = float(diameter)/2*units.km
-    plot_sigma = float(config['PLOTPARAMETERS']['trigger_sigma'])
-    ic(plot_sigma)
+    trigger_sigma = float(config['PLOTPARAMETERS']['trigger_sigma'])
+    trigger_sigma_52 = float(config['PLOTPARAMETERS']['trigger_sigma_52'])
+    ic(trigger_sigma)
 
     os.makedirs(save_folder, exist_ok=True)
 
@@ -48,7 +49,7 @@ if __name__ == "__main__":
         os.makedirs(numpy_folder)
 
     HRAeventList = HRAA.getHRAeventsFromDir(sim_folder)
-    direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins = HRAA.getBinnedTriggerRate(HRAeventList)
+    direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, stn_100s_trigger_rate, stn_200s_trigger_rate, e_bins, z_bins = HRAA.getBinnedTriggerRate(HRAeventList)
     direct_event_rate = {}
     for station_id in direct_trigger_rate_dict:
         ic(station_id)
@@ -63,11 +64,20 @@ if __name__ == "__main__":
     combined_event_rate = {}
     combined_event_rate['direct'] = HRAA.getEventRate(combined_trigger_rate['direct'], e_bins, z_bins)
     combined_event_rate['reflected'] = HRAA.getEventRate(combined_trigger_rate['reflected'], e_bins, z_bins)
+    combined_event_rate['100s_direct'] = HRAA.getEventRate(stn_100s_trigger_rate['direct'], e_bins, z_bins)
+    combined_event_rate['100s_reflected'] = HRAA.getEventRate(stn_100s_trigger_rate['reflected'], e_bins, z_bins)
+    combined_event_rate['200s_direct'] = HRAA.getEventRate(stn_200s_trigger_rate['direct'], e_bins, z_bins)
+    combined_event_rate['200s_reflected'] = HRAA.getEventRate(stn_200s_trigger_rate['reflected'], e_bins, z_bins)
     HRAA.setHRAeventListRateWeight(HRAeventList, combined_trigger_rate['direct'], weight_name='combined_direct', max_distance=max_distance)
     HRAA.setHRAeventListRateWeight(HRAeventList, combined_trigger_rate['reflected'], weight_name='combined_reflected', max_distance=max_distance)
+    HRAA.setHRAeventListRateWeight(HRAeventList, stn_100s_trigger_rate['direct'], weight_name='100s_direct', max_distance=max_distance)
+    HRAA.setHRAeventListRateWeight(HRAeventList, stn_100s_trigger_rate['reflected'], weight_name='100s_reflected', max_distance=max_distance)
+    HRAA.setHRAeventListRateWeight(HRAeventList, stn_200s_trigger_rate['direct'], weight_name='200s_direct', max_distance=max_distance)
+    HRAA.setHRAeventListRateWeight(HRAeventList, stn_200s_trigger_rate['reflected'], weight_name='200s_reflected', max_distance=max_distance)
 
 
-    np.save(f'{numpy_folder}trigger_rate_dict.npy', [direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, e_bins, z_bins])
+
+    np.save(f'{numpy_folder}trigger_rate_dict.npy', [direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, stn_100s_trigger_rate, stn_200s_trigger_rate, e_bins, z_bins])
     np.save(f'{numpy_folder}event_rate_dict.npy', [direct_event_rate, reflected_event_rate, combined_event_rate])
 
 

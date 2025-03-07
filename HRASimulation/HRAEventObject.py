@@ -94,11 +94,29 @@ class HRAevent:
     def secondaryTriggers(self):
         return self.secondary_station_triggers
     
-    def directTriggers(self, sigma=5):
-        return self.direct_triggers[sigma]
-    
-    def reflectedTriggers(self, sigma=5):
-        return self.reflected_triggers[sigma]
+    def directTriggers(self, sigma=4.5, sigma_52=6):
+        if sigma == sigma_52:
+            return self.direct_triggers[sigma]
+        else:
+            dt = self.direct_triggers[sigma]
+            dt_52 = self.direct_triggers[sigma_52]
+            if 52 in dt_52 and 52 not in dt:
+                dt.append(52)
+            elif 52 in dt and 52 not in dt_52:
+                dt.remove(52)
+            return dt
+
+    def reflectedTriggers(self, sigma=4.5, sigma_52=6):
+        if sigma == sigma_52:
+            return self.reflected_triggers[sigma]
+        else:
+            rt = self.reflected_triggers[sigma]
+            rt_52 = self.reflected_triggers[sigma_52]
+            if 52 in rt_52 and 52 not in rt:
+                rt.append(52)
+            elif 52 in rt and 52 not in rt_52:
+                rt.remove(52)
+            return rt
 
     def addTrigger(self, station_id, sigma):
         if station_id not in self.station_triggers[sigma]:
@@ -108,26 +126,26 @@ class HRAevent:
         if station_id not in self.station_triggers[sigma]:
             self.station_triggers[sigma].append(station_id)
 
-    def hasCoincidence(self, num=1, bad_stations=None, use_secondary=False, sigma=5):
+    def hasCoincidence(self, num=1, bad_stations=None, use_secondary=False, sigma=4.5, sigma_52=6):
         # Bad Stations should be a list of station IDs that are not to be included in the coincidence
         n_coinc = len(self.station_triggers[sigma])
         if use_secondary:
-            n_coinc += len(self.secondary_station_triggers[sigma])
-            n_coinc -= self.hasTriggered(station_id=52)
+            n_coinc += len(self.secondary_station_triggers[sigma_52])
+            n_coinc -= self.hasTriggered(station_id=52, sigma=sigma_52)
         if bad_stations is not None:
             for station_id in bad_stations:
                 if station_id in self.station_triggers[sigma] and station_id != 52:
                     n_coinc -= 1
                 elif station_id == 52 and use_secondary:
-                    if station_id in self.secondary_station_triggers[sigma]:
+                    if station_id in self.secondary_station_triggers[sigma_52]:
                         n_coinc -= 1    
             return n_coinc > num
         return n_coinc > num
 
-    def hasSecondaryCoincidence(self, sigma=5):
-        return (len(self.station_triggers[sigma]) + len(self.secondary_station_triggers[sigma])) > 1
+    def hasSecondaryCoincidence(self, sigma_52=6):
+        return (len(self.station_triggers[sigma_52]) + len(self.secondary_station_triggers[sigma_52])) > 1
 
-    def hasTriggered(self, station_id=None, sigma=5):
+    def hasTriggered(self, station_id=None, sigma=4.5):
         if station_id is None:
             return len(self.station_triggers[sigma]) > 0
         return station_id in self.station_triggers[sigma]
@@ -135,7 +153,7 @@ class HRAevent:
     def inEnergyZenithBin(self, e_low, e_high, z_low, z_high):
         return e_low <= self.energy <= e_high and z_low <= self.zenith <= z_high
     
-    def setWeight(self, weight, weight_name, primary=True, sigma=5):
+    def setWeight(self, weight, weight_name, primary=True, sigma=4.5):
         if weight_name not in self.weight:
             # Weights can be station ids, or can be a string such as 'all reflected', or '52 with direct only'
             self.weight[sigma][weight_name] = [np.nan, np.nan]
@@ -145,12 +163,12 @@ class HRAevent:
             self.weight[sigma][weight_name][1] = weight
 
 
-    def getWeight(self, weight_name, primary=True, sigma=5):
+    def getWeight(self, weight_name, primary=True, sigma=4.5):
         if primary:
             return self.weight[sigma][weight_name][0]
         else:
             return self.weight[sigma][weight_name][1]
 
-    def hasWeight(self, weight_name, sigma=5):
+    def hasWeight(self, weight_name, sigma=4.5):
         return weight_name in self.weight[sigma]
     
