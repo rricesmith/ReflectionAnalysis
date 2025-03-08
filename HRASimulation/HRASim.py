@@ -112,7 +112,7 @@ all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52, 113, 114, 115, 117, 118, 119
 # all_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52]
 # all_stations_reflected = [113, 114, 115, 117, 118, 119, 130, 132, 152]
 
-trigger_sigmas = [3.5, 4, 4.5, 5, 5.5, 6]
+trigger_sigmas = [3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]
 
 preAmpVrms_per_channel = {}
 thresholds_high = {}

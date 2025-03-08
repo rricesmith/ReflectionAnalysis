@@ -75,7 +75,7 @@ def getnThrows(HRAeventList):
     return n_throws    
 
 
-def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, sigma=4.5, sigma_52=6):
+def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, sigma=4.5, sigma_52=7):
     # Input a list of HRAevent objects to get the event rate in each energy-zenith bin
 
     e_bins, z_bins = getEnergyZenithBins()
@@ -232,7 +232,7 @@ def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max
     return
 
 
-def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None, sigma=4.5, sigma_52=6):
+def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None, sigma=4.5, sigma_52=7):
     # Return a list of coincidence events
     # As well as a dictionary of the trigger rate array for each number of coincidences
     e_bins, z_bins = getEnergyZenithBins()

@@ -94,7 +94,7 @@ class HRAevent:
     def secondaryTriggers(self):
         return self.secondary_station_triggers
     
-    def directTriggers(self, sigma=4.5, sigma_52=6):
+    def directTriggers(self, sigma=4.5, sigma_52=7):
         if sigma == sigma_52:
             return self.direct_triggers[sigma]
         else:
@@ -106,7 +106,7 @@ class HRAevent:
                 dt.remove(52)
             return dt
 
-    def reflectedTriggers(self, sigma=4.5, sigma_52=6):
+    def reflectedTriggers(self, sigma=4.5, sigma_52=7):
         if sigma == sigma_52:
             return self.reflected_triggers[sigma]
         else:
@@ -126,7 +126,7 @@ class HRAevent:
         if station_id not in self.station_triggers[sigma]:
             self.station_triggers[sigma].append(station_id)
 
-    def hasCoincidence(self, num=1, bad_stations=None, use_secondary=False, sigma=4.5, sigma_52=6):
+    def hasCoincidence(self, num=1, bad_stations=None, use_secondary=False, sigma=4.5, sigma_52=7):
         # Bad Stations should be a list of station IDs that are not to be included in the coincidence
         n_coinc = len(self.station_triggers[sigma])
         if use_secondary:
@@ -142,7 +142,7 @@ class HRAevent:
             return n_coinc > num
         return n_coinc > num
 
-    def hasSecondaryCoincidence(self, sigma_52=6):
+    def hasSecondaryCoincidence(self, sigma_52=7):
         return (len(self.station_triggers[sigma_52]) + len(self.secondary_station_triggers[sigma_52])) > 1
 
     def hasTriggered(self, station_id=None, sigma=4.5):
