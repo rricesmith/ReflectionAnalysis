@@ -98,7 +98,7 @@ class HRAevent:
         if sigma == sigma_52:
             return self.direct_triggers[sigma]
         else:
-            ic(self.direct_triggers)
+            # ic(self.direct_triggers)
             dt = self.direct_triggers[sigma]
             dt_52 = self.direct_triggers[sigma_52]
             if 52 in dt_52 and 52 not in dt:
