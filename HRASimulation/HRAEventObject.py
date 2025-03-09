@@ -38,7 +38,7 @@ class HRAevent:
         if DEBUG:
             ic(self.event_id, self.energy, self.zenith, self.azimuth)
 
-        self.trigger_sigmas = [3.5, 4, 4.5, 5, 5.5, 6]
+        self.trigger_sigmas = [3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]
         for sigma in self.trigger_sigmas:
             self.weight[sigma] = {}
         self.station_triggers = {}
@@ -98,6 +98,7 @@ class HRAevent:
         if sigma == sigma_52:
             return self.direct_triggers[sigma]
         else:
+            ic(self.direct_triggers)
             dt = self.direct_triggers[sigma]
             dt_52 = self.direct_triggers[sigma_52]
             if 52 in dt_52 and 52 not in dt:
