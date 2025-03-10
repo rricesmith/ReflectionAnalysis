@@ -289,7 +289,7 @@ def imshowRate(rate, title, savename, colorbar_label='Evts/yr'):
         ax_labels.append('{:.0f}'.format(z/units.deg))
     ax_labels.reverse()
     # ax = plt.gca() # Removing to attempt to fix tick problems
-    ic(cos_bins, ax_labels)
+    # ic(cos_bins, ax_labels)
     ax.set_yticks(cos_bins)
     ax.set_yticklabels(ax_labels)
     ax.set_ylabel('Zenith Angle (deg)')
@@ -348,7 +348,7 @@ def getDirectReflTriggered(HRAeventList, use_primary=True):
 
 def histAreaRate(x, y, weights, title, savename, dir_trig=[], refl_trig=[], exclude=[], colorbar_label='Evts/yr', max_distance=6.0*units.km):
 
-    x_bins, y_bins = np.linspace(-max_distance/units.m, max_distance/units.m, 50), np.linspace(-max_distance/units.m, max_distance/units.m, 50)
+    x_bins, y_bins = getXYbins(max_distance)
 
     fig, ax = plt.subplots()
 
@@ -452,7 +452,7 @@ def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=Tr
 
 
 def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title, savename, colorbar_label='Evts/yr'):
-    if max(zenith) < 10:
+    if max(zenith) < 10 or max(azimuth) < 4:
         zenith = np.rad2deg(zenith)
         recon_zenith = np.rad2deg(recon_zenith)
         azimuth = np.rad2deg(azimuth)
@@ -543,6 +543,71 @@ def plotStationLocations(ax, triggered=[], reflected_triggers=[], exclude=[]):
 
     return ax
 
+def getXYbins(max_distance=6.0*units.km):
+    return np.linspace(-max_distance/units.m, max_distance/units.m, 50), np.linspace(-max_distance/units.m, max_distance/units.m, 50)
+
+def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_trig=[], refl_trig=[], exclude=[], max_distance=6.0*units.km):
+    # Plot 2d histogram area of stations, but at every bin have an arrow pointing in the direction of the weighted average azimuth and zenith
+    # Arrow length is proportional to the weighted average zenith
+
+    if max(zenith) < 10 or max(azimuth) < 4:
+        zenith = np.rad2deg(zenith)
+        recon_zenith = np.rad2deg(recon_zenith)
+        azimuth = np.rad2deg(azimuth)
+        recon_azimuth = np.rad2deg(recon_azimuth)
+    
+
+    x_bins, y_bins = getXYbins(max_distance)
+
+    x_center = (x_bins[1:] + x_bins[:-1]) / 2
+    y_center = (y_bins[1:] + y_bins[:-1]) / 2
+
+    avg_zen = np.zeros((len(x_center), len(y_center)))
+    avg_azi = np.zeros((len(x_center), len(y_center)))
+    weighted_throws = np.zeros((len(x_center), len(y_center)))
+
+    x_dig = np.digitize(x, x_bins) - 1
+    y_dig = np.digitize(y, y_bins) - 1
+
+    for iE in range(len(x)):
+        if x_dig[iE] < 0 or y_dig[iE] < 0 or x_dig[iE] >= len(x_center) or y_dig[iE] >= len(y_center):
+            ic("Outside of bins, shouldn't happen so quitting")
+            quit()
+        avg_zen[x_dig[iE]][y_dig[iE]] += zenith[iE] * weights[iE]
+        avg_azi[x_dig[iE]][y_dig[iE]] += azimuth[iE] * weights[iE]
+        weighted_throws[x_dig[iE]][y_dig[iE]] += weights[iE]
+
+    avg_zen /= weighted_throws
+    avg_azi /= weighted_throws
+
+    fig, ax = plt.subplots()
+    plotStationLocations(ax, triggered=dir_trig, exclude=exclude, reflected_triggers=refl_trig)
+
+    # Plot an arrow at each x_center and y_center pointing in the direction of the average azimuth with it's length proportional to the average zenith
+    cmap = matplotlib.cm.viridis
+    zen_bins = np.linspace(0, 90, 90)
+    colors = cmap(zen_bins)
+
+    for iX, x in enumerate(x_center):
+        for iY, y in enumerate(y_center):
+            if weighted_throws[iX][iY] == 0:
+                continue
+            color = colors[np.digitize(avg_zen[iX][iY], zen_bins)-1]
+            ax.arrow(x, y, 0.1*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), 0.1*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])), head_width=0.1, head_length=0.1, color=color)
+
+    fig.colorbar(plt.cm.ScalarMappable(norm=matplotlib.colors.Normalize(vmin=0, vmax=90), cmap=cmap), ax=ax, label='Zenith Angle (deg)')
+    ax.legend()
+    ax.set_xlabel('x (m)')
+    ax.set_ylabel('y (m)')
+    ax.set_title(title)
+    fig.savefig(savename)
+    ic(f'Saved {savename}')
+    plt.close(fig)
+
+    return
+
+
+
 if __name__ == "__main__":
 
     # sim_folder = 'HRASimulation/output/HRA/1.27.25/'
@@ -589,7 +654,7 @@ if __name__ == "__main__":
 
     imshowRate(stn_100s_trigger_rate['direct'], '100s Direct Trigger Rate', f'{save_folder}100s_direct_trigger_rate.png', colorbar_label='Trigger Rate')
     imshowRate(combined_event_rate['100s_direct'], '100s Direct Event Rate', f'{save_folder}100s_direct_event_rate.png', colorbar_label=f'Evts/yr, Sum {np.nansum(combined_event_rate["100s_direct"]):.3f}')
-    event_rate_error = getErrorEventRates(stn_100s_trigger_rate['_direct'], HRAeventList, max_distance=max_distance, combined=True)
+    event_rate_error = getErrorEventRates(stn_100s_trigger_rate['direct'], HRAeventList, max_distance=max_distance, combined=True)
     plotRateWithError(combined_event_rate['100s_direct'], event_rate_error, f'{save_folder}error_rate/100s_direct_event_rate_error.png', '100s Direct Event Rate Error')
 
     imshowRate(stn_100s_trigger_rate['reflected'], '100s Reflected Trigger Rate', f'{save_folder}100s_reflected_trigger_rate.png', colorbar_label='Trigger Rate')

@@ -96,7 +96,7 @@ if __name__ == "__main__":
         ic(f'Saved {savename}')
 
     # Plots with reflection and station 52
-    bad_stations = [32, 113, 114, 115, 117, 118, 119, 130, 132, 152]
+    bad_stations = [32, 132, 152]
     for i in [2, 3, 4, 5, 6, 7]:
         weight_name=f'{i}_coincidence_52up_wrefl'
         if not HRAeventList[0].hasWeight(weight_name):
