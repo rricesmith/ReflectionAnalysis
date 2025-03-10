@@ -45,15 +45,15 @@ if __name__ == "__main__":
 
     for station in dir_trig:
         savename = f'{save_folder}AreaAnglesDirect_{station}.png'
-        x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
+        x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
         zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, station, station)
-        HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, title=f'{station} Direct', savename=savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
+        HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title=f'{station} Direct', savename=savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
 
     for station in refl_trig:
         savename = f'{save_folder}AreaAnglesReflected_{station}.png'
-        x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
+        x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
         zenith, recon_zenith, azimuth, recon_azimuth, weightss = HRAAnalysis.getAnglesReconWeights(HRAeventList, station, station)
-        HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, title=f'{station} Reflected', savename=savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
+        HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title=f'{station} Reflected', savename=savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
 
     relf_trig = np.array(refl_trig) - 100 # Subtract 100 to get the station number for plot numbers
     ic(dir_trig, refl_trig)
@@ -61,17 +61,17 @@ if __name__ == "__main__":
     # Plot combined reflected
     bad_stations = [32, 52, 132, 152]
     savename = f'{save_folder}AreaAnglesReflectedCombined.png'
-    x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name='combined_reflected')
+    x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name='combined_reflected')
     zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, 'combined_reflected', [113, 114, 115, 117, 118, 119, 130])
-    HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, title="Combined Reflected", savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
+    HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title="Combined Reflected", savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
     ic(f'Saved {savename}')
 
     # Plot combined direct
     bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
     savename = f'{save_folder}AreaAnglesDirectCombined.png'
-    x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name='combined_direct')
+    x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name='combined_direct')
     zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, 'combined_direct', [13, 14, 15, 17, 18, 19, 13])
-    HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, title="Combined Direct", savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
+    HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title="Combined Direct", savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
     ic(f'Saved {savename}')
 
     # Now plot coincidences
@@ -85,9 +85,9 @@ if __name__ == "__main__":
             ic(f'Weight {weight_name} not found')
             continue
         savename = f'{save_folder}AreaAnglesDirect_coinc{i}.png'
-        x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
+        x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
         zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, weight_name, good_stations)
-        HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, title=f'{i} Coinc w/Refl',savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
+        HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title=f'{i} Coinc w/Refl',savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
         ic(f'Saved {savename}')
 
     # Coinc all w/o refl
@@ -99,9 +99,9 @@ if __name__ == "__main__":
             ic(f'Weight {weight_name} not found')
             continue
         savename = f'{save_folder}AreaAnglesDirect_norefl_coinc{i}.png'
-        x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
+        x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
         zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, weight_name, good_stations)
-        HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, title=f'{i} Coinc w/o Refl',savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
+        HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title=f'{i} Coinc w/o Refl',savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
         ic(f'Saved {savename}')
 
     # Coinc with reflection and station 52
@@ -113,9 +113,9 @@ if __name__ == "__main__":
             ic(f'Weight {weight_name} not found')
             continue
         savename = f'{save_folder}AreaAnglesDirect_coinc{i}_52up.png'
-        x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
+        x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
         zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, weight_name, good_stations)
-        HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, title=f'{i} Coinc w/Refl 52up',savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
+        HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title=f'{i} Coinc w/Refl 52up',savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
         ic(f'Saved {savename}')
 
     # Coinc without reflection and with station 52
@@ -127,7 +127,7 @@ if __name__ == "__main__":
             ic(f'Weight {weight_name} not found')
             continue
         savename = f'{save_folder}AreaAnglesDirect_coinc{i}_52up_norefl.png'
-        x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
+        x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name=weight_name)
         zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, weight_name, good_stations)
-        HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, title=f'{i} Coinc w/o Refl 52up',savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
+        HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title=f'{i} Coinc w/o Refl 52up',savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
         ic(f'Saved {savename}')
