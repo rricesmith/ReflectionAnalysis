@@ -543,8 +543,8 @@ def plotStationLocations(ax, triggered=[], reflected_triggers=[], exclude=[]):
 
     return ax
 
-def getXYbins(max_distance=6.0*units.km):
-    return np.linspace(-max_distance/units.m, max_distance/units.m, 50), np.linspace(-max_distance/units.m, max_distance/units.m, 50)
+def getXYbins(max_distance=6.0*units.km, num=50):
+    return np.linspace(-max_distance/units.m, max_distance/units.m, 50), np.linspace(-max_distance/units.m, max_distance/units.m, num)
 
 def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_trig=[], refl_trig=[], exclude=[], max_distance=6.0*units.km):
     # Plot 2d histogram area of stations, but at every bin have an arrow pointing in the direction of the weighted average azimuth and zenith
@@ -555,7 +555,7 @@ def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_tr
         azimuth = np.rad2deg(azimuth)
     
 
-    x_bins, y_bins = getXYbins(max_distance)
+    x_bins, y_bins = getXYbins(max_distance, num=25)
 
     x_center = (x_bins[1:] + x_bins[:-1]) / 2
     y_center = (y_bins[1:] + y_bins[:-1]) / 2
