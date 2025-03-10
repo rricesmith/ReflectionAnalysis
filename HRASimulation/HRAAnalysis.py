@@ -445,8 +445,8 @@ def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=Tr
                 recon_azimuth[-1] += event.recon_azimuth[station_id]
         if i == 0:
             i = 1
-        recon_zenith[-1] /= len(i)
-        recon_azimuth[-1] /= len(i)
+        recon_zenith[-1] /= i
+        recon_azimuth[-1] /= i
 
     return np.array(zenith), np.array(recon_zenith), np.array(azimuth), np.array(recon_azimuth), np.array(weights)
 
