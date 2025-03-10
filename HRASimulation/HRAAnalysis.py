@@ -407,7 +407,7 @@ def plotRateWithError(eventRate, errorRate, savename, title):
     ax.set_ylabel('Evts/Yr')
     ax.set_yscale('log')
     ax.set_ylim(bottom=10**-3)
-    ax.legend()
+    ax.legend(loc='lower left')
     ax.set_title(title)
     fig.savefig(savename)
     ic(f'Saved {savename}')
@@ -593,8 +593,9 @@ def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_tr
             if weighted_throws[iX][iY] == 0:
                 continue
             color = colors[np.digitize(avg_zen[iX][iY], zen_bins)-1]
-            ic(x, y, 0.1*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), 0.1*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])))
-            ax.arrow(x, y, iX*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), iX*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])), head_width=iX, head_length=iX, color=color)
+            ic(avg_zen[iX][iY], avg_azi[iX][iY], color, zen_bins, np.digitize(avg_zen[iX][iY], zen_bins))
+            # ic(x, y, 0.1*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), 0.1*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])))
+            ax.arrow(x, y, 4*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), 4*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])), head_width=100, head_length=50, color=color)
 
 
     ax.set_xlim(-max_distance/units.m, max_distance/units.m)
