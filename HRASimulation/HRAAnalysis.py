@@ -560,7 +560,6 @@ def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_tr
     x_center = (x_bins[1:] + x_bins[:-1]) / 2
     y_center = (y_bins[1:] + y_bins[:-1]) / 2
 
-    ic(x_bins, x_center, x[0:10])
 
     avg_zen = np.zeros((len(x_center), len(y_center)))
     avg_azi = np.zeros((len(x_center), len(y_center)))
@@ -588,13 +587,17 @@ def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_tr
     zen_bins = np.linspace(0, 90, 90)
     colors = cmap(zen_bins)
 
+    ic(x_bins, x_center, x[0:10])
+
+
     for iX, x in enumerate(x_center):
         for iY, y in enumerate(y_center):
             if weighted_throws[iX][iY] == 0:
                 continue
             color = colors[np.digitize(avg_zen[iX][iY], zen_bins)-1]
+            ic(x, y, 0.1*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), 0.1*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])))
             ax.arrow(x, y, 0.1*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), 0.1*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])), head_width=0.1, head_length=0.1, color=color)
-
+    quit()
     fig.colorbar(plt.cm.ScalarMappable(norm=matplotlib.colors.Normalize(vmin=0, vmax=90), cmap=cmap), ax=ax, label='Zenith Angle (deg)')
     ax.legend()
     ax.set_xlabel('x (m)')
