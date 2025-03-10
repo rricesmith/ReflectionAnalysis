@@ -6,7 +6,8 @@ from icecream import ic
 import os
 import numpy as np
 import astrotools.auger as auger
-import matplotlib.colorsimport matplotlib.pyplot as plt
+import matplotlib.colors
+import matplotlib.pyplot as plt
 import HRASimulation.HRAAnalysis as HRAAnalysis
 import configparser
 from HRASimulation.HRAEventObject import HRAevent
