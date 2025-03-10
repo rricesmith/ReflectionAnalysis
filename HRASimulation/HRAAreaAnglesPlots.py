@@ -46,13 +46,13 @@ if __name__ == "__main__":
     for station in dir_trig:
         savename = f'{save_folder}AreaAnglesDirect_{station}.png'
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
-        zenith, recon_zenith, azimuth, recon_azimuth = HRAAnalysis.getAnglesReconWeights(HRAeventList, station, station)
+        zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, station, station)
         HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, title=f'{station} Direct', savename=savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
 
     for station in refl_trig:
         savename = f'{save_folder}AreaAnglesReflected_{station}.png'
         x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
-        zenith, recon_zenith, azimuth, recon_azimuth = HRAAnalysis.getAnglesReconWeights(HRAeventList, station, station)
+        zenith, recon_zenith, azimuth, recon_azimuth, weightss = HRAAnalysis.getAnglesReconWeights(HRAeventList, station, station)
         HRAAnalysis.plotAreaAziZenArrows(x, y, azimuth, zenith, title=f'{station} Reflected', savename=savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
 
     relf_trig = np.array(refl_trig) - 100 # Subtract 100 to get the station number for plot numbers
