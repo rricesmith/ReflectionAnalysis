@@ -593,6 +593,7 @@ def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_tr
             # color = colors[np.digitize(avg_zen[iX][iY], zen_bins)-1]
             # ic(avg_zen[iX][iY], avg_azi[iX][iY], color, zen_bins, np.digitize(avg_zen[iX][iY], zen_bins))
             # ic(x, y, 0.1*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), 0.1*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])))
+            ic(avg_azi[iX][iY], np.cos(np.deg2rad(avg_azi[iX][iY])), -np.sin(np.deg2rad(avg_azi[iX][iY])))
             ax.arrow(x, y, 4*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), 4*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])), head_width=100, head_length=50, color=cmap(avg_zen[iX][iY]/90))
 
 
