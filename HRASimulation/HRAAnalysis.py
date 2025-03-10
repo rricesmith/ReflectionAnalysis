@@ -552,9 +552,7 @@ def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_tr
 
     if max(zenith) < 10 or max(azimuth) < 4:
         zenith = np.rad2deg(zenith)
-        recon_zenith = np.rad2deg(recon_zenith)
         azimuth = np.rad2deg(azimuth)
-        recon_azimuth = np.rad2deg(recon_azimuth)
     
 
     x_bins, y_bins = getXYbins(max_distance)
