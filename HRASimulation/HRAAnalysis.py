@@ -398,7 +398,7 @@ def plotRateWithError(eventRate, errorRate, savename, title):
 
     eventRate[np.isnan(eventRate)] = 0
     errorRate[np.isnan(errorRate)] = 0
-    ax.fill_between((e_bins[1:]+e_bins[:-1])/2, np.sum(eventRate - errorRate,axis=1), np.sum(eventRate + errorRate,axis=1), alpha=0.5, label=f'{np.sum(eventRate):.2f} +/- {np.sum(errorRate):.2f} Evts/Yr')
+    ax.fill_between((e_bins[1:]+e_bins[:-1])/2, np.nansum(eventRate - errorRate,axis=1), np.nansum(eventRate + errorRate,axis=1), alpha=0.5, label=f'{np.nansum(eventRate):.2f} +/- {np.nansum(errorRate):.2f} Evts/Yr')
 
     for iZ in range(len(z_bins)-1):
         ax.fill_between((e_bins[1:]+e_bins[:-1])/2, eventRate[:,iZ] - errorRate[:,iZ], eventRate[:,iZ] + errorRate[:,iZ], alpha=0.5, label=f'{z_bins[iZ]/units.deg:.1f}-{z_bins[iZ+1]/units.deg:.1f}deg')
@@ -559,6 +559,7 @@ def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_tr
 
     x_center = (x_bins[1:] + x_bins[:-1]) / 2
     y_center = (y_bins[1:] + y_bins[:-1]) / 2
+    length = np.sqrt((x_bins[1] - x_bins[0])**2 + (y_bins[1] - y_bins[0])**2)
 
 
     avg_zen = np.zeros((len(x_center), len(y_center)))
@@ -593,10 +594,11 @@ def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_tr
                 continue
             color = colors[np.digitize(avg_zen[iX][iY], zen_bins)-1]
             ic(x, y, 0.1*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), 0.1*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])))
-            ax.arrow(x, y, 0.1*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), 0.1*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])), head_width=0.1, head_length=0.1, color=color)
+            ax.arrow(x, y, length*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), length*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])), head_width=1, head_length=1, color=color)
 
 
-
+    ax.set_xlim(-max_distance/units.m, max_distance/units.m)
+    ax.set_ylim(-max_distance/units.m, max_distance/units.m)
     fig.colorbar(plt.cm.ScalarMappable(norm=matplotlib.colors.Normalize(vmin=0, vmax=90), cmap=cmap), ax=ax, label='Zenith Angle (deg)')
     ax.legend()
     ax.set_xlabel('x (m)')
@@ -696,7 +698,7 @@ if __name__ == "__main__":
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, w/Refl', f'{save_folder}trigger_rate_coincidence_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins, max_distance=max_distance)
         # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_wrefl', max_distance=max_distance)
-        ic(event_rate_coincidence[i], np.sum(event_rate_coincidence[i]))
+        ic(event_rate_coincidence[i], np.nansum(event_rate_coincidence[i]))
         imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences, w/Refl', f'{save_folder}event_rate_coincidence_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
         event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList, max_distance=max_distance)
         plotRateWithError(event_rate_coincidence[i], event_rate_error, f'{save_folder}error_rate/event_rate_coincidence_error_{i}.png', f'Event Rate Error for {i} Coincidences')
@@ -712,7 +714,7 @@ if __name__ == "__main__":
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate for {i} Coincidences, w/o Refl', f'{save_folder}trigger_rate_coincidence_norefl_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins, max_distance=max_distance)
         # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_norefl', max_distance=max_distance)
-        ic(event_rate_coincidence[i], np.sum(event_rate_coincidence[i]))
+        ic(event_rate_coincidence[i], np.nansum(event_rate_coincidence[i]))
         imshowRate(event_rate_coincidence[i], f'Event Rate for {i} Coincidences w/o Refl', f'{save_folder}event_rate_coincidence_norefl_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
         event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList, max_distance=max_distance)
         plotRateWithError(event_rate_coincidence[i], event_rate_error, f'{save_folder}error_rate/event_rate_coincidence_norefl_error_{i}.png', f'Event Rate Error for {i} Coincidences w/o Refl')
@@ -729,7 +731,7 @@ if __name__ == "__main__":
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate, {i} Coincidences, 52 upward forced w/Refl', f'{save_folder}trigger_rate_coincidence_52up_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins, max_distance=max_distance)
         # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_wrefl', max_distance=max_distance)
-        ic(event_rate_coincidence[i], np.sum(event_rate_coincidence[i]))
+        ic(event_rate_coincidence[i], np.nansum(event_rate_coincidence[i]))
         imshowRate(event_rate_coincidence[i], f'Event Rate, {i} Coincidences, 52 upward forced w/Refl', f'{save_folder}event_rate_coincidence_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
         event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList, max_distance=max_distance)
         plotRateWithError(event_rate_coincidence[i], event_rate_error, f'{save_folder}error_rate/event_rate_coincidence_52up_error_{i}.png', f'Event Rate Error for {i} Coincidences, 52 upward forced w/Refl')
@@ -746,7 +748,7 @@ if __name__ == "__main__":
         imshowRate(trigger_rate_coincidence[i], f'Trigger Rate, {i} Coincidences, 52 upward forced w/o Refl', f'{save_folder}trigger_rate_coincidence_norefl_52up_{i}.png', colorbar_label='Trigger Rate')
         event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins, max_distance=max_distance)
         # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_52up_norefl', max_distance=max_distance)
-        ic(event_rate_coincidence[i], np.sum(event_rate_coincidence[i]))
+        ic(event_rate_coincidence[i], np.nansum(event_rate_coincidence[i]))
         imshowRate(event_rate_coincidence[i], f'Event Rate, {i} Coincidences, 52 upward forced w/o Refl', f'{save_folder}event_rate_coincidence_norefl_52up_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
         event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList, max_distance=max_distance)
         plotRateWithError(event_rate_coincidence[i], event_rate_error, f'{save_folder}error_rate/event_rate_coincidence_norefl_52up_error_{i}.png', f'Event Rate Error for {i} Coincidences, 52 upward forced w/o Refl')
