@@ -560,6 +560,8 @@ def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_tr
     x_center = (x_bins[1:] + x_bins[:-1]) / 2
     y_center = (y_bins[1:] + y_bins[:-1]) / 2
 
+    ic(x_bins, x_center, x[0:10])
+
     avg_zen = np.zeros((len(x_center), len(y_center)))
     avg_azi = np.zeros((len(x_center), len(y_center)))
     weighted_throws = np.zeros((len(x_center), len(y_center)))
