@@ -67,7 +67,8 @@ if __name__ == "__main__":
     ic(f'Saved {savename}')
 
     # Plot weighted histogram of zenith and azimuths
-    HRAAnalysis.histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title="Combined Reflected", savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
+    savename = f'{save_folder}ReflectedCombined_Hist.png'
+    HRAAnalysis.histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title="Combined Reflected", savename=savename
 
     # Plot combined direct
     bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
@@ -78,7 +79,8 @@ if __name__ == "__main__":
     ic(f'Saved {savename}')
 
     # Plot weighted histogram of zenith and azimuths
-    HRAAnalysis.histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title="Combined Direct", savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
+    savename = f'{save_folder}DirectCombined_Hist.png'
+    HRAAnalysis.histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title="Combined Direct", savename=savename)
 
 
     # Now plot coincidences
