@@ -5,7 +5,54 @@ from icecream import ic
 from NuRadioReco.framework.parameters import eventParameters as evtp
 from NuRadioReco.framework.parameters import showerParameters as shp
 from NuRadioReco.framework.parameters import stationParameters as stnp
+import matplotlib.pyplot as plt
+import numpy as np
+from NuRadioReco.utilities import units, fft
 
+def plotTrace(traces, title, saveLoc, sampling_rate=2, show=False):
+    #Sampling rate should be in GHz
+
+    x = np.linspace(1, int(256 / sampling_rate), num=256)
+    x_freq = np.fft.rfftfreq(len(x), d=(1 / sampling_rate*units.GHz)) / units.MHz
+
+#    print(f'shape traces {np.shape(traces)}')
+
+    fig, axs = plt.subplots(nrows=4, ncols=2, sharex=False)
+    for chID, trace in enumerate(traces):
+        trace = trace.reshape(len(trace))
+        axs[chID][0].plot(x, trace)
+#        print(f'shape trace {np.shape(trace)}')
+#        print(f'shape fft trace {np.shape(np.abs(fft.time2freq(trace, sampling_rate*units.GHz)))}')
+#        print(f'trace {trace}')
+#        print(f'fft {np.abs(fft.time2freq(trace, sampling_rate*units.GHz))}')
+        axs[chID][1].plot(x_freq, np.abs(fft.time2freq(trace, sampling_rate*units.GHz)))
+
+    axs[3][0].set_xlabel('time [ns]',fontsize=18)
+    axs[3][1].set_xlabel('Frequency [MHz]',fontsize=18)
+
+    for chID, trace in enumerate(traces):
+        axs[chID][0].set_ylabel(f'ch{chID}',labelpad=10,rotation=0,fontsize=13)
+        # axs[i].set_ylim(-250,250)
+        axs[chID][0].set_xlim(-3,260 / sampling_rate)
+        axs[chID][1].set_xlim(-3, 500)
+        axs[chID][0].tick_params(labelsize=13)
+        axs[chID][1].tick_params(labelsize=13)
+    axs[0][0].tick_params(labelsize=13)
+    axs[0][1].tick_params(labelsize=13)
+    axs[0][0].set_ylabel(f'ch{0}',labelpad=3,rotation=0,fontsize=13)
+    axs[chID][0].set_xlim(-3,260 / sampling_rate)
+    axs[chID][1].set_xlim(-3, 500)
+
+    fig.text(0.03, 0.5, 'voltage [V]', ha='center', va='center', rotation='vertical',fontsize=18)
+    plt.xticks(size=13)
+    plt.suptitle(title)
+
+    if show:
+        plt.show()
+    else:
+        plt.savefig(saveLoc, format='png')
+    plt.clf()
+    return
 
 if __name__ == '__main__':
     config = configparser.ConfigParser()
@@ -54,12 +101,12 @@ if __name__ == '__main__':
             station_zenith = station.get_parameter(stnp.zenith)
             station_azimuth = station.get_parameter(stnp.azimuth)
 
-            ic(core_x, core_y, sim_energy, sim_zenith, sim_azimuth, station_zenith, station_azimuth)
+            ic(core_x, core_y, sim_energy, sim_zenith/units.deg, sim_azimuth/units.deg, station_zenith/units.deg, station_azimuth/units.deg)
 
             pos_check = core_x**2 + core_y**2 >= rdist**2
             eng_check = englim[0] <= sim_energy <= englim[1]
-            zen_check = zenlim[0] <= sim_zenith <= zenlim[1]
-            azi_check = azilim[0] <= sim_azimuth <= azilim[1]
+            zen_check = zenlim[0] <= sim_zenith/units.deg <= zenlim[1]
+            azi_check = azilim[0] <= sim_azimuth/units.deg <= azilim[1]
 
             ic(pos_check, eng_check, zen_check, azi_check)
             quit()
