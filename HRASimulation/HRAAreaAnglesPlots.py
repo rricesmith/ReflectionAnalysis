@@ -47,7 +47,8 @@ if __name__ == "__main__":
         savename = f'{save_folder}AreaAnglesDirect_{station}.png'
         x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
         mask = weights == 0
-        ic(weights[0:10], weights[0:10] == 0)
+        ic(weights)
+        ic(mask)
         quit()
         zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, station, station)
         HRAAnalysis.plotAreaAziZenArrows(x[mask], y[mask], zenith[mask], azimuth[mask], weights[mask], title=f'{station} Direct', savename=savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
