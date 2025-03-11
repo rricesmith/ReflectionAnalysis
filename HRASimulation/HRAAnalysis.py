@@ -460,8 +460,26 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
     
     zenith_bins, azimuth_bins = np.linspace(0, 90, 100), np.linspace(0, 360, 100)
     fig, ax = plt.subplots(nrows=1, ncols=2)
-
     norm = matplotlib.colors.LogNorm(vmin=np.min(weights[np.nonzero(weights)]), vmax=np.max(weights)*5)
+
+
+    ax[0].hist(zenith, bins=zenith_bins, weights=weights)
+    ax[0].set_xlabel('True Zenith (deg)')
+    ax[0].set_ylabel('Evts/Yr')
+    ax[0].set_title('Zenith')
+
+    ax[1].hist(azimuth, bins=azimuth_bins, weights=weights)
+    ax[1].set_xlabel('True Azimuth (deg)')
+    ax[1].set_ylabel('Evts/Yr')
+    ax[1].set_title('Azimuth')
+
+    plt.suptitle(title)
+    plt.savefig(savename)
+    ic(f'Saved {savename}')
+    plt.close()
+
+
+    fig, ax = plt.subplots(nrows=1, ncols=2)
     h, xedges, yedges, im = ax[0].hist2d(zenith, recon_zenith, bins=(zenith_bins, zenith_bins), weights=weights, cmap='viridis', norm=norm)
     ax[0].plot([0, 90], [0, 90], color='black', linestyle='--')
     ax[0].set_xlabel('True Zenith (deg)')
@@ -588,10 +606,9 @@ def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_tr
 
     for iX, x in enumerate(x_center):
         for iY, y in enumerate(y_center):
-            ic(weighted_throws[iX][iY], weighted_throws[iX][iY]==0)
             if weighted_throws[iX][iY] == 0:
+                ax.scatter(x, y, marker='x', color='black', s=10)
                 continue
-            ic('continued?')
             # color = colors[np.digitize(avg_zen[iX][iY], zen_bins)-1]
             # ic(avg_zen[iX][iY], avg_azi[iX][iY], color, zen_bins, np.digitize(avg_zen[iX][iY], zen_bins))
             # ic(x, y, 0.1*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), 0.1*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])))
