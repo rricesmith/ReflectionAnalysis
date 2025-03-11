@@ -68,7 +68,7 @@ if __name__ == "__main__":
 
     # Plot weighted histogram of zenith and azimuths
     savename = f'{save_folder}ReflectedCombined_Hist.png'
-    HRAAnalysis.histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title="Combined Reflected", savename=savename
+    HRAAnalysis.histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title="Combined Reflected", savename=savename)
 
     # Plot combined direct
     bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
