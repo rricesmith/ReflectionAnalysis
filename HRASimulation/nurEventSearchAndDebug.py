@@ -34,7 +34,7 @@ if __name__ == '__main__':
             station_id = 0
             for station in event.get_stations():
                 if station.get_id() in station_check:
-                    if station.has_triggered(trigger_name=f'primary_LPDA_2of4_{sigma}sigma'):
+                    if station.has_triggered() and station.has_triggered(trigger_name=f'primary_LPDA_2of4_{sigma}sigma'):
                         ic(f'{event.get_id()} {station.get_id()} {station.get_parameter(stnp.zenith)} {station.get_parameter(stnp.azimuth)}')
                         triggered = True
                         station_id = station.get_id()
