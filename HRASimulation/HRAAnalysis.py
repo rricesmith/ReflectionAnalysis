@@ -577,6 +577,9 @@ def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_tr
         avg_azi[x_dig[iE]][y_dig[iE]] += azimuth[iE] * weights[iE]
         weighted_throws[x_dig[iE]][y_dig[iE]] += weights[iE]
 
+    ic(avg_zen[0:10][0:10])
+    ic(avg_azi[0:10][0:10])
+    ic(weighted_throws[0:10][0:10])
     avg_zen /= weighted_throws
     avg_azi /= weighted_throws
 
