@@ -56,7 +56,7 @@ if __name__ == '__main__':
 
             ic(core_x, core_y, sim_energy, sim_zenith, sim_azimuth, station_zenith, station_azimuth)
 
-            pos_check = (core_x - station.get_parameter(stnp.x))**2 + (core_y - station.get_parameter(stnp.y))**2 >= rdist**2
+            pos_check = core_x**2 + core_y**2 >= rdist**2
             eng_check = englim[0] <= sim_energy <= englim[1]
             zen_check = zenlim[0] <= sim_zenith <= zenlim[1]
             azi_check = azilim[0] <= sim_azimuth <= azilim[1]
