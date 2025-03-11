@@ -47,6 +47,8 @@ if __name__ == "__main__":
         savename = f'{save_folder}AreaAnglesDirect_{station}.png'
         x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
         mask = weights == 0
+        ic(weights[0:10], weights[0:10] == 0)
+        quit()
         zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, station, station)
         HRAAnalysis.plotAreaAziZenArrows(x[mask], y[mask], zenith[mask], azimuth[mask], weights[mask], title=f'{station} Direct', savename=savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
 
@@ -71,7 +73,7 @@ if __name__ == "__main__":
 
     # Plot weighted histogram of zenith and azimuths
     savename = f'{save_folder}ReflectedCombined_Hist.png'
-    HRAAnalysis.histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title="Combined Reflected", savename=savename)
+    HRAAnalysis.histAngleRecon(zenith[mask], azimuth[mask], recon_zenith[mask], recon_azimuth[mask], weights[mask], title="Combined Reflected", savename=savename)
 
     # Plot combined direct
     bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
@@ -84,7 +86,7 @@ if __name__ == "__main__":
 
     # Plot weighted histogram of zenith and azimuths
     savename = f'{save_folder}DirectCombined_Hist.png'
-    HRAAnalysis.histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title="Combined Direct", savename=savename)
+    HRAAnalysis.histAngleRecon(zenith[mask], azimuth[mask], recon_zenith[mask], recon_azimuth[mask], weights[mask], title="Combined Direct", savename=savename)
 
 
     # Now plot coincidences
