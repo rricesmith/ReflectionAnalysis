@@ -318,6 +318,18 @@ def getXYWeights(HRAeventList, weight_name, use_primary=True, in_array=None):
 
     return x, y, weights
 
+def getTrigMask(HRAeventList, station_ids, sigma=4.5):
+
+    mask = np.zeros(len(HRAeventList), dtype=bool)
+    for iE, event in enumerate(HRAeventList):
+        if event.hasTriggered():
+            for station_id in event.directTriggers(sigma):
+                if station_id in station_ids:
+                    mask[iE] = True
+                    break
+
+    return mask
+
 def getWeights(HRAeventList, weight_name, use_primary=True, in_array=None):
     if in_array is None:
         in_array = np.zeros(len(HRAeventList))
@@ -430,11 +442,6 @@ def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=Tr
         station_ids = [station_ids]
 
     for event in HRAeventList:
-        trig = False
-        for station_id in station_ids:
-            trig = trig or event.hasTriggered(station_id, sigma=sigma)
-        if not trig:
-            continue
         zenith.append(event.getAngles()[0])
         azimuth.append(event.getAngles()[1])
         weights.append(event.getWeight(weight_name, use_primary, sigma))    # Append all events because non-triggering events have a weight of zero    
