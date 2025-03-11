@@ -14,6 +14,31 @@ import h5py
 import pickle
 from HRASimulation.HRAEventObject import HRAevent
 
+
+def getHRAevents(nur_files):
+    # Input a list of nur files to get a list of HRAevent objects
+
+    eventReader = NuRadioReco.modules.io.eventReader.eventReader()
+    HRAeventList = []
+    for file in nur_files:
+        eventReader.begin(file)
+        for event in eventReader.run():
+            HRAeventList.append(HRAevent(event))
+        eventReader.end()
+
+    return np.array(HRAeventList)
+
+
+def getHRAeventsFromDir(directory):
+    # Input a directory to get a list of HRAevent objects from all nur files in that directory
+
+    nur_files = []
+    for file in os.listdir(directory):
+        if file.endswith('.nur'):
+            nur_files.append(os.path.join(directory, file))
+
+    return getHRAevents(nur_files)
+
 def loadHRAfromH5(filename):
     HRAeventList = []
     with h5py.File(filename, 'r') as hf:
@@ -48,7 +73,7 @@ if __name__ == "__main__":
     if not os.path.exists(numpy_folder):
         os.makedirs(numpy_folder)
 
-    HRAeventList = HRAA.getHRAeventsFromDir(sim_folder)
+    HRAeventList = getHRAeventsFromDir(sim_folder)
     direct_trigger_rate_dict, reflected_trigger_rate_dict, combined_trigger_rate, stn_100s_trigger_rate, stn_200s_trigger_rate, e_bins, z_bins = HRAA.getBinnedTriggerRate(HRAeventList)
     direct_event_rate = {}
     for station_id in direct_trigger_rate_dict:

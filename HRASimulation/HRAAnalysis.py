@@ -14,30 +14,6 @@ from HRASimulation.HRAEventObject import HRAevent
 from HRASimulation.HRANurToNpy import loadHRAfromH5
 
 
-def getHRAevents(nur_files):
-    # Input a list of nur files to get a list of HRAevent objects
-
-    eventReader = NuRadioReco.modules.io.eventReader.eventReader()
-    HRAeventList = []
-    for file in nur_files:
-        eventReader.begin(file)
-        for event in eventReader.run():
-            HRAeventList.append(HRAevent(event))
-        eventReader.end()
-
-    return np.array(HRAeventList)
-
-
-def getHRAeventsFromDir(directory):
-    # Input a directory to get a list of HRAevent objects from all nur files in that directory
-
-    nur_files = []
-    for file in os.listdir(directory):
-        if file.endswith('.nur'):
-            nur_files.append(os.path.join(directory, file))
-
-    return getHRAevents(nur_files)
-
 def getEnergyZenithBins():
     # Define the bins that are constant
     min_energy = 16.0
