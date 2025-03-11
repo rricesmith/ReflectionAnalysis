@@ -474,10 +474,11 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
     ax[1].set_title('Azimuth')
 
     plt.suptitle(title)
-    plt.savefig(savename)
+    plt.savefig(savename.replace('.png', '_1D.png'))
     ic(f'Saved {savename}')
     plt.close()
 
+    savename.replace('_1D.png', '_2D.png')
 
     fig, ax = plt.subplots(nrows=1, ncols=2)
     h, xedges, yedges, im = ax[0].hist2d(zenith, recon_zenith, bins=(zenith_bins, zenith_bins), weights=weights, cmap='viridis', norm=norm)
