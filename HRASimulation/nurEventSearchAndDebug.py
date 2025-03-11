@@ -116,7 +116,10 @@ if __name__ == '__main__':
             zen_check = zenlim[0] <= sim_zenith/units.deg <= zenlim[1]
             azi_check = azilim[0] <= sim_azimuth/units.deg <= azilim[1]
 
+
             ic(pos_check, eng_check, zen_check, azi_check)
+            if not (pos_check and eng_check and zen_check and azi_check):
+                continue
 
             traces = []
             use_channels = [0, 1, 2, 3]
@@ -125,7 +128,7 @@ if __name__ == '__main__':
                 traces.append(y)
 
             title = f'Stn {station_id}, Zen{sim_zenith/units.deg:.1f}deg Azi{sim_azimuth/units.deg:.1f}deg, Eng {np.log10(sim_energy/units.eV):.1f}log10eV, ({core_x/units.km:.1f}km, {core_y/units.km:.1f}km)'
-            plotTrace(traces, title, f'{save_folder}Traces/{event.get_id()}_{station_id}_{core_x/units.km:.1f}-{core_y/units.km:.1f}.png')
+            plotTrace(traces, title, f'{save_folder}Traces/Stn{station_id}_{core_x/units.km:.1f}km-{core_y/units.km:.1f}km.png')
             plotted += 1
             if plotted >= plot:
                 quit()
