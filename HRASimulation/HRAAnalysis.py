@@ -591,6 +591,7 @@ def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_tr
             ic(weighted_throws[iX][iY], weighted_throws[iX][iY]==0)
             if weighted_throws[iX][iY] == 0:
                 continue
+            ic('continued?')
             # color = colors[np.digitize(avg_zen[iX][iY], zen_bins)-1]
             # ic(avg_zen[iX][iY], avg_azi[iX][iY], color, zen_bins, np.digitize(avg_zen[iX][iY], zen_bins))
             # ic(x, y, 0.1*avg_zen[iX][iY]*np.cos(np.deg2rad(avg_azi[iX][iY])), 0.1*avg_zen[iX][iY]*-np.sin(np.deg2rad(avg_azi[iX][iY])))
