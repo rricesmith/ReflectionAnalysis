@@ -58,7 +58,13 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read('HRASimulation/config.ini')
     sim_folder = config['FOLDERS']['sim_folder']
+    numpy_folder = config['FOLDERS']['numpy_folder']
+    save_folder = config['FOLDERS']['save_folder']
+    diameter = config['SIMPARAMETERS']['diameter']
+    max_distance = float(diameter)/2*units.km
 
+    if not os.exists(f'{save_folder}Traces'):
+        os.makedirs(f'{save_folder}Traces')
 
     nur_files = []
     for file in os.listdir(sim_folder):
@@ -72,6 +78,9 @@ if __name__ == '__main__':
     rdist = 5000
     station_check = [13, 14, 15, 17, 18, 19, 30]
     sigma = 4.5
+
+    plot = 10
+    plotted = 0
 
     eventReader = NuRadioReco.modules.io.eventReader.eventReader()
     for file in nur_files:
@@ -109,4 +118,16 @@ if __name__ == '__main__':
             azi_check = azilim[0] <= sim_azimuth/units.deg <= azilim[1]
 
             ic(pos_check, eng_check, zen_check, azi_check)
-            quit()
+
+            traces = []
+            use_channels = [0, 1, 2, 3]
+            for ChId, channel in enumerate(station.iter_channels(use_channels=use_channels)):
+                y = channel.get_trace()
+                traces.append(y)
+
+            title = f'Stn {station_id}, Zen{sim_zenith/units.deg:.1f}deg Azi{sim_azimuth/units.deg:.1f}deg, Eng {np.log10(sim_energy/units.eV):.1f}log10eV, ({core_x/units.km:.1f}km, {core_y/units.km:.1f}km)'
+            plotTrace(traces, title, f'{save_folder}Traces/{event.get_id()}_{station_id}_{core_x/units.km:.1f}-{core_y/units.km:.1f}.png')
+            plotted += 1
+            if plotted >= plot:
+                quit()
+
