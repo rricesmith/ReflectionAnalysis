@@ -430,6 +430,11 @@ def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=Tr
         station_ids = [station_ids]
 
     for event in HRAeventList:
+        trig = False
+        for station_id in station_ids:
+            trig = trig or event.hasTriggered(station_id, sigma=sigma)
+        if not trig:
+            continue
         zenith.append(event.getAngles()[0])
         azimuth.append(event.getAngles()[1])
         weights.append(event.getWeight(weight_name, use_primary, sigma))    # Append all events because non-triggering events have a weight of zero    
@@ -452,7 +457,7 @@ def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=Tr
 
 
 def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title, savename, colorbar_label='Evts/yr'):
-    if max(zenith) < 10 or max(azimuth) < 4:
+    if max(zenith) < np.pi/2 or max(azimuth) < np.pi*2:
         zenith = np.rad2deg(zenith)
         recon_zenith = np.rad2deg(recon_zenith)
         azimuth = np.rad2deg(azimuth)
@@ -565,11 +570,11 @@ def plotStationLocations(ax, triggered=[], reflected_triggers=[], exclude=[]):
 def getXYbins(max_distance=6.0*units.km, num=50):
     return np.linspace(-max_distance/units.m, max_distance/units.m, 50), np.linspace(-max_distance/units.m, max_distance/units.m, num)
 
-def plotAreaAziZenArrows(x, y, azimuth, zenith, weights, title, savename, dir_trig=[], refl_trig=[], exclude=[], max_distance=6.0*units.km):
+def plotAreaAziZenArrows(x, y, zenith, azimuth, weights, title, savename, dir_trig=[], refl_trig=[], exclude=[], max_distance=6.0*units.km):
     # Plot 2d histogram area of stations, but at every bin have an arrow pointing in the direction of the weighted average azimuth and zenith
     # Arrow length is proportional to the weighted average zenith
 
-    if max(zenith) < 10 or max(azimuth) < 4:
+    if max(zenith) < np.pi/2 or max(azimuth) < np.pi*2:
         zenith = np.rad2deg(zenith)
         azimuth = np.rad2deg(azimuth)
     
