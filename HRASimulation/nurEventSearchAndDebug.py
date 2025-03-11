@@ -63,8 +63,7 @@ if __name__ == '__main__':
     diameter = config['SIMPARAMETERS']['diameter']
     max_distance = float(diameter)/2*units.km
 
-    if not os.exists(f'{save_folder}Traces'):
-        os.makedirs(f'{save_folder}Traces')
+    os.makedirs(f'{save_folder}Traces', exist_ok=True)
 
     nur_files = []
     for file in os.listdir(sim_folder):
