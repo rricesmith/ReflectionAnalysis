@@ -47,6 +47,7 @@ class HRAevent:
             self.station_triggers[sigma] = []
             self.secondary_station_triggers[sigma] = []
         # Only doing the 3.5sigma triggers to begin with
+
         for station in event.get_stations():
             for sigma in self.trigger_sigmas:
                 self.weight[sigma][station.get_id()] = [np.nan, np.nan]
@@ -60,6 +61,7 @@ class HRAevent:
                     for sigma in self.trigger_sigmas:
                         if station.has_triggered(trigger_name=f'secondary_LPDA_2of4_{sigma}sigma'):
                             self.addSecondaryTrigger(station.get_id(), sigma)
+
 
 
         self.direct_triggers = {}
@@ -119,9 +121,9 @@ class HRAevent:
                 rt.remove(52)
             return rt
 
-    def addTrigger(self, station_id, sigma):
-        if station_id not in self.station_triggers[sigma]:
-            self.station_triggers[sigma].append(station_id)
+    def addTrigger(self, trigger_name, sigma):
+        if trigger_name not in self.station_triggers[sigma]:
+            self.station_triggers[sigma].append(trigger_name)
 
     def addSecondaryTrigger(self, station_id, sigma):
         if station_id not in self.station_triggers[sigma]:
@@ -146,10 +148,10 @@ class HRAevent:
     def hasSecondaryCoincidence(self, sigma_52=7):
         return (len(self.station_triggers[sigma_52]) + len(self.secondary_station_triggers[sigma_52])) > 1
 
-    def hasTriggered(self, station_id=None, sigma=4.5):
-        if station_id is None:
+    def hasTriggered(self, trigger_name=None, sigma=4.5):
+        if trigger_name is None:
             return len(self.station_triggers[sigma]) > 0
-        return station_id in self.station_triggers[sigma]
+        return trigger_name in self.station_triggers[sigma]
 
     def inEnergyZenithBin(self, e_low, e_high, z_low, z_high):
         return e_low <= self.energy <= e_high and z_low <= self.zenith <= z_high

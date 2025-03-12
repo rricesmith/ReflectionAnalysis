@@ -50,6 +50,18 @@ def getnThrows(HRAeventList):
 
     return n_throws    
 
+def setNewTrigger(HRAEventList, trigger_name, bad_stations, sigma=4.5, sigma_52=7):
+    # Set a new trigger for each event in the HRAEventList if it triggered w/sigma and isn't in bad stations list
+    for event in HRAEventList:
+        for trigger in event.station_triggers[sigma]:
+            if trigger == 52 and 52 not in bad_stations:
+                if event.hasTriggered(trigger, sigma_52) and not event.hasTriggered(trigger_name, sigma):
+                    event.addTrigger(trigger_name, sigma)
+            elif trigger not in bad_stations and not event.hasTriggered(trigger_name, sigma):
+                event.addTrigger(trigger_name, sigma)
+
+    return
+
 
 def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, sigma=4.5, sigma_52=7):
     # Input a list of HRAevent objects to get the event rate in each energy-zenith bin
@@ -192,6 +204,10 @@ def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max
 
     # Event weight = event_rate_bin / n_triggers_bin
     for event in HRAeventList:
+        if not event.hasTriggered(weight_name, sigma):
+            # Event not triggered
+            event.setWeight(0, weight_name, sigma=sigma)
+            continue
         energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
         zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
         if energy_bin < 0 or zenith_bin < 0 or energy_bin >= len(e_bins) or zenith_bin >= len(z_bins):
