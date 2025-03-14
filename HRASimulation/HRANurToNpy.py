@@ -94,8 +94,8 @@ if __name__ == "__main__":
     combined_event_rate['200s_direct'] = HRAA.getEventRate(stn_200s_trigger_rate['direct'], e_bins, z_bins)
     combined_event_rate['200s_reflected'] = HRAA.getEventRate(stn_200s_trigger_rate['reflected'], e_bins, z_bins)
 
-    HRAA.setNewTrigger(HRAeventList, 'direct', bad_stations=[32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152])
-    HRAA.setNewTrigger(HRAeventList, 'reflected', bad_stations=[13, 14, 15, 17, 18, 19, 30, 32, 52, 132, 152])
+    HRAA.setNewTrigger(HRAeventList, 'combined_direct', bad_stations=[32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152])
+    HRAA.setNewTrigger(HRAeventList, 'combined_reflected', bad_stations=[13, 14, 15, 17, 18, 19, 30, 32, 52, 132, 152])
     HRAA.setNewTrigger(HRAeventList, '100s_direct', bad_stations=[14, 17, 19, 30, 32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152])
     HRAA.setNewTrigger(HRAeventList, '100s_reflected', bad_stations=[13, 14, 15, 17, 18, 19, 30, 32, 52, 114, 117, 119, 130, 132, 152])
     HRAA.setNewTrigger(HRAeventList, '200s_direct', bad_stations=[13, 15, 18, 32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152])
