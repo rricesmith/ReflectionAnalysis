@@ -96,7 +96,7 @@ class HRAevent:
     def secondaryTriggers(self):
         return self.secondary_station_triggers
     
-    def directTriggers(self, sigma=4.5, sigma_52=7):
+    def directTriggers(self, sigma=4, sigma_52=7):
         if sigma == sigma_52:
             return self.direct_triggers[sigma]
         else:
@@ -109,7 +109,7 @@ class HRAevent:
                 dt.remove(52)
             return dt
 
-    def reflectedTriggers(self, sigma=4.5, sigma_52=7):
+    def reflectedTriggers(self, sigma=4, sigma_52=7):
         if sigma == sigma_52:
             return self.reflected_triggers[sigma]
         else:
@@ -129,7 +129,7 @@ class HRAevent:
         if station_id not in self.station_triggers[sigma]:
             self.station_triggers[sigma].append(station_id)
 
-    def hasCoincidence(self, num=1, bad_stations=None, use_secondary=False, sigma=4.5, sigma_52=7):
+    def hasCoincidence(self, num=1, bad_stations=None, use_secondary=False, sigma=4, sigma_52=7):
         # Bad Stations should be a list of station IDs that are not to be included in the coincidence
         n_coinc = len(self.station_triggers[sigma])
         if use_secondary:
@@ -148,7 +148,7 @@ class HRAevent:
     def hasSecondaryCoincidence(self, sigma_52=7):
         return (len(self.station_triggers[sigma_52]) + len(self.secondary_station_triggers[sigma_52])) > 1
 
-    def hasTriggered(self, trigger_name=None, sigma=4.5):
+    def hasTriggered(self, trigger_name=None, sigma=4):
         if trigger_name is None:
             return len(self.station_triggers[sigma]) > 0
         return trigger_name in self.station_triggers[sigma]
@@ -156,7 +156,7 @@ class HRAevent:
     def inEnergyZenithBin(self, e_low, e_high, z_low, z_high):
         return e_low <= self.energy <= e_high and z_low <= self.zenith <= z_high
     
-    def setWeight(self, weight, weight_name, primary=True, sigma=4.5):
+    def setWeight(self, weight, weight_name, primary=True, sigma=4):
         if weight_name not in self.weight:
             # Weights can be station ids, or can be a string such as 'all reflected', or '52 with direct only'
             self.weight[sigma][weight_name] = [np.nan, np.nan]
@@ -166,12 +166,12 @@ class HRAevent:
             self.weight[sigma][weight_name][1] = weight
 
 
-    def getWeight(self, weight_name, primary=True, sigma=4.5):
+    def getWeight(self, weight_name, primary=True, sigma=4):
         if primary:
             return self.weight[sigma][weight_name][0]
         else:
             return self.weight[sigma][weight_name][1]
 
-    def hasWeight(self, weight_name, sigma=4.5):
+    def hasWeight(self, weight_name, sigma=4):
         return weight_name in self.weight[sigma]
     

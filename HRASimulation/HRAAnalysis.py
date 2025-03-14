@@ -50,7 +50,7 @@ def getnThrows(HRAeventList):
 
     return n_throws    
 
-def setNewTrigger(HRAEventList, trigger_name, bad_stations, sigma=4.5, sigma_52=7):
+def setNewTrigger(HRAEventList, trigger_name, bad_stations, sigma=4, sigma_52=7):
     # Set a new trigger for each event in the HRAEventList if it triggered w/sigma and isn't in bad stations list
     for event in HRAEventList:
         for trigger in event.station_triggers[sigma]:
@@ -63,7 +63,7 @@ def setNewTrigger(HRAEventList, trigger_name, bad_stations, sigma=4.5, sigma_52=
     return
 
 
-def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, sigma=4.5, sigma_52=7):
+def getBinnedTriggerRate(HRAeventList, num_coincidence=0, use_secondary=False, sigma=4, sigma_52=7):
     # Input a list of HRAevent objects to get the event rate in each energy-zenith bin
 
     e_bins, z_bins = getEnergyZenithBins()
@@ -193,7 +193,7 @@ def getEventRate(trigger_rate, e_bins, z_bins, max_distance=6.0*units.km):
 
     return eventRateArray * trigger_rate * area/units.km**2
 
-def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max_distance=6.0*units.km, sigma=4.5):
+def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max_distance=6.0*units.km, sigma=4):
     # Set the event rate weight for each event in the HRAeventList
 
     e_bins, z_bins = getEnergyZenithBins()
@@ -224,7 +224,7 @@ def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max
     return
 
 
-def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None, sigma=4.5, sigma_52=7):
+def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None, sigma=4, sigma_52=7):
     # Return a list of coincidence events
     # As well as a dictionary of the trigger rate array for each number of coincidences
     e_bins, z_bins = getEnergyZenithBins()
@@ -310,7 +310,7 @@ def getXYWeights(HRAeventList, weight_name, use_primary=True, in_array=None):
 
     return x, y, weights
 
-def getTrigMask(HRAeventList, station_ids, sigma=4.5):
+def getTrigMask(HRAeventList, station_ids, sigma=4):
 
     mask = np.zeros(len(HRAeventList), dtype=bool)
     for iE, event in enumerate(HRAeventList):
@@ -420,7 +420,7 @@ def plotRateWithError(eventRate, errorRate, savename, title):
     return
 
 
-def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=True, sigma=4.5):
+def getAnglesReconWeights(HRAeventList, weight_name, station_ids, use_primary=True, sigma=4):
     # Get a list of the events x/y with associated event rate as a weight
     # station_ids can be a single station or a list of stations
 
@@ -487,6 +487,7 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
     fig, ax = plt.subplots(nrows=1, ncols=2)
     h, xedges, yedges, im = ax[0].hist2d(zenith, recon_zenith, bins=(zenith_bins, zenith_bins), weights=weights, cmap='viridis', norm=norm)
     ax[0].plot([0, 90], [0, 90], color='black', linestyle='--')
+    ax[0].plot(np.linspace(0, 90.1, 1), np.rad2deg(np.arcsin(np.sin(np.deg2rad(np.linspace(0, 90.1, 1)))/1.78)), color='red', linestyle='--')
     ax[0].set_xlabel('True Zenith (deg)')
     ax[0].set_ylabel('Reconstructed Zenith (deg)')
     ax[0].set_title('Zenith')
