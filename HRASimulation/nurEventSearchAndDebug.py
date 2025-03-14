@@ -71,9 +71,9 @@ if __name__ == '__main__':
             nur_files.append(os.path.join(sim_folder, file))
 
 
-    zenlim = [20, 40]
-    azilim = [90, 180]
-    englim = [10**17.5, 10**18.5]
+    zenlim = [20, 60]
+    azilim = [0, 360]
+    englim = [10**17.5, 10**19.5]
     rdist = 5000
     station_check = [13, 14, 15, 17, 18, 19, 30]
     sigma = 4.5
