@@ -586,7 +586,11 @@ def plotAreaAziZenArrows(x, y, zenith, azimuth, weights, title, savename, dir_tr
 
 
     avg_zen = np.zeros((len(x_center), len(y_center)))
-    avg_azi = np.zeros((len(x_center), len(y_center)))
+    # avg_azi = np.zeros((len(x_center), len(y_center)))
+    # In order to get proper azimuth weighted, need to sum vectors
+    # Otherwise 1deg and 359deg would average to 180deg, rather than 0deg
+    avg_azi_x = np.zeros((len(x_center), len(y_center)))
+    avg_azi_y = np.zeros((len(x_center), len(y_center)))
     weighted_throws = np.zeros((len(x_center), len(y_center)))
 
     x_dig = np.digitize(x, x_bins) - 1
@@ -597,11 +601,18 @@ def plotAreaAziZenArrows(x, y, zenith, azimuth, weights, title, savename, dir_tr
             ic("Outside of bins, shouldn't happen so quitting")
             quit()
         avg_zen[x_dig[iE]][y_dig[iE]] += zenith[iE] * weights[iE]
-        avg_azi[x_dig[iE]][y_dig[iE]] += azimuth[iE] * weights[iE]
+        # avg_azi[x_dig[iE]][y_dig[iE]] += azimuth[iE] * weights[iE]
+        avg_azi_x[x_dig[iE]][y_dig[iE]] += np.cos(np.deg2rad(azimuth[iE])) * weights[iE]
+        avg_azi_y[x_dig[iE]][y_dig[iE]] += np.sin(np.deg2rad(azimuth[iE])) * weights[iE]
         weighted_throws[x_dig[iE]][y_dig[iE]] += weights[iE]
 
+    avg_azi_x /= weighted_throws
+    avg_azi_y /= weighted_throws
+    avg_azi = np.arctan2(avg_azi_y, avg_azi_x)
+    avg_azi = np.rad2deg(avg_azi)
+
     avg_zen /= weighted_throws
-    avg_azi /= weighted_throws
+    # avg_azi /= weighted_throws
 
     fig, ax = plt.subplots()
     plotStationLocations(ax, triggered=dir_trig, exclude=exclude, reflected_triggers=refl_trig)
