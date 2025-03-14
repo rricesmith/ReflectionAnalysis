@@ -112,6 +112,15 @@ class readCoREAS:
         # Removing zenith adjustment, if station is in cosmic_ray mode then it will be computed when convoluting antenna response
         refr_zenith = np.arcsin( np.sin(electric_field[efp.zenith]) / n_ice) * units.rad
 
+        max_zen = np.arcsin(np.sin(np.pi) / n_ice) * units.rad  # Maximum zenith angle after refraction
+        # Calculate the angle between the surface station position and the antenna, and see if angle exceeds maximum
+        surf_to_ant = np.arccos(-ant_ice_position[2] / np.sqrt((ant_surface_position[0] - ant_ice_position[0])**2 + (ant_surface_position[1] - ant_ice_position[1])**2 )) * units.rad
+        self.logger.debug(f'Zenith angle from surface to antenna is {surf_to_ant/units.deg} degrees, max zenith is {max_zen/units.deg} degrees, refracted zenith is {refr_zenith/units.deg}')
+        if surf_to_ant > max_zen*1.1:   # 10% buffer to account for some antenna's being further back relative to station by a few meters
+            self.logger.debug(f'Zenith angle exceeds maximum after refraction, setting eField to 0')
+            electric_field.set_frequency_spectrum(electric_field.get_frequency_spectrum() * 0, electric_field.get_sampling_rate())
+            return electric_field
+
         # Untested configuration
         if ray_type == 'reflected':
             # DEPRECIATED? Remove possible
@@ -423,6 +432,9 @@ class readCoREAS:
                                 +f"nearest simulated station is {distance}m away at ground ({positions[index][0]}, {positions[index][1]}), vBvvB({positions_vBvvB[index][0]}, {positions_vBvvB[index][1]})")
                             t_event_structure = time.time()
                             observer = corsika['CoREAS']['observers'].get(key)
+
+                            obvs_position = positions[index]
+                            self.logger.debug(f"observer at ground ({obvs_position[0]:.0f}m, {obvs_position[1]:.0f}m, {obvs_position[2]:.0f}m)")
 
 #                            station = NuRadioReco.framework.station.Station(station_id)
 #                            channel_ids = detector.get_channel_ids(station_id)
