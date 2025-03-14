@@ -66,6 +66,7 @@ if __name__ == "__main__":
     x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name='combined_reflected')
     mask = weights != 0
     zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, 'combined_reflected', [113, 114, 115, 117, 118, 119, 130])
+    ic(weights)
     HRAAnalysis.plotAreaAziZenArrows(x[mask], y[mask], zenith[mask], azimuth[mask], weights[mask], title="Combined Reflected", savename=savename, dir_trig=dir_trig, refl_trig=refl_trig, exclude=bad_stations, max_distance=max_distance)
     ic(f'Saved {savename}')
 
