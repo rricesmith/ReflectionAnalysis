@@ -43,22 +43,22 @@ if __name__ == "__main__":
     os.makedirs(save_folder, exist_ok=True)
 
 
-    for station in dir_trig:
-        savename = f'{save_folder}AreaAnglesDirect_{station}.png'
-        x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
-        mask = weights != 0
-        zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, station, station)
-        HRAAnalysis.plotAreaAziZenArrows(x[mask], y[mask], zenith[mask], azimuth[mask], weights[mask], title=f'{station} Direct', savename=savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
+    # for station in dir_trig:
+    #     savename = f'{save_folder}AreaAnglesDirect_{station}.png'
+    #     x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
+    #     mask = weights != 0
+    #     zenith, recon_zenith, azimuth, recon_azimuth, weights = HRAAnalysis.getAnglesReconWeights(HRAeventList, station, station)
+    #     HRAAnalysis.plotAreaAziZenArrows(x[mask], y[mask], zenith[mask], azimuth[mask], weights[mask], title=f'{station} Direct', savename=savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
 
-    for station in refl_trig:
-        savename = f'{save_folder}AreaAnglesReflected_{station}.png'
-        x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
-        mask = weights != 0
-        zenith, recon_zenith, azimuth, recon_azimuth, weightss = HRAAnalysis.getAnglesReconWeights(HRAeventList, station, station)
-        HRAAnalysis.plotAreaAziZenArrows(x[mask], y[mask], zenith[mask], azimuth[mask], weights[mask], title=f'{station} Reflected', savename=savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
+    # for station in refl_trig:
+    #     savename = f'{save_folder}AreaAnglesReflected_{station}.png'
+    #     x, y, weights = HRAAnalysis.getXYWeights(HRAeventList, weight_name=station)
+    #     mask = weights != 0
+    #     zenith, recon_zenith, azimuth, recon_azimuth, weightss = HRAAnalysis.getAnglesReconWeights(HRAeventList, station, station)
+    #     HRAAnalysis.plotAreaAziZenArrows(x[mask], y[mask], zenith[mask], azimuth[mask], weights[mask], title=f'{station} Reflected', savename=savename, dir_trig=dir_trig, refl_trig=refl_trig-100, max_distance=max_distance)
 
-    relf_trig = np.array(refl_trig) - 100 # Subtract 100 to get the station number for plot numbers
-    ic(dir_trig, refl_trig)
+    # relf_trig = np.array(refl_trig) - 100 # Subtract 100 to get the station number for plot numbers
+    # ic(dir_trig, refl_trig)
 
     # Plot combined reflected
     bad_stations = [32, 52, 132, 152]
