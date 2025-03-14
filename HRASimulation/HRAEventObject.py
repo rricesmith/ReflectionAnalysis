@@ -132,6 +132,10 @@ class HRAevent:
     def hasCoincidence(self, num=1, bad_stations=None, use_secondary=False, sigma=4, sigma_52=7):
         # Bad Stations should be a list of station IDs that are not to be included in the coincidence
         n_coinc = len(self.station_triggers[sigma])
+        for key in self.station_triggers[sigma]:
+            if isinstance(key, str):
+                # Remove the keys that are summed from others
+                n_coinc -= 1
         if use_secondary:
             n_coinc += len(self.secondary_station_triggers[sigma_52])
             n_coinc -= self.hasTriggered(station_id=52, sigma=sigma_52)
