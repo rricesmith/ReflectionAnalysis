@@ -399,13 +399,16 @@ def plotRateWithError(eventRate, errorRate, savename, title):
     e_bins = np.log10(e_bins/units.eV)
 
     fig, ax = plt.subplots()
+    color = plt.cm.rainbow(np.linspace(0, 1, len(z_bins)-1))
 
     eventRate[np.isnan(eventRate)] = 0
     errorRate[np.isnan(errorRate)] = 0
-    ax.fill_between((e_bins[1:]+e_bins[:-1])/2, np.nansum(eventRate - errorRate,axis=1), np.nansum(eventRate + errorRate,axis=1), alpha=0.5, label=f'{np.nansum(eventRate):.2f} +/- {np.nansum(errorRate):.2f} Evts/Yr')
+    ax.fill_between((e_bins[1:]+e_bins[:-1])/2, np.nansum(eventRate - errorRate,axis=1), np.nansum(eventRate + errorRate,axis=1), alpha=0.5, label=f'{np.nansum(eventRate):.2f} +/- {np.nansum(errorRate):.2f} Evts/Yr', color='black')
+    ax.plot((e_bins[1:]+e_bins[:-1])/2, np.nansum(eventRate,axis=1), color='black', linestyle='--')
 
     for iZ in range(len(z_bins)-1):
-        ax.fill_between((e_bins[1:]+e_bins[:-1])/2, eventRate[:,iZ] - errorRate[:,iZ], eventRate[:,iZ] + errorRate[:,iZ], alpha=0.5, label=f'{z_bins[iZ]/units.deg:.1f}-{z_bins[iZ+1]/units.deg:.1f}deg')
+        ax.fill_between((e_bins[1:]+e_bins[:-1])/2, eventRate[:,iZ] - errorRate[:,iZ], eventRate[:,iZ] + errorRate[:,iZ], alpha=0.5, label=f'{z_bins[iZ]/units.deg:.1f}-{z_bins[iZ+1]/units.deg:.1f}deg', color=color[iZ])
+        ax.plot((e_bins[1:]+e_bins[:-1])/2, eventRate[:,iZ], color=color[iZ], linestyle='--')
 
     ax.set_xlabel('log10(E/eV)')
     ax.set_ylabel('Evts/Yr')
