@@ -66,6 +66,7 @@ if __name__ == "__main__":
 
             for i, old_chi in enumerate(in2016_RCR_Chi):
                 if new_Chi[i] > old_chi:
+                    ic(new_Chi[i], old_chi)
                     pT(in2016_Traces[i], in2016_datetimes[i].strftime('%Y-%m-%d %H:%M:%S') + f', {in2016_Azi[i]:.1f}deg Azi, {in2016_Zen[i]:.1f}deg Zen,\n {in2016_SNRs[i]:.1f} SNR, {old_chi:.2f} BL Chi -> {new_Chi[i]:.2f} RCR Chi',
                        f'{plotfolder}/Station{station_id}_SNR{in2016_SNRs[i]:.2f}_{in2016_datetimes[i]}.png')
 
