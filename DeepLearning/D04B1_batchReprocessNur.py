@@ -1,11 +1,14 @@
 import A00_SlurmUtil as slurm
 import os
+import configparser
 
 
-# base_folder = '7thpass'
-base_folder = '2016pass'
-single_file = False
-template_date = '2016'  # switch to None when not doing so
+
+config = configparser.ConfigParser()
+config.read('StationDataAnalysis/config.ini')
+base_folder = config['BASEFOLDER']['base_folder']
+single_file = config['BASEFOLDER']('single_file') == 'True'
+template_date = config['TEMPLATE']['template']
 
 stations_100s = [13, 15, 18, 32]
 stations_200s = [14, 17, 19, 30]

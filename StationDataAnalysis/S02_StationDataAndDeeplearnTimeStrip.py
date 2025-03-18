@@ -5,6 +5,7 @@ from icecream import ic
 import datetime
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import configparser
 
 
 def getTimestripAxs(yearStart=2014, yearEnd=2019):
@@ -205,8 +206,13 @@ def findCoincidenceEvents(times_dict, data_dict, coincidence_time=1, cluster_day
 
 if __name__ == "__main__":
 
-    # datapass = '7thpass'
-    datapass = '2016pass'
+
+
+    config = configparser.ConfigParser()
+    config.read('StationDataAnalysis/config.ini')
+    datapass = config['BASEFOLDER']['base_folder']
+    # template_date = config['TEMPLATE']['template']
+
     # stations_100s = [13, 15, 18, 32]  # Station 32 data not compiled yet
     stations_100s = [13, 15, 18]
     stations_200s = [14, 17, 19, 30]
