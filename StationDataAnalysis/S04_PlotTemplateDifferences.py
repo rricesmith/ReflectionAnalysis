@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import configparser
 import DeepLearning.D00_helperFunctions as D00_helperFunctions
-from DeepLearning.D04B_reprocessNurPassingCut import getMaxAllChi
+from DeepLearning.D04B_reprocessNurPassingCut import getMaxAllChi, pT
 from NuRadioReco.utilities import units
 from S01_StationDataAndDeeplearnPlot import set_CHI_SNR_axis
 
@@ -64,6 +64,11 @@ if __name__ == "__main__":
             for traces in in2016_Traces:
                 new_Chi.append(getMaxAllChi(traces, 2*units.GHz, template_series_RCR, 2*units.GHz))
 
+            for i, old_chi in enumerate(in2016_RCR_Chi):
+                if new_Chi[i] > old_chi:
+                    pT(in2016_Traces[i], in2016_datetimes[i].strftime('%Y-%m-%d %H:%M:%S') + f'{in2016_Azi[i]:.1f}deg Azi, {in2016_Zen[i]:.1f}deg Zen, {in2016_SNRs[i]:.1f} SNR, {old_chi:.1f} BL Chi -> {new_Chi[i]:1f} RCR Chi',
+                       f'{plotfolder}/Station{station_id}_SNR{in2016_SNRs[i]:.1f}_{in2016_datetimes[i]}.png')
+
             all_2016_SNRs.extend(in2016_SNRs)
             all_2016_RCR_Chi.extend(in2016_RCR_Chi)
             all_2016_new_Chi.extend(new_Chi)
@@ -78,4 +83,4 @@ if __name__ == "__main__":
 
     savename = f'{plotfolder}/TemplateDifferences.png'
     fig.savefig(savename)
-    print(f'Saved {savename}')
+    ic(f'Saved {savename}')
