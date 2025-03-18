@@ -72,7 +72,7 @@ if __name__ == "__main__":
 
     ax.plot(all_2016_SNRs, all_2016_RCR_Chi, 'o', label='2016 Templates')
     for i in range(len(all_2016_SNRs)):
-        ax.arrow(all_2016_SNRs, all_2016_RCR_Chi, 0, all_2016_new_Chi - all_2016_RCR_Chi, color='black')
+        ax.arrow(all_2016_SNRs[i], all_2016_RCR_Chi[i], 0, all_2016_new_Chi[i] - all_2016_RCR_Chi[i], color='black')
     ax.plot(all_2016_SNRs, all_2016_new_Chi, 'o', label='RCR Templates')
     ax = set_CHI_SNR_axis(ax, 'All Stations')
 
