@@ -21,7 +21,7 @@ def loadMultipleTemplates(series, date='9.16.24', addSingle=True):
     # 10.1.24 has issues with the templates, so use 9.16.24
     # Series should be 200 or 100
     # Loads all the templates made for an average energy/zenith
-    if not date == '2016'
+    if not date == '2016':
         template_series_RCR_location = f'DeepLearning/templates/RCR/{date}/' 
         template_series_RCR = []
         for filename in os.listdir(template_series_RCR_location):
