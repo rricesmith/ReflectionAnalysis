@@ -190,24 +190,33 @@ def getVrms(nurFile, save_chans, station_id, det, check_forced=False, max_check=
 
 
         
-def getMaxChi(traces, sampling_rate, template_trace, template_sampling_rate, parallelChannels=[[0, 2], [1, 3]]):
+def getMaxChi(traces, sampling_rate, template_trace, template_sampling_rate, parallelChannels=[[0, 2], [1, 3]], use_average=False):
     #Parallel channels should be index corresponding to the channel in traces
 
 
     maxCorr = []
-    for parChans in parallelChannels:
-        parCorr = 0
-        for chan in parChans:
-            xCorr = txc.get_xcorr_for_channel(traces[chan], template_trace, sampling_rate, template_sampling_rate)
-            parCorr += np.abs(xCorr)
-        maxCorr.append(parCorr / len(parChans))
+    if use_average:
+        for parChans in parallelChannels:
+            parCorr = 0
+            for chan in parChans:
+                xCorr = txc.get_xcorr_for_channel(traces[chan], template_trace, sampling_rate, template_sampling_rate)
+                parCorr += np.abs(xCorr)
+            maxCorr.append(parCorr / len(parChans))
+    else:
+        for trace in traces:
+            xCorr = txc.get_xcorr_for_channel(trace, template_trace, sampling_rate, template_sampling_rate)
+            maxCorr.append(np.abs(xCorr))
 
     return max(maxCorr)
 
-def getMaxAllChi(traces, sampling_rate, template_traces, template_sampling_rate, parallelChannels=[[0, 2], [1, 3]]):
+def getMaxAllChi(traces, sampling_rate, template_traces, template_sampling_rate, parallelChannels=[[0, 2], [1, 3]], exclude_match=None):
 
     maxCorr = []
-    for trace in template_traces:
+    for key in template_traces:
+        ic(key, exclude_match, key == exclude_match)
+        if key == exclude_match:
+            continue
+        trace = template_traces[key]
         maxCorr.append(getMaxChi(traces, sampling_rate, trace, template_sampling_rate, parallelChannels=parallelChannels))
 
     return max(maxCorr)

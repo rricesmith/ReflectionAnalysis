@@ -38,9 +38,7 @@ if __name__ == "__main__":
     all_2016_new_Chi = []
 
     for series in stations.keys():
-        templates_RCR = D00_helperFunctions.loadSingleTemplate(series)
         template_series_RCR = D00_helperFunctions.loadMultipleTemplates(series)
-        template_series_RCR.append(templates_RCR)
         for station_id in stations[series]:
             times_dict[station_id] = []
             data_dict[station_id] = []
@@ -61,8 +59,8 @@ if __name__ == "__main__":
                 in2016_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(in2016_datetimes)
 
             new_Chi = []
-            for traces in in2016_Traces:
-                new_Chi.append(getMaxAllChi(traces, 2*units.GHz, template_series_RCR, 2*units.GHz))
+            for iT, traces in enumerate(in2016_Traces):
+                new_Chi.append(getMaxAllChi(traces, 2*units.GHz, template_series_RCR, 2*units.GHz), exclude_match=in2016_datetimes[iT].timestamp())
 
             for i, old_chi in enumerate(in2016_RCR_Chi):
                 ic(new_Chi[i], old_chi)
