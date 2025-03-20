@@ -34,9 +34,13 @@ def loadMultipleTemplates(series, date='9.16.24', addSingle=True):
         templates_2016_location = f'StationDataAnalysis/templates/confirmed2016Templates/'
         for filename in os.listdir(templates_2016_location):
             temp = np.load(os.path.join(templates_2016_location, filename))
+            # Only use the channel of highest amplitude
+            max_temp = 0
+            for t in temp:
+                if max(np.abs(t)) > max(max_temp):
+                    max_temp = t
             key = filename.split('_')[1]
-            ic(temp)
-            template_series_RCR[key] = temp
+            template_series_RCR[key] = max_temp
 
     # if addSingle:
     #     template_series_RCR.append(loadSingleTemplate(series))

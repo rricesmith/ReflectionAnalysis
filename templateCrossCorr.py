@@ -25,8 +25,8 @@ def match_sampling(ref_template, resampling_factor):
 def get_xcorr_for_channel(orig_trace, template_trace, orig_sampling_rate, template_sampling_rate, times=[], debug=False, SNR='n/a'):
     if len(orig_trace) == 0:
         return 0
-    orig_trace = orig_trace / max(orig_trace)
-    template_trace = template_trace / max(template_trace)
+    orig_trace = orig_trace / max(np.abs(orig_trace))
+    template_trace = template_trace / max(np.abs(template_trace))
 
     orig_binning = 1. / template_sampling_rate
     target_binning = 1. / orig_sampling_rate
