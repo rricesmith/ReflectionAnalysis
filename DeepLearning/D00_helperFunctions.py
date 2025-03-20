@@ -35,7 +35,7 @@ def loadMultipleTemplates(series, date='9.16.24', addSingle=True):
         for filename in os.listdir(templates_2016_location):
             temp = np.load(os.path.join(templates_2016_location, filename))
             # Only use the channel of highest amplitude
-            max_temp = 0
+            max_temp = [0]
             for t in temp:
                 if max(np.abs(t)) > max(max_temp):
                     max_temp = t
