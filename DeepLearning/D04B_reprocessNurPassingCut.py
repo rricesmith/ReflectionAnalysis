@@ -213,7 +213,7 @@ def getMaxAllChi(traces, sampling_rate, template_traces, template_sampling_rate,
 
     maxCorr = []
     for key in template_traces:
-        ic(key, exclude_match, key == str(exclude_match))
+        # ic(key, exclude_match, key == str(exclude_match))
         if key == str(exclude_match):
             continue
         trace = template_traces[key]
