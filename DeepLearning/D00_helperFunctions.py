@@ -31,7 +31,6 @@ def loadMultipleTemplates(series, date='9.16.24', addSingle=True):
                 i += 1
     else:
         templates_2016_location = f'StationDataAnalysis/templates/confirmed2016Templates/'
-        template_series_RCR = []
         for filename in os.listdir(templates_2016_location):
             temp = np.load(os.path.join(templates_2016_location, filename))
             key = filename.split('_')[1]
