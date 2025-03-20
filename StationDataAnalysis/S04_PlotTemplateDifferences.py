@@ -35,10 +35,13 @@ if __name__ == "__main__":
 
     all_2016_SNRs = []
     all_2016_RCR_Chi = []
-    all_2016_new_Chi = []
+    all_2016_Chi = []
+
+    template_series_RCR = D00_helperFunctions.loadMultipleTemplates('200') # Hack b/c no 100s templates yet
 
     for series in stations.keys():
-        template_series_RCR = D00_helperFunctions.loadMultipleTemplates(series)
+        # template_series_RCR = D00_helperFunctions.loadMultipleTemplates(series)
+        template_series_2016 = D00_helperFunctions.loadMultipleTemplates(series, date='2016')
         for station_id in stations[series]:
             times_dict[station_id] = []
             data_dict[station_id] = []
@@ -58,25 +61,29 @@ if __name__ == "__main__":
             if not len(in2016_datetimes) == 0:
                 in2016_datetimes = np.vectorize(datetime.datetime.fromtimestamp)(in2016_datetimes)
 
-            new_Chi = []
+            RCR_Chi = []
             for iT, traces in enumerate(in2016_Traces):
-                new_Chi.append(getMaxAllChi(traces, 2*units.GHz, template_series_RCR, 2*units.GHz), exclude_match=in2016_datetimes[iT].timestamp())
+                RCR_Chi.append(getMaxAllChi(traces, 2*units.GHz, template_series_RCR, 2*units.GHz))
 
-            for i, old_chi in enumerate(in2016_RCR_Chi):
-                ic(new_Chi[i], old_chi)
-                pT(in2016_Traces[i], in2016_datetimes[i].strftime('%Y-%m-%d %H:%M:%S') + f', {in2016_Azi[i]:.1f}deg Azi, {in2016_Zen[i]:.1f}deg Zen,\n {in2016_SNRs[i]:.1f} SNR, {old_chi:.2f} BL Chi -> {new_Chi[i]:.2f} RCR Chi',
+            Chi_2016 = []
+            for iT, traces in enumerate(in2016_Traces):
+                Chi_2016.append(getMaxAllChi(traces, 2*units.GHz, template_series_2016, 2*units.GHz), exclude_match=in2016_datetimes[iT].timestamp())
+
+            for i, chi16 in enumerate(Chi_2016):
+                ic(RCR_Chi[i], chi16)
+                pT(in2016_Traces[i], in2016_datetimes[i].strftime('%Y-%m-%d %H:%M:%S') + f', {in2016_Azi[i]:.1f}deg Azi, {in2016_Zen[i]:.1f}deg Zen,\n {in2016_SNRs[i]:.1f} SNR, {chi16:.2f} BL Chi -> {RCR_Chi[i]:.2f} RCR Chi',
                     f'{plotfolder}/Station{station_id}_SNR{in2016_SNRs[i]:.2f}_{in2016_datetimes[i]}.png')
 
             all_2016_SNRs.extend(in2016_SNRs)
-            all_2016_RCR_Chi.extend(in2016_RCR_Chi)
-            all_2016_new_Chi.extend(new_Chi)
+            all_2016_Chi.extend(Chi_2016)
+            all_2016_RCR_Chi.extend(RCR_Chi)
     
     fig, ax = plt.subplots()
 
-    ax.plot(all_2016_SNRs, all_2016_RCR_Chi, 'o', label='2016 Templates')
+    ax.plot(all_2016_SNRs, all_2016_Chi, 'o', label='2016 Templates')
+    ax.plot(all_2016_SNRs, all_2016_RCR_Chi, 'o', label='RCR Templates')
     for i in range(len(all_2016_SNRs)):
-        ax.arrow(all_2016_SNRs[i], all_2016_RCR_Chi[i], 0, all_2016_new_Chi[i] - all_2016_RCR_Chi[i], color='black')
-    ax.plot(all_2016_SNRs, all_2016_new_Chi, 'o', label='RCR Templates')
+        ax.arrow(all_2016_SNRs[i], all_2016_Chi[i], 0, all_2016_RCR_Chi[i] - all_2016_Chi[i], color='black')
     ax = set_CHI_SNR_axis(ax, 'All Stations')
 
     savename = f'{plotfolder}/TemplateDifferences.png'
