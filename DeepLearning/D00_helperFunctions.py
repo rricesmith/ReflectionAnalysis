@@ -1,6 +1,7 @@
 from NuRadioReco.utilities.io_utilities import read_pickle
 import os
 import numpy as np
+from icecream import ic
 
 def loadSingleTemplate(series):
     # Series should be 200 or 100
@@ -34,6 +35,7 @@ def loadMultipleTemplates(series, date='9.16.24', addSingle=True):
         for filename in os.listdir(templates_2016_location):
             temp = np.load(os.path.join(templates_2016_location, filename))
             key = filename.split('_')[1]
+            ic(temp)
             template_series_RCR[key] = temp
 
     # if addSingle:
