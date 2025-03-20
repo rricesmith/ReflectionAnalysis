@@ -67,6 +67,7 @@ if __name__ == "__main__":
 
             Chi_2016 = []
             for iT, traces in enumerate(in2016_Traces):
+                ic(in2016_datetimes[iT].timestamp(), in2016_datetimes[iT])
                 Chi_2016.append(getMaxAllChi(traces, 2*units.GHz, template_series_2016, 2*units.GHz), exclude_match=in2016_datetimes[iT].timestamp())
 
             for i, chi16 in enumerate(Chi_2016):
