@@ -1,6 +1,6 @@
 import os
 import numpy as np
-
+from pathlib import Path
 from NuRadioReco.utilities import units, fft
 from NuRadioReco.framework.parameters import stationParameters as stnp
 from NuRadioReco.framework.parameters import channelParameters as chp
@@ -62,12 +62,18 @@ def plotOldTemplate(ax):
 # plotOldTemplate(ax)
 # fig.savefig(f'DeepLearning/plots/testTraces/templates/OldSingleRCRTemplate_200s.png')
 
+import configparser
 
-series = '200s'     #Alternative is 200s
-simdate = '3.27.25'
+
+config = configparser.ConfigParser()
+config.read('DeepLearning/config.ini')
+series = config['SIMPARAMETERS']['amp']
+simdate = config['SIMPARAMETERS']['date']
+datapass = config['SIMPARAMETERS']['datapass']
+
 # station_files_path = 'FootprintAnalysis/output/'
 # station_files_path = f'../../../../../dfs8/sbarwick_lab/ariannaproject/rricesmi/numpy_arrays/simulatedRCRs/{series}_2.9.24/'
-station_files_path = f'DeepLearning/data/8thpass/'
+station_files_path = f'DeepLearning/data/{datapass}/'
 
 SimRCRFiles = []
 SimRCRParams = []
@@ -108,6 +114,7 @@ plt.xlabel('Energy')
 # plt.xlim(16, 20)
 plt.ylim(0, 90)
 plt.title('Zenith vs Energy')
+Path(f'DeepLearning/plots/testTraces/templates/{simdate}').mkdir(parents=True, exist_ok=True)    
 savename = f'DeepLearning/plots/testTraces/templates/{simdate}/{series}_ZenithEnergy.png'
 plt.savefig(savename)
 # plt.clf()
@@ -153,6 +160,7 @@ for ind in np.unique(spaced_ind):
     plt.close(fig)
     print(f'Saved {savename}')
 
+    Path(f'DeepLearning/templates/RCR/{simdate}').mkdir(parents=True, exist_ok=True)
     savetemplate = f'DeepLearning/templates/RCR/{simdate}/{series}_{ind}_{energies[ind]:.1f}eV_{zeniths[ind]:.1f}Zen.npy'
     np.save(savetemplate, traces[ind][max_trace])
     print(f'Saved {savetemplate}')

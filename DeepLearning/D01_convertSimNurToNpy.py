@@ -411,9 +411,16 @@ def converter(nurFiles, folder, save_prefix, save_chans, station_id = 1, det=Non
 
     return
         
+import configparser
 
-folder = "8thpass"
-amp_type = '100'     #Alternative is 200s
+
+config = configparser.ConfigParser()
+config.read('DeepLearning/config.ini')
+amp_type = config['SIMPARAMETERS']['amp']
+simdate = config['SIMPARAMETERS']['date']
+folder = config['SIMPARAMETERS']['datapass']
+
+amp_type = amp_type[:-1]
 
 #Convert RCR simulated data
 if True:
