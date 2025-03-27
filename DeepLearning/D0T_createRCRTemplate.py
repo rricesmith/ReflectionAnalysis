@@ -64,10 +64,10 @@ def plotOldTemplate(ax):
 
 
 series = '200s'     #Alternative is 200s
-simdate = '10.1.24'
+simdate = '3.27.25'
 # station_files_path = 'FootprintAnalysis/output/'
 # station_files_path = f'../../../../../dfs8/sbarwick_lab/ariannaproject/rricesmi/numpy_arrays/simulatedRCRs/{series}_2.9.24/'
-station_files_path = f'DeepLearning/data/5thpass/'
+station_files_path = f'DeepLearning/data/8thpass/'
 
 SimRCRFiles = []
 SimRCRParams = []
