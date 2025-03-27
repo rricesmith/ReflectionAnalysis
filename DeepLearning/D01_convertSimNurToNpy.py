@@ -412,14 +412,14 @@ def converter(nurFiles, folder, save_prefix, save_chans, station_id = 1, det=Non
     return
         
 
-folder = "7thpass"
+folder = "8thpass"
 amp_type = '100'     #Alternative is 200s
 
 #Convert RCR simulated data
 if True:
     det = generic_detector.GenericDetector(json_filename=f'configurations/gen2_MB_old_{amp_type}s_footprint576m_infirn.json', assume_inf=False, antenna_by_depth=False, default_station=1)
     # station_files_path = 'FootprintAnalysis/output/'
-    station_files_path = f'SimpleFootprintSimulation/output/RCR/10.30.24/{amp_type}s/'
+    station_files_path = f'SimpleFootprintSimulation/output/RCR/3.26.25/{amp_type}s/'
     SimRCRFiles = []
     for filename in os.listdir(station_files_path):
         # if filename.startswith(f'RCRs_MB_MB_old_{amp_type}s_refracted') and filename.endswith('.nur'):
