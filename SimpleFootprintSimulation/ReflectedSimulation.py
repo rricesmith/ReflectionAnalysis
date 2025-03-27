@@ -206,7 +206,7 @@ eventWriter.begin(output_filename)
 preAmpVrms_per_channel = {}
 
 # Start simulation
-for evt, iE, x, y in runCoREAS(det, depthLayer, dB, attenuation_model):
+for evt, iE, x, y in readCoREAS.run(detector=det, ray_type='by_depth', layer_depth=-576*units.m, layer_dB=0, attenuation_model='MB_freq', output_mode=2):
     logger.info("processing event {:d} with id {:d}".format(iE, evt.get_id()))
 
     # for station in evt.get_stations():
@@ -239,7 +239,8 @@ for evt, iE, x, y in runCoREAS(det, depthLayer, dB, attenuation_model):
         ic(preAmpVrms_per_channel, postAmpVrms_per_channel, threshold_high_3_5, threshold_high_4_4)
         # quit()
 
-    if simulationSelector.run(evt, station.get_sim_station(), det):
+    # if simulationSelector.run(evt, station.get_sim_station(), det):
+    if True:
 
         # efieldToVoltageConverter.run(evt, station, det)
 
@@ -273,7 +274,7 @@ for evt, iE, x, y in runCoREAS(det, depthLayer, dB, attenuation_model):
                 axs[0][iC].plot(trace)
 
             triggerTimeAdjuster.run(evt, station, det)
-            channelResampler.run(evt, station, det, 2*units.GHz)
+            # channelResampler.run(evt, station, det, 2*units.GHz)
             channelStopFilter.run(evt, station, det, prepend=0*units.ns, append=0*units.ns)
             eventWriter.run(evt, det)
 

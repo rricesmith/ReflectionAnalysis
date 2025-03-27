@@ -435,7 +435,7 @@ if True:
             SimRCRFiles.append(os.path.join(station_files_path, filename))
 
     saveChannels = [4, 5, 6, 7]
-    converter(SimRCRFiles, folder, f'SimRCR_{amp_type}s', saveChannels, station_id = 1, det=det, filter=True, saveTimes=False, plot=False, sim=True, reconstruct=False, blackout=False)
+    converter(SimRCRFiles, folder, f'SimRCR_{amp_type}s', saveChannels, station_id = 1, det=det, filter=True, saveTimes=False, plot=False, sim=True, reconstruct=False, blackout=False, forced=False)
     print(f'saved RCRs!')
 
     quit()
