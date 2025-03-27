@@ -84,7 +84,12 @@ if __name__ == "__main__":
     ax.plot(all_2016_SNRs, all_2016_Chi, 'o', label='2016 Templates')
     ax.plot(all_2016_SNRs, all_2016_RCR_Chi, 'o', label='RCR Templates')
     for i in range(len(all_2016_SNRs)):
-        ax.arrow(all_2016_SNRs[i], all_2016_Chi[i], 0, all_2016_RCR_Chi[i] - all_2016_Chi[i], color='black')
+        arrow_len = all_2016_RCR_Chi[i] - all_2016_Chi[i]
+        if arrow_len > 0:
+            color='green'
+        else:
+            color='red'
+        ax.arrow(all_2016_SNRs[i], all_2016_Chi[i], 0, arrow_len, color=color)
     ax = set_CHI_SNR_axis(ax, 'All Stations')
 
     savename = f'{plotfolder}/TemplateDifferences.png'

@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 
 
-date = '10.30.24'
+date = '3.26.25'
 n_cores = 5000   #Decenty sensitivity to RCRs, so don't overdo
 loc = 'MB'  #Or SP, not setup yet though
 # Need to change default distance and layer depth for SP, but for MB its fine right now
@@ -14,7 +14,7 @@ if loc == 'MB':
 amp = True
 amp_type = 200
 add_noise = True
-output_folder = f'SimpleFootprintSimulation/output/RCR/10.30.24/{amp_type}s/'
+output_folder = f'SimpleFootprintSimulation/output/RCR/{date}/{amp_type}s/'
 output_filename = f'RCR_{loc}_{depthLayer}m_{dB}dB_{amp_type}s_Noise{add_noise}'
 
 # Make directory if it doesn't exist

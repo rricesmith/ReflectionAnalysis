@@ -1,6 +1,7 @@
 from NuRadioReco.utilities import units
-import NuRadioReco.modules.io.coreas.readCoREAS
-import NuRadioReco.modules.io.coreas.readCoREASStationGrid
+# import NuRadioReco.modules.io.coreas.readCoREAS
+# import NuRadioReco.modules.io.coreas.readCoREASStationGrid
+import readCoREASStationGrid
 import NuRadioReco.modules.io.coreas.simulationSelector
 import NuRadioReco.modules.efieldToVoltageConverter
 import NuRadioReco.modules.channelGenericNoiseAdder
@@ -166,7 +167,7 @@ refl_LPDA_channels = [4, 5, 6, 7]       #Reflected are 2x layer depth down, mirr
 # provide input parameters that are to remain constant during processung
 
 #Using station grid custom code
-readCoREAS = NuRadioReco.modules.io.coreas.readCoREASStationGrid.readCoREAS()
+readCoREAS = readCoREASStationGrid.readCoREAS()
 readCoREAS.begin(input_files, -(distance)/2, (distance)/2, -(distance)/2, (distance)/2, n_cores=n_cores, shape='radial', seed=None, log_level=logging.WARNING)
 def runCoREAS(det, depthLayer, dB, attenuation_model):
     for evt, iE, x, y in readCoREAS.run(detector=det, ray_type='refracted', layer_depth=depthLayer, layer_dB=dB, force_dB=True, attenuation_model=attenuation_model, output_mode=2):
