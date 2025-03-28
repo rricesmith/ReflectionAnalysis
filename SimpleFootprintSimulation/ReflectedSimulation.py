@@ -143,7 +143,7 @@ max_file = args.max_file
 sim_amp = args.sim_amp
 amp_type = args.amp_type
 add_noise = args.add_noise
-distance = float(args.distance)
+distance = float(args.distance) * 1000  # Convert to meters
 depthLayer = int(args.depthLayer)
 dB = float(args.depthLayer)
 

@@ -4,11 +4,11 @@ from pathlib import Path
 
 
 date = '3.28.25'
-n_cores = 5000   #Decenty sensitivity to RCRs, so don't overdo
+n_cores = 500   #Decenty sensitivity to RCRs, so don't overdo
 loc = 'MB'  #Or SP, not setup yet though
 # Need to change default distance and layer depth for SP, but for MB its fine right now
 if loc == 'MB':
-    distance = 5 #km
+    distance = 5 #diameter in km
     depthLayer = 576 #m
     dB = 0 #Assume perfect reflector, although realistically it isn't quite that for MB
 amp = True
