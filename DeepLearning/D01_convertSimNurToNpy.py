@@ -426,7 +426,7 @@ amp_type = amp_type[:-1]
 if True:
     det = generic_detector.GenericDetector(json_filename=f'configurations/gen2_MB_old_{amp_type}s_footprint576m_infirn.json', assume_inf=False, antenna_by_depth=False, default_station=1)
     # station_files_path = 'FootprintAnalysis/output/'
-    station_files_path = f'SimpleFootprintSimulation/output/RCR/3.26.25/{amp_type}s/'
+    station_files_path = f'SimpleFootprintSimulation/output/RCR/{simdate}/{amp_type}s/'
     SimRCRFiles = []
     for filename in os.listdir(station_files_path):
         # if filename.startswith(f'RCRs_MB_MB_old_{amp_type}s_refracted') and filename.endswith('.nur'):
@@ -455,7 +455,7 @@ if False:
             SimRCRFiles.append(os.path.join(station_files_path, filename))
 
     saveChannels = [0, 1, 2, 3]
-    converter(SimRCRFiles, folder, f'Backlobe_{amp_type}s', saveChannels, station_id = 1, det=det, filter=True, saveTimes=False, plot=False, sim=True, reconstruct=False, blackout=False)
+    converter(SimRCRFiles, folder, f'Backlobe_{amp_type}s', saveChannels, station_id = 1, det=det, filter=True, saveTimes=False, plot=False, sim=True, reconstruct=False, blackout=False, forced=False)
     print(f'saved backlobes!!')
 
     quit()

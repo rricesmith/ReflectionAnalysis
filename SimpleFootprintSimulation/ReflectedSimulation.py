@@ -169,9 +169,6 @@ refl_LPDA_channels = [4, 5, 6, 7]       #Reflected are 2x layer depth down, mirr
 #Using station grid custom code
 readCoREAS = readCoREASStationGrid.readCoREAS()
 readCoREAS.begin(input_files, -(distance)/2, (distance)/2, -(distance)/2, (distance)/2, n_cores=n_cores, shape='radial', seed=None, log_level=logging.WARNING)
-def runCoREAS(det, depthLayer, dB, attenuation_model):
-    for evt, iE, x, y in readCoREAS.run(detector=det, ray_type='refracted', layer_depth=depthLayer, layer_dB=dB, force_dB=True, attenuation_model=attenuation_model, output_mode=2):
-        yield evt, iE, x, y
 
 simulationSelector = NuRadioReco.modules.io.coreas.simulationSelector.simulationSelector()
 simulationSelector.begin()
@@ -239,8 +236,8 @@ for evt, iE, x, y in readCoREAS.run(detector=det, ray_type='by_depth', layer_dep
         ic(preAmpVrms_per_channel, postAmpVrms_per_channel, threshold_high_3_5, threshold_high_4_4)
         # quit()
 
-    # if simulationSelector.run(evt, station.get_sim_station(), det):
     if True:
+    # if simulationSelector.run(evt, station.get_sim_station(), det):
 
         # efieldToVoltageConverter.run(evt, station, det)
 
