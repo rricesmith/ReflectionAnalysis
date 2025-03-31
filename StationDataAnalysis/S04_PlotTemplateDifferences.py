@@ -18,6 +18,7 @@ if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read('StationDataAnalysis/config.ini')
     datapass = config['BASEFOLDER']['base_folder']
+    date = config['BASEFOLDER']['date']
     # template_date = config['TEMPLATE']['template']
 
     # stations_100s = [13, 15, 18, 32]  # Station 32 data not compiled yet
@@ -31,16 +32,17 @@ if __name__ == "__main__":
 
 
 
-    plotfolder = f'StationDataAnalysis/plots/{datapass}/TemplateDifferences'
+    plotfolder = f'StationDataAnalysis/plots/{datapass}/TemplateDifferences/{date}/'
+    os.makedirs(plotfolder, exist_ok=True)
 
     all_2016_SNRs = []
     all_2016_RCR_Chi = []
     all_2016_Chi = []
 
-    template_series_RCR = D00_helperFunctions.loadMultipleTemplates('200') # Hack b/c no 100s templates yet
 
     for series in stations.keys():
         # template_series_RCR = D00_helperFunctions.loadMultipleTemplates(series)
+        template_series_RCR = D00_helperFunctions.loadMultipleTemplates(series) # Hack b/c no 100s templates yet
         template_series_2016 = D00_helperFunctions.loadMultipleTemplates(series, date='2016')
         for station_id in stations[series]:
             times_dict[station_id] = []

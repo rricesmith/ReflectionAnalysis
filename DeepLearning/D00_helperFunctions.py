@@ -14,9 +14,10 @@ def loadSingleTemplate(series):
 
     return templates_RCR
 
-def loadMultipleTemplates(series, date='9.16.24', addSingle=True):
+def loadMultipleTemplates(series, date='3.29.25', addSingle=True):
     # Dates - 9.16.24 (noise included), 10.1.24 (no noise)
     #       - 2016 : found backlobe events from 2016
+    #       - 3.29.25 : noiseless, 100s and 200s, pruned by-hand for 'good' templates
 
     # 10.1.24 has issues with the templates, so use 9.16.24
     # Series should be 200 or 100
