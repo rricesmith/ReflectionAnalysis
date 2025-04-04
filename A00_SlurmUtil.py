@@ -5,6 +5,8 @@ import subprocess
 def makeAndRunJob(commandToRun, jobName='job', partition='free', runDirectory='run/'):
 
     print(f'Running job {jobName} with error files {runDirectory}/logs/{jobName}.out')
+    os.makedirs(runDirectory, exist_ok=True)
+    os.makedirs(os.path.join(runDirectory, 'logs'), exist_ok=True)
 
     if not (partition == 'free' or partition == 'standard'):
         print(f'Partition {partition} does not exist')
