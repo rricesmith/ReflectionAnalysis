@@ -103,7 +103,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
         blackoutTimes.append([tStart, tEnd])
 
     # Get Vrm from forced triggers
-    Vrms = getVrms(nurFiles, save_channels, station_id, blackoutTimes)
+    Vrms = getVrms(nurFiles, save_channels, station_id, det, blackoutTimes)
     print(f'normalizing to {Vrms} vrms')
 
 
