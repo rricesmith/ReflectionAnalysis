@@ -2,6 +2,7 @@ import datetime
 import numpy as np
 from NuRadioReco.modules.io import NuRadioRecoio
 import NuRadioReco.modules.correlationDirectionFitter
+import NuRadioReco.modules.channelSignalReconstructor
 from NuRadioReco.framework.parameters import stationParameters as stnp
 from NuRadioReco.framework.parameters import channelParameters as chp
 from NuRadioReco.detector import detector
@@ -19,9 +20,10 @@ def inBlackoutTime(time, blackoutTimes):
             return True
     return False
 
-def getVrms(nurFiles, save_chans, station_id, blackoutTimes, max_check=1000):
+def getVrms(nurFiles, save_chans, station_id, det, blackoutTimes, max_check=1000):
     # Calculate the average Vrms for given channels based on forced triggers
 
+    channelSignalReconstructor = NuRadioReco.modules.channelSignalReconstructor.channelSignalReconstructor()
     template = NuRadioRecoio.NuRadioRecoio(nurFiles)
 
 
@@ -34,6 +36,7 @@ def getVrms(nurFiles, save_chans, station_id, blackoutTimes, max_check=1000):
         if inBlackoutTime(stationtime, blackoutTimes):
             continue
 
+        channelSignalReconstructor.run(evt, station, det)
         for ChId, channel in enumerate(station.iter_channels(use_channels=save_chans)):
             Vrms_sum += channel[chp.noise_rms]
             num_avg += 1
