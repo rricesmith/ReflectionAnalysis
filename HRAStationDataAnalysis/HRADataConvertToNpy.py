@@ -86,7 +86,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
 
     det = detector.Detector(f"HRASimulation/HRAStationLayoutForCoREAS.json")
 
-    correlationDirectionFitter = NuRadioReco.modules.correlationDirectionFitter.CorrelationDirectionFitter()
+    correlationDirectionFitter = NuRadioReco.modules.correlationDirectionFitter.correlationDirectionFitter()
     correlationDirectionFitter.begin(debug=False)
 
     blackoutFile = open('DeepLearning/BlackoutCuts.json')
