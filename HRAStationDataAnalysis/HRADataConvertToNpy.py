@@ -151,7 +151,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
         traces = []
         for chId, channel in enumerate(station.iter_channels(use_channels=save_channels)):
             # Get the traces from the channel
-            trace = channel[chp.trace]
+            trace = channel.get_trace()
             save_traces[i][chId] = trace
             traces.append(trace)
 
