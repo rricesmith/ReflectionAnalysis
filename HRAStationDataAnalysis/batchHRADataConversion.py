@@ -10,8 +10,8 @@ config.read('HRAStationDataAnalysis/config.ini')
 date = config['PARAMETERS']['date']
 
 
-# stations = [13, 14, 15, 17, 18, 19, 30]
-stations = [13]
+stations = [13, 14, 15, 17, 18, 19, 30]
+# stations = [13]
 
 for station in stations:
 

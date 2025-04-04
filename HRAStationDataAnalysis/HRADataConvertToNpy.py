@@ -194,7 +194,7 @@ if __name__ == "__main__":
 
     save_channels = [0, 1, 2, 3]
     save_folder = f'HRAStationDataAnalysis/StationData/nurFiles/{date}/'
-
+    os.makedirs(save_folder, exist_ok=True)
 
     nurFiles = []
     HRAdataPath = f"/dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
