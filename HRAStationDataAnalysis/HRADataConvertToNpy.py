@@ -194,7 +194,7 @@ if __name__ == "__main__":
 
 
     nurFiles = []
-    HRAdataPath = f"dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
+    HRAdataPath = f"/dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
     for file in os.listdir(HRAdataPath):
         if file.endswith('_statDatPak.root.nur'):
             continue
