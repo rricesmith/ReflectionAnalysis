@@ -6,9 +6,13 @@ import NuRadioReco.modules.channelSignalReconstructor
 from NuRadioReco.framework.parameters import stationParameters as stnp
 from NuRadioReco.framework.parameters import channelParameters as chp
 from NuRadioReco.detector import detector
+from NuRadioReco.utilities import units
 import argparse
 import os
 import json
+import DeepLearning.D00_helperFunctions as D00_helperFunctions
+from HRAStationDataAnalysis.calculateChi import getMaxChi, getMaxAllChi
+from icecream import ic
 
 def inBlackoutTime(time, blackoutTimes):
     #This check removes data that have bad datetime format. No events should be recorded before 2013 season when the first stations were installed
@@ -80,17 +84,28 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
     save_traces = np.zeros((max_events, 4, 256))
     save_times = np.zeros((max_events, 1))
     save_snr = np.zeros((max_events, 1))
+    save_chi_2016 = np.zeros((max_events, 1))
+    save_chi_RCR = np.zeros((max_events, 1))
+    save_chi_RCR_bad = np.zeros((max_events, 1))
     # No calculation for Chi, as that is done in separate script depending upon templates desired
-    # save_azi = np.zeros((max_events, 1))
-    # save_zen = np.zeros((max_events, 1))
+    save_azi = np.zeros((max_events, 1))
+    save_zen = np.zeros((max_events, 1))
 
 
     file_reader = NuRadioRecoio.NuRadioRecoio(nurFiles)
 
     det = detector.Detector(f"HRASimulation/HRAStationLayoutForCoREAS.json")
 
-    # correlationDirectionFitter = NuRadioReco.modules.correlationDirectionFitter.correlationDirectionFitter()
-    # correlationDirectionFitter.begin(debug=False)
+    correlationDirectionFitter = NuRadioReco.modules.correlationDirectionFitter.correlationDirectionFitter()
+    correlationDirectionFitter.begin(debug=False)
+
+    templates_2016 = D00_helperFunctions.loadMultipleTemplates(100, template_date='2016')    # selection of 2016 events that are presumed to all be backlobes
+    template_series_100 = D00_helperFunctions.loadMultipleTemplates(100)                         # selection of 'good' RCR simulated events for templates
+    template_series_bad_100 = D00_helperFunctions.loadMultipleTemplates(100, bad=True)           # selection of 'bad' RCR simulated events for templates
+    template_series_200 = D00_helperFunctions.loadMultipleTemplates(200)                         # selection of 'good' RCR simulated events for templates
+    template_series_bad_200 = D00_helperFunctions.loadMultipleTemplates(200, bad=True)           # selection of 'bad' RCR simulated events for templates    
+    stations_100s = [13, 15, 18, 32]
+    stations_200s = [14, 17, 19, 30]
 
     blackoutFile = open('DeepLearning/BlackoutCuts.json')
     blackoutData = json.load(blackoutFile)
@@ -103,8 +118,9 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
         blackoutTimes.append([tStart, tEnd])
 
     # Get Vrm from forced triggers
+    ic('calculating Vrms')
     Vrms = getVrms(nurFiles, save_channels, station_id, det, blackoutTimes)
-    print(f'normalizing to {Vrms} vrms')
+    ic(f'normalizing to {Vrms} vrms')
 
 
     for i, evt in enumerate(file_reader.get_events()):
@@ -112,6 +128,13 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
         station = evt.get_station(station_id)
         stationtime = station.get_station_time().unix
         det.update(station.get_station_time())
+
+        if station in stations_100s:
+            use_templates = template_series_100
+            use_templates_bad = template_series_bad_100
+        elif station in stations_200s:
+            use_templates = template_series_200
+            use_templates_bad = template_series_bad_200
 
         # Untriggered events are forced triggers, and should be ignored. They are only used for calculating Vrm of the station
         if not station.has_triggered():
@@ -122,7 +145,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
             continue
 
         if i % 1000 == 0:
-            print(f'{i} events processed...')
+            ic(f'{i} events processed...')
 
         # Save if limit reached
         count = i - max_events * part
@@ -133,14 +156,20 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
             np.save(savename + '_Traces' + savesuffix, save_traces)
             np.save(savename + '_Times' + savesuffix, save_times)
             np.save(savename + '_SNR' + savesuffix, save_snr)
+            np.save(savename + '_Chi2016' + savesuffix, save_chi_2016)
+            np.save(savename + '_ChiRCR' + savesuffix, save_chi_RCR)
+            np.save(savename + '_ChiBad' + savesuffix, save_chi_RCR_bad)
             np.save(savename + '_Azi' + savesuffix, save_azi)
             np.save(savename + '_Zen' + savesuffix, save_zen)
-            print(f'Saved {savename} to {save_folder}')
+            ic(f'Saved {savename} to {save_folder}')
             part += 1
 
             save_traces = np.zeros((max_events, 4, 256))
             save_times = np.zeros((max_events, 1))
             save_snr = np.zeros((max_events, 1))
+            save_chi_2016 = np.zeros((max_events, 1))
+            save_chi_RCR = np.zeros((max_events, 1))
+            save_chi_RCR_bad = np.zeros((max_events, 1))
             save_azi = np.zeros((max_events, 1))
             save_zen = np.zeros((max_events, 1))
 
@@ -159,26 +188,37 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
         SNR = calcSNR(traces, Vrms)
         save_snr[i] = SNR
 
-        # Calculate the azimuth and zenith angles from the correlation fitter
-        # correlationDirectionFitter.run(evt, station, det, n_index=1.35)
+        save_chi_2016[i] = getMaxAllChi(traces, 2*units.GHz, templates_2016, 2*units.GHz)
+        save_chi_RCR[i] = getMaxAllChi(traces, 2*units.GHz, use_templates, 2*units.GHz)
+        save_chi_RCR_bad[i] = getMaxAllChi(traces, 2*units.GHz, use_templates_bad, 2*units.GHz)
 
-        # save_azi[i] = station.get_parameter(stnp.azimuth)   # Saved in radians
-        # save_zen[i] = station.get_parameter(stnp.zenith)
+        # Calculate the azimuth and zenith angles from the correlation fitter only for high Chi events
+        if save_chi_2016[i] > 0.65 or save_chi_RCR[i] > 0.65:
+            correlationDirectionFitter.run(evt, station, det, n_index=1.35)
+
+            save_azi[i] = station.get_parameter(stnp.azimuth)   # Saved in radians
+            save_zen[i] = station.get_parameter(stnp.zenith)
 
     # Remove empty spots from arrays
     save_traces = save_traces[:i]
     save_times = save_times[:i]
     save_snr = save_snr[:i]
-    # save_azi = save_azi[:i]
-    # save_zen = save_zen[:i]
+    save_chi_2016 = save_chi_2016[:i]
+    save_chi_RCR = save_chi_RCR[:i]
+    save_chi_RCR_bad = save_chi_RCR_bad[:i]
+    save_azi = save_azi[:i]
+    save_zen = save_zen[:i]
     # Save the last part
     savename = f'{save_folder}/{prefix}_Station{station_id}'
     savesuffix = f'_Part{part}.npy'
     np.save(savename + '_Traces' + savesuffix, save_traces)
     np.save(savename + '_Times' + savesuffix, save_times)
     np.save(savename + '_SNR' + savesuffix, save_snr)
-    # np.save(savename + '_Azi' + savesuffix, save_azi)
-    # np.save(savename + '_Zen' + savesuffix, save_zen)
+    np.save(savename + '_Chi2016' + savesuffix, save_chi_2016)
+    np.save(savename + '_ChiRCR' + savesuffix, save_chi_RCR)
+    np.save(savename + '_ChiBad' + savesuffix, save_chi_RCR_bad)
+    np.save(savename + '_Azi' + savesuffix, save_azi)
+    np.save(savename + '_Zen' + savesuffix, save_zen)
     print(f'Saved {savename} to {save_folder}')
 
 
