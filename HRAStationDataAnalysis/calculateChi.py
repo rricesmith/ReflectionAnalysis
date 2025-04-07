@@ -58,7 +58,7 @@ if __name__ == "__main__":
 
 
     for series in stations.keys():
-        templates_2016 = D00_helperFunctions.loadMultipleTemplates(series, template_date='2016')    # selection of 2016 events that are presumed to all be backlobes
+        templates_2016 = D00_helperFunctions.loadMultipleTemplates(series, date='2016')    # selection of 2016 events that are presumed to all be backlobes
         template_series = D00_helperFunctions.loadMultipleTemplates(series)                         # selection of 'good' RCR simulated events for templates
         template_series_bad = D00_helperFunctions.loadMultipleTemplates(series, bad=True)           # selection of 'bad' RCR simulated events for templates
         for station_id in stations[series]:

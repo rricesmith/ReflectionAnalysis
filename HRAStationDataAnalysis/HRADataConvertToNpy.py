@@ -99,7 +99,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
     correlationDirectionFitter = NuRadioReco.modules.correlationDirectionFitter.correlationDirectionFitter()
     correlationDirectionFitter.begin(debug=False)
 
-    templates_2016 = D00_helperFunctions.loadMultipleTemplates(100, template_date='2016')    # selection of 2016 events that are presumed to all be backlobes
+    templates_2016 = D00_helperFunctions.loadMultipleTemplates(100, date='2016')    # selection of 2016 events that are presumed to all be backlobes
     template_series_100 = D00_helperFunctions.loadMultipleTemplates(100)                         # selection of 'good' RCR simulated events for templates
     template_series_bad_100 = D00_helperFunctions.loadMultipleTemplates(100, bad=True)           # selection of 'bad' RCR simulated events for templates
     template_series_200 = D00_helperFunctions.loadMultipleTemplates(200)                         # selection of 'good' RCR simulated events for templates
