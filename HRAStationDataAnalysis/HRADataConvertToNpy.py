@@ -81,16 +81,16 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
     save_times = np.zeros((max_events, 1))
     save_snr = np.zeros((max_events, 1))
     # No calculation for Chi, as that is done in separate script depending upon templates desired
-    save_azi = np.zeros((max_events, 1))
-    save_zen = np.zeros((max_events, 1))
+    # save_azi = np.zeros((max_events, 1))
+    # save_zen = np.zeros((max_events, 1))
 
 
     file_reader = NuRadioRecoio.NuRadioRecoio(nurFiles)
 
     det = detector.Detector(f"HRASimulation/HRAStationLayoutForCoREAS.json")
 
-    correlationDirectionFitter = NuRadioReco.modules.correlationDirectionFitter.correlationDirectionFitter()
-    correlationDirectionFitter.begin(debug=False)
+    # correlationDirectionFitter = NuRadioReco.modules.correlationDirectionFitter.correlationDirectionFitter()
+    # correlationDirectionFitter.begin(debug=False)
 
     blackoutFile = open('DeepLearning/BlackoutCuts.json')
     blackoutData = json.load(blackoutFile)
@@ -160,25 +160,25 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
         save_snr[i] = SNR
 
         # Calculate the azimuth and zenith angles from the correlation fitter
-        correlationDirectionFitter.run(evt, station, det, n_index=1.35)
+        # correlationDirectionFitter.run(evt, station, det, n_index=1.35)
 
-        save_azi[i] = station.get_parameter(stnp.azimuth)   # Saved in radians
-        save_zen[i] = station.get_parameter(stnp.zenith)
+        # save_azi[i] = station.get_parameter(stnp.azimuth)   # Saved in radians
+        # save_zen[i] = station.get_parameter(stnp.zenith)
 
     # Remove empty spots from arrays
     save_traces = save_traces[:i]
     save_times = save_times[:i]
     save_snr = save_snr[:i]
-    save_azi = save_azi[:i]
-    save_zen = save_zen[:i]
+    # save_azi = save_azi[:i]
+    # save_zen = save_zen[:i]
     # Save the last part
     savename = f'{save_folder}/{prefix}_Station{station_id}'
     savesuffix = f'_Part{part}.npy'
     np.save(savename + '_Traces' + savesuffix, save_traces)
     np.save(savename + '_Times' + savesuffix, save_times)
     np.save(savename + '_SNR' + savesuffix, save_snr)
-    np.save(savename + '_Azi' + savesuffix, save_azi)
-    np.save(savename + '_Zen' + savesuffix, save_zen)
+    # np.save(savename + '_Azi' + savesuffix, save_azi)
+    # np.save(savename + '_Zen' + savesuffix, save_zen)
     print(f'Saved {savename} to {save_folder}')
 
 

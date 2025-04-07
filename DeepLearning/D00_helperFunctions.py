@@ -14,7 +14,7 @@ def loadSingleTemplate(series):
 
     return templates_RCR
 
-def loadMultipleTemplates(series, date='3.29.25', addSingle=True):
+def loadMultipleTemplates(series, date='3.29.25', addSingle=True, bad=False):
     # Dates - 9.16.24 (noise included), 10.1.24 (no noise)
     #       - 2016 : found backlobe events from 2016
     #       - 3.29.25 : noiseless, 100s and 200s, pruned by-hand for 'good' templates
@@ -25,6 +25,8 @@ def loadMultipleTemplates(series, date='3.29.25', addSingle=True):
     template_series_RCR = {}
     if not date == '2016':
         template_series_RCR_location = f'DeepLearning/templates/RCR/{date}/' 
+        if bad:
+            template_series_RCR_location += 'bad/'
         i = 0
         for filename in os.listdir(template_series_RCR_location):
             if filename.startswith(f'{series}s'):
