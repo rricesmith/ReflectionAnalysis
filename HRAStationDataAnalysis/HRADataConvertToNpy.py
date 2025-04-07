@@ -126,15 +126,19 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
     for i, evt in enumerate(file_reader.get_events()):
 
         station = evt.get_station(station_id)
+        station_id = station.get_id()
         stationtime = station.get_station_time().unix
         det.update(station.get_station_time())
 
-        if station in stations_100s:
+        if station_id in stations_100s:
             use_templates = template_series_100
             use_templates_bad = template_series_bad_100
-        elif station in stations_200s:
+        elif station_id in stations_200s:
             use_templates = template_series_200
             use_templates_bad = template_series_bad_200
+        else:
+            ic(f'{station_id} not in {stations_100s} or {stations_200s}')
+            quit()
 
         # Untriggered events are forced triggers, and should be ignored. They are only used for calculating Vrm of the station
         if not station.has_triggered():
