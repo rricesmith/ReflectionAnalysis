@@ -19,12 +19,11 @@ for station_id in stations:
 
     HRAdataPath = f"/dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
     nurFiles = []
-    # for file in os.listdir(HRAdataPath):
-    #     if file.endswith('_statDatPak.root.nur'):
-    #         continue
-    #     else:
-    #         nurFiles.append(HRAdataPath + file)
-    nurFiles = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    for file in os.listdir(HRAdataPath):
+        if file.endswith('_statDatPak.root.nur'):
+            continue
+        else:
+            nurFiles.append(HRAdataPath + file)
 
     n_files = len(nurFiles)
     n_files_per_job = n_files // n_slurm_jobs
