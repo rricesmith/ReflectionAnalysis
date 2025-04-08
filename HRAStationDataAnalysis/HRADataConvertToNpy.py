@@ -4,7 +4,6 @@ from NuRadioReco.modules.io import NuRadioRecoio
 import NuRadioReco.modules.correlationDirectionFitter
 import NuRadioReco.modules.channelSignalReconstructor
 from NuRadioReco.framework.parameters import stationParameters as stnp
-from NuRadioReco.framework.parameters import channelParameters as chp
 from NuRadioReco.detector import detector
 from NuRadioReco.utilities import units
 import argparse
@@ -24,33 +23,6 @@ def inBlackoutTime(time, blackoutTimes):
             return True
     return False
 
-def getVrms(nurFiles, save_chans, station_id, det, blackoutTimes, max_check=1000):
-    # Calculate the average Vrms for given channels based on forced triggers
-
-    channelSignalReconstructor = NuRadioReco.modules.channelSignalReconstructor.channelSignalReconstructor()
-    template = NuRadioRecoio.NuRadioRecoio(nurFiles)
-
-
-    Vrms_sum = 0
-    num_avg = 0
-
-    for i, evt in enumerate(template.get_events()):
-        station = evt.get_station(station_id)
-        stationtime = station.get_station_time().unix
-        if inBlackoutTime(stationtime, blackoutTimes):
-            continue
-
-        channelSignalReconstructor.run(evt, station, det)
-        for ChId, channel in enumerate(station.iter_channels(use_channels=save_chans)):
-            Vrms_sum += channel[chp.noise_rms]
-            num_avg += 1
-        
-        if num_avg >= max_check:
-            break
-
-
-    return Vrms_sum / num_avg
-
 def calcSNR(traces, Vrms):
     # Calculate SNR from the average of two highest traces
 
@@ -63,6 +35,32 @@ def calcSNR(traces, Vrms):
     SNR = (SNRs[0] + SNRs[1]) / 2
     return SNR
 
+def getVrms(station_id):
+    # This loads the Vrms from the file
+
+    with open(f'HRAStationDataAnalysis/StationData/nurFiles/Vrms_{station_id}.txt', 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            if line.startswith(f'{station_id}:'):
+                Vrms = float(line.split(':')[1].strip())
+                ic(f'Vrms for station {station_id} is {Vrms}')
+                return Vrms
+
+    ic(f'Vrms for station {station_id} not found')
+    return None
+
+
+def getBlackoutTimes():
+    blackoutFile = open('DeepLearning/BlackoutCuts.json')
+    blackoutData = json.load(blackoutFile)
+    blackoutFile.close()
+
+    blackoutTimes = []
+
+    for iB, tStart in enumerate(blackoutData['BlackoutCutStarts']):
+        tEnd = blackoutData['BlackoutCutEnds'][iB]
+        blackoutTimes.append([tStart, tEnd])
+    return blackoutTimes
 
 def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix):
     # Pass in list of nur files, and save data to numpy files in folder
@@ -107,21 +105,16 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
     stations_100s = [13, 15, 18, 32]
     stations_200s = [14, 17, 19, 30]
 
-    blackoutFile = open('DeepLearning/BlackoutCuts.json')
-    blackoutData = json.load(blackoutFile)
-    blackoutFile.close()
-
-    blackoutTimes = []
-
-    for iB, tStart in enumerate(blackoutData['BlackoutCutStarts']):
-        tEnd = blackoutData['BlackoutCutEnds'][iB]
-        blackoutTimes.append([tStart, tEnd])
+    blackoutTimes = getBlackoutTimes()
 
     # Get Vrm from forced triggers
-    ic('calculating Vrms')
-    Vrms = getVrms(nurFiles, save_channels, station_id, det, blackoutTimes)
-    ic(f'normalizing to {Vrms} vrms')
-
+    # ic('calculating Vrms')
+    # Vrms = getVrms(nurFiles, save_channels, station_id, det, blackoutTimes)
+    # ic(f'normalizing to {Vrms} vrms')
+    Vrms = getVrms(station_id)
+    if Vrms is None:
+        ic('Vrms not found, exiting')
+        quit()
 
     for i, evt in enumerate(file_reader.get_events()):
 
