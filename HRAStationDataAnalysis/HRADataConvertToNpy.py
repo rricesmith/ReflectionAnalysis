@@ -231,10 +231,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Convert HRA Nur files to numpy files')
     parser.add_argument('stnID', type=int)
     parser.add_argument('date', type=str)
+    parser.add_argument('--start_file', type=int, default=0, help='Start file number for processing')
+    parser.add_argument('--end_file', type=int, default=0, help='End file number for processing')
 
     args = parser.parse_args()
     station_id = args.stnID
     date = args.date
+    start_file = args.start_file
+    end_file = args.end_file
 
     save_channels = [0, 1, 2, 3]
     save_folder = f'HRAStationDataAnalysis/StationData/nurFiles/{date}/'
@@ -247,5 +251,10 @@ if __name__ == "__main__":
             continue
         else:
             nurFiles.append(HRAdataPath + file)
+
+    if not end_file == 0:
+        nurFiles = nurFiles[start_file:end_file]
+    elif end_file == 0 and start_file > 0:
+        nurFiles = nurFiles[start_file:]
 
     convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, date)
