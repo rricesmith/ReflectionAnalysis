@@ -24,6 +24,10 @@ def getVrms(nurFiles, save_chans, station_id, det, blackoutTimes, max_check=1000
         if inBlackoutTime(stationtime, blackoutTimes):
             continue
 
+        # Check if the event is a forced trigger
+        if station.has_triggered():
+            continue
+
         channelSignalReconstructor.run(evt, station, det)
         for ChId, channel in enumerate(station.iter_channels(use_channels=save_chans)):
             Vrms_sum += channel[chp.noise_rms]

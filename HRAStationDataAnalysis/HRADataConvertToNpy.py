@@ -44,7 +44,7 @@ def getVrms(station_id):
             if line.startswith(f'{station_id}:'):
                 Vrms = float(line.split(':')[1].strip())
                 ic(f'Vrms for station {station_id} is {Vrms}')
-                return Vrms
+                return Vrms * units.V
 
     ic(f'Vrms for station {station_id} not found')
     return None
