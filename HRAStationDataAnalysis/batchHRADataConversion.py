@@ -13,7 +13,7 @@ date = config['PARAMETERS']['date']
 # stations = [13, 14, 15, 17, 18, 19, 30]
 stations = [13]
 
-n_slurm_jobs = 20
+n_slurm_jobs = 100
 
 for station_id in stations:
 
@@ -27,6 +27,9 @@ for station_id in stations:
 
     n_files = len(nurFiles)
     n_files_per_job = n_files // n_slurm_jobs
+    if n_files_per_job < 1:
+        n_files_per_job = 1
+    ic(n_files, n_files_per_job)
     for i in range(n_slurm_jobs):
         if i == n_slurm_jobs - 1:
             cmd = f'python HRAStationDataAnalysis/HRADataConvertToNpy.py {station_id} {date} --start_file {i*n_files_per_job} --end_file {0}'
