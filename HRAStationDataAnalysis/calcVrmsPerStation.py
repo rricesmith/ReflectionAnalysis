@@ -43,6 +43,9 @@ def getVrms(nurFiles, save_chans, station_id, det, blackoutTimes, max_check=1000
 
 if __name__ == "__main__":
 
+    ic('This function is returning Vrms of ~40mV per station, which is double what is expected from previous calculations')
+    ic('Instead, using previously calculated values of 20-20mV until this is debugged')
+    quit()
 
     stations = [13, 14, 15, 17, 18, 19, 30]
     save_channels = [0, 1, 2, 3]
