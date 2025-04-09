@@ -62,7 +62,7 @@ def getBlackoutTimes():
         blackoutTimes.append([tStart, tEnd])
     return blackoutTimes
 
-def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix):
+def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix, file_id=0):
     # Pass in list of nur files, and save data to numpy files in folder
 
     # Proccessing should save the following:
@@ -148,7 +148,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
         count = i - max_events * part
         if count >= max_events:
             savename = f'{save_folder}/{prefix}_Station{station_id}'
-            savesuffix = f'{max_events}evts_Part{part}.npy'
+            savesuffix = f'{file_id}fileID_{max_events}evts_Part{part}.npy'
 
             np.save(savename + '_Traces' + savesuffix, save_traces)
             np.save(savename + '_Times' + savesuffix, save_times)
@@ -207,7 +207,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix)
     save_zen = save_zen[:i]
     # Save the last part
     savename = f'{save_folder}/{prefix}_Station{station_id}'
-    savesuffix = f'{i}evts_Part{part}.npy'
+    savesuffix = f'{file_id}fileID_{i}evts_Part{part}.npy'
     np.save(savename + '_Traces' + savesuffix, save_traces)
     np.save(savename + '_Times' + savesuffix, save_times)
     np.save(savename + '_SNR' + savesuffix, save_snr)
@@ -246,4 +246,4 @@ if __name__ == "__main__":
         nurFiles = nurFiles[start_file:]
 
     ic(f'Files {nurFiles}')
-    convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, date)
+    convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, date, file_id=start_file)
