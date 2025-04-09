@@ -9,6 +9,7 @@ from icecream import ic
 def loadStationNurFiles(station_id):
     # Load the station nur files
     nurFiles = []
+    HRAdataPath = f"/dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
     for file in os.listdir(HRAdataPath):
         if file.endswith('_statDatPak.root.nur'):
             continue
@@ -33,6 +34,7 @@ if __name__ == "__main__":
 
         nurFiles = loadStationNurFiles(station_id)
 
+        
         n_files = len(nurFiles)
         n_files_per_job = n_files // n_slurm_jobs
         if n_slurm_jobs > n_files:
