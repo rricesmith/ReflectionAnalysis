@@ -31,11 +31,13 @@ def getVrms(nurFiles, save_chans, station_id, det, blackoutTimes, max_check=1000
         channelSignalReconstructor.run(evt, station, det)
         for ChId, channel in enumerate(station.iter_channels(use_channels=save_chans)):
             Vrms_sum += channel[chp.noise_rms]
+            ic(f'Vrms for channel {ChId} in station {station_id}: {channel[chp.noise_rms]}')
             num_avg += 1
         
         if num_avg >= max_check:
             break
 
+    ic(f'Vrms sum: {Vrms_sum}, num_avg: {num_avg}')
 
     return Vrms_sum / num_avg
 
