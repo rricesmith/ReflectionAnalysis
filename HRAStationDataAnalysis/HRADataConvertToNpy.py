@@ -244,6 +244,7 @@ if __name__ == "__main__":
         else:
             nurFiles.append(HRAdataPath + file)
 
+    ic(len(nurFiles), start_file, end_file, nurFiles[start_file:end_file])
     if not end_file == 0:
         nurFiles = nurFiles[start_file:end_file]
     elif end_file == 0 and start_file > 0:
