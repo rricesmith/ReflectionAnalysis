@@ -33,4 +33,4 @@ for station_id in stations:
         else:
             cmd = f'python HRAStationDataAnalysis/HRADataConvertToNpy.py {station_id} {date} --start_file {i*n_files_per_job} --end_file {(i+1)*n_files_per_job}'
 
-        A00_SlurmUtil.makeAndRunJob(cmd, f'HRA_{station_id}_{i}', runDirectory='run/HRAData', partition='standard')
+        A00_SlurmUtil.makeAndRunJob(cmd, f'{station_id}_{i}_HRA', runDirectory='run/HRAData', partition='standard')
