@@ -38,12 +38,13 @@ def calcSNR(traces, Vrms):
 def getVrms(station_id):
     # This loads the Vrms from the file
 
-    with open(f'HRAStationDataAnalysis/StationData/nurFiles/Vrms_{station_id}.txt', 'r') as f:
+    with open(f'HRAStationDataAnalysis/vrms_per_station.txt', 'r') as f:
         lines = f.readlines()
         for line in lines:
             if line.startswith(f'{station_id}:'):
                 Vrms = float(line.split(':')[1].strip())
                 ic(f'Vrms for station {station_id} is {Vrms}')
+                quit()
                 return Vrms * units.V
 
     ic(f'Vrms for station {station_id} not found')
