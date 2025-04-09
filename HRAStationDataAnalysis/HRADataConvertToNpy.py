@@ -249,4 +249,5 @@ if __name__ == "__main__":
     elif end_file == 0 and start_file > 0:
         nurFiles = nurFiles[start_file:]
 
+    ic(f'Files {nurFiles}')
     convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, date)
