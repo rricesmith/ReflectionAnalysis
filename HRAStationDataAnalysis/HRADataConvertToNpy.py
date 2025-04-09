@@ -12,6 +12,7 @@ import json
 import DeepLearning.D00_helperFunctions as D00_helperFunctions
 from HRAStationDataAnalysis.calculateChi import getMaxChi, getMaxAllChi
 from icecream import ic
+from HRAStationDataAnalysis.batchHRADataConversion import loadStationNurFiles
 
 def inBlackoutTime(time, blackoutTimes):
     #This check removes data that have bad datetime format. No events should be recorded before 2013 season when the first stations were installed
@@ -236,13 +237,7 @@ if __name__ == "__main__":
     save_folder = f'HRAStationDataAnalysis/StationData/nurFiles/{date}/'
     os.makedirs(save_folder, exist_ok=True)
 
-    nurFiles = []
-    HRAdataPath = f"/dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
-    for file in os.listdir(HRAdataPath):
-        if file.endswith('_statDatPak.root.nur'):
-            continue
-        else:
-            nurFiles.append(HRAdataPath + file)
+    nurFiles = loadStationNurFiles(station_id)
 
     ic(len(nurFiles), start_file, end_file, nurFiles[start_file:end_file])
     if not end_file == 0:
