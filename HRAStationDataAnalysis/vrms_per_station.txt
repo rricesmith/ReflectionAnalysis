@@ -1,0 +1,10 @@
+13: 0.020
+14: 0.023
+15: 0.020
+17: 0.023
+18: 0.020
+19: 0.023
+30: 0.023
+
+# Calculating them is giving Vrms of ~38-40mV. These values are previously measured by others
+# Recalculating Vrms is a TODO item
