@@ -191,7 +191,15 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
 
         # Calculate the azimuth and zenith angles from the correlation fitter only for high Chi events
         if save_chi_2016[i] > 0.65 or save_chi_RCR[i] > 0.65:
-            correlationDirectionFitter.run(evt, station, det, n_index=1.35)
+            # Some events have bad datetimes, so check if the time is valid
+            # Change the date to one that falls within HRA livetime if it isn't, but the bad datetime is saved still so data can be culled later
+            try:
+                correlationDirectionFitter.run(evt, station, det, n_index=1.35)
+            except LookupError:
+                ic(f'LookupError for event {i}, station {station_id}, time {stationtime}')
+                det.update(datetime.datetime(2018, 12, 31).timestamp())
+                correlationDirectionFitter.run(evt, station, det, n_index=1.35)
+
 
             save_azi[i] = station.get_parameter(stnp.azimuth)   # Saved in radians
             save_zen[i] = station.get_parameter(stnp.zenith)
