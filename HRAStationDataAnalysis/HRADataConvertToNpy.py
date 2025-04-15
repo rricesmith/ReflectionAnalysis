@@ -148,7 +148,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
         count = i - max_events * part
         if count >= max_events:
             savename = f'{save_folder}/{prefix}_Station{station_id}'
-            savesuffix = f'{file_id}fileID_{max_events}evts_Part{part}.npy'
+            savesuffix = f'_fileID{file_id}_{max_events}evts_Part{part}.npy'
 
             np.save(savename + '_Traces' + savesuffix, save_traces)
             np.save(savename + '_Times' + savesuffix, save_times)
@@ -207,7 +207,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
     save_zen = save_zen[:i]
     # Save the last part
     savename = f'{save_folder}/{prefix}_Station{station_id}'
-    savesuffix = f'{file_id}fileID_{i}evts_Part{part}.npy'
+    savesuffix = f'_fileID{file_id}_{i}evts_Part{part}.npy'
     np.save(savename + '_Traces' + savesuffix, save_traces)
     np.save(savename + '_Times' + savesuffix, save_times)
     np.save(savename + '_SNR' + savesuffix, save_snr)

@@ -4,6 +4,7 @@ import os
 import argparse
 import gc
 from icecream import ic
+import configparser
 
 def setSNRChiPlot(ax):
     ax.set_xlabel('SNR')
@@ -23,14 +24,19 @@ if __name__ == "__main__":
     # A SNR vs (RCR_Chi_bad - 2016_Chi) plot
     # A SNR vs (RCR_Chi - RCR_Chi_bad) plot
 
+    config = configparser.ConfigParser()
+    config.read('HRAStationDataAnalysis/config.ini')
+    date = config['PARAMETERS']['date']
 
-    parser = argparse.ArgumentParser(description='Convert HRA Nur files to numpy files')
-    parser.add_argument('stnID', type=int)
-    parser.add_argument('date', type=str)
 
-    args = parser.parse_args()
-    station_id = args.stnID
-    date = args.date
+    # parser = argparse.ArgumentParser(description='Convert HRA Nur files to numpy files')
+    # parser.add_argument('stnID', type=int)
+    # parser.add_argument('date', type=str)
+
+    # args = parser.parse_args()
+    # station_id = args.stnID
+    # date = args.date
+    station_id = 13
 
     data_folder = f'HRAStationDataAnalysis/StationData/nurFiles/{date}/'
     plot_folder = f'HRAStationDataAnalysis/plots/{date}/'
