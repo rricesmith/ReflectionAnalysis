@@ -91,16 +91,17 @@ if __name__ == "__main__":
     # RCR is 1 in both dims
     # Bad RCR is 2 in both dims
     colors = {'2016': 'blue', 'RCR': 'green', 'Bad RCR': 'red'}
+    markersize = 2
 
     fig, axs = plt.subplots(3, 3, figsize=(15, 15))
     fig.suptitle(f'SNR and Chi for station {station_id} on {date}', fontsize=20)
     fig.subplots_adjust(hspace=0.4, wspace=0.4)
     # Upper left is SNR vs 2016 Chi
-    axs[0, 0].scatter(SNR_array, chi_2016_array)
+    axs[0, 0].scatter(SNR_array, chi_2016_array, s=markersize)
     axs[0, 0].set_title('SNR vs 2016 Chi')
     setSNRChiPlot(axs[0, 0], ylabel_add='2016', ylabel_add_color=colors['2016'])
     # Middle left is Chi 2016 vs RCR Chi
-    axs[1, 0].scatter(chi_2016_array, chi_RCR_array)
+    axs[1, 0].scatter(chi_2016_array, chi_RCR_array, s=markersize)
     axs[1, 0].plot([0, 1], [0, 1], linestyle='--', color='red')
     axs[1, 0].set_title('2016 Chi vs RCR Chi')
     axs[1, 0].set_xlabel('2016 Chi', color=colors['2016'])
@@ -108,7 +109,7 @@ if __name__ == "__main__":
     axs[1, 0].set_ylim(0, 1)
     axs[1, 0].set_xlim(0, 1)
     # Bottom left is Chi 2016 vs Bad RCR Chi
-    axs[2, 0].scatter(chi_2016_array, chi_RCR_bad_array)
+    axs[2, 0].scatter(chi_2016_array, chi_RCR_bad_array, s=markersize)
     axs[2, 0].plot([0, 1], [0, 1], linestyle='--', color='red')
     axs[2, 0].set_title('2016 Chi vs Bad RCR Chi')
     axs[2, 0].set_xlabel('2016 Chi', color=colors['2016'])
@@ -117,11 +118,11 @@ if __name__ == "__main__":
     axs[2, 0].set_xlim(0, 1)
 
     # Middle plot is SNR vs RCR Chi
-    axs[1, 1].scatter(SNR_array, chi_RCR_array)
+    axs[1, 1].scatter(SNR_array, chi_RCR_array, s=markersize)
     axs[1, 1].set_title('SNR vs RCR Chi')
     setSNRChiPlot(axs[1, 1], ylabel_add='RCR', ylabel_add_color=colors['RCR'])
     # Bottom middle is Chi RCR Chi vs Bad RCR Chi
-    axs[2, 1].scatter(chi_RCR_array, chi_RCR_bad_array)
+    axs[2, 1].scatter(chi_RCR_array, chi_RCR_bad_array, s=markersize)
     axs[2, 1].plot([0, 1], [0, 1], linestyle='--', color='red')
     axs[2, 1].set_title('RCR Chi vs Bad RCR Chi')
     axs[2, 1].set_xlabel('RCR Chi', color=colors['RCR'])
@@ -130,7 +131,7 @@ if __name__ == "__main__":
     axs[2, 1].set_xlim(0, 1)
 
     # Bottom right is SNR vs Bad RCR Chi
-    axs[2, 2].scatter(SNR_array, chi_RCR_bad_array)
+    axs[2, 2].scatter(SNR_array, chi_RCR_bad_array, s=markersize)
     axs[2, 2].set_title('SNR vs Bad RCR Chi')
     setSNRChiPlot(axs[2, 2], ylabel_add='Bad RCR', ylabel_add_color=colors['Bad RCR'])
 
@@ -139,19 +140,19 @@ if __name__ == "__main__":
     fsize = 12
     SNR_loc = 40
     chi_loc = 0.45
-    axs[0, 1].scatter(SNR_array, chi_RCR_array - chi_2016_array)
+    axs[0, 1].scatter(SNR_array, chi_RCR_array - chi_2016_array, s=markersize)
     axs[0, 1].set_title('SNR vs (RCR Chi - 2016 Chi)')
     axs[0, 1].text(SNR_loc, chi_loc, 'More RCR', fontsize=6, color=colors['RCR'], ha='center', va='center')
     axs[0, 1].text(SNR_loc, -chi_loc, 'More 2016', fontsize=fsize, color=colors['2016'], ha='center', va='center')
     setSNRChiPlot(axs[0, 1], diff=True)
     # Upper right is SNR vs (Bad RCR Chi - 2016 Chi)
-    axs[0, 2].scatter(SNR_array, chi_RCR_bad_array - chi_2016_array)
+    axs[0, 2].scatter(SNR_array, chi_RCR_bad_array - chi_2016_array, s=markersize)
     axs[0, 2].set_title('SNR vs (Bad RCR Chi - 2016 Chi)')
     axs[0, 2].text(SNR_loc, chi_loc, 'More Bad RCR', fontsize=fsize, color=colors['Bad RCR'], ha='center', va='center')
     axs[0, 2].text(SNR_loc, -chi_loc, 'More 2016', fontsize=fsize, color=colors['2016'], ha='center', va='center')
     setSNRChiPlot(axs[0, 2], diff=True)
     # Middle right is SNR vs (RCR Chi - Bad RCR Chi)
-    axs[1, 2].scatter(SNR_array, chi_RCR_array - chi_RCR_bad_array)
+    axs[1, 2].scatter(SNR_array, chi_RCR_array - chi_RCR_bad_array, s=markersize)
     axs[1, 2].set_title('SNR vs (RCR Chi - Bad RCR Chi)')
     axs[1, 2].text(SNR_loc, chi_loc, 'More RCR', fontsize=fsize, color=colors['RCR'], ha='center', va='center')
     axs[1, 2].text(SNR_loc, -chi_loc, 'More Bad RCR', fontsize=fsize, color=colors['Bad RCR'], ha='center', va='center')
