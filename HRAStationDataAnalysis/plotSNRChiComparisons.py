@@ -14,7 +14,7 @@ def setSNRChiPlot(ax, ylabel_add=None, ylabel_add_color='black', diff=False):
     else:
         ax.set_ylabel('Chi')
     if diff:
-        ax.set_ylim(-1, 1)
+        ax.set_ylim(-0.5, 0.5)
     else:
         ax.set_ylim(0, 1)
     ax.set_xlim(3, 100)
@@ -137,22 +137,24 @@ if __name__ == "__main__":
     # Do the Chi differences on upper triangular matrix
     # Upper middle is SNR vs (RCR Chi - 2016 Chi)
     fsize = 6
+    SNR_loc = 35
+    chi_loc = 0.34
     axs[0, 1].scatter(SNR_array, chi_RCR_array - chi_2016_array)
     axs[0, 1].set_title('SNR vs (RCR Chi - 2016 Chi)')
-    # axs[0, 1].text(0.35, 0.35, 'More RCR', fontsize=6, color=colors['RCR'])
-    # axs[0, 1].text(-0.35, -0.35, 'More 2016', fontsize=fsize, color=colors['2016'])
+    axs[0, 1].text(SNR_loc, chi_loc, 'More RCR', fontsize=6, color=colors['RCR'])
+    axs[0, 1].text(SNR_loc, -chi_loc, 'More 2016', fontsize=fsize, color=colors['2016'])
     setSNRChiPlot(axs[0, 1], diff=True)
     # Upper right is SNR vs (RCR Bad Chi - 2016 Chi)
     axs[0, 2].scatter(SNR_array, chi_RCR_bad_array - chi_2016_array)
     axs[0, 2].set_title('SNR vs (RCR Bad Chi - 2016 Chi)')
-    # axs[0, 2].text(0.35, 0.35, 'More RCR Bad', fontsize=fsize, color=colors['RCR Bad'])
-    # axs[0, 2].text(-0.35, -0.35, 'More 2016', fontsize=fsize, color=colors['2016'])
+    axs[0, 2].text(SNR_loc, chi_loc, 'More RCR Bad', fontsize=fsize, color=colors['RCR Bad'])
+    axs[0, 2].text(SNR_loc, -chi_loc, 'More 2016', fontsize=fsize, color=colors['2016'])
     setSNRChiPlot(axs[0, 2], diff=True)
     # Middle right is SNR vs (RCR Chi - RCR Bad Chi)
     axs[1, 2].scatter(SNR_array, chi_RCR_array - chi_RCR_bad_array)
     axs[1, 2].set_title('SNR vs (RCR Chi - RCR Bad Chi)')
-    # axs[1, 2].text(0.35, 0.35, 'More RCR', fontsize=fsize, color=colors['RCR'])
-    # axs[1, 2].text(-0.35, -0.35, 'More RCR Bad', fontsize=fsize, color=colors['RCR Bad'])
+    axs[1, 2].text(SNR_loc, chi_loc, 'More RCR', fontsize=fsize, color=colors['RCR'])
+    axs[1, 2].text(SNR_loc, -chi_loc, 'More RCR Bad', fontsize=fsize, color=colors['RCR Bad'])
     setSNRChiPlot(axs[1, 2], diff=True)
 
 
