@@ -51,22 +51,22 @@ if __name__ == "__main__":
     for file in os.listdir(data_folder):
         if file.startswith(f'{date}_Station{station_id}_SNR'):
             data = np.load(data_folder+file, allow_pickle=True)
-            SNR_array.append(data.tolist())
+            SNR_array.extend(data.tolist())
             del data
 
         if file.startswith(f'{date}_Station{station_id}_Chi2016'):
             data = np.load(data_folder+file, allow_pickle=True)
-            chi_2016_array.append(data.tolist())
+            chi_2016_array.extend(data.tolist())
             del data
 
         if file.startswith(f'{date}_Station{station_id}_ChiRCR'):
             data = np.load(data_folder+file, allow_pickle=True)
-            chi_RCR_array.append(data.tolist())
+            chi_RCR_array.extend(data.tolist())
             del data
 
         if file.startswith(f'{date}_Station{station_id}_ChiBad'):
             data = np.load(data_folder+file, allow_pickle=True)
-            chi_RCR_bad_array.append(data.tolist())
+            chi_RCR_bad_array.extend(data.tolist())
             del data
 
         gc.collect()    # Free memory just in case it's large
