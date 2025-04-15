@@ -18,7 +18,7 @@ def setSNRChiPlot(ax, ylabel_add=None, ylabel_add_color='black', diff=False):
     else:
         ax.set_ylim(0, 1)
     ax.set_xlim(3, 100)
-    ax.grid(visible=True, which='major', axis='both')
+    ax.grid(visible=True, which='both', axis='both')
 
 if __name__ == "__main__":
     # This code makes the following plots
@@ -97,7 +97,6 @@ if __name__ == "__main__":
     fig.subplots_adjust(hspace=0.4, wspace=0.4)
     # Upper left is SNR vs 2016 Chi
     axs[0, 0].scatter(SNR_array, chi_2016_array)
-    axs[0, 0].plot([0, 100], [0, 1], linestyle='--', color='red')
     axs[0, 0].set_title('SNR vs 2016 Chi')
     setSNRChiPlot(axs[0, 0], ylabel_add='2016', ylabel_add_color=colors['2016'])
     # Middle left is Chi 2016 vs RCR Chi
@@ -123,6 +122,7 @@ if __name__ == "__main__":
     setSNRChiPlot(axs[1, 1], ylabel_add='RCR', ylabel_add_color=colors['RCR'])
     # Bottom middle is Chi RCR Chi vs RCR Bad Chi
     axs[2, 1].scatter(chi_RCR_array, chi_RCR_bad_array)
+    axs[2, 1].plot([0, 1], [0, 1], linestyle='--', color='red')
     axs[2, 1].set_title('RCR Chi vs RCR Bad Chi')
     axs[2, 1].set_xlabel('RCR Chi', color=colors['RCR'])
     axs[2, 1].set_ylabel('RCR Bad Chi', color=colors['RCR Bad'])
@@ -136,9 +136,9 @@ if __name__ == "__main__":
 
     # Do the Chi differences on upper triangular matrix
     # Upper middle is SNR vs (RCR Chi - 2016 Chi)
-    fsize = 6
-    SNR_loc = 35
-    chi_loc = 0.34
+    fsize = 12
+    SNR_loc = 20
+    chi_loc = 0.38
     axs[0, 1].scatter(SNR_array, chi_RCR_array - chi_2016_array)
     axs[0, 1].set_title('SNR vs (RCR Chi - 2016 Chi)')
     axs[0, 1].text(SNR_loc, chi_loc, 'More RCR', fontsize=6, color=colors['RCR'])
