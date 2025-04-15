@@ -197,7 +197,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
                 correlationDirectionFitter.run(evt, station, det, n_index=1.35)
             except LookupError:
                 ic(f'LookupError for event {i}, station {station_id}, time {stationtime}')
-                det.update(datetime.datetime(2018, 12, 31).timestamp())
+                det.update(datetime.datetime(2018, 12, 31))
                 correlationDirectionFitter.run(evt, station, det, n_index=1.35)
 
 
