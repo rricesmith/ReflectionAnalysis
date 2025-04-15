@@ -89,8 +89,8 @@ if __name__ == "__main__":
 
     # 2016 is 0 in both dims
     # RCR is 1 in both dims
-    # RCR Bad is 2 in both dims
-    colors = {'2016': 'blue', 'RCR': 'green', 'RCR Bad': 'red'}
+    # Bad RCR is 2 in both dims
+    colors = {'2016': 'blue', 'RCR': 'green', 'Bad RCR': 'red'}
 
     fig, axs = plt.subplots(3, 3, figsize=(15, 15))
     fig.suptitle(f'SNR and Chi for station {station_id} on {date}', fontsize=20)
@@ -107,12 +107,12 @@ if __name__ == "__main__":
     axs[1, 0].set_ylabel('RCR Chi', color=colors['RCR'])
     axs[1, 0].set_ylim(0, 1)
     axs[1, 0].set_xlim(0, 1)
-    # Bottom left is Chi 2016 vs RCR Bad Chi
+    # Bottom left is Chi 2016 vs Bad RCR Chi
     axs[2, 0].scatter(chi_2016_array, chi_RCR_bad_array)
     axs[2, 0].plot([0, 1], [0, 1], linestyle='--', color='red')
-    axs[2, 0].set_title('2016 Chi vs RCR Bad Chi')
+    axs[2, 0].set_title('2016 Chi vs Bad RCR Chi')
     axs[2, 0].set_xlabel('2016 Chi', color=colors['2016'])
-    axs[2, 0].set_ylabel('RCR Bad Chi', color=colors['RCR Bad'])
+    axs[2, 0].set_ylabel('Bad RCR Chi', color=colors['Bad RCR'])
     axs[2, 0].set_ylim(0, 1)
     axs[2, 0].set_xlim(0, 1)
 
@@ -120,41 +120,41 @@ if __name__ == "__main__":
     axs[1, 1].scatter(SNR_array, chi_RCR_array)
     axs[1, 1].set_title('SNR vs RCR Chi')
     setSNRChiPlot(axs[1, 1], ylabel_add='RCR', ylabel_add_color=colors['RCR'])
-    # Bottom middle is Chi RCR Chi vs RCR Bad Chi
+    # Bottom middle is Chi RCR Chi vs Bad RCR Chi
     axs[2, 1].scatter(chi_RCR_array, chi_RCR_bad_array)
     axs[2, 1].plot([0, 1], [0, 1], linestyle='--', color='red')
-    axs[2, 1].set_title('RCR Chi vs RCR Bad Chi')
+    axs[2, 1].set_title('RCR Chi vs Bad RCR Chi')
     axs[2, 1].set_xlabel('RCR Chi', color=colors['RCR'])
-    axs[2, 1].set_ylabel('RCR Bad Chi', color=colors['RCR Bad'])
+    axs[2, 1].set_ylabel('Bad RCR Chi', color=colors['Bad RCR'])
     axs[2, 1].set_ylim(0, 1)
     axs[2, 1].set_xlim(0, 1)
 
-    # Bottom right is SNR vs RCR Bad Chi
+    # Bottom right is SNR vs Bad RCR Chi
     axs[2, 2].scatter(SNR_array, chi_RCR_bad_array)
-    axs[2, 2].set_title('SNR vs RCR Bad Chi')
-    setSNRChiPlot(axs[2, 2], ylabel_add='RCR Bad', ylabel_add_color=colors['RCR Bad'])
+    axs[2, 2].set_title('SNR vs Bad RCR Chi')
+    setSNRChiPlot(axs[2, 2], ylabel_add='Bad RCR', ylabel_add_color=colors['Bad RCR'])
 
     # Do the Chi differences on upper triangular matrix
     # Upper middle is SNR vs (RCR Chi - 2016 Chi)
     fsize = 12
-    SNR_loc = 20
-    chi_loc = 0.38
+    SNR_loc = 40
+    chi_loc = 0.45
     axs[0, 1].scatter(SNR_array, chi_RCR_array - chi_2016_array)
     axs[0, 1].set_title('SNR vs (RCR Chi - 2016 Chi)')
-    axs[0, 1].text(SNR_loc, chi_loc, 'More RCR', fontsize=6, color=colors['RCR'])
-    axs[0, 1].text(SNR_loc, -chi_loc, 'More 2016', fontsize=fsize, color=colors['2016'])
+    axs[0, 1].text(SNR_loc, chi_loc, 'More RCR', fontsize=6, color=colors['RCR'], ha='center', va='center')
+    axs[0, 1].text(SNR_loc, -chi_loc, 'More 2016', fontsize=fsize, color=colors['2016'], ha='center', va='center')
     setSNRChiPlot(axs[0, 1], diff=True)
-    # Upper right is SNR vs (RCR Bad Chi - 2016 Chi)
+    # Upper right is SNR vs (Bad RCR Chi - 2016 Chi)
     axs[0, 2].scatter(SNR_array, chi_RCR_bad_array - chi_2016_array)
-    axs[0, 2].set_title('SNR vs (RCR Bad Chi - 2016 Chi)')
-    axs[0, 2].text(SNR_loc, chi_loc, 'More RCR Bad', fontsize=fsize, color=colors['RCR Bad'])
-    axs[0, 2].text(SNR_loc, -chi_loc, 'More 2016', fontsize=fsize, color=colors['2016'])
+    axs[0, 2].set_title('SNR vs (Bad RCR Chi - 2016 Chi)')
+    axs[0, 2].text(SNR_loc, chi_loc, 'More Bad RCR', fontsize=fsize, color=colors['Bad RCR'], ha='center', va='center')
+    axs[0, 2].text(SNR_loc, -chi_loc, 'More 2016', fontsize=fsize, color=colors['2016'], ha='center', va='center')
     setSNRChiPlot(axs[0, 2], diff=True)
-    # Middle right is SNR vs (RCR Chi - RCR Bad Chi)
+    # Middle right is SNR vs (RCR Chi - Bad RCR Chi)
     axs[1, 2].scatter(SNR_array, chi_RCR_array - chi_RCR_bad_array)
-    axs[1, 2].set_title('SNR vs (RCR Chi - RCR Bad Chi)')
-    axs[1, 2].text(SNR_loc, chi_loc, 'More RCR', fontsize=fsize, color=colors['RCR'])
-    axs[1, 2].text(SNR_loc, -chi_loc, 'More RCR Bad', fontsize=fsize, color=colors['RCR Bad'])
+    axs[1, 2].set_title('SNR vs (RCR Chi - Bad RCR Chi)')
+    axs[1, 2].text(SNR_loc, chi_loc, 'More RCR', fontsize=fsize, color=colors['RCR'], ha='center', va='center')
+    axs[1, 2].text(SNR_loc, -chi_loc, 'More Bad RCR', fontsize=fsize, color=colors['Bad RCR'], ha='center', va='center')
     setSNRChiPlot(axs[1, 2], diff=True)
 
 
