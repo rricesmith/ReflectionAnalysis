@@ -49,6 +49,7 @@ if __name__ == "__main__":
 
     # Load the data
     for file in data_folder:
+        ic(file, data_folder)
         if file.startswith(f'{date}_Station{station_id}_SNR'):
             data = np.load(data_folder+file, allow_pickle=True)
             SNR_array.append(data.tolist())
