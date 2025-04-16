@@ -99,9 +99,11 @@ def findCoincidenceDatetimes(date):
         # Convert to numpy array (if needed)
         # station_events = np.array(station_events)
         # Loop over events and store them by their timestamp.
+        ic(station_events)
         for idx, event_time in enumerate(station_events):
             # Ensure the event time is a np.datetime64 type
             ts = event_time
+            ic(event_time)
             if ts not in events_by_time:
                 events_by_time[ts] = []
             events_by_time[ts].append((station_id, idx))
