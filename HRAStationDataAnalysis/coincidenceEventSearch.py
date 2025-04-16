@@ -96,7 +96,7 @@ def findCoincidenceDatetimes(date):
                 gc.collect()  # Free up memory if necessary
         
         # Convert to numpy array (if needed)
-        station_events = np.array(station_events)
+        # station_events = np.array(station_events)
         # Loop over events and store them by their timestamp.
         for idx, event_time in enumerate(station_events):
             # Ensure the event time is a np.datetime64 type
