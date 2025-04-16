@@ -76,7 +76,9 @@ def findCoincidenceDatetimes(date):
     is the dictionary described above.
     """
     station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
-    station_ids = [13, 14, 15, 17, 18, 19, 30]
+
+    # station_ids = [13, 14, 15, 17, 18, 19, 30]
+    station_ids = [13, 14, 30]
 
     # Dictionary keyed by event timestamp. Each key maps to a list of (station, index) tuples.
     events_by_time = {}
