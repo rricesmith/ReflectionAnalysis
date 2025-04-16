@@ -80,14 +80,14 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
     part = 0
 
     save_traces = np.zeros((max_events, 4, 256))
-    save_times = np.zeros((max_events, 1))
-    save_snr = np.zeros((max_events, 1))
-    save_chi_2016 = np.zeros((max_events, 1))
-    save_chi_RCR = np.zeros((max_events, 1))
-    save_chi_RCR_bad = np.zeros((max_events, 1))
+    save_times = np.zeros((max_events))
+    save_snr = np.zeros((max_events))
+    save_chi_2016 = np.zeros((max_events))
+    save_chi_RCR = np.zeros((max_events))
+    save_chi_RCR_bad = np.zeros((max_events))
     # No calculation for Chi, as that is done in separate script depending upon templates desired
-    save_azi = np.zeros((max_events, 1))
-    save_zen = np.zeros((max_events, 1))
+    save_azi = np.zeros((max_events))
+    save_zen = np.zeros((max_events))
 
 
     file_reader = NuRadioRecoio.NuRadioRecoio(nurFiles)

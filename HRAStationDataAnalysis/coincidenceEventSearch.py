@@ -92,7 +92,7 @@ def findCoincidenceDatetimes(date):
                 file_path = os.path.join(station_data_folder, file)
                 ic(f"Loading file: {file_path}")
                 data = np.load(file_path, allow_pickle=True)
-                ic(data)
+                data = data.flatten()  # Flatten the data to ensure it's a 1D array
                 ic(data.tolist())
                 station_events.extend(data.tolist())
                 del data
