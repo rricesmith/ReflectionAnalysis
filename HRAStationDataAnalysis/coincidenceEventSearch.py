@@ -90,6 +90,7 @@ def findCoincidenceDatetimes(date):
         for file in os.listdir(station_data_folder):
             if file.startswith(f'{date}_Station{station_id}_Times'):
                 file_path = os.path.join(station_data_folder, file)
+                ic(f"Loading file: {file_path}")
                 data = np.load(file_path, allow_pickle=True)
                 station_events.extend(data.tolist())
                 del data
