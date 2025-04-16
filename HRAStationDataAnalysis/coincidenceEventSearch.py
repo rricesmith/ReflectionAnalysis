@@ -92,10 +92,13 @@ def findCoincidenceDatetimes(date):
                 file_path = os.path.join(station_data_folder, file)
                 ic(f"Loading file: {file_path}")
                 data = np.load(file_path, allow_pickle=True)
+                ic(data)
+                ic(data.tolist())
                 station_events.extend(data.tolist())
                 del data
                 gc.collect()  # Free up memory if necessary
-        
+ 
+        quit()        
         # Convert to numpy array (if needed)
         # station_events = np.array(station_events)
         # Loop over events and store them by their timestamp.
