@@ -58,7 +58,7 @@ import gc
 def findCoincidenceDatetimes(date): 
     """ Finds all exact coincidence datetimes between all stations.
     For each station data file in the corresponding date folder, this function loads the event
-    timestamps (expected as np.datetime64 types) and records the station and the index of the event.
+    timestamps (expected as Python datetime objects) and records the station and the index of the event.
     Events are grouped by exact timestamp. Only timestamps where at least two stations have events 
     (i.e. a coincidence) are stored.
 
