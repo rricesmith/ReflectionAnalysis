@@ -93,7 +93,6 @@ def findCoincidenceDatetimes(date):
                 ic(f"Loading file: {file_path}")
                 data = np.load(file_path, allow_pickle=True)
                 data = data.flatten()  # Flatten the data to ensure it's a 1D array
-                ic(data.tolist())
                 station_events.extend(data.tolist())
                 del data
                 gc.collect()  # Free up memory if necessary
@@ -101,11 +100,12 @@ def findCoincidenceDatetimes(date):
         # Convert to numpy array (if needed)
         # station_events = np.array(station_events)
         # Loop over events and store them by their timestamp.
-        ic(station_events)
         for idx, event_time in enumerate(station_events):
             # Ensure the event time is a np.datetime64 type
             ts = event_time
-            ic(event_time)
+            # Skip zero timestamps
+            if ts == 0:
+                continue
             if ts not in events_by_time:
                 events_by_time[ts] = []
             events_by_time[ts].append((station_id, idx))
