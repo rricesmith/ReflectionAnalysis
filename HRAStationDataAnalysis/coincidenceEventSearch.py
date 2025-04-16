@@ -152,5 +152,5 @@ if __name__ == "__main__":
         ic("Saved new coincidences", len(coincidence_datetimes))
 
     # Optional: print first few coincidences for verification.
-    for key in list(coincidence_datetimes.keys())[:5]:
+    for key in list(coincidence_datetimes.keys()):
         ic(key, coincidence_datetimes[key])
