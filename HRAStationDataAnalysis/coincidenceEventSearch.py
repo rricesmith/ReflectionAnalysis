@@ -98,7 +98,6 @@ def findCoincidenceDatetimes(date):
                 del data
                 gc.collect()  # Free up memory if necessary
  
-        quit()        
         # Convert to numpy array (if needed)
         # station_events = np.array(station_events)
         # Loop over events and store them by their timestamp.
