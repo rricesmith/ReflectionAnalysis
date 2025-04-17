@@ -9,6 +9,7 @@ from sklearn.cluster import KMeans
 import os
 import configparser
 import gc
+from icecream import ic
 
 # Set seeds for reproducibility
 np.random.seed(42)
@@ -27,22 +28,25 @@ data = np.array([])  # Initialize an empty array to concatenate data
 for file in os.listdir(station_data_folder):
     if file.startswith(f'{date}_Station{station_id}_Traces'):
         file_path = os.path.join(station_data_folder, file)
-        print(f"Loading file: {file_path}")
+        ic(f"Loading file: {file_path}")
         events = np.load(file_path, allow_pickle=True)
-        print(events.shape)
+        ic(events.shape)
         mask = np.any(events)  # Check if any event is all zero
-        print(mask)
+        ic(mask)
         mask = np.any(events, axis=0)  # Check if any event is all zero
-        print(mask)
+        ic(mask)
         mask = np.any(events, axis=1)  # Check if any event is all zero
-        print(mask)
+        ic(mask)
         mask = np.any(events, axis=2)  # Check if any event is all zero
-        print(mask)
-        print(events.shape, mask.shape, np.sum(mask), events[mask].shape)
+        ic(mask)
+        mask = np.any(events, axis=3)
+        ic(mask)
+        mask = np.any(events, axis=-1)
+        ic(events.shape, mask.shape, np.sum(mask), events[mask].shape)
         if np.sum(mask) == 0:
-            print("No events to load.")
+            ic("No events to load.")
             continue
-        print(events[mask])
+        ic(events[mask])
         quit()
         data.concatenate(events[mask])
         del events
@@ -136,7 +140,7 @@ y_pred_initial = kmeans.fit_predict(latent_features)
 
 # Set the KMeans cluster centers to the clustering layer.
 dec_model.get_layer(name='clustering').set_weights([kmeans.cluster_centers_])
-print("Initialized cluster centers via KMeans.")
+ic("Initialized cluster centers via KMeans.")
 
 ######################################################
 # 5. Define the Clustering Loss and Training Procedure
@@ -160,7 +164,7 @@ loss_history = []
 ######################################################
 # 6. DEC Training Loop
 ######################################################
-print("Starting DEC training ...")
+ic("Starting DEC training ...")
 for ite in range(maxiter):
     # Select a random batch.
     batch_index = np.random.choice(index_array, size=batch_size, replace=False)
@@ -188,7 +192,7 @@ for ite in range(maxiter):
     loss_history.append(loss)
 
     if ite % 500 == 0:
-        print(f"Iter {ite}: loss = {loss:.4f}")
+        ic(f"Iter {ite}: loss = {loss:.4f}")
 
 # Plot the training loss history.
 plt.figure(figsize=(8,4))
@@ -234,7 +238,7 @@ time_axis = np.arange(data_norm.shape[1])  # 256 timesteps
 
 for cluster in range(n_clusters):
     indices = np.where(cluster_assignments == cluster)[0]
-    print(f"Cluster {cluster} has {len(indices)} events.")
+    ic(f"Cluster {cluster} has {len(indices)} events.")
     # Plot a few example events.
     example_indices = np.random.choice(indices, size=min(n_examples, len(indices)), replace=False)
     
@@ -261,6 +265,6 @@ for cluster in range(n_clusters):
     indices = np.where(cluster_assignments == cluster)[0]
     file_path = os.path.join(save_dir, f'cluster_{cluster}_indices.npy')
     np.save(file_path, indices)
-    print(f"Saved {len(indices)} indices for cluster {cluster} to {file_path}")
+    ic(f"Saved {len(indices)} indices for cluster {cluster} to {file_path}")
 
-print("Clustering and saving of event indices complete.")
+ic("Clustering and saving of event indices complete.")
