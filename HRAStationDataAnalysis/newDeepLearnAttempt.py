@@ -23,18 +23,18 @@ config.read(os.path.join('HRAStationDataAnalysis', 'config.ini'))
 date = config['PARAMETERS']['date']
 station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
 station_id = 13
-data = []
+data = np.array([])  # Initialize an empty array to concatenate data
 for file in os.listdir(station_data_folder):
     if file.startswith(f'{date}_Station{station_id}_Times'):
         file_path = os.path.join(station_data_folder, file)
         print(f"Loading file: {file_path}")
         events = np.load(file_path, allow_pickle=True)
         mask = not np.any(events, axis=0)  # Check if any event is all zero
+        print(events.shape, mask.shape, np.sum(mask), events[mask].shape)
         if np.sum(mask) == 0:
             print("No events to load.")
             continue
         print(events[mask])
-        print(events[mask].shape)
         data.concatenate(events[mask])
         del events
         del mask
