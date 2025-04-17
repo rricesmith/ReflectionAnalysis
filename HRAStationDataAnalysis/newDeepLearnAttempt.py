@@ -35,7 +35,7 @@ for file in os.listdir(station_data_folder):
         if np.sum(mask) == 0:
             ic("No events to load.")
             continue
-        np.concatenate(data, events[mask])
+        data = np.concatenate(data, events[mask])
         del events
         del mask
         gc.collect()  # Free up memory if necessary
