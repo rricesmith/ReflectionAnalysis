@@ -32,16 +32,15 @@ for file in os.listdir(station_data_folder):
         events = np.load(file_path, allow_pickle=True)
         ic(events.shape)
         mask = np.any(events)  # Check if any event is all zero
-        ic(mask)
+        ic(mask, mask.shape)
         mask = np.any(events, axis=0)  # Check if any event is all zero
-        ic(mask)
+        ic(mask, mask.shape)
         mask = np.any(events, axis=1)  # Check if any event is all zero
-        ic(mask)
+        ic(mask, mask.shape)
         mask = np.any(events, axis=2)  # Check if any event is all zero
-        ic(mask)
-        mask = np.any(events, axis=3)
-        ic(mask)
+        ic(mask, mask.shape)
         mask = np.any(events, axis=-1)
+        ic(mask, mask.shape)
         ic(events.shape, mask.shape, np.sum(mask), events[mask].shape)
         if np.sum(mask) == 0:
             ic("No events to load.")
