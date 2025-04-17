@@ -30,7 +30,13 @@ for file in os.listdir(station_data_folder):
         print(f"Loading file: {file_path}")
         events = np.load(file_path, allow_pickle=True)
         print(events.shape)
+        mask = np.any(events)  # Check if any event is all zero
+        print(mask)
         mask = np.any(events, axis=0)  # Check if any event is all zero
+        print(mask)
+        mask = np.any(events, axis=1)  # Check if any event is all zero
+        print(mask)
+        mask = np.any(events, axis=2)  # Check if any event is all zero
         print(mask)
         print(events.shape, mask.shape, np.sum(mask), events[mask].shape)
         if np.sum(mask) == 0:
