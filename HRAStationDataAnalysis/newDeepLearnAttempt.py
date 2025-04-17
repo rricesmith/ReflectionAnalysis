@@ -42,10 +42,11 @@ for file in os.listdir(station_data_folder):
         mask = np.any(events, axis=-1)
         mask = np.any(events, axis=0)
         ic(mask, mask.shape)
-        ic(events.shape, mask.shape, np.sum(mask), events[mask].shape)
+        ic(events.shape, mask.shape)
         if np.sum(mask) == 0:
             ic("No events to load.")
             continue
+        ic(np.sum(mask), events[mask].shape)
         ic(events[mask])
         quit()
         data.concatenate(events[mask])
