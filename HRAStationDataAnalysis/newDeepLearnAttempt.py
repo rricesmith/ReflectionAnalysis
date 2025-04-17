@@ -30,6 +30,8 @@ for file in os.listdir(station_data_folder):
         print(f"Loading file: {file_path}")
         events = np.load(file_path, allow_pickle=True)
         mask = not np.any(events, axis=0)  # Check if any event is all zero
+        print(events[mask])
+        print(events[mask].shape)
         data.concatenate(events[mask])
         del events
         del mask
