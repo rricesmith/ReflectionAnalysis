@@ -25,7 +25,7 @@ station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nur
 station_id = 13
 data = np.array([])  # Initialize an empty array to concatenate data
 for file in os.listdir(station_data_folder):
-    if file.startswith(f'{date}_Station{station_id}_Times'):
+    if file.startswith(f'{date}_Station{station_id}_Traces'):
         file_path = os.path.join(station_data_folder, file)
         print(f"Loading file: {file_path}")
         events = np.load(file_path, allow_pickle=True)
