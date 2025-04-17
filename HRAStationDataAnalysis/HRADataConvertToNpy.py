@@ -116,7 +116,9 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
         ic('Vrms not found, exiting')
         quit()
 
+    n_event = 0
     for i, evt in enumerate(file_reader.get_events()):
+        n_event += 1
 
         station = evt.get_station(station_id)
         station_id = station.get_id()
@@ -145,19 +147,21 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
             ic(f'{i} events processed...')
 
         # Save if limit reached
-        count = i - max_events * part
-        if count >= max_events:
-            savename = f'{save_folder}/{prefix}_Station{station_id}'
-            savesuffix = f'_fileID{file_id}_{max_events}evts_Part{part}.npy'
+        if n_event >= max_events:
+            # Remove empty spots from arrays that were skipped due to blackout times or no trigger
+            mask_empty = save_times == 0
 
-            np.save(savename + '_Traces' + savesuffix, save_traces)
-            np.save(savename + '_Times' + savesuffix, save_times)
-            np.save(savename + '_SNR' + savesuffix, save_snr)
-            np.save(savename + '_Chi2016' + savesuffix, save_chi_2016)
-            np.save(savename + '_ChiRCR' + savesuffix, save_chi_RCR)
-            np.save(savename + '_ChiBad' + savesuffix, save_chi_RCR_bad)
-            np.save(savename + '_Azi' + savesuffix, save_azi)
-            np.save(savename + '_Zen' + savesuffix, save_zen)
+            savename = f'{save_folder}/{prefix}_Station{station_id}'
+            savesuffix = f'_fileID{file_id}_{(~mask_empty).sum()}evts_Part{part}.npy'
+
+            np.save(savename + '_Traces' + savesuffix, save_traces[~mask_empty])
+            np.save(savename + '_Times' + savesuffix, save_times[~mask_empty])
+            np.save(savename + '_SNR' + savesuffix, save_snr[~mask_empty])
+            np.save(savename + '_Chi2016' + savesuffix, save_chi_2016[~mask_empty])
+            np.save(savename + '_ChiRCR' + savesuffix, save_chi_RCR[~mask_empty])
+            np.save(savename + '_ChiBad' + savesuffix, save_chi_RCR_bad[~mask_empty])
+            np.save(savename + '_Azi' + savesuffix, save_azi[~mask_empty])
+            np.save(savename + '_Zen' + savesuffix, save_zen[~mask_empty])
             ic(f'Saved {savename} to {save_folder}')
             part += 1
 
@@ -170,27 +174,28 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
             save_azi = np.zeros((max_events, 1))
             save_zen = np.zeros((max_events, 1))
 
-        i = i - max_events * part
+            n_event = 0
 
-        save_times[i] = stationtime
+
+        save_times[n_event] = stationtime
 
         traces = []
         for chId, channel in enumerate(station.iter_channels(use_channels=save_channels)):
             # Get the traces from the channel
             trace = channel.get_trace()
-            save_traces[i][chId] = trace
+            save_traces[n_event][chId] = trace
             traces.append(trace)
 
         # Calculate the SNR from the traces
         SNR = calcSNR(traces, Vrms)
-        save_snr[i] = SNR
+        save_snr[n_event] = SNR
 
-        save_chi_2016[i] = getMaxAllChi(traces, 2*units.GHz, templates_2016, 2*units.GHz)
-        save_chi_RCR[i] = getMaxAllChi(traces, 2*units.GHz, use_templates, 2*units.GHz)
-        save_chi_RCR_bad[i] = getMaxAllChi(traces, 2*units.GHz, use_templates_bad, 2*units.GHz)
+        save_chi_2016[n_event] = getMaxAllChi(traces, 2*units.GHz, templates_2016, 2*units.GHz)
+        save_chi_RCR[n_event] = getMaxAllChi(traces, 2*units.GHz, use_templates, 2*units.GHz)
+        save_chi_RCR_bad[n_event] = getMaxAllChi(traces, 2*units.GHz, use_templates_bad, 2*units.GHz)
 
         # Calculate the azimuth and zenith angles from the correlation fitter only for high Chi events
-        if save_chi_2016[i] > 0.65 or save_chi_RCR[i] > 0.65:
+        if save_chi_2016[n_event] > 0.65 or save_chi_RCR[n_event] > 0.65:
             # Some events have bad datetimes, so check if the time is valid
             # Change the date to one that falls within HRA livetime if it isn't, but the bad datetime is saved still so data can be culled later
             try:
@@ -201,29 +206,31 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
                 correlationDirectionFitter.run(evt, station, det, n_index=1.35)
 
 
-            save_azi[i] = station.get_parameter(stnp.azimuth)   # Saved in radians
-            save_zen[i] = station.get_parameter(stnp.zenith)
+            save_azi[n_event] = station.get_parameter(stnp.azimuth)   # Saved in radians
+            save_zen[n_event] = station.get_parameter(stnp.zenith)
 
     # Remove empty spots from arrays
-    save_traces = save_traces[:i]
-    save_times = save_times[:i]
-    save_snr = save_snr[:i]
-    save_chi_2016 = save_chi_2016[:i]
-    save_chi_RCR = save_chi_RCR[:i]
-    save_chi_RCR_bad = save_chi_RCR_bad[:i]
-    save_azi = save_azi[:i]
-    save_zen = save_zen[:i]
+    save_traces = save_traces[:n_event]
+    save_times = save_times[:n_event]
+    save_snr = save_snr[:n_event]
+    save_chi_2016 = save_chi_2016[:n_event]
+    save_chi_RCR = save_chi_RCR[:n_event]
+    save_chi_RCR_bad = save_chi_RCR_bad[:n_event]
+    save_azi = save_azi[:n_event]
+    save_zen = save_zen[:n_event]
+    # Remove empty spots from arrays that were skipped due to blackout times or no trigger
+    mask_empty = save_times == 0
     # Save the last part
     savename = f'{save_folder}/{prefix}_Station{station_id}'
-    savesuffix = f'_fileID{file_id}_{i}evts_Part{part}.npy'
-    np.save(savename + '_Traces' + savesuffix, save_traces)
-    np.save(savename + '_Times' + savesuffix, save_times)
-    np.save(savename + '_SNR' + savesuffix, save_snr)
-    np.save(savename + '_Chi2016' + savesuffix, save_chi_2016)
-    np.save(savename + '_ChiRCR' + savesuffix, save_chi_RCR)
-    np.save(savename + '_ChiBad' + savesuffix, save_chi_RCR_bad)
-    np.save(savename + '_Azi' + savesuffix, save_azi)
-    np.save(savename + '_Zen' + savesuffix, save_zen)
+    savesuffix = f'_fileID{file_id}_{(~mask_empty).sum()}evts_Part{part}.npy'
+    np.save(savename + '_Traces' + savesuffix, save_traces[~mask_empty])
+    np.save(savename + '_Times' + savesuffix, save_times[~mask_empty])
+    np.save(savename + '_SNR' + savesuffix, save_snr[~mask_empty])
+    np.save(savename + '_Chi2016' + savesuffix, save_chi_2016[~mask_empty])
+    np.save(savename + '_ChiRCR' + savesuffix, save_chi_RCR[~mask_empty])
+    np.save(savename + '_ChiBad' + savesuffix, save_chi_RCR_bad[~mask_empty])
+    np.save(savename + '_Azi' + savesuffix, save_azi[~mask_empty])
+    np.save(savename + '_Zen' + savesuffix, save_zen[~mask_empty])
     print(f'Saved {savename} to {save_folder}')
 
 
