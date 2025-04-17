@@ -40,7 +40,7 @@ for file in os.listdir(station_data_folder):
         mask = np.any(events, axis=2)  # Check if any event is all zero
         ic(mask, mask.shape)
         mask = np.any(events, axis=-1)
-        mask = np.any(events, axis=0)
+        mask = np.any(mask, axis=0)
         ic(mask, mask.shape)
         ic(events.shape, mask.shape)
         if np.sum(mask) == 0:
