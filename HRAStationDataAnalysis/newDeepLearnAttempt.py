@@ -30,25 +30,11 @@ for file in os.listdir(station_data_folder):
         file_path = os.path.join(station_data_folder, file)
         ic(f"Loading file: {file_path}")
         events = np.load(file_path, allow_pickle=True)
-        ic(events.shape)
-        mask = np.any(events)  # Check if any event is all zero
-        ic(mask, mask.shape)
-        mask = np.any(events, axis=0)  # Check if any event is all zero
-        ic(mask, mask.shape)
-        mask = np.any(events, axis=1)  # Check if any event is all zero
-        ic(mask, mask.shape)
-        mask = np.any(events, axis=2)  # Check if any event is all zero
-        ic(mask, mask.shape)
         mask = np.any(events, axis=-1)
         mask = np.any(mask, axis=0)
-        ic(mask, mask.shape)
-        ic(events.shape, mask.shape)
         if np.sum(mask) == 0:
             ic("No events to load.")
             continue
-        ic(np.sum(mask), events[mask].shape)
-        ic(events[mask])
-        quit()
         data.concatenate(events[mask])
         del events
         del mask
