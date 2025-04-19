@@ -35,7 +35,6 @@ for file in os.listdir(station_data_folder):
         if np.sum(mask) == 0:
             ic("No events to load.")
             continue
-        ic(data.shape, events.shape, mask.shape, events[mask].shape)
         if data == []:
             data = events[mask]
         else:
