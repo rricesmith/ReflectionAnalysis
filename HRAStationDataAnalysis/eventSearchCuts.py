@@ -97,6 +97,7 @@ if __name__ == "__main__":
         # Convert to numpy arrays
         times = np.array(times)
         traces = np.array(traces)
+        ic(times.shape, traces.shape)
 
         # Remove zero timestamps
         mask = times != 0
