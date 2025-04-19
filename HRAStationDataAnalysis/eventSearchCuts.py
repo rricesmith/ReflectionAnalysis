@@ -4,7 +4,7 @@ import datetime
 import argparse
 from icecream import ic
 import numpy as np
-
+import glob
 
 
 
@@ -69,25 +69,30 @@ if __name__ == "__main__":
     station_ids = [13, 14, 15, 17, 18, 19, 30]
     for station_id in station_ids:
 
-        traces = []
-        times = []
         # Load the data for this station
 
-        for file in os.listdir(station_data_folder):
-            if file.startswith(f'{date}_Station{station_id}_Times'):
-                file_path = os.path.join(station_data_folder, file)
-                ic(f"Loading file: {file_path}")
-                data = np.load(file_path, allow_pickle=True)
-                data = data.flatten()  # Flatten the data to ensure it's a 1D array
-                times.extend(data.tolist())
-                del data
-            if file.startswith(f'{date}_Station{station_id}_Traces'):
-                file_path = os.path.join(station_data_folder, file)
-                ic(f"Loading file: {file_path}")
-                data = np.load(file_path, allow_pickle=True)
-                traces.extend(data.tolist())
-                del data
-            gc.collect()  # Free up memory if necessary
+        file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_Times*'))
+        times = [np.load(f) for f in file_list]
+        times = np.concatenate(times, axis=0)
+        file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_Traces*'))
+        traces = [np.load(f) for f in file_list]
+        traces = np.concatenate(traces, axis=0)
+
+        # for file in os.listdir(station_data_folder):
+        #     if file.startswith(f'{date}_Station{station_id}_Times'):
+        #         file_path = os.path.join(station_data_folder, file)
+        #         ic(f"Loading file: {file_path}")
+        #         data = np.load(file_path, allow_pickle=True)
+        #         data = data.flatten()  # Flatten the data to ensure it's a 1D array
+        #         times.extend(data.tolist())
+        #         del data
+        #     if file.startswith(f'{date}_Station{station_id}_Traces'):
+        #         file_path = os.path.join(station_data_folder, file)
+        #         ic(f"Loading file: {file_path}")
+        #         data = np.load(file_path, allow_pickle=True)
+        #         traces.extend(data.tolist())
+        #         del data
+        #     gc.collect()  # Free up memory if necessary
     
         # Convert to numpy arrays
         times = np.array(times)
