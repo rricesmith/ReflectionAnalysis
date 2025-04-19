@@ -43,7 +43,7 @@ def cluster_cut(times, traces, amplitude_threshold, time_period, cut_frequency):
     start = 0
     for end in range(n):
         # Advance the start index of the window until the time difference is less than time_period.
-        while times[end] - times[start] >= time_period:
+        while times[end] - times[start] >= time_period.total_seconds():
             start += 1
         # For each event in the window, check if any absolute amplitude exceeds the threshold.   
         window_events = traces[start:end+1]
