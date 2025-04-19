@@ -74,7 +74,7 @@ if __name__ == "__main__":
         file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_Times*'))
         times = [np.load(f) for f in file_list]
         times = np.concatenate(times, axis=0)
-        times.flatten()
+        times = times.squeeze()
         file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_Traces*'))
         traces = [np.load(f) for f in file_list]
         traces = np.concatenate(traces, axis=0)
