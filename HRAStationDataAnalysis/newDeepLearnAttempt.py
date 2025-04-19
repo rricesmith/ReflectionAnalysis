@@ -38,6 +38,7 @@ for file in os.listdir(station_data_folder):
         if data == []:
             data = events[mask]
         else:
+            ic(data.shape, events.shape, mask.shape, events[mask].shape)
             data = np.concatenate((data, events[mask]))
         del events
         del mask
