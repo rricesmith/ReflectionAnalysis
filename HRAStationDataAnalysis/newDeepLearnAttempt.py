@@ -24,7 +24,7 @@ config.read(os.path.join('HRAStationDataAnalysis', 'config.ini'))
 date = config['PARAMETERS']['date']
 station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
 station_id = 13
-data = np.array([])  # Initialize an empty array to concatenate data
+data = []  # Initialize an empty array to concatenate data
 for file in os.listdir(station_data_folder):
     if file.startswith(f'{date}_Station{station_id}_Traces'):
         file_path = os.path.join(station_data_folder, file)
@@ -36,7 +36,10 @@ for file in os.listdir(station_data_folder):
             ic("No events to load.")
             continue
         ic(data.shape, events.shape, mask.shape, events[mask].shape)
-        data = np.concatenate((data, events[mask]))
+        if data == []:
+            data = events[mask]
+        else:
+            data = np.concatenate((data, events[mask]))
         del events
         del mask
         gc.collect()  # Free up memory if necessary
