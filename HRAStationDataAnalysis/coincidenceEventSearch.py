@@ -129,6 +129,7 @@ def findCoincidenceDatetimes(date):
 
     return coincidence_datetimes
 
+
 if __name__ == "__main__": 
     # Read configuration and get date 
     config = configparser.ConfigParser() 
