@@ -51,6 +51,47 @@ def cluster_cut(times, traces, amplitude_threshold, time_period, cut_frequency):
             mask[start:end+1] = False
     return mask
 
+def L1_cut(traces, power_cut=0.3):
+    """
+    Returns a boolean mask selecting events that pass the power cut.
+
+    For each event (with trace shape (4, 256)), each channel is checked separately.
+    If any channel has a bin value that exceeds power_cut * (the sum of that channel),
+    then the entire event is removed. This means that an event passes (True) only if
+    for every channel, no single bin exceeds the given fraction of that channel's total.
+
+    Args:
+        times (array-like): The event times (unused in this calculation, but kept for interface symmetry).
+        traces (np.ndarray): Array of event traces with shape (n_events, 4, 256).
+        power_cut (float): The fraction threshold (default 0.3) such that if any bin in a channel
+                           is greater than power_cut times the channel's total, the event fails.
+
+    Returns:
+        np.ndarray: A boolean mask of shape (n_events,) where True indicates the event passes the cut.
+    """
+    import numpy as np
+    from NuRadioReco.utilities.fft import time2freq
+
+    n_events = traces.shape[0]
+    mask = np.ones(n_events, dtype=bool)
+    
+    # Process each event.
+    for i in range(n_events):
+        # Check each channel independently.
+        for channel in range(traces.shape[1]):
+            trace_channel = time2freq(traces[i, channel, :], 2) # sampling rate of 2GHz
+            total_power = np.sum(trace_channel)
+            # Protect against a channel with zero total to avoid division-by-zero.
+            if total_power == 0:
+                continue
+            # If any bin in this channel exceeds power_cut fraction of the total, flag the event.
+            if np.any(trace_channel > power_cut * total_power):
+                mask[i] = False
+                break  # No need to check other channels for this event.
+    return mask
+
+
+
 def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
     """
     Creates and saves scatter plots of events by season (October to April) for the years 2013-2020.
@@ -315,10 +356,13 @@ if __name__ == "__main__":
             ic(f"Cut file already exists: {cut_file}")
             cuts = np.load(cut_file, allow_pickle=True)
             cuts = cuts.item()
+            L1_mask = cuts['L1_mask']
             storm_mask = cuts['storm_mask']
             burst_mask = cuts['burst_mask']
         else:
-            # Apply first cluster cut for storms
+            # First cut is L1 cut
+            # Amplitude threshold is 0.3, cut frequency is 2 in window
+            L1_mask = L1_cut(traces, power_cut=0.3)
             # Amplitude threshold is 300mV, time period is 3600s, cut frequency is 2 in window
             storm_mask = cluster_cut(times, traces, 0.3, datetime.timedelta(seconds=3600), 2)
             # Apply second cluster cut for bursts
@@ -326,20 +370,23 @@ if __name__ == "__main__":
             burst_mask = cluster_cut(times, traces, 0.15, datetime.timedelta(seconds=60), 2)
             # Save the cuts to a numpy file
             cuts = {
+                'L1_mask': L1_mask,
                 'storm_mask': storm_mask,
                 'burst_mask': burst_mask
             }
             np.save(cut_file, cuts, allow_pickle=True)
 
 
-        ic(f"Storm mask: {sum(storm_mask)}, Burst mask: {sum(burst_mask)}, of total {len(times)}")
-        ic(f"Storm mask % {100*sum(storm_mask)/len(times)}%, Burst mask % {100*sum(burst_mask)/len(times)}%")
+        ic(f"L1 mask: {sum(L1_mask)}, Storm mask: {sum(storm_mask)}, Burst mask: {sum(burst_mask)}, of total {len(times)}")
+        ic(f"L1 mask % {100*sum(L1_mask)/len(times)}, Storm mask % {100*sum(storm_mask)/len(times)}%, Burst mask % {100*sum(burst_mask)/len(times)}%")
+
+        ic(f"L1 + Storm + Burst: {sum(L1_mask & storm_mask & burst_mask)}, {sum(L1_mask & storm_mask & burst_mask)/len(times)}%")
 
         # Plot the cuts
         plot_folder_station = os.path.join(plot_folder, f'Station{station_id}')
         os.makedirs(plot_folder_station, exist_ok=True)
-        plot_cuts_amplitudes(times, traces, plot_folder_station, storm_mask=storm_mask, burst_mask=burst_mask)
+        plot_cuts_amplitudes(times, traces, plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
 
-        plot_cuts_rates(times, output_dir=plot_folder_station, storm_mask=storm_mask, burst_mask=burst_mask)
+        plot_cuts_rates(times, output_dir=plot_folder_station, L1_mask=L1_mask,  storm_mask=storm_mask, burst_mask=burst_mask)
 
         quit()
