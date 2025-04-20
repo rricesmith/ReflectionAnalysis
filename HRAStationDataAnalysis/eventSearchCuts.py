@@ -217,7 +217,7 @@ if __name__ == "__main__":
 
 
         ic(f"Storm mask: {sum(storm_mask)}, Burst mask: {sum(burst_mask)}, of total {len(times)}")
-        ic(f"Storm mask % {sum(storm_mask)/len(times)}, Burst mask % {sum(burst_mask)/len(times)}")
+        ic(f"Storm mask % {100*sum(storm_mask)/len(times)}%, Burst mask % {100*sum(burst_mask)/len(times)}%")
 
         # Plot the cuts
         plot_folder_station = os.path.join(plot_folder, f'Station{station_id}')
