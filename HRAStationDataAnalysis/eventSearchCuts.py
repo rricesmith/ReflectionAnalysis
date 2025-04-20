@@ -74,6 +74,7 @@ def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
     import numpy as np
     import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
+    import itertools
     
     # Create output directory if it doesn't exist.
     if not os.path.exists(output_dir):
@@ -87,6 +88,9 @@ def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
     
     # Loop for each season between 2013 and 2020.
     for start_year in range(2013, 2020):
+        # Reset the marker cycle for each season.
+        markers = itertools.cycle(("v", "s", "*", "d"))
+
         # Define the seasonal period: October 1 of start_year to April 30 of start_year+1.
         season_start = datetime.datetime(start_year, 10, 1)
         season_end = datetime.datetime(start_year + 1, 4, 30, 23, 59, 59)
@@ -118,7 +122,7 @@ def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
             season_cut_mask = season_mask & cut_mask_sum
             if np.any(season_cut_mask):
                 plt.scatter(dt_times[season_cut_mask],
-                            max_amps[season_cut_mask], s=3, label=cut_name)
+                            max_amps[season_cut_mask], s=3, label=cut_name, marker=next(markers))
         
         # Format the x-axis to show dates as 'MM/DD/YY'.
         plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
@@ -131,6 +135,117 @@ def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
         plt.savefig(filename)
         plt.close()
         ic(f"Saved plot for season {start_year}-{start_year+1} to {filename}")
+
+
+def plot_cuts_rates(times, bin_size=30*60, output_dir=".", **cuts):
+    """
+    Creates and saves scatter plots of event rate versus time for seasonal periods.
+    
+    For each seasonal period (October 1 to April 30 between 2013 and 2020),
+    events are binned over a period defined by bin_size (default is 30 minutes, i.e. 1800 seconds).
+    The event rate in each bin is computed as:
+          event_rate = number_of_events_in_bin / bin_size   (units: events/second)
+    The function plots:
+      • All events (in light gray) aggregated for that season, and
+      • Overlays the event rate for any provided cuts (boolean arrays of shape [n_events])
+        with the legend label specified by the keyword argument name.
+        
+    Args:
+        times (array-like): Unix timestamps (one per event).
+        traces (numpy.ndarray): Array of event traces with shape (n_events, 4, 256). (Note: this
+                                parameter is not used in the rate calculation but is kept for interface symmetry.)
+        bin_size (int or float): Bin width in seconds over which to average for the event rate.
+                                 Default is 1800 seconds (30 minutes).
+        output_dir (str): Directory in which to save the plots. Defaults to current directory.
+        **cuts: Arbitrary keyword arguments where each key is the cut name (to appear in the legend)
+                and each value is a boolean array of shape (n_events,) that flags events for that cut.
+                
+    Returns:
+        None. A PNG file is saved for each seasonal period.
+    """
+    import os
+    import datetime
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    import itertools
+
+    # Create the output directory if it doesn't exist.
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Convert seasonal boundaries from datetime to unix timestamps.
+    # We'll use the provided "times" (which are unix times) for the binning.
+    # Loop from 2013 to 2019 to cover seasons 2013-2014 up to 2019-2020.
+    for start_year in range(2013, 2020):
+        # Reset the marker cycle for each season.
+        markers = itertools.cycle(("v", "s", "*", "d"))
+
+        # Define season: October 1 (start_year) to April 30 (start_year+1)
+        season_start_dt = datetime.datetime(start_year, 10, 1)
+        season_end_dt = datetime.datetime(start_year + 1, 4, 30, 23, 59, 59)
+        
+        season_start_unix = season_start_dt.timestamp()
+        season_end_unix = season_end_dt.timestamp()
+        
+        # Mask for events in the seasonal window.
+        season_mask = (np.array(times) >= season_start_unix) & (np.array(times) <= season_end_unix)
+        if not np.any(season_mask):
+            # No events in this season. Skip this season.
+            continue
+        
+        # Get season events (using the original unix time stamps)
+        season_times = np.array(times)[season_mask]
+        
+        # Create bins: each bin is bin_size seconds wide.
+        # Ensure the final bin covers the full seasonal period.
+        bins = np.arange(season_start_unix, season_end_unix + bin_size, bin_size)
+        # Calculate bin centers to use as the x-axis value.
+        bin_centers = (bins[:-1] + bins[1:]) / 2
+        
+        # Histogram for ALL events in this season.
+        count_all, _ = np.histogram(season_times, bins=bins)
+        rate_all = count_all / bin_size  # events per second
+        
+        # Prepare the figure.
+        plt.figure(figsize=(10, 6))
+        plt.title(f"Season {start_year}-{start_year + 1} Event Rate")
+        plt.xlabel("Time")
+        plt.ylabel("Event Rate (Hz)")
+        
+        # Plot the overall event rate as light gray scatter.
+        # Convert bin centers to datetime objects.
+        dt_bin_centers = [datetime.datetime.fromtimestamp(ts) for ts in bin_centers]
+        plt.scatter(dt_bin_centers, rate_all, s=3, label="All Events", facecolor="none", edgecolor="black")
+        
+        # For each provided cut, compute and plot the binned event rate.
+        for cut_name, cut_mask in cuts.items():
+            # Ensure cut_mask is a numpy array.
+            cut_mask = np.array(cut_mask)
+            # Combine seasonal mask with the given cut mask.
+            season_cut_mask = season_mask & cut_mask
+            if not np.any(season_cut_mask):
+                continue  # Skip if no events match the cut within this season.
+            
+            # Get the unix times for the cut events.
+            season_cut_times = np.array(times)[season_cut_mask]
+            count_cut, _ = np.histogram(season_cut_times, bins=bins)
+            rate_cut = count_cut / bin_size
+            
+            plt.scatter(dt_bin_centers, rate_cut, s=3, label=cut_name, marker=next(markers))
+        
+        # Format the x-axis to display the date and time nicely.
+        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y %H:%M'))
+        plt.gcf().autofmt_xdate()
+        plt.legend()
+        plt.tight_layout()
+        
+        # Save the plot instead of showing it.
+        out_filename = os.path.join(output_dir, f"season_{start_year}_{start_year+1}_rate.png")
+        plt.savefig(out_filename)
+        plt.close()
+        ic(f"Saved event rate plot for season {start_year}-{start_year+1} to {out_filename}")
+
 
 
 if __name__ == "__main__":
@@ -195,6 +310,7 @@ if __name__ == "__main__":
         # Check if cuts are already processed
         # If so load cuts, otherwise process cuts and save
         cut_file = os.path.join(cuts_data_folder, f'{date}_Station{station_id}_Cuts.npy')
+        os.makedirs(cuts_data_folder, exist_ok=True)
         if os.path.exists(cut_file):
             ic(f"Cut file already exists: {cut_file}")
             cuts = np.load(cut_file, allow_pickle=True)
@@ -224,5 +340,6 @@ if __name__ == "__main__":
         os.makedirs(plot_folder_station, exist_ok=True)
         plot_cuts_amplitudes(times, traces, plot_folder_station, storm_mask=storm_mask, burst_mask=burst_mask)
 
+        plot_cuts_rates(times, output_dir=plot_folder_station, storm_mask=storm_mask, burst_mask=burst_mask)
 
         quit()
