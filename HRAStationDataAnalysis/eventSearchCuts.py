@@ -352,6 +352,18 @@ if __name__ == "__main__":
         from NuRadioReco.utilities.fft import time2freq
         for channel in range(4):
             ic(traces[i, channel, :], time2freq(traces[i, channel, :], 2))
+            tracefreq = time2freq(traces[i, channel, :], 2)
+            ic(tracefreq)
+            ic(np.sum(tracefreq))
+            ic(np.max(tracefreq))
+            ic(np.sum(tracefreq) * 0.3 < np.max(tracefreq))
+
+            ic(np.abs(tracefreq))
+            ic(np.sum(np.abs(tracefreq)))
+            ic(np.max(np.abs(tracefreq)))
+            ic(np.sum(np.abs(tracefreq)) * 0.3 < np.max(np.abs(tracefreq)))
+
+
         quit()
 
         # Check if cuts are already processed
