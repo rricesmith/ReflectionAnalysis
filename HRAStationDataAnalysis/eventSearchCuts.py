@@ -80,7 +80,7 @@ def L1_cut(traces, power_cut=0.3):
     for i in range(n_events):
         # Check each channel independently.
         for channel in range(traces.shape[1]):
-            trace_channel = time2freq(traces[i, channel, :], 2) # sampling rate of 2GHz
+            trace_channel = np.abs(time2freq(traces[i, channel, :], 2)) # sampling rate of 2GHz
             total_power = np.sum(trace_channel)
             # Protect against a channel with zero total to avoid division-by-zero.
             if total_power == 0:
@@ -348,23 +348,6 @@ if __name__ == "__main__":
         times = times[mask]
         traces = traces[mask]
 
-        i = 1050
-        from NuRadioReco.utilities.fft import time2freq
-        for channel in range(4):
-            ic(traces[i, channel, :], time2freq(traces[i, channel, :], 2))
-            tracefreq = time2freq(traces[i, channel, :], 2)
-            ic(tracefreq)
-            ic(np.sum(tracefreq))
-            ic(np.max(tracefreq))
-            ic(np.sum(tracefreq) * 0.3 < np.max(tracefreq))
-
-            ic(np.abs(tracefreq))
-            ic(np.sum(np.abs(tracefreq)))
-            ic(np.max(np.abs(tracefreq)))
-            ic(np.sum(np.abs(tracefreq)) * 0.3 < np.max(np.abs(tracefreq)))
-
-
-        quit()
 
         # Check if cuts are already processed
         # If so load cuts, otherwise process cuts and save
