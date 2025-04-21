@@ -349,6 +349,7 @@ if __name__ == "__main__":
         traces = traces[mask]
 
         i = 1050
+        from NuRadioReco.utilities.fft import time2freq
         for channel in range(4):
             ic(traces[i, channel, :], time2freq(traces[i, channel, :], 2))
         quit()
