@@ -377,11 +377,14 @@ if __name__ == "__main__":
             np.save(cut_file, cuts, allow_pickle=True)
 
 
-        ic(f"\nL1 mask {L1_mask.shape}, Storm mask {storm_mask.shape}, Burst mask {burst_mask.shape}")
-        ic(f"\nL1 mask: {sum(L1_mask)}, Storm mask: {sum(storm_mask)}, Burst mask: {sum(burst_mask)}, of total {len(times)}")
-        ic(f"\nL1 mask % {100*sum(L1_mask)/len(times)}\nStorm mask % {100*sum(storm_mask)/len(times)}%\n Burst mask % {100*sum(burst_mask)/len(times)}%")
+        ic(f"L1 mask {L1_mask.shape}, Storm mask {storm_mask.shape}, Burst mask {burst_mask.shape}")
+        ic(f"L1 mask: {sum(L1_mask)}, Storm mask: {sum(storm_mask)}, Burst mask: {sum(burst_mask)}, of total {len(times)}")
+        ic(f"L1 mask % {100*sum(L1_mask)/len(times)}, Storm mask % {100*sum(storm_mask)/len(times)}%, Burst mask % {100*sum(burst_mask)/len(times)}%")
 
-        ic(f"\nL1 + Storm + Burst: {sum(L1_mask & storm_mask & burst_mask)}, {sum(L1_mask & storm_mask & burst_mask)/len(times)}%")
+        ic(f"L1 + Storm: {sum(L1_mask & storm_mask)}, {sum(L1_mask & storm_mask)/len(times)}%")
+        ic(f"L1 + Burst: {sum(L1_mask & burst_mask)}, {sum(L1_mask & burst_mask)/len(times)}%")
+        ic(f"Storm + Burst: {sum(storm_mask & burst_mask)}, {sum(storm_mask & burst_mask)/len(times)}%")
+        ic(f"L1 + Storm + Burst: {sum(L1_mask & storm_mask & burst_mask)}, {sum(L1_mask & storm_mask & burst_mask)/len(times)}%")
 
         # Plot the cuts
         plot_folder_station = os.path.join(plot_folder, f'Station{station_id}')
