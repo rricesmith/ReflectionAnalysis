@@ -44,7 +44,8 @@ def cluster_cut(times, traces, amplitude_threshold, time_period, cut_frequency):
         while times[end] - times[start] >= time_period.total_seconds():
             start += 1
         # For each event in the window, check if any absolute amplitude exceeds the threshold.   
-        window_events = traces[start:end+1]
+        # window_events = traces[start:end+1]
+        window_events = traces[start:end] # I don't think there should be +1 on end, given there isn't in the window search
         count = np.sum(np.any(np.abs(window_events) > amplitude_threshold, axis=(1, 2)))
         if count >= cut_frequency:
             # Mark all events within this window (at indices start to end)
@@ -347,6 +348,10 @@ if __name__ == "__main__":
         times = times[mask]
         traces = traces[mask]
 
+        i = 1050
+        for channel in range(4):
+            ic(traces[i, channel, :], time2freq(traces[i, channel, :], 2))
+        quit()
 
         # Check if cuts are already processed
         # If so load cuts, otherwise process cuts and save
@@ -375,6 +380,7 @@ if __name__ == "__main__":
                 'burst_mask': burst_mask
             }
             np.save(cut_file, cuts, allow_pickle=True)
+
 
 
         ic(f"L1 mask {L1_mask.shape}, Storm mask {storm_mask.shape}, Burst mask {burst_mask.shape}")
