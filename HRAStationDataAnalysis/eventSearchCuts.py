@@ -281,6 +281,7 @@ def plot_cuts_rates(times, bin_size=30*60, output_dir=".", **cuts):
         plt.gcf().autofmt_xdate()
         plt.legend()
         plt.yscale('log')
+        plt.ylim(1e-4, 10)
         plt.tight_layout()
         
         # Save the plot instead of showing it.
