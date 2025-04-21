@@ -280,6 +280,7 @@ def plot_cuts_rates(times, bin_size=30*60, output_dir=".", **cuts):
         plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y %H:%M'))
         plt.gcf().autofmt_xdate()
         plt.legend()
+        plt.yscale('log')
         plt.tight_layout()
         
         # Save the plot instead of showing it.
