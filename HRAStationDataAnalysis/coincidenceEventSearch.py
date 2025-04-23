@@ -56,15 +56,17 @@ import gc
 
 
 def findCoincidenceDatetimes(date): 
-    """ Finds all exact coincidence datetimes between all stations.
+    """ 
+    Finds all coincidence events between stations within a one-second window.
+
     For each station data file in the corresponding date folder, this function loads the event
     timestamps (expected as Python datetime objects) and records the station and the index of the event.
-    Events are grouped by exact timestamp. Only timestamps where at least two stations have events 
-    (i.e. a coincidence) are stored.
+    Instead of grouping events by exact timestamp, events are grouped if they occur within one second
+    of the earliest event in the group.
 
     Each stored coincidence event is a dictionary with the following keys:
-    - "numCoincidences": Number of events at that exact timestamp.
-    - "datetime": The event timestamp.
+    - "numCoincidences": Number of events in the coincidence group.
+    - "datetime": The representative event timestamp (the first event in the group).
     - "stations": List of station IDs in which the event occurred.
     - "indices": List of indices (positions in the station dataset) corresponding to the event.
 
@@ -72,16 +74,24 @@ def findCoincidenceDatetimes(date):
     date (str): The date folder to process, as read from the configuration.
 
     Returns:
-    A dictionary where each key is an incrementing coincidence event number (0, 1, 2, ...) and the value 
-    is the dictionary described above.
+    A dictionary where each key is an incrementing coincidence event number (0, 1, 2, ...) and 
+    the value is the dictionary described above.
     """
+    import os
+    import numpy as np
+    import datetime
+    from icecream import ic
+    import gc
+
     station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
 
+    # Use a subset of stations for the example.
     # station_ids = [13, 14, 15, 17, 18, 19, 30]
     station_ids = [13, 14, 30]
 
-    # Dictionary keyed by event timestamp. Each key maps to a list of (station, index) tuples.
-    events_by_time = {}
+    # Instead of grouping by exact time, collect all events in a list.
+    # Each event is represented as a tuple: (timestamp, station_id, event_index)
+    all_events = []
 
     # Load data for each station.
     for station_id in station_ids:
@@ -92,42 +102,57 @@ def findCoincidenceDatetimes(date):
                 file_path = os.path.join(station_data_folder, file)
                 ic(f"Loading file: {file_path}")
                 data = np.load(file_path, allow_pickle=True)
-                data = data.flatten()  # Flatten the data to ensure it's a 1D array
+                data = data.flatten()  # Flatten the data to ensure it's a 1D array.
                 station_events.extend(data.tolist())
                 del data
                 gc.collect()  # Free up memory if necessary
- 
-        # Convert to numpy array (if needed)
-        # station_events = np.array(station_events)
-        # Loop over events and store them by their timestamp.
+        
+        # Loop over events and add them to all_events list.
         for idx, event_time in enumerate(station_events):
-            # Ensure the event time is a np.datetime64 type
-            ts = event_time
-            # Skip zero timestamps
-            if ts == 0:
+            # Skip zero timestamps.
+            if event_time == 0:
                 continue
-            if ts not in events_by_time:
-                events_by_time[ts] = []
-            events_by_time[ts].append((station_id, idx))
+            ts = event_time   # Already a datetime object.
+            all_events.append((ts, station_id, idx))
 
-    # Build the coincidences dictionary using only those timestamps with at least 2 events.
+    # Sort all events by timestamp.
+    all_events.sort(key=lambda x: x[0])
+
+    # Now group events - events are in a coincidence if they occur within one second of the
+    # first event in the group.
     coincidence_datetimes = {}
     event_counter = 0
-    # Sort the timestamps for consistent ordering.
-    for ts in sorted(events_by_time.keys()):
-        event_list = events_by_time[ts]
-        if len(event_list) > 1:
-            stations = [item[0] for item in event_list]
-            indices = [item[1] for item in event_list]
+
+    n_events = len(all_events)
+    i = 0
+    one_second = datetime.timedelta(seconds=1)
+    while i < n_events:
+        current_group = [all_events[i]]
+        j = i + 1
+        # Include subsequent events only if their time is within one second of the first event in the group.
+        while j < n_events and (all_events[j][0] - all_events[i][0]) <= one_second:
+            current_group.append(all_events[j])
+            j += 1
+        
+        # Only record a coincidence if at least 2 events are found.
+        if len(current_group) > 1:
+            stations = [event[1] for event in current_group]
+            indices = [event[2] for event in current_group]
+            # Use the first event's time as a representative time.
             coincidence_datetimes[event_counter] = {
-                "numCoincidences": len(event_list),
-                "datetime": ts,
+                "numCoincidences": len(current_group),
+                "datetime": all_events[i][0],
                 "stations": stations,
                 "indices": indices
             }
             event_counter += 1
+            # Skip over the events already grouped.
+            i = j
+        else:
+            i += 1
 
     return coincidence_datetimes
+
 
 
 if __name__ == "__main__": 

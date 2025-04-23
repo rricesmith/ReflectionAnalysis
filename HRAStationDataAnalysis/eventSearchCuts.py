@@ -5,7 +5,7 @@ import argparse
 from icecream import ic
 import numpy as np
 import glob
-
+import argparse
 
 
 def cluster_cut(times, traces, amplitude_threshold, time_period, cut_frequency):
@@ -369,9 +369,18 @@ if __name__ == "__main__":
     # and returning the final mask to be used for the event search
 
     # Load the configuration file
-    config = configparser.ConfigParser()
-    config.read('HRAStationDataAnalysis/config.ini')
-    date = config['PARAMETERS']['date']
+    # config = configparser.ConfigParser()
+    # config.read('HRAStationDataAnalysis/config.ini')
+    # date = config['PARAMETERS']['date']
+
+    parser = argparse.ArgumentParser(description='Convert HRA Nur files to numpy files')
+    parser.add_argument('stnID', type=int)
+    parser.add_argument('date', type=str)
+
+    args = parser.parse_args()
+    station_id = args.stnID
+    date = args.date
+
 
     station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
     cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date)
