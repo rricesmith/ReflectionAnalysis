@@ -433,12 +433,12 @@ if __name__ == "__main__":
             ic(f'Checking for bad times')
             approx_bad_times, indices = approximate_bad_times(times)
             ic(f"Bad times approximated: {len(approx_bad_times)}, {len(approx_bad_times)/len(times)}% bad")
-            approx_bad_times = mdates.epoch2num(approx_bad_times)
 
             ic(f'Plotting bad times')
             # Plot a histogram of approx bad times to see which months/years are bad
             import matplotlib.pyplot as plt
             import matplotlib.dates as mdates
+            approx_bad_times = mdates.epoch2num(approx_bad_times)
             plt.figure(figsize=(10, 6))
             plt.hist(approx_bad_times, bins=100, color='red', alpha=0.5)
             plt.title(f"Bad Times for Station {station_id}")
