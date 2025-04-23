@@ -434,6 +434,9 @@ if __name__ == "__main__":
             plt.xlabel("Unix Timestamp")
             plt.savefig(os.path.join(plot_folder_station, f"bad_times_histogram_station_{station_id}.png"))
             plt.close()
+            del approx_bad_times
+            del indices
+            gc.collect()
 
         # Remove zero timestamps
         mask = times != 0
@@ -445,6 +448,8 @@ if __name__ == "__main__":
         times = times[mask]
         traces = traces[mask]
 
+        del mask
+        gc.collect()
 
         # Check if cuts are already processed
         # If so load cuts, otherwise process cuts and save
@@ -490,4 +495,10 @@ if __name__ == "__main__":
 
         plot_cuts_rates(times, output_dir=plot_folder_station, L1_mask=L1_mask,  storm_mask=storm_mask, burst_mask=burst_mask)
 
+        del times
+        del traces
+        del L1_mask
+        del storm_mask
+        del burst_mask
+        gc.collect()
 
