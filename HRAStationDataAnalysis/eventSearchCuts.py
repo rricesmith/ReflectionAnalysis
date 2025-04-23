@@ -415,6 +415,24 @@ if __name__ == "__main__":
         traces = np.array(traces)
         ic(times.shape, traces.shape)
 
+
+        check_bad_times = True
+        if check_bad_times:
+            approx_bad_times, indices = approximate_bad_times(times)
+            ic(f"Bad times approximated: {len(approx_bad_times)}, {len(approx_bad_times)/len(times)}% bad")
+
+            # Plot a histogram of approx bad times to see which months/years are bad
+            import matplotlib.pyplot as plt
+            import matplotlib.dates as mdates
+            plt.figure(figsize=(10, 6))
+            plt.hist(mdates.epoch2num(approx_bad_times), bins=100, color='red', alpha=0.5)
+            plt.title(f"Bad Times for Station {station_id}")
+            plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
+            plt.gcf().autofmt_xdate()
+            plt.xlabel("Unix Timestamp")
+            plt.savefig(os.path.join(plot_folder_station, f"bad_times_histogram_station_{station_id}.png"))
+            plt.close()
+
         # Remove zero timestamps
         mask = times != 0
         times = times[mask]
@@ -472,20 +490,4 @@ if __name__ == "__main__":
 
         plot_cuts_rates(times, output_dir=plot_folder_station, L1_mask=L1_mask,  storm_mask=storm_mask, burst_mask=burst_mask)
 
-        check_bad_times = True
-        if check_bad_times:
-            approx_bad_times, indices = approximate_bad_times(times)
-            ic(f"Bad times approximated: {len(approx_bad_times)}, {len(approx_bad_times)/len(times)}% bad")
-
-            # Plot a histogram of approx bad times to see which months/years are bad
-            import matplotlib.pyplot as plt
-            import matplotlib.dates as mdates
-            plt.figure(figsize=(10, 6))
-            plt.hist(mdates.epoch2num(approx_bad_times), bins=100, color='red', alpha=0.5)
-            plt.title(f"Bad Times for Station {station_id}")
-            plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
-            plt.gcf().autofmt_xdate()
-            plt.xlabel("Unix Timestamp")
-            plt.savefig(os.path.join(plot_folder_station, f"bad_times_histogram_station_{station_id}.png"))
-            plt.close()
 
