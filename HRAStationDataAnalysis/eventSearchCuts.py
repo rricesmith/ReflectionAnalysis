@@ -386,7 +386,8 @@ if __name__ == "__main__":
     cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date)
     plot_folder = os.path.join('HRAStationDataAnalysis', 'plots', date)
 
-    station_ids = [13, 14, 15, 17, 18, 19, 30]
+    # station_ids = [13, 14, 15, 17, 18, 19, 30]
+    station_ids = [station_id]
     for station_id in station_ids:
         ic("\n\n\n\n\n\n")
         ic("*********************")
