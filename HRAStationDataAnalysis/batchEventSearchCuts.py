@@ -16,5 +16,5 @@ if __name__ == "__main__":
 
     for station in stations:
         cmd = f'python HRAStationDataAnalysis/eventSearchCuts.py {station} {date}'
-        A00_SlurmUtil.makeAndRunJob(cmd, f'{station}_eventSearchCuts', runDirectory='run/eventSearchCuts', partition='standard')
+        A00_SlurmUtil.makeAndRunJob(cmd, f'{station}_eventSearchCuts', runDirectory='run/eventSearchCuts', partition='standard', n_cpus=2)
 

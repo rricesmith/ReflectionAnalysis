@@ -2,7 +2,7 @@ import os
 import subprocess
 
 
-def makeAndRunJob(commandToRun, jobName='job', partition='free', runDirectory='run/'):
+def makeAndRunJob(commandToRun, jobName='job', partition='free', runDirectory='run/', n_cpus=1):
 
     print(f'Running job {jobName} with error files {runDirectory}/logs/{jobName}.out')
     os.makedirs(runDirectory, exist_ok=True)
@@ -23,8 +23,8 @@ def makeAndRunJob(commandToRun, jobName='job', partition='free', runDirectory='r
     header += "#SBATCH --time=3-00:00:00                ##Max runtime D-HH:MM:SS, 3 days free maximum\n"
     header += "#SBATCH --nodes=1                        ##Nodes to be used\n"
     header += "#SBATCH --ntasks=1                       ##Numer of processes to be launched\n"
-    header += "#SBATCH --cpus-per-task=1                ##Cpu's to be used\n"
-    header += "#SBATCH --mem-per-cpu=18G		            ##6GB memory per job\n"
+    header += f"#SBATCH --cpus-per-task={n_cpus}                ##Cpu's to be used\n"
+    header += "#SBATCH --mem-per-cpu=6G		            ##18GB memory per job\n"
     header += "#SBATCH --output={}\n".format(os.path.join(runDirectory, 'logs', f'{jobName}.out'))
     header += "#SBATCH --error={}\n".format(os.path.join(runDirectory, 'logs', f'{jobName}.err'))
     header += "#SBATCH --mail-type=fail\n"
