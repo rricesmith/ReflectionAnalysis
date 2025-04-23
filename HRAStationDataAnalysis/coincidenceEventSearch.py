@@ -116,7 +116,7 @@ def findCoincidenceDatetimes(date):
             all_events.append((ts, station_id, idx))
 
     # Sort all events by timestamp.
-    all_events.sort(key=lambda x: x[0])
+    # all_events.sort(key=lambda x: x[0]) # Already sorted - if there are unsorted events, they have bad times and so we don't care about them
 
     # Now group events - events are in a coincidence if they occur within one second of the
     # first event in the group.
