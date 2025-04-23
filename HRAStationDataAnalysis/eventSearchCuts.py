@@ -383,6 +383,8 @@ if __name__ == "__main__":
         ic("*********************")
         ic(f"Processing station {station_id} for date {date}")
         ic("*********************")
+        plot_folder_station = os.path.join(plot_folder, f'Station{station_id}')
+        os.makedirs(plot_folder_station, exist_ok=True)
 
         # Load the data for this station
 
@@ -484,8 +486,6 @@ if __name__ == "__main__":
         ic(f"L1 + Storm + Burst: {sum(L1_mask & storm_mask & burst_mask)}, {sum(L1_mask & storm_mask & burst_mask)/len(times)}%")
 
         # Plot the cuts
-        plot_folder_station = os.path.join(plot_folder, f'Station{station_id}')
-        os.makedirs(plot_folder_station, exist_ok=True)
         plot_cuts_amplitudes(times, traces, plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
 
         plot_cuts_rates(times, output_dir=plot_folder_station, L1_mask=L1_mask,  storm_mask=storm_mask, burst_mask=burst_mask)
