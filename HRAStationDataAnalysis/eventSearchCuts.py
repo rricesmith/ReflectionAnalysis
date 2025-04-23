@@ -277,7 +277,7 @@ def plot_cuts_rates(times, bin_size=30*60, output_dir=".", **cuts):
             plt.scatter(dt_bin_centers, rate_cut, s=3, label=cut_name, marker=next(markers))
         
         # Format the x-axis to display the date and time nicely.
-        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y %H:%M'))
+        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
         plt.gcf().autofmt_xdate()
         plt.legend()
         plt.yscale('log')
