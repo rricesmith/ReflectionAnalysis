@@ -91,6 +91,77 @@ def L1_cut(traces, power_cut=0.3):
                 break  # No need to check other channels for this event.
     return mask
 
+def approximate_bad_times(times): 
+    """ 
+    Given a numpy array of times (unix timestamps) sorted in sequential order, 
+    finds any contiguous block of events with times before January 1, 1980 and, 
+    if that block is bracketed by events with good times (>= January 1, 1980), 
+    replaces every time in that block with the average of the immediately preceding and following good events.
+
+    For each such block, a single approximated time is computed and is associated with
+    a representative index (here, the first index of the block) from the original array.
+
+    Args:
+        times (numpy.ndarray): 1D array of unix timestamp values.
+        
+    Returns:
+        approximated_times (numpy.ndarray): 1D array of approximated unix timestamps (one per block).
+        indices (numpy.ndarray): 1D array of representative indices from the original times,
+                                one per approximated block.
+    """
+    import numpy as np
+    import datetime
+
+    threshold = datetime.datetime(1980, 1, 1).timestamp()  # January 1, 1980
+    times = np.asarray(times)
+
+    # Identify indices of bad times.
+    bad_mask = times < threshold
+    bad_indices = np.where(bad_mask)[0]
+
+    # If there are no bad times, return empty arrays.
+    if len(bad_indices) == 0:
+        return np.array([]), np.array([])
+
+    approximated_times = []
+    representative_indices = []
+
+    # For grouping contiguous bad indices.
+    groups = []
+    current_group = [bad_indices[0]]
+
+    for idx in bad_indices[1:]:
+        if idx == current_group[-1] + 1:
+            current_group.append(idx)
+        else:
+            groups.append(current_group)
+            current_group = [idx]
+    groups.append(current_group)  # Add the final group
+
+    # Process each group.
+    for group in groups:
+        group_start = group[0]
+        group_end = group[-1]
+        
+        # Check if there is a preceding and following good event.
+        if group_start == 0 or group_end == len(times) - 1:
+            # Cannot bracket this group on both sides.
+            continue
+        
+        prev_index = group_start - 1
+        next_index = group_end + 1
+        if times[prev_index] < threshold or times[next_index] < threshold:
+            # Even though the group is contiguous, we require that both the bounding events
+            # are good (>= threshold). If not, skip this group.
+            continue
+        
+        # Compute the approximate (mean) time.
+        avg_time = (times[prev_index] + times[next_index]) / 2.0
+        approximated_times.append(avg_time)
+        # Use the first index of the group as representative.
+        representative_indices.append(group_start)
+
+    return np.array(approximated_times), np.array(representative_indices)
 
 
 def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
@@ -164,7 +235,7 @@ def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
             season_cut_mask = season_mask & cut_mask_sum
             if np.any(season_cut_mask):
                 plt.scatter(dt_times[season_cut_mask],
-                            max_amps[season_cut_mask], s=3, label=cut_name, marker=next(markers))
+                            max_amps[season_cut_mask], s=3, label=f'Rates after {cut_name}', marker=next(markers))
         
         # Format the x-axis to show dates as 'MM/DD/YY'.
         plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
@@ -274,7 +345,7 @@ def plot_cuts_rates(times, bin_size=30*60, output_dir=".", **cuts):
             count_cut, _ = np.histogram(season_cut_times, bins=bins)
             rate_cut = count_cut / bin_size
             
-            plt.scatter(dt_bin_centers, rate_cut, s=3, label=cut_name, marker=next(markers))
+            plt.scatter(dt_bin_centers, rate_cut, s=3, label=f'Rates after {cut_name}', marker=next(markers))
         
         # Format the x-axis to display the date and time nicely.
         plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
@@ -308,6 +379,10 @@ if __name__ == "__main__":
 
     station_ids = [13, 14, 15, 17, 18, 19, 30]
     for station_id in station_ids:
+        ic("\n\n\n\n\n\n")
+        ic("*********************")
+        ic(f"Processing station {station_id} for date {date}")
+        ic("*********************")
 
         # Load the data for this station
 
@@ -397,4 +472,20 @@ if __name__ == "__main__":
 
         plot_cuts_rates(times, output_dir=plot_folder_station, L1_mask=L1_mask,  storm_mask=storm_mask, burst_mask=burst_mask)
 
-        quit()
+        check_bad_times = True
+        if check_bad_times:
+            approx_bad_times, indices = approximate_bad_times(times)
+            ic(f"Bad times approximated: {len(approx_bad_times)}, {len(approx_bad_times)/len(times)}% bad")
+
+            # Plot a histogram of approx bad times to see which months/years are bad
+            import matplotlib.pyplot as plt
+            import matplotlib.dates as mdates
+            plt.figure(figsize=(10, 6))
+            plt.hist(mdates.epoch2num(approx_bad_times), bins=100, color='red', alpha=0.5)
+            plt.title(f"Bad Times for Station {station_id}")
+            plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
+            plt.gcf().autofmt_xdate()
+            plt.xlabel("Unix Timestamp")
+            plt.savefig(os.path.join(plot_folder_station, f"bad_times_histogram_station_{station_id}.png"))
+            plt.close()
+
