@@ -235,7 +235,7 @@ def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
             season_cut_mask = season_mask & cut_mask_sum
             if np.any(season_cut_mask):
                 plt.scatter(dt_times[season_cut_mask],
-                            max_amps[season_cut_mask], s=3, label=f'Rates after {cut_name}', marker=next(markers))
+                            max_amps[season_cut_mask], s=3, label=f'Events after {cut_name}', marker=next(markers))
         
         # Format the x-axis to show dates as 'MM/DD/YY'.
         plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
@@ -329,7 +329,7 @@ def plot_cuts_rates(times, bin_size=30*60, output_dir=".", **cuts):
         # Plot the overall event rate as light gray scatter.
         # Convert bin centers to datetime objects.
         dt_bin_centers = [datetime.datetime.fromtimestamp(ts) for ts in bin_centers]
-        plt.scatter(dt_bin_centers, rate_all, s=3, label="All Events", facecolor="none", edgecolor="black")
+        plt.scatter(dt_bin_centers, rate_all, s=3, label="All Events Rate", facecolor="none", edgecolor="black")
         
         # For each provided cut, compute and plot the binned event rate.
         for cut_name, cut_mask in cuts.items():
@@ -430,7 +430,7 @@ if __name__ == "__main__":
 
         check_bad_times = True
         if check_bad_times:
-            ic(f'Checking for bad times')
+            ic(f'Checking for bad times, as dated before 1980')
             approx_bad_times, indices = approximate_bad_times(times)
             ic(f"Bad times approximated: {len(approx_bad_times)}, {len(approx_bad_times)/len(times)}% bad")
 
@@ -455,11 +455,13 @@ if __name__ == "__main__":
         mask = times != 0
         times = times[mask]
         traces = traces[mask]
+        ic(f"Removed {len(mask) - sum(mask)} zero timestamps")
 
         # Cut times that have timestamps before stations exists
         mask = times >= datetime.datetime(2013, 1, 1).timestamp()
         times = times[mask]
         traces = traces[mask]
+        ic(f"Removed {len(mask) - sum(mask)} timestamps before 2013-01-01")
 
         del mask
         gc.collect()
@@ -476,21 +478,30 @@ if __name__ == "__main__":
             storm_mask = cuts['storm_mask']
             burst_mask = cuts['burst_mask']
         else:
+            ic(f"Cut file does not exist, processing cuts")
             # First cut is L1 cut
             # Amplitude threshold is 0.3, cut frequency is 2 in window
+            ic(f"Processing L1 cut")
             L1_mask = L1_cut(traces, power_cut=0.3)
+            ic(f"L1 cut: {sum(L1_mask)}, {sum(L1_mask)/len(times)}% passed")
             # Amplitude threshold is 300mV, time period is 3600s, cut frequency is 2 in window
+            ic(f"Processing storm cut")
             storm_mask = cluster_cut(times, traces, 0.3, datetime.timedelta(seconds=3600), 2)
+            ic(f"Storm cut: {sum(storm_mask)}, {sum(storm_mask)/len(times)}% passed")
             # Apply second cluster cut for bursts
             # Amplitude threshold is 150mV, time period is 60s, cut frequency is 2 in window
+            ic(f"Processing burst cut")
             burst_mask = cluster_cut(times, traces, 0.15, datetime.timedelta(seconds=60), 2)
+            ic(f"Burst cut: {sum(burst_mask)}, {sum(burst_mask)/len(times)}% passed")
             # Save the cuts to a numpy file
+            ic(f"Saving cuts to {cut_file}")
             cuts = {
                 'L1_mask': L1_mask,
                 'storm_mask': storm_mask,
                 'burst_mask': burst_mask
             }
             np.save(cut_file, cuts, allow_pickle=True)
+            ic(f"Saved cuts to {cut_file}")
 
 
 
