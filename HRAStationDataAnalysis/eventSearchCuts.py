@@ -164,7 +164,7 @@ def approximate_bad_times(times):
     return np.array(approximated_times), np.array(representative_indices)
 
 
-def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
+def plot_cuts_amplitudes(times, values, amp_name='Max Amplitude',output_dir=".", **cuts):
     """
     Creates and saves scatter plots of events by season (October to April) for the years 2013-2020.
     
@@ -196,9 +196,13 @@ def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
     # Convert raw unix times into datetime objects.
     dt_times = np.array([datetime.datetime.fromtimestamp(t) for t in times])
     
-    # Compute maximum absolute amplitude for each trace.
-    max_amps = np.max(np.abs(traces), axis=(1, 2))
-    
+    # Compute maximum absolute amplitude if traces were passed in.
+    if values[0].shape == (4, 256):
+        max_amps = np.max(np.abs(values), axis=(1, 2))
+    else:
+        max_amps = np.array(values)
+        
+
     # Loop for each season between 2013 and 2020.
     for start_year in range(2013, 2020):
         # Reset the marker cycle for each season.
@@ -220,7 +224,7 @@ def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
         plt.figure(figsize=(10,6))
         plt.title(f"Season {start_year}-{start_year + 1} Activity")
         plt.xlabel("Time")
-        plt.ylabel("Max Amplitude")
+        plt.ylabel(amp_name)
         
         # Plot all seasonal events in light gray.
         plt.scatter(season_times, season_amps, color="lightgray", s=3, label="All Events", facecolor="none", edgecolor="black")
@@ -237,6 +241,10 @@ def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
                 plt.scatter(dt_times[season_cut_mask],
                             max_amps[season_cut_mask], s=3, label=f'Events after {cut_name}', marker=next(markers))
         
+        # Format y-axis if max_amps are in the range [0, 1].
+        if not np.any(max_amps > 1):
+            plt.ylim(0, 1)
+
         # Format the x-axis to show dates as 'MM/DD/YY'.
         plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
         plt.gcf().autofmt_xdate()
@@ -244,7 +252,7 @@ def plot_cuts_amplitudes(times, traces, output_dir=".", **cuts):
         plt.tight_layout()
         
         # Save the figure.
-        filename = os.path.join(output_dir, f"season_{start_year}_{start_year+1}.png")
+        filename = os.path.join(output_dir, f"{amp_name}_season_{start_year}_{start_year+1}.png")
         plt.savefig(filename)
         plt.close()
         ic(f"Saved plot for season {start_year}-{start_year+1} to {filename}")
@@ -430,7 +438,7 @@ if __name__ == "__main__":
 
         check_bad_times = True
         if check_bad_times:
-            ic(f'Checking for bad times, as dated before 1980')
+            ic(f'Checking for bad times, as dated before 1980, and then averaging them by the surrounding good times')
             approx_bad_times, indices = approximate_bad_times(times)
             ic(f"Bad times approximated: {len(approx_bad_times)}, {len(approx_bad_times)/len(times)}% bad")
 
@@ -504,7 +512,6 @@ if __name__ == "__main__":
             ic(f"Saved cuts to {cut_file}")
 
 
-
         ic(f"L1 mask {L1_mask.shape}, Storm mask {storm_mask.shape}, Burst mask {burst_mask.shape}")
         ic(f"L1 mask: {sum(L1_mask)}, Storm mask: {sum(storm_mask)}, Burst mask: {sum(burst_mask)}, of total {len(times)}")
         ic(f"L1 mask % {100*sum(L1_mask)/len(times)}, Storm mask % {100*sum(storm_mask)/len(times)}%, Burst mask % {100*sum(burst_mask)/len(times)}%")
@@ -519,10 +526,38 @@ if __name__ == "__main__":
 
         plot_cuts_rates(times, output_dir=plot_folder_station, L1_mask=L1_mask,  storm_mask=storm_mask, burst_mask=burst_mask)
 
+
+        # Load the Chi's for plotting as well
+        file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_ChiRCR*'))
+        ChiRCR = [np.load(f) for f in file_list]
+        ChiRCR = np.concatenate(times, axis=0)
+        ChiRCR = times.squeeze()
+
+        plot_cuts_amplitudes(times, ChiRCR, amp_name='Chi RCR', output_dir=plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
+
+        # Do the same for Chi2016
+        file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_Chi2016*'))
+        Chi2016 = [np.load(f) for f in file_list]
+        Chi2016 = np.concatenate(times, axis=0)
+        Chi2016 = times.squeeze()
+        plot_cuts_amplitudes(times, Chi2016, amp_name='Chi 2016', output_dir=plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
+
+
+        # Do the same for ChiBad
+        file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_ChiBad*'))
+        ChiBad = [np.load(f) for f in file_list]
+        ChiBad = np.concatenate(times, axis=0)
+        ChiBad = times.squeeze()
+        plot_cuts_amplitudes(times, ChiBad, amp_name='Chi Bad', output_dir=plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
+
+
         del times
         del traces
         del L1_mask
         del storm_mask
         del burst_mask
+        del ChiRCR
+        del Chi2016
+        del ChiBad
         gc.collect()
 
