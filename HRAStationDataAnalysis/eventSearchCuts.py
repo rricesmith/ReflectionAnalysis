@@ -8,49 +8,78 @@ import glob
 import argparse
 
 
-def cluster_cut(times, traces, amplitude_threshold, time_period, cut_frequency):
+import numpy as np
+import datetime
+
+def cluster_cut_optimized(times, traces, amplitude_threshold, time_period, cut_frequency):
     """
-    Creates a mask to remove events that occur in bursts.
-    
+    Creates a mask to remove events that occur in bursts (optimized version).
+
     For a given array of event times and their corresponding amplitudes, this function
     returns a boolean mask (of the same length) that is True for events to be kept and
     False for events that fall in time windows where the number of events with amplitudes
     above 'amplitude_threshold' is greater than or equal to 'cut_frequency'. The time window
     is defined by 'time_period' (a datetime.timedelta).
 
+    This version uses a sliding window to efficiently count high-amplitude events,
+    avoiding repeated calculations.
+
     Args:
-        times (array-like): Array or list of datetime.datetime objects.
+        times (array-like): Array or list of datetime.datetime objects. Must be time-ordered.
         traces (array-like): Array or list of traces for each time (numerical values).
+                             Expected shape (n_events, dim1, dim2) or similar where
+                             np.abs(traces) > amplitude_threshold can be applied.
         amplitude_threshold (numeric): Only events with an amplitude greater than this value are considered.
         time_period (datetime.timedelta): The time range window, for example, 60 seconds.
-        cut_frequency (float): The minimum number of events (above amplitude_threshold) within a time_period to trigger the cut in Hertz.
+        cut_frequency (float): The minimum number of events (above amplitude_threshold) within a time_period to trigger the cut.
 
     Returns:
         numpy.ndarray: A boolean mask of the same length as times/amplitudes. True for events to keep, False for events to remove.
     """
-    import numpy as np  # Ensure numpy is imported within the function if necessary.
-
-
-    # Ensure times and amplitudes are numpy arrays
+    # Ensure times and traces are numpy arrays
     times = np.array(times)
     traces = np.array(traces)
     n = len(times)
     mask = np.ones(n, dtype=bool)
 
+    # Pre-calculate which events have high amplitude
+    # This assumes traces is a numpy array where np.abs can be applied element-wise
+    # and np.any with axis=(1, 2) correctly checks for any dimension exceeding the threshold
+    # for each event. Adjust axis if your traces array has a different structure.
+    high_amplitude_events = np.any(np.abs(traces) > amplitude_threshold, axis=tuple(range(1, traces.ndim)))
+
 
     start = 0
+    current_count = 0
+    time_period_seconds = time_period.total_seconds()
+
     for end in range(n):
-        # Advance the start index of the window until the time difference is less than time_period.
-        while times[end] - times[start] >= time_period.total_seconds():
+        # Add the event at 'end' to the current window count
+        if high_amplitude_events[end]:
+            current_count += 1
+
+        # Shrink the window from the 'start' if the time difference exceeds time_period
+        # Use a while loop because multiple events might need to be removed from the start
+        # if they are clustered closely together.
+        while times[end].timestamp() - times[start].timestamp() >= time_period_seconds:
+            if high_amplitude_events[start]:
+                current_count -= 1
             start += 1
-        # For each event in the window, check if any absolute amplitude exceeds the threshold.   
-        # window_events = traces[start:end+1]
-        window_events = traces[start:end] # I don't think there should be +1 on end, given there isn't in the window search
-        count = np.sum(np.any(np.abs(window_events) > amplitude_threshold, axis=(1, 2)))
-        if count >= cut_frequency:
-            # Mark all events within this window (at indices start to end)
+
+        # If the current count of high amplitude events in the window [start, end]
+        # is greater than or equal to the cut frequency, mark events in this window for removal.
+        # The window considered for the count is [start, end] inclusive.
+        # The original code used traces[start:end] for counting and mask[start:end+1] for masking.
+        # Based on the description "Mark all events within this window (at indices start to end)",
+        # we will mask indices from start up to and including end if the count condition is met
+        # for the window ending at 'end'.
+        if current_count >= cut_frequency:
+             # Mask the events from 'start' up to and including 'end'
             mask[start:end+1] = False
+
     return mask
+
+
 
 def L1_cut(traces, power_cut=0.3):
     """
