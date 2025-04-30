@@ -489,19 +489,17 @@ if __name__ == "__main__":
             gc.collect()
 
         # Remove zero timestamps
-        mask = times != 0
-        times = times[mask]
-        traces = traces[mask]
-        ic(f"Removed {len(mask) - sum(mask)} zero timestamps")
+        zerotime_mask = times != 0
+        times = times[zerotime_mask]
+        traces = traces[zerotime_mask]
+        ic(f"Removed {len(zerotime_mask) - sum(zerotime_mask)} zero timestamps")
 
         # Cut times that have timestamps before stations exists
-        mask = times >= datetime.datetime(2013, 1, 1).timestamp()
-        times = times[mask]
-        traces = traces[mask]
-        ic(f"Removed {len(mask) - sum(mask)} timestamps before 2013-01-01")
+        pretime_mask = times >= datetime.datetime(2013, 1, 1).timestamp()
+        times = times[pretime_mask]
+        traces = traces[pretime_mask]
+        ic(f"Removed {len(pretime_mask) - sum(pretime_mask)} timestamps before 2013-01-01")
 
-        del mask
-        gc.collect()
 
         # Check if cuts are already processed
         # If so load cuts, otherwise process cuts and save
@@ -564,6 +562,10 @@ if __name__ == "__main__":
         ic(ChiRCR.shape)
         ChiRCR = ChiRCR.squeeze()
         ic(ChiRCR.shape)
+        ChiRCR = ChiRCR[zerotime_mask]
+        ic(ChiRCR.shape)
+        ChiRCR = ChiRCR[pretime_mask]
+        ic(ChiRCR.shape)
         plot_cuts_amplitudes(times, ChiRCR, amp_name='Chi RCR', output_dir=plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
 
         # Do the same for Chi2016
@@ -571,6 +573,8 @@ if __name__ == "__main__":
         Chi2016 = [np.load(f) for f in file_list]
         Chi2016 = np.concatenate(Chi2016, axis=0)
         Chi2016 = Chi2016.squeeze()
+        Chi2016 = Chi2016[zerotime_mask]
+        Chi2016 = Chi2016[pretime_mask]
         plot_cuts_amplitudes(times, Chi2016, amp_name='Chi 2016', output_dir=plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
 
 
@@ -579,6 +583,8 @@ if __name__ == "__main__":
         ChiBad = [np.load(f) for f in file_list]
         ChiBad = np.concatenate(ChiBad, axis=0)
         ChiBad = ChiBad.squeeze()
+        ChiBad = ChiBad[zerotime_mask]
+        ChiBad = ChiBad[pretime_mask]
         plot_cuts_amplitudes(times, ChiBad, amp_name='Chi Bad', output_dir=plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
 
 
