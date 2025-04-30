@@ -559,9 +559,11 @@ if __name__ == "__main__":
         # Load the Chi's for plotting as well
         file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_ChiRCR*'))
         ChiRCR = [np.load(f) for f in file_list]
+        ic(len(ChiRCR))
         ChiRCR = np.concatenate(ChiRCR, axis=0)
+        ic(ChiRCR.shape)
         ChiRCR = ChiRCR.squeeze()
-
+        ic(ChiRCR.shape)
         plot_cuts_amplitudes(times, ChiRCR, amp_name='Chi RCR', output_dir=plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
 
         # Do the same for Chi2016
