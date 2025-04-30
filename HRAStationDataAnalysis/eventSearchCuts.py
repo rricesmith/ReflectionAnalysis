@@ -193,7 +193,7 @@ def approximate_bad_times(times):
     return np.array(approximated_times), np.array(representative_indices)
 
 
-def plot_cuts_amplitudes(times, values, amp_name='Max Amplitude',output_dir=".", **cuts):
+def plot_cuts_amplitudes(times, values, amp_name, output_dir=".", **cuts):
     """
     Creates and saves scatter plots of events by season (October to April) for the years 2013-2020.
     
@@ -551,7 +551,7 @@ if __name__ == "__main__":
         ic(f"L1 + Storm + Burst: {sum(L1_mask & storm_mask & burst_mask)}, {sum(L1_mask & storm_mask & burst_mask)/len(times)}%")
 
         # Plot the cuts
-        plot_cuts_amplitudes(times, traces, plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
+        plot_cuts_amplitudes(times, traces, amp_name="Max Amplitude", output_dir=plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
 
         plot_cuts_rates(times, output_dir=plot_folder_station, L1_mask=L1_mask,  storm_mask=storm_mask, burst_mask=burst_mask)
 
