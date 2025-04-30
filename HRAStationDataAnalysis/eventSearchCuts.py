@@ -61,7 +61,7 @@ def cluster_cut(times, traces, amplitude_threshold, time_period, cut_frequency):
         # Shrink the window from the 'start' if the time difference exceeds time_period
         # Use a while loop because multiple events might need to be removed from the start
         # if they are clustered closely together.
-        while times[end].timestamp() - times[start].timestamp() >= time_period_seconds:
+        while times[end] - times[start] >= time_period_seconds:
             if high_amplitude_events[start]:
                 current_count -= 1
             start += 1
@@ -559,24 +559,24 @@ if __name__ == "__main__":
         # Load the Chi's for plotting as well
         file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_ChiRCR*'))
         ChiRCR = [np.load(f) for f in file_list]
-        ChiRCR = np.concatenate(times, axis=0)
-        ChiRCR = times.squeeze()
+        ChiRCR = np.concatenate(ChiRCR, axis=0)
+        ChiRCR = ChiRCR.squeeze()
 
         plot_cuts_amplitudes(times, ChiRCR, amp_name='Chi RCR', output_dir=plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
 
         # Do the same for Chi2016
         file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_Chi2016*'))
         Chi2016 = [np.load(f) for f in file_list]
-        Chi2016 = np.concatenate(times, axis=0)
-        Chi2016 = times.squeeze()
+        Chi2016 = np.concatenate(Chi2016, axis=0)
+        Chi2016 = Chi2016.squeeze()
         plot_cuts_amplitudes(times, Chi2016, amp_name='Chi 2016', output_dir=plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
 
 
         # Do the same for ChiBad
         file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_ChiBad*'))
         ChiBad = [np.load(f) for f in file_list]
-        ChiBad = np.concatenate(times, axis=0)
-        ChiBad = times.squeeze()
+        ChiBad = np.concatenate(ChiBad, axis=0)
+        ChiBad = ChiBad.squeeze()
         plot_cuts_amplitudes(times, ChiBad, amp_name='Chi Bad', output_dir=plot_folder_station, L1_mask=L1_mask, storm_mask=storm_mask, burst_mask=burst_mask)
 
 
