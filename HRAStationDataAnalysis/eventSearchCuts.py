@@ -11,7 +11,7 @@ import argparse
 import numpy as np
 import datetime
 
-def cluster_cut_optimized(times, traces, amplitude_threshold, time_period, cut_frequency):
+def cluster_cut(times, traces, amplitude_threshold, time_period, cut_frequency):
     """
     Creates a mask to remove events that occur in bursts (optimized version).
 
