@@ -123,14 +123,15 @@ def findCoincidenceDatetimes(date, cuts=True):
             # Load cuts data for the station.
             cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station_id}_Cuts.npy')
             if os.path.exists(cuts_file):
+                ic(f"Loading cuts file: {cuts_file}")
                 cuts_data = np.load(cuts_file, allow_pickle=True)
             else:
                 ic(f"Warning: Cuts file not found for station {station_id} on date {date}.")
                 continue
             # Apply cuts
-            ic(cuts_data)
             final_cuts = np.ones(len(times), dtype=bool)
-            for cut in cuts_data:
+            for cut in cuts_data.keys():
+                ic(f"Applying cut: {cut}")
                 final_cuts &= cuts_data[cut]
             times = times[final_cuts]
 
