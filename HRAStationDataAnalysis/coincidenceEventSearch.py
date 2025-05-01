@@ -150,7 +150,9 @@ def findCoincidenceDatetimes(date, cuts=True):
     # Now group events - events are in a coincidence if they occur within one second of the
     # first event in the group.
     coincidence_datetimes = {}
-    event_counter = 0
+    coincidence_with_repeated_stations = {}
+    valid_counter = 0
+    duplicate_counter = 0
 
     n_events = len(all_events)
     i = 0
@@ -166,10 +168,27 @@ def findCoincidenceDatetimes(date, cuts=True):
         
         # Only record a coincidence if at least 2 events are found.
         if len(current_group) > 1:
+            # Build list of station IDs.
             stations = [event[1] for event in current_group]
+            # If all events are from the same station, skip this group.
+            if len(set(stations)) == 1:
+                i = j
+                continue
+
+            # Check if any station appears multiple times in the group.
+            if len(set(stations)) < len(stations):
+                target_dict = coincidence_with_repeated_stations
+                idx_counter = duplicate_counter
+                duplicate_counter += 1
+            else:
+                target_dict = coincidence_datetimes
+                idx_counter = valid_counter
+                valid_counter += 1
+
+
             indices = [event[2] for event in current_group]
             # Use the first event's time as a representative time.
-            coincidence_datetimes[event_counter] = {
+            target_dict[idx_counter] = {
                 "numCoincidences": len(current_group),
                 "datetime": all_events[i][0],
                 "stations": stations,
@@ -181,7 +200,7 @@ def findCoincidenceDatetimes(date, cuts=True):
         else:
             i += 1
 
-    return coincidence_datetimes
+    return coincidence_datetimes, coincidence_with_repeated_stations
 
 
 
@@ -200,13 +219,16 @@ if __name__ == "__main__":
 
     # Check for existing processed data, load if found; otherwise find coincidences and save.
     if os.path.exists(output_file):
-        coincidence_datetimes = np.load(output_file, allow_pickle=True).item()
+        coincidence_datetimes, coincidence_datetimes_with_repeated_stations = np.load(output_file, allow_pickle=True).item()
         ic("Loaded processed coincidences", len(coincidence_datetimes))
     else:
-        coincidence_datetimes = findCoincidenceDatetimes(date, cuts=True)
+        coincidence_datetimes, coincidence_datetimes_with_repeated_stations = findCoincidenceDatetimes(date, cuts=True)
         np.save(output_file, coincidence_datetimes, allow_pickle=True)
         ic("Saved new coincidences", len(coincidence_datetimes))
 
     # Optional: print first few coincidences for verification.
     for key in list(coincidence_datetimes.keys()):
         ic(key, coincidence_datetimes[key])
+
+    for key in list(coincidence_datetimes_with_repeated_stations.keys()):
+        ic(key, coincidence_datetimes_with_repeated_stations[key])
