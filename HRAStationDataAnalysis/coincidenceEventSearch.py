@@ -126,11 +126,11 @@ def findCoincidenceDatetimes(date, cuts=True):
                 ic(f"Loading cuts file: {cuts_file}")
                 cuts_data = np.load(cuts_file, allow_pickle=True)
                 ic(cuts_data)
+                cuts_data = cuts_data[()]
             else:
                 ic(f"Warning: Cuts file not found for station {station_id} on date {date}.")
                 continue
             # Apply cuts
-            cuts_data = cuts_data.flatten()
             final_cuts = np.ones(len(times), dtype=bool)
             for cut in cuts_data.keys():
                 ic(f"Applying cut: {cut}")
