@@ -229,5 +229,5 @@ if __name__ == "__main__":
     for key in list(coincidence_datetimes.keys()):
         ic(key, coincidence_datetimes[key])
 
-    for key in list(coincidence_datetimes_with_repeated_stations.keys()):
-        ic(key, coincidence_datetimes_with_repeated_stations[key])
+    # for key in list(coincidence_datetimes_with_repeated_stations.keys()):
+    #     ic(key, coincidence_datetimes_with_repeated_stations[key])
