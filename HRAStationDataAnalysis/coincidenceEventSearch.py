@@ -115,8 +115,8 @@ def findCoincidenceDatetimes(date, cuts=True):
 
         # Filter out zero timestamps and pre-time events.
         zerotime_mask = times != 0
-        pretime_mask = times >= datetime.datetime(2013, 1, 1).timestamp()
         times = times[zerotime_mask]
+        pretime_mask = times >= datetime.datetime(2013, 1, 1).timestamp()
         times = times[pretime_mask]
 
         if cuts:
