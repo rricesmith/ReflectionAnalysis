@@ -170,7 +170,6 @@ def findCoincidenceDatetimes(date, cuts=True):
         if len(current_group) > 1:
             # Build list of station IDs.
             stations = [event[1] for event in current_group]
-            ic(stations, set(stations), len(set(stations)))
             # If all events are from the same station, skip this group.
             if len(set(stations)) == 1:
                 i = j
@@ -230,5 +229,5 @@ if __name__ == "__main__":
     for key in list(coincidence_datetimes.keys()):
         ic(key, coincidence_datetimes[key])
 
-    # for key in list(coincidence_datetimes_with_repeated_stations.keys()):
-    #     ic(key, coincidence_datetimes_with_repeated_stations[key])
+    for key in list(coincidence_datetimes_with_repeated_stations.keys()):
+        ic(key, coincidence_datetimes_with_repeated_stations[key])
