@@ -46,7 +46,7 @@ def cluster_cut(times, traces, amplitude_threshold, time_period, cut_frequency):
     # This assumes traces is a numpy array where np.abs can be applied element-wise
     # and np.any with axis=(1, 2) correctly checks for any dimension exceeding the threshold
     # for each event. Adjust axis if your traces array has a different structure.
-    high_amplitude_events = np.any(np.abs(traces) > amplitude_threshold, axis=tuple(range(1, traces.ndim)))
+    high_amplitude_events = np.any(np.abs(traces) > amplitude_threshold, axis=(1, 2))
 
 
     start = 0
