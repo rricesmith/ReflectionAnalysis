@@ -128,9 +128,10 @@ def findCoincidenceDatetimes(date, cuts=True):
                 ic(f"Warning: Cuts file not found for station {station_id} on date {date}.")
                 continue
             # Apply cuts
+            ic(cuts_data)
             final_cuts = np.ones(len(times), dtype=bool)
             for cut in cuts_data:
-                final_cuts &= cut
+                final_cuts &= cuts_data[cut]
             times = times[final_cuts]
 
         # Loop over events and add them to all_events list.
