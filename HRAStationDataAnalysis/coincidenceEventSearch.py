@@ -145,7 +145,7 @@ def findCoincidenceDatetimes(date, cuts=True):
             all_events.append((ts, station_id, idx))
 
     # Sort all events by timestamp.
-    all_events.sort(key=lambda x: x[0]) # Already sorted - if there are unsorted events, they have bad times and so we don't care about them
+    all_events.sort(key=lambda x: x[0])
 
     # Now group events - events are in a coincidence if they occur within one second of the
     # first event in the group.
@@ -222,7 +222,7 @@ if __name__ == "__main__":
         ic("Loaded processed coincidences", len(coincidence_datetimes))
     else:
         coincidence_datetimes, coincidence_datetimes_with_repeated_stations = findCoincidenceDatetimes(date, cuts=True)
-        np.save(output_file, coincidence_datetimes, allow_pickle=True)
+        np.save(output_file, [coincidence_datetimes, coincidence_datetimes_with_repeated_stations], allow_pickle=True)
         ic("Saved new coincidences", len(coincidence_datetimes))
 
     # Optional: print first few coincidences for verification.
