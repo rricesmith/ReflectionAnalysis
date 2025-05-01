@@ -194,7 +194,6 @@ def findCoincidenceDatetimes(date, cuts=True):
                 "stations": stations,
                 "indices": indices
             }
-            event_counter += 1
             # Skip over the events already grouped.
             i = j
         else:
