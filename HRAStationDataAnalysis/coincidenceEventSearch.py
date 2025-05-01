@@ -246,7 +246,9 @@ if __name__ == "__main__":
 
     # Check for existing processed data, load if found; otherwise find coincidences and save.
     if os.path.exists(output_file):
-        coincidence_datetimes, coincidence_with_repeated_stations = np.load(output_file, allow_pickle=True).item()
+        data = np.load(output_file, allow_pickle=True)
+        coincidence_datetimes = data[0]
+        coincidence_with_repeated_stations = data[1]
         ic("Loaded processed coincidences", len(coincidence_datetimes))
     else:
         coincidence_datetimes, coincidence_with_repeated_stations = findCoincidenceDatetimes(date, cuts=True)
