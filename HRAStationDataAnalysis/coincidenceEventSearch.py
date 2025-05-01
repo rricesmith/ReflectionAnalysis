@@ -125,7 +125,6 @@ def findCoincidenceDatetimes(date, cuts=True):
             if os.path.exists(cuts_file):
                 ic(f"Loading cuts file: {cuts_file}")
                 cuts_data = np.load(cuts_file, allow_pickle=True)
-                ic(cuts_data)
                 cuts_data = cuts_data[()]
             else:
                 ic(f"Warning: Cuts file not found for station {station_id} on date {date}.")
@@ -155,7 +154,8 @@ def findCoincidenceDatetimes(date, cuts=True):
 
     n_events = len(all_events)
     i = 0
-    one_second = datetime.timedelta(seconds=1)
+    # one_second = datetime.timedelta(seconds=1)
+    one_second = 1
     while i < n_events:
         current_group = [all_events[i]]
         j = i + 1
