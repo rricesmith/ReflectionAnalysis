@@ -337,8 +337,8 @@ if __name__ == "__main__":
         # Create one figure with three side-by-side subplots.
         fig, axes = plt.subplots(1, 3, figsize=(18, 6))
         for ax, chi in zip(axes, chi_keys):
-            ax.set_xlabel(chi)
-            ax.set_ylabel('SNR')
+            ax.set_xlabel('SNR')
+            ax.set_ylabel(chi)
             ax.set_title(f'SNR vs {chi} ({title_suffix})')
             ax.set_xscale('log')
             ax.set_xlim(3, 100)
