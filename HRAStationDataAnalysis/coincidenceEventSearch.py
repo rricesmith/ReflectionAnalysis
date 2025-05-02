@@ -321,7 +321,7 @@ if __name__ == "__main__":
     # Make plots of the coincidences
     import HRAStationDataAnalysis.loadHRAConvertedData as loadHRAConvertedData
 
-    station_data = loadHRAConvertedData.loadHRAConvertedData(date, True, 'SNR', 'ChiRCR', 'Chi2016', 'ChiRCR_bad')
+    station_data = loadHRAConvertedData.loadHRAConvertedData(date, cuts=True, SNR='SNR', ChiRCR='ChiRCR', Chi2016='Chi2016', ChiBad='ChiBbad')
     # Data is a dictionary with keys 'times', 'SNR', 'ChiRCR', 'Chi2016', and 'ChiRCR_bad'.
     # Each key contains a dictionary where keys are station IDs and values are the corresponding data arrays.
 
