@@ -33,8 +33,8 @@ def loadHRAConvertedData(date, cuts=True, **data_kwargs):
     cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date)
     station_ids = [13, 14, 15, 17, 18, 19, 30]
     all_station_data = {'times': {}}
-    for param_name in data_kwargs:
-        all_station_data[param_name] = {}
+    for param_name, param in data_kwargs.items():
+        all_station_data[param] = {}
 
     for station_id in station_ids:
         # Load times and apply initial filters
