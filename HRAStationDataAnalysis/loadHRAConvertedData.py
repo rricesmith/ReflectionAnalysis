@@ -67,7 +67,9 @@ def loadHRAConvertedData(date, cuts=True, **data_kwargs):
         for param_name, file_prefix in data_kwargs.items():
             param_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date}_Station{station_id}_{file_prefix}*')))
             if param_files:
-                param_data = np.concatenate([np.load(f).squeeze() for f in param_files])
+                param_data = [np.load(f) for f in param_files]
+                param_data = np.concatenate(param_data, axis=0).squeeze()
+                param_data = np.array(param_data)
                 param_data = param_data[zerotime_mask]  # Apply the zerotime mask
                 param_data = param_data[pretime_mask]
                 if cuts and os.path.exists(cuts_file):
