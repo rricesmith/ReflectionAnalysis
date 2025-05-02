@@ -234,6 +234,7 @@ import os
 import numpy as np
 import glob
 from icecream import ic
+from matplotlib.lines import Line2D
 
 def load_coincidence_event_data(date, coincidence_event, cuts=True):
     """
@@ -321,7 +322,7 @@ if __name__ == "__main__":
     # Make plots of the coincidences
     import HRAStationDataAnalysis.loadHRAConvertedData as loadHRAConvertedData
 
-    station_data = loadHRAConvertedData.loadHRAConvertedData(date, cuts=True, SNR='SNR', ChiRCR='ChiRCR', Chi2016='Chi2016', ChiBad='ChiBad')
+    station_data = loadHRAConvertedData.loadHRAConvertedData(date, cuts=True, SNR='SNR', ChiRCR='ChiRCR', Chi2016='Chi2016', ChiBad='ChiBad', Zen='Zen', Azi='Azi', Trace='Trace')
     # Data is a dictionary with keys 'times', 'SNR', 'ChiRCR', 'Chi2016', and 'ChiRCR_bad'.
     # Each key contains a dictionary where keys are station IDs and values are the corresponding data arrays.
 
@@ -388,4 +389,105 @@ if __name__ == "__main__":
     # Plot scatter plots for coincidence events (including repeated stations).
     plot_events(coincidence_with_repeated_stations, "Repeated Stations Coincidences", plot_folder)
 
+    def plot_master_events(events, station_data, plot_folder):
+        import matplotlib.pyplot as plt
 
+        master_folder = os.path.join(plot_folder, "master")
+        os.makedirs(master_folder, exist_ok=True)
+
+        # Define fixed color mapping for each station.
+        # Stations are [13, 14, 15, 17, 18, 30].
+        color_map = {13: 'tab:blue',
+                     14: 'tab:orange',
+                     15: 'tab:green',
+                     17: 'tab:red',
+                     18: 'tab:purple',
+                     30: 'tab:brown'}
+
+        # List of marker styles to cycle through if a station appears more than once.
+        marker_list = ['o', 's', 'D', '^', 'v', '>', '<', 'p']
+
+        # Iterate over each event.
+        for event_id, event in events.items():
+            fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+            # Upper left: SNR vs Chi scatter
+            ax_scatter = axs[0, 0]
+            # Upper right: Polar plot
+            ax_polar = plt.subplot(2, 2, 2, polar=True)
+            # Bottom left: Time trace
+            ax_trace = axs[1, 0]
+            # Bottom right: Dummy plot
+            ax_dummy = axs[1, 1]
+
+            # To track repetition for each station in this event.
+            occurrence_counter = {}
+            # To build the super legend: one entry per station in the event.
+            legend_entries = {}
+
+            # Loop through each station in this event.
+            for j, station in enumerate(event["stations"]):
+                idx = event["indices"][j]
+                # Setup repetition counter for marker selection.
+                occurrence_counter.setdefault(station, 0)
+                marker = marker_list[occurrence_counter[station] % len(marker_list)]
+                occurrence_counter[station] += 1
+
+                try:
+                    snr_val      = station_data['SNR'][station][idx]
+                    chi_rcr_val  = station_data['ChiRCR'][station][idx]
+                    chi_2016_val = station_data['Chi2016'][station][idx]
+                    zen_val      = station_data['Zen'][station][idx]
+                    azi_val      = station_data['Azi'][station][idx]
+                    trace_val    = station_data['Trace'][station][idx]
+                except (KeyError, IndexError):
+                    continue
+
+                # Get the color for this station.
+                color = color_map.get(station, 'black')
+
+                # Upper left: Plot Chi2016 and ChiRCR, with arrow from Chi2016 to ChiRCR.
+                ax_scatter.scatter(snr_val, chi_2016_val, color=color, marker=marker)
+                ax_scatter.scatter(snr_val, chi_rcr_val, color=color, marker=marker)
+                ax_scatter.annotate("",
+                                    xy=(snr_val, chi_rcr_val),
+                                    xytext=(snr_val, chi_2016_val),
+                                    arrowprops=dict(arrowstyle="->", color=color))
+
+                # Upper right: Polar plot using azi as the angle and zen as the radial coordinate.
+                ax_polar.scatter(azi_val, zen_val, color=color, marker=marker)
+
+                # Bottom left: Plot the time trace; x-axis: 256 point array spanning 0 to 128.
+                x_vals = np.linspace(0, 128, 256)
+                ax_trace.plot(x_vals, trace_val, color=color, marker=marker)
+
+                # Build the legend entry if not already added.
+                if station not in legend_entries:
+                    legend_entries[station] = Line2D([0], [0], marker='o', color=color, linestyle='None',
+                                                     markersize=8, label=f"Station {station}")
+
+            ax_scatter.set_xlabel("SNR")
+            ax_scatter.set_ylabel("Chi")
+            ax_scatter.set_title("SNR vs Chi (Arrow: Chi2016 -> ChiRCR)")
+
+            ax_polar.set_title("Polar: Zenith vs Azimuth")
+
+            ax_trace.set_xlabel("Time")
+            ax_trace.set_ylabel("Trace")
+            ax_trace.set_title("Time Trace")
+
+            ax_dummy.set_title("Dummy Plot")
+            ax_dummy.text(0.5, 0.5, "Dummy Plot", horizontalalignment='center', verticalalignment='center')
+
+            # Create a single super legend (only for stations present in this event)
+            if legend_entries:
+                handles = list(legend_entries.values())
+                # Place the legend in the upper right subplot.
+                ax_scatter.legend(handles=handles, loc='best', title="Stations")
+
+            plt.tight_layout()
+            master_filename = os.path.join(master_folder, f'master_event_{event_id}.png')
+            plt.savefig(master_filename)
+            plt.close(fig)
+
+    # Plot master plots for each individual coincidence event (unique stations)
+    plot_master_events(coincidence_datetimes, station_data, plot_folder)
