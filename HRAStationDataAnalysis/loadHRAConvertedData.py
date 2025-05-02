@@ -113,6 +113,7 @@ def loadHRAConvertedData(date, cuts=True, **data_kwargs):
 
 
 if __name__ == "__main__":
+    import configparser
 
     # Read configuration to get the date
     config = configparser.ConfigParser() 
