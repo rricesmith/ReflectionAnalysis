@@ -5,7 +5,7 @@
 #SBATCH --time=3-00:00:00                ##Max runtime D-HH:MM:SS, 3 days free maximum
 #SBATCH --nodes=1                        ##Nodes to be used
 #SBATCH --ntasks=1                       ##Numer of processes to be launched
-#SBATCH --cpus-per-task=1                ##Cpu's to be used
+#SBATCH --cpus-per-task=2                ##Cpu's to be used
 #SBATCH --mem=18G
 
 #SBATCH --output=genericBatchJob.out
@@ -19,8 +19,12 @@ export PYTHONPATH=$Radio:$PYTHONPATH
 module load python/3.8.0
 cd $ReflectiveAnalysis
 
-python HRASimulation/HRAAnalysis.py
-python HRASimulation/HRAAreaPlots.py
+#python HRAStationDataAnalysis/eventSearchCuts.py
+python HRAStationDataAnalysis/coincidenceEventSearch.py
+# python HRAStationDataAnalysis/plotSNRChiComparisons.py
+
+#python HRASimulation/HRAAnalysis.py
+#python HRASimulation/HRAAreaPlots.py
 # python StationDataAnalysis/S02_StationDataAndDeeplearnTimeStrip.py
 # python DeepLearning/SimpleSNR_Chi_plot.py
 # python DeepLearning/D04B_reprocessNurPassingCut.py 30
