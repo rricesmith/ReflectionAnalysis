@@ -2,9 +2,18 @@
 
 
 
+import os
+import numpy as np
+import datetime
+from icecream import ic
+import glob
+import pickle
+import configparser
+
 def loadHRAConvertedData(date, cuts=True, **data_kwargs):
     """
     Loads HRA converted data (times and specified parameters) for a given date and applies cuts.
+    If the processed data is already saved, it is loaded and returned.
 
     Args:
         date (str): The date folder to process.
@@ -16,23 +25,29 @@ def loadHRAConvertedData(date, cuts=True, **data_kwargs):
 
     Returns:
         tuple: A tuple containing:
-            - 'times': A dictionary where keys are station IDs and values are the
+            - 'Times': A dictionary where keys are station IDs and values are the
                      NumPy arrays of event times for that station (after applying cuts).
             - A dictionary for each parameter specified in data_kwargs. The keys of these
               dictionaries are station IDs, and the values are the NumPy arrays of the
               corresponding data (after applying cuts and ensuring alignment with times).
               Returns None for a parameter if no corresponding files are found for any station.
     """
-    import os
-    import numpy as np
-    import datetime
-    from icecream import ic
-    import glob
+    # Define the path where processed data is stored
+    processed_folder = os.path.join('HRAStationDataAnalysis', 'ProcessedData')
+    if not os.path.exists(processed_folder):
+        os.makedirs(processed_folder)
+    processed_file = os.path.join(processed_folder, f"{date}_converted_data_cuts_{cuts}.pkl")
+
+    # If already processed, load and return the data.
+    if os.path.exists(processed_file):
+        ic(f"Loading processed data from {processed_file}")
+        with open(processed_file, 'rb') as f:
+            return pickle.load(f)
 
     station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
     cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date)
     station_ids = [13, 14, 15, 17, 18, 19, 30]
-    all_station_data = {'times': {}}
+    all_station_data = {'Times': {}}
     for param_name, param in data_kwargs.items():
         all_station_data[param] = {}
 
@@ -64,7 +79,7 @@ def loadHRAConvertedData(date, cuts=True, **data_kwargs):
             else:
                 ic(f"Warning: Cuts file not found for station {station_id} on date {date}.")
 
-        all_station_data['times'][station_id] = times
+        all_station_data['Times'][station_id] = times
 
         # Load other parameters
         for param_name, file_prefix in data_kwargs.items():
@@ -89,4 +104,23 @@ def loadHRAConvertedData(date, cuts=True, **data_kwargs):
             ic(f"Warning: No data loaded for parameter '{param_name}'.")
             all_station_data[param_name] = None
 
+    # Save the processed data before returning.
+    with open(processed_file, 'wb') as f:
+        pickle.dump(all_station_data, f)
+        ic(f"Processed data saved to {processed_file}")
+
     return all_station_data
+
+
+if __name__ == "__main__":
+
+    # Read configuration to get the date
+    config = configparser.ConfigParser() 
+    config.read(os.path.join('HRAStationDataAnalysis', 'config.ini')) 
+    date = config['PARAMETERS']['date']
+
+    # Process the data with the specified parameters (example: 'snr' and 'chir')
+    station_data = loadHRAConvertedData(date, cuts=True, SNR='SNR', ChiRCR='ChiRCR', Chi2016='Chi2016', ChiBad='ChiBad', Zen='Zen', Azi='Azi', Trace='Trace')
+
+    # Optionally, print a message indicating successful processing
+    print(f"Data for {date} has been processed and saved for future use.")

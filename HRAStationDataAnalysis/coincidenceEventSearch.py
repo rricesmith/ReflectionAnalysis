@@ -235,6 +235,7 @@ import numpy as np
 import glob
 from icecream import ic
 from matplotlib.lines import Line2D
+import datetime
 
 def load_coincidence_event_data(date, coincidence_event, cuts=True):
     """
@@ -410,6 +411,18 @@ if __name__ == "__main__":
         # Iterate over each event.
         for event_id, event in events.items():
             fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+
+            # Compute the average time from the event's 'Times' data.
+            try:
+                times = event["datetime"]  # 'Times' is a list/array with time stamps from all stations.
+                ic(times)
+                # avg_time = sum(times) / len(times)
+                # event_time = datetime.datetime.fromtimestamp(avg_time)
+                event_time = datetime.datetime.fromtimestamp(times)  # Use the first time as representative.
+            except Exception:
+                event_time = "Unknown Time"
+            fig.suptitle(f"Master Event {event_id} - Average Time: {event_time}", fontsize=16)
+
             # Upper left: SNR vs Chi scatter
             ax_scatter = axs[0, 0]
             # Upper right: Polar plot
@@ -481,7 +494,6 @@ if __name__ == "__main__":
             # Create a single super legend (only for stations present in this event)
             if legend_entries:
                 handles = list(legend_entries.values())
-                # Place the legend in the upper right subplot.
                 ax_scatter.legend(handles=handles, loc='best', title="Stations")
 
             plt.tight_layout()
