@@ -42,7 +42,10 @@ def loadHRAConvertedData(date, cuts=True, **data_kwargs):
         if not time_files:
             ic(f"Warning: Time files not found for station {station_id} on date {date}.")
             continue
-        times = np.concatenate([np.load(f).squeeze() for f in time_files])
+        times = [np.load(f) for f in time_files]
+        times = np.concatenate(times, axis=0)
+        times = times.squeeze()
+        times = np.array(times)
         zerotime_mask = times != 0
         times = times[zerotime_mask]
         pretime_mask = times >= datetime.datetime(2013, 1, 1).timestamp()
