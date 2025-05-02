@@ -230,6 +230,58 @@ def analyze_coincidence_events(coincidence_datetimes, coincidence_with_repeated_
     for num, count in sorted(repeated_coincidence_counts.items()):
         ic(f"Number of events with {num} unique station coincidences: {count}")
 
+import os
+import numpy as np
+import glob
+from icecream import ic
+
+def load_coincidence_event_data(date, coincidence_event, cuts=True):
+    """
+    Loads SNR and ChiRCR data for each station in a coincidence event.
+
+    Args:
+        date (str): The date folder to process.
+        coincidence_event (dict): A single coincidence event dictionary
+                                    from coincidence_datetimes or coincidence_with_repeated_stations.
+
+    Returns:
+        dict: A dictionary where keys are station IDs and values are dictionaries
+              containing 'SNR' and 'ChiRCR' arrays for the corresponding events.
+              Returns None if data loading fails for any station in the event.
+    """
+    station_data = {}
+    station_ids = coincidence_event["stations"]
+    indices = coincidence_event["indices"]
+
+    station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
+
+    for i, station_id in enumerate(station_ids):
+        event_index = indices[i]
+        snr_files = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_SNR*'))
+        chir_files = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_ChiRCR*'))
+
+        if not snr_files or not chir_files:
+            ic(f"Warning: SNR or ChiRCR files not found for station {station_id} on date {date}.")
+            return None
+
+        try:
+            snr_data = np.load(snr_files[0])  # Assuming only one SNR file per station per date
+            chir_data = np.load(chir_files[0]) # Assuming only one ChiRCR file per station per date
+
+            if event_index < len(snr_data) and event_index < len(chir_data):
+                station_data[station_id] = {
+                    "SNR": snr_data[event_index],
+                    "ChiRCR": chir_data[event_index]
+                }
+            else:
+                ic(f"Warning: Event index {event_index} out of bounds for station {station_id} on date {date}.")
+                return None
+        except Exception as e:
+            ic(f"Error loading data for station {station_id} on date {date}: {e}")
+            return None
+
+    return station_data
+
 
 if __name__ == "__main__": 
     # Read configuration and get date 
@@ -265,3 +317,72 @@ if __name__ == "__main__":
     # Analyze the coincidence events.
     analyze_coincidence_events(coincidence_datetimes, coincidence_with_repeated_stations)
 
+
+    # Make plots of the coincidences
+    import HRAStationDataAnalysis.loadHRAConvertedData as loadHRAConvertedData
+
+    station_data = loadHRAConvertedData.loadHRAConvertedData(date, True, 'SNR', 'ChiRCR', 'Chi2016', 'ChiRCR_bad')
+    # Data is a dictionary with keys 'times', 'SNR', 'ChiRCR', 'Chi2016', and 'ChiRCR_bad'.
+    # Each key contains a dictionary where keys are station IDs and values are the corresponding data arrays.
+
+    import matplotlib.pyplot as plt
+    import matplotlib.cm as cm
+    
+    plot_folder = os.path.join('HRAStationDataAnalysis', 'plots', date, 'coincidence')
+    os.makedirs(plot_folder, exist_ok=True)
+
+    def plot_events(events, title_suffix, plot_folder):
+        # Define Chi keys to plot against SNR.
+        chi_keys = ['ChiRCR', 'Chi2016', 'ChiRCR_bad']
+        # Create one figure with three side-by-side subplots.
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+        for ax, chi in zip(axes, chi_keys):
+            ax.set_xlabel(chi)
+            ax.set_ylabel('SNR')
+            ax.set_title(f'SNR vs {chi} ({title_suffix})')
+            ax.set_xscale('log')
+            ax.set_xlim(3, 100)
+            ax.set_ylim(0, 1)
+
+        num_events = len(events)
+        # Generate a distinct color for each event using a colormap.
+        colors = cm.jet(np.linspace(0, 1, num_events))
+
+        # Loop over the events.
+        for i, (event_id, event) in enumerate(events.items()):
+            stations = event["stations"]
+            indices = event["indices"]
+            # For each Chi plot, collect the SNR and Chi values from station_data
+            # station_data contains keys 'SNR', 'ChiRCR', 'Chi2016', 'ChiRCR_bad'
+            event_snr = []
+            event_chi = {chi: [] for chi in chi_keys}
+            for j, station in enumerate(stations):
+                idx = indices[j]
+                # Extract SNR point if available.
+                try:
+                    snr_val = station_data['SNR'][station][idx]
+                except (KeyError, IndexError):
+                    snr_val = np.nan
+                event_snr.append(snr_val)
+                # Extract each Chi value; if not available, fill with nan.
+                for chi in chi_keys:
+                    try:
+                        chi_val = station_data[chi][station][idx]
+                    except (KeyError, IndexError):
+                        chi_val = np.nan
+                    event_chi[chi].append(chi_val)
+            
+            # For each of the three properties, plot scatter points and connect them.
+            for ax, chi in zip(axes, chi_keys):
+                ax.scatter(event_chi[chi], event_snr, color=colors[i])
+                ax.plot(event_chi[chi], event_snr, color=colors[i])
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(plot_folder, f'coincidence_{title_suffix}.png'))
+        plt.close(fig)
+
+    # Plot scatter plots for coincidence events with unique stations.
+    plot_events(coincidence_datetimes, "Unique Stations Coincidences", plot_folder)
+
+    # Plot scatter plots for coincidence events (including repeated stations).
+    plot_events(coincidence_with_repeated_stations, "Repeated Stations Coincidences", plot_folder)
