@@ -1,14 +1,10 @@
-
-
-
-
 import os
 import numpy as np
 import datetime
 from icecream import ic
 import glob
 import pickle
-import configparser
+import gc
 
 def loadHRAConvertedData(date, cuts=True, **data_kwargs):
     """
@@ -80,6 +76,8 @@ def loadHRAConvertedData(date, cuts=True, **data_kwargs):
                 ic(f"Warning: Cuts file not found for station {station_id} on date {date}.")
 
         all_station_data['Times'][station_id] = times
+        del times  # Free memory
+        gc.collect()  # Force garbage collection
 
         # Load other parameters
         for param_name, file_prefix in data_kwargs.items():
@@ -93,6 +91,8 @@ def loadHRAConvertedData(date, cuts=True, **data_kwargs):
                 if cuts and os.path.exists(cuts_file):
                     param_data = param_data[cut_mask] # Apply the same cuts
                 all_station_data[param_name][station_id] = param_data
+                del param_data
+                gc.collect()
             else:
                 ic(f"Warning: Files for {file_prefix} not found for station {station_id} on date {date}.")
                 if station_id in all_station_data[param_name]:
