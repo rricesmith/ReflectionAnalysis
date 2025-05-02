@@ -333,7 +333,7 @@ if __name__ == "__main__":
 
     def plot_events(events, title_suffix, plot_folder):
         # Define Chi keys to plot against SNR.
-        chi_keys = ['ChiRCR', 'Chi2016', 'ChiRCR_bad']
+        chi_keys = ['ChiRCR', 'Chi2016', 'ChiBad']
         # Create one figure with three side-by-side subplots.
         fig, axes = plt.subplots(1, 3, figsize=(18, 6))
         for ax, chi in zip(axes, chi_keys):
