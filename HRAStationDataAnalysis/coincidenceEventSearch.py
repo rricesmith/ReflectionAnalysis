@@ -374,10 +374,11 @@ if __name__ == "__main__":
             
             # For each of the three properties, plot scatter points and connect them.
             for ax, chi in zip(axes, chi_keys):
-                ax.scatter(event_chi[chi], event_snr, color=colors[i])
-                ax.plot(event_chi[chi], event_snr, color=colors[i])
+                ax.scatter(event_snr,event_chi[chi], color=colors[i])
+                ax.plot(event_snr, event_chi[chi], color=colors[i])
         
         plt.tight_layout()
+        ic(f"Saving plot for {title_suffix}")
         plt.savefig(os.path.join(plot_folder, f'coincidence_{title_suffix}.png'))
         plt.close(fig)
 
@@ -386,3 +387,5 @@ if __name__ == "__main__":
 
     # Plot scatter plots for coincidence events (including repeated stations).
     plot_events(coincidence_with_repeated_stations, "Repeated Stations Coincidences", plot_folder)
+
+
