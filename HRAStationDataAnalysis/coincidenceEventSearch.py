@@ -4,78 +4,31 @@ import os
 import datetime
 from icecream import ic
 import gc
+import glob
 
-
-# Commented is my manual code. Rest is openai code
-
-# def findCoincidenceDatetimes(date):
-#     # This function finds all coincidence datetimes between all stations, for further processing through other cuts
-
-#     # Returns : a dictionary of coincidence datetimes for each coincidence number then listing the datetime, station, and station indices
-
-#     station_data_folder = f'HRAStationDataAnalysis/StationData/nurFiles/{date}/'
-
-#     station_ids = [13, 14, 15, 17, 18, 19, 30]
-
-#     # Load the data
-#     station_data = {}
-#     for station_id in station_ids:
-#         station_data[station_id] = []
-#         for file in os.listdir(station_data_folder):
-#             if file.startswith(f'{date}_Station{station_id}_Times'):
-#                 data = np.load(station_data_folder+file, allow_pickle=True)
-#                 station_data[station_id].extend(data.tolist())
-#                 del data
-#                 gc.collect()    # Free memory just in case it's large
-
-#         # Convert to numpy arrays
-#         station_data[station_id] = np.array(station_data[station_id])
-
-#     # Find coincidences by recursively checking each station's data against the others
-#     coincidence_datetimes = {} 
-
-#     return coincidence_datetimes       
-
-# if __name__ == "__main__":
-#     # This code goes through all station data, searching for coincidence events that pass certain cut criteria
-#     # and saves them to a numpy file for later use
-
-
-#     config = configparser.ConfigParser()
-#     config.read('HRAStationDataAnalysis/config.ini')
-#     date = config['PARAMETERS']['date']
-
-
-#     # First check to see if datetimes have already been processed as first cut
-#     # If so, load them and skip the rest
-#     numpy_folder = f'HRAStationDataAnalysis/StationData/processedNumpyData/{date}/'
-#     if os.path.exists(numpy_folder+f'{date}_CoincidenceDatetimes.npy'):
-#         coincidence_datetimes = np.load(numpy_folder+f'{date}_CoincidenceDatetimes.npy', allow_pickle=True)
-#     else:
-#         coincidence_datetimes = findCoincidenceDatetimes(date)
 
 
 def findCoincidenceDatetimes(date, cuts=True): 
     """ 
     Finds all coincidence events between stations within a one-second window.
-
+    
     For each station data file in the corresponding date folder, this function loads the event
-    timestamps (expected as Python datetime objects) and records the station and the index of the event.
+    timestamps and records the station and the index of the event.
     Instead of grouping events by exact timestamp, events are grouped if they occur within one second
     of the earliest event in the group.
-
+    
     Each stored coincidence event is a dictionary with the following keys:
     - "numCoincidences": Number of events in the coincidence group.
     - "datetime": The representative event timestamp (the first event in the group).
-    - "stations": List of station IDs in which the event occurred.
-    - "indices": List of indices (positions in the station dataset) corresponding to the event.
-
+    - "stations": Dictionary where each key is a station number, and its value is another dictionary.
+                  Initially, this inner dictionary contains the key 'indices' with a list of indices 
+                  corresponding to the events for that station.
+    
     Args:
-    date (str): The date folder to process, as read from the configuration.
-
+      date (str): The date folder to process, as read from the configuration.
+    
     Returns:
-    A dictionary where each key is an incrementing coincidence event number (0, 1, 2, ...) and 
-    the value is the dictionary described above.
+      A tuple of two dictionaries: (coincidence_datetimes, coincidence_with_repeated_stations)
     """
     import os
     import numpy as np
@@ -89,30 +42,17 @@ def findCoincidenceDatetimes(date, cuts=True):
 
     # Use a subset of stations for the example.
     station_ids = [13, 14, 15, 17, 18, 19, 30]
-    # station_ids = [13, 14, 30]
 
-    # Instead of grouping by exact time, collect all events in a list.
     # Each event is represented as a tuple: (timestamp, station_id, event_index)
     all_events = []
 
     # Load data for each station.
     for station_id in station_ids:
-        # Process only files that start with the given pattern.
         file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_Times*'))
         times = [np.load(f) for f in file_list]
         times = np.concatenate(times, axis=0)
         times = times.squeeze()
         times = np.array(times)
-        # for file in os.listdir(station_data_folder):
-        #     if file.startswith(f'{date}_Station{station_id}_Times'):
-        #         file_path = os.path.join(station_data_folder, file)
-        #         ic(f"Loading file: {file_path}")
-        #         data = np.load(file_path, allow_pickle=True)
-        #         data = data.flatten()  # Flatten the data to ensure it's a 1D array.
-        #         station_events.extend(data.tolist())
-        #         del data
-        #         gc.collect()  # Free up memory if necessary
-
         # Filter out zero timestamps and pre-time events.
         zerotime_mask = times != 0
         times = times[zerotime_mask]
@@ -120,7 +60,6 @@ def findCoincidenceDatetimes(date, cuts=True):
         times = times[pretime_mask]
 
         if cuts:
-            # Load cuts data for the station.
             cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station_id}_Cuts.npy')
             if os.path.exists(cuts_file):
                 ic(f"Loading cuts file: {cuts_file}")
@@ -129,26 +68,20 @@ def findCoincidenceDatetimes(date, cuts=True):
             else:
                 ic(f"Warning: Cuts file not found for station {station_id} on date {date}.")
                 continue
-            # Apply cuts
             final_cuts = np.ones(len(times), dtype=bool)
             for cut in cuts_data.keys():
                 ic(f"Applying cut: {cut}")
                 final_cuts &= cuts_data[cut]
             times = times[final_cuts]
 
-        # Loop over events and add them to all_events list.
         for idx, event_time in enumerate(times):
-            # Skip zero timestamps.
             if event_time == 0:
                 continue
-            ts = event_time   # Already a datetime object.
+            ts = event_time  
             all_events.append((ts, station_id, idx))
 
-    # Sort all events by timestamp.
     all_events.sort(key=lambda x: x[0])
 
-    # Now group events - events are in a coincidence if they occur within one second of the
-    # first event in the group.
     coincidence_datetimes = {}
     coincidence_with_repeated_stations = {}
     valid_counter = 0
@@ -156,27 +89,29 @@ def findCoincidenceDatetimes(date, cuts=True):
 
     n_events = len(all_events)
     i = 0
-    # one_second = datetime.timedelta(seconds=1)
     one_second = 1
     while i < n_events:
         current_group = [all_events[i]]
         j = i + 1
-        # Include subsequent events only if their time is within one second of the first event in the group.
         while j < n_events and (all_events[j][0] - all_events[i][0]) <= one_second:
             current_group.append(all_events[j])
             j += 1
-        
-        # Only record a coincidence if at least 2 events are found.
+
         if len(current_group) > 1:
-            # Build list of station IDs.
-            stations = [event[1] for event in current_group]
-            # If all events are from the same station, skip this group.
-            if len(set(stations)) == 1:
+            # Build a dictionary that separates station information.
+            stations_info = {}
+            for ts, station_id, idx in current_group:
+                if station_id not in stations_info:
+                    stations_info[station_id] = {"indices": []}
+                stations_info[station_id]["indices"].append(idx)
+            
+            # Skip groups where all events come from the same station.
+            if len(stations_info) == 1:
                 i = j
                 continue
 
-            # Check if any station appears multiple times in the group.
-            if len(set(stations)) < len(stations):
+            # Determine which dictionary to add this event to.
+            if any(len(info["indices"]) > 1 for info in stations_info.values()):
                 target_dict = coincidence_with_repeated_stations
                 idx_counter = duplicate_counter
                 duplicate_counter += 1
@@ -185,104 +120,132 @@ def findCoincidenceDatetimes(date, cuts=True):
                 idx_counter = valid_counter
                 valid_counter += 1
 
-
-            indices = [event[2] for event in current_group]
-            # Use the first event's time as a representative time.
             target_dict[idx_counter] = {
                 "numCoincidences": len(current_group),
                 "datetime": all_events[i][0],
-                "stations": stations,
-                "indices": indices
+                "stations": stations_info
             }
-            # Skip over the events already grouped.
             i = j
         else:
             i += 1
 
     return coincidence_datetimes, coincidence_with_repeated_stations
 
+
 def analyze_coincidence_events(coincidence_datetimes, coincidence_with_repeated_stations):
+        """
+        Analyzes and logs the number of coincidence events for different coincidence numbers,
+        and counts unique stations while taking into account that each 'stations' entry may have multiple keys.
+
+        Args:
+            coincidence_datetimes (dict): Dictionary of coincidence events with unique stations.
+            coincidence_with_repeated_stations (dict): Dictionary of coincidence events with potentially repeated stations.
+        """
+        # Analyze coincidence_datetimes (unique stations)
+        coincidence_counts = {}
+        for event_data in coincidence_datetimes.values():
+            num_coincidences = event_data["numCoincidences"]
+            coincidence_counts[num_coincidences] = coincidence_counts.get(num_coincidences, 0) + 1
+
+        ic("Analysis of coincidence events with unique stations:")
+        for num, count in sorted(coincidence_counts.items()):
+            ic(f"Number of events with {num} coincidences: {count}")
+
+        ic("\nAnalysis of coincidence events with potentially repeated stations:")
+        repeated_coincidence_counts = {}
+        for event_data in coincidence_with_repeated_stations.values():
+            # Here the 'stations' dictionary may contain multiple keys (e.g., 'indices', 'metadata', etc.)
+            # We count unique station IDs by iterating over its keys.
+            unique_station_ids = list(event_data["stations"].keys())
+            unique_stations_count = len(unique_station_ids)
+            repeated_coincidence_counts[unique_stations_count] = repeated_coincidence_counts.get(unique_stations_count, 0) + 1
+
+        for num, count in sorted(repeated_coincidence_counts.items()):
+            ic(f"Number of events with {num} unique station coincidences: {count}")
+
+def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
     """
-    Analyzes and ics the number of coincidence events for different coincidence numbers.
+    Loads the given parameter (e.g., 'SNR') for each station present in the coincidence events,
+    applying the same time masking as in findCoincidenceDatetimes, and inserts the parameter values
+    into each event's station dictionary (as a list under the key given by parameter_name).
+
+    This function processes one station at a time to reduce memory usage.
 
     Args:
-        coincidence_datetimes (dict): Dictionary of coincidence events with unique stations.
-        coincidence_with_repeated_stations (dict): Dictionary of coincidence events with potentially repeated stations.
-    """
-
-    # Analyze coincidence_datetimes (unique stations)
-    coincidence_counts = {}
-    for event_data in coincidence_datetimes.values():
-        num_coincidences = event_data["numCoincidences"]
-        coincidence_counts[num_coincidences] = coincidence_counts.get(num_coincidences, 0) + 1
-
-    ic("Analysis of coincidence events with unique stations:")
-    for num, count in sorted(coincidence_counts.items()):
-        ic(f"Number of events with {num} coincidences: {count}")
-
-    ic("\nAnalysis of coincidence events with potentially repeated stations:")
-    repeated_coincidence_counts = {}
-    for event_data in coincidence_with_repeated_stations.values():
-        # Count only unique stations for this analysis
-        unique_stations_count = len(set(event_data["stations"]))
-        repeated_coincidence_counts[unique_stations_count] = repeated_coincidence_counts.get(unique_stations_count, 0) + 1
-
-    for num, count in sorted(repeated_coincidence_counts.items()):
-        ic(f"Number of events with {num} unique station coincidences: {count}")
-
-import os
-import numpy as np
-import glob
-from icecream import ic
-from matplotlib.lines import Line2D
-import datetime
-
-def load_coincidence_event_data(date, coincidence_event, cuts=True):
-    """
-    Loads SNR and ChiRCR data for each station in a coincidence event.
-
-    Args:
-        date (str): The date folder to process.
-        coincidence_event (dict): A single coincidence event dictionary
-                                    from coincidence_datetimes or coincidence_with_repeated_stations.
+        events_dict (dict): The dictionary of coincidence events to update.
+        parameter_name (str): The name of the parameter to load (e.g., 'SNR').
+        date (str): Date folder to use when loading data.
+        cuts (bool): Whether to apply cuts (if available) when processing the 'Times' data.
 
     Returns:
-        dict: A dictionary where keys are station IDs and values are dictionaries
-              containing 'SNR' and 'ChiRCR' arrays for the corresponding events.
-              Returns None if data loading fails for any station in the event.
+        None. The function updates events_dict in place.
     """
-    station_data = {}
-    station_ids = coincidence_event["stations"]
-    indices = coincidence_event["indices"]
 
+    # Define data directories.
     station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
+    cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date)
 
-    for i, station_id in enumerate(station_ids):
-        event_index = indices[i]
-        snr_files = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_SNR*'))
-        chir_files = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_ChiRCR*'))
+    # Gather unique station IDs from all events.
+    unique_stations = set()
+    for event in events_dict.values():
+        unique_stations.update(event["stations"].keys())
+    unique_stations = list(unique_stations)
 
-        if not snr_files or not chir_files:
-            ic(f"Warning: SNR or ChiRCR files not found for station {station_id} on date {date}.")
-            return None
-
-        try:
-            snr_data = np.load(snr_files[0])  # Assuming only one SNR file per station per date
-            chir_data = np.load(chir_files[0]) # Assuming only one ChiRCR file per station per date
-
-            if event_index < len(snr_data) and event_index < len(chir_data):
-                station_data[station_id] = {
-                    "SNR": snr_data[event_index],
-                    "ChiRCR": chir_data[event_index]
-                }
+    # Process one station at a time.
+    for station in unique_stations:
+        # Load and mask Times data.
+        time_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date}_Station{station}_Times*')))
+        if not time_files:
+            continue
+        times_list = [np.load(f) for f in time_files]
+        times = np.concatenate(times_list, axis=0).squeeze()
+        times = np.array(times)
+        # Apply initial masking.
+        valid_mask = (times != 0) & (times >= datetime.datetime(2013, 1, 1).timestamp())
+        # Apply cuts if required.
+        if cuts:
+            cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station}_Cuts.npy')
+            if os.path.exists(cuts_file):
+                cuts_data = np.load(cuts_file, allow_pickle=True)[()]
+                final_cuts = np.ones(len(times), dtype=bool)
+                for cut in cuts_data.keys():
+                    final_cuts &= cuts_data[cut]
+                valid_mask &= final_cuts
             else:
-                ic(f"Warning: Event index {event_index} out of bounds for station {station_id} on date {date}.")
-                return None
-        except Exception as e:
-            ic(f"Error loading data for station {station_id} on date {date}: {e}")
-            return None
+                # If cuts file is missing, skip this station.
+                continue
+        times = times[valid_mask]
 
-    return station_data
+        # Load parameter data from corresponding files and apply the same mask.
+        param_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date}_Station{station}_{parameter_name}*')))
+        if not param_files:
+            continue
+        param_list = [np.load(f) for f in param_files]
+        param_array = np.concatenate(param_list, axis=0).squeeze()
+        param_array = np.array(param_array)
+        param_array = param_array[valid_mask]
+
+        # For each event that includes this station, update the event dictionary.
+        for event in events_dict.values():
+            if str(station) in event["stations"]:
+                station_data = event["stations"][str(station)] if isinstance(event["stations"], dict) else event["stations"][station]
+                indices = station_data.get("indices", [])
+                # Retrieve parameter values using the indices.
+                values = []
+                for idx in indices:
+                    try:
+                        values.append(param_array[idx])
+                    except IndexError:
+                        values.append(np.nan)
+                # Insert the loaded parameter values.
+                station_data[parameter_name] = values
+
+        # Clean up to free memory.
+        del times
+        del param_array
+        del param_list
+        del times_list
+        gc.collect()
 
 
 if __name__ == "__main__": 
@@ -318,6 +281,28 @@ if __name__ == "__main__":
 
     # Analyze the coincidence events.
     analyze_coincidence_events(coincidence_datetimes, coincidence_with_repeated_stations)
+
+
+    # Add parameters to events.
+    parameters_to_add = ['SNR', 'ChiRCR', 'Chi2016', 'ChiBad', 'Zen', 'Azi', 'Trace']
+    for param in parameters_to_add:
+        add_parameter_to_events(coincidence_datetimes, param, date, cuts=True)
+        add_parameter_to_events(coincidence_with_repeated_stations, param, date, cuts=True)
+    # Optional: ic first few coincidences for verification.
+    for key in list(coincidence_datetimes.keys()):
+        ic(key, coincidence_datetimes[key])
+        if isinstance(coincidence_datetimes[key], dict):
+            ic(coincidence_datetimes[key].keys())
+    for key in list(coincidence_with_repeated_stations.keys()):
+        ic(key, coincidence_with_repeated_stations[key])
+        if isinstance(coincidence_with_repeated_stations[key], dict):
+            ic(coincidence_with_repeated_stations[key].keys()) 
+
+    quit()
+    # Save the updated events with parameters.
+    np.save(output_file, [coincidence_datetimes, coincidence_with_repeated_stations], allow_pickle=True)
+    ic("Updated events with parameters and saved.")
+
 
 
     # Make plots of the coincidences
