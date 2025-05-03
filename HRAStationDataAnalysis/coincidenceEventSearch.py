@@ -224,7 +224,10 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
         ic('a')
         param_list = [np.load(f) for f in param_files]
         ic('a')
-        param_array = np.concatenate(param_list, axis=0).squeeze()
+        param_array = np.concatenate(param_list, axis=0)
+        ic('a')
+        if not parameter_name == 'Traces':
+            param_array.squeeze()
         ic('a')
         param_array = np.array(param_array)
         ic('a')
