@@ -196,12 +196,9 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True, flag='
             for event_id, event in events_dict.items():
                 st_key = None
                 if station in event["stations"]:
-                    ic(station, event["stations"], event_id, processed_events[event_id]["stations"])
                     st_key = station
                 elif str(station) in event["stations"]:
-                    ic(station, event["stations"], event_id, processed_events[event_id]["stations"])
                     st_key = str(station)
-                ic(st_key, event_id, processed_events[event_id], processed_events[event_id]["stations"])
                 if st_key is not None and parameter_name in processed_events[event_id]["stations"][st_key]:
                     event["stations"][st_key][parameter_name] = processed_events[event_id]["stations"][st_key][parameter_name]
             continue
@@ -345,14 +342,14 @@ if __name__ == "__main__":
         ic("Saved new coincidences", len(coincidence_datetimes))
 
     # Optional: ic first few coincidences for verification.
-    for key in list(coincidence_datetimes.keys()):
-        ic(key, coincidence_datetimes[key])
+    # for key in list(coincidence_datetimes.keys()):
+    #     ic(key, coincidence_datetimes[key])
 
-    for key in list(coincidence_with_repeated_stations.keys()):
-        ic(key, coincidence_with_repeated_stations[key])
+    # for key in list(coincidence_with_repeated_stations.keys()):
+    #     ic(key, coincidence_with_repeated_stations[key])
 
     # Analyze the coincidence events.
-    analyze_coincidence_events(coincidence_datetimes, coincidence_with_repeated_stations)
+    # analyze_coincidence_events(coincidence_datetimes, coincidence_with_repeated_stations)
 
 
     # Add parameters to events.
