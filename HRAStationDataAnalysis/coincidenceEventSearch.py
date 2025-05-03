@@ -286,6 +286,7 @@ if __name__ == "__main__":
     # Add parameters to events.
     parameters_to_add = ['SNR', 'ChiRCR', 'Chi2016', 'ChiBad', 'Zen', 'Azi', 'Trace']
     for param in parameters_to_add:
+        ic(f"Adding parameter: {param}")
         add_parameter_to_events(coincidence_datetimes, param, date, cuts=True)
         add_parameter_to_events(coincidence_with_repeated_stations, param, date, cuts=True)
     # Optional: ic first few coincidences for verification.
