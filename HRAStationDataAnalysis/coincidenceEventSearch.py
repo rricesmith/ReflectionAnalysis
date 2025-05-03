@@ -199,6 +199,7 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
                     st_key = station
                 elif str(station) in event["stations"]:
                     st_key = str(station)
+                ic(st_key, event_id, processed_events[event_id], processed_events[event_id]["stations"])
                 if st_key is not None and parameter_name in processed_events[event_id]["stations"][st_key]:
                     event["stations"][st_key][parameter_name] = processed_events[event_id]["stations"][st_key][parameter_name]
             continue
