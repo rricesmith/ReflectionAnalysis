@@ -222,22 +222,9 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
         if not param_files:
             continue
         ic('a')
-        # Use memory mapping and pre-allocation to reduce memory usage.
-        total_length = 0
-        for f in param_files:
-            arr = np.load(f, mmap_mode='r')
-            arr = np.squeeze(arr)
-            total_length += arr.shape[0]
+        param_list = [np.load(f) for f in param_files]
         ic('a')
-        param_dtype = np.load(param_files[0], mmap_mode='r').dtype
-        param_array = np.empty(total_length, dtype=param_dtype)
-        current_index = 0
-        for f in param_files:
-            arr = np.load(f, mmap_mode='r')
-            arr = np.squeeze(arr)
-            length = arr.shape[0]
-            param_array[current_index: current_index + length] = arr
-            current_index += length
+        param_array = np.concatenate(param_list, axis=0)
         ic('a')
         if not parameter_name == 'Traces':
             param_array.squeeze()
@@ -312,7 +299,7 @@ if __name__ == "__main__":
 
 
     # Add parameters to events.
-    parameters_to_add = ['SNR', 'ChiRCR', 'Chi2016', 'ChiBad', 'Zen', 'Azi', 'Trace']
+    parameters_to_add = ['Traces', 'SNR', 'ChiRCR', 'Chi2016', 'ChiBad', 'Zen', 'Azi']
     for param in parameters_to_add:
         ic(f"Adding parameter: {param}")
         add_parameter_to_events(coincidence_datetimes, param, date, cuts=True)
