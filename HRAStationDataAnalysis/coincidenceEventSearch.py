@@ -166,7 +166,7 @@ def analyze_coincidence_events(coincidence_datetimes, coincidence_with_repeated_
 def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
     """
     Loads the given parameter (e.g., 'SNR') for each station present in the coincidence events,
-    but now loads and adds the parameter value only for events where it is missing.
+    but now loads and adds the parameter value even when it was processed before.
     After processing each station, the updated events_dict is saved to a temporary file.
     This function also takes into account that some stations may appear multiple times in the
     same coincidence, so the number of parameter values must match the number of indices per station.
@@ -189,9 +189,18 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
 
     for station in unique_stations:
         temp_save_file = os.path.join(temp_folder, f'temp_param_{parameter_name}_Station{station}.npy')
-        # If the parameter for the current station is already processed, skip further processing.
         if os.path.exists(temp_save_file):
-            ic(f"Parameter {parameter_name} for station {station} already processed. Skipping.")
+            ic(f"Parameter {parameter_name} for station {station} already processed. Loading saved values.")
+            processed_events = np.load(temp_save_file, allow_pickle=True).item()
+            # Update the current events_dict for this station.
+            for event_id, event in events_dict.items():
+                st_key = None
+                if station in event["stations"]:
+                    st_key = station
+                elif str(station) in event["stations"]:
+                    st_key = str(station)
+                if st_key is not None and parameter_name in processed_events[event_id]["stations"][st_key]:
+                    event["stations"][st_key][parameter_name] = processed_events[event_id]["stations"][st_key][parameter_name]
             continue
 
         ic(f"Processing station {station} for parameter {parameter_name}")
@@ -257,6 +266,7 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
         # Only add the parameter value for entries where it is missing.
         file_updates = {}
         for event in events_dict.values():
+            st_key = None
             if station in event["stations"]:
                 st_key = station
             elif str(station) in event["stations"]:
@@ -276,8 +286,7 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
                     if finfo['global_start'] <= global_idx < finfo['global_end']:
                         local_pos = global_idx - finfo['global_start']
                         local_index = int(finfo['local_surviving'][local_pos])
-                        file_path = finfo['file']
-                        file_updates.setdefault(file_path, []).append(
+                        file_updates.setdefault(finfo['file'], []).append(
                             (event, st_key, pos, local_index)
                         )
                         break
