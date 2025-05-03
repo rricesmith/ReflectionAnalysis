@@ -210,11 +210,11 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
                 final_cuts = np.ones(len(times), dtype=bool)
                 for cut in cuts_data.keys():
                     final_cuts &= cuts_data[cut]
-                valid_mask &= final_cuts
             else:
                 # If cuts file is missing, skip this station.
                 continue
         times = times[valid_mask]
+        times = times[final_cuts]
 
         # Load parameter data from corresponding files and apply the same mask.
         param_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date}_Station{station}_{parameter_name}*')))
@@ -224,6 +224,11 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
         param_array = np.concatenate(param_list, axis=0).squeeze()
         param_array = np.array(param_array)
         param_array = param_array[valid_mask]
+        param_array = param_array[final_cuts]
+        # Ensure the parameter array is the same length as the times array.
+        if len(param_array) != len(times):
+            ic(f"Warning: Length mismatch for station {station} and parameter {parameter_name}.")
+            quit()
 
         # For each event that includes this station, update the event dictionary.
         for event in events_dict.values():
