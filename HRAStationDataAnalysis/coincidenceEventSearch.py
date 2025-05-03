@@ -193,6 +193,7 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
 
     # Process one station at a time.
     for station in unique_stations:
+        ic(f"Processing station {station} for parameter {parameter_name}")
         # Load and mask Times data.
         time_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date}_Station{station}_Times*')))
         if not time_files:
