@@ -166,19 +166,11 @@ def analyze_coincidence_events(coincidence_datetimes, coincidence_with_repeated_
 def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
     """
     Loads the given parameter (e.g., 'SNR') for each station present in the coincidence events,
-    but now loads only subsets of each file that actually contribute events.
-    
-    For each station:
-      1. It builds a mapping from the global (concatenated) processed times indices (after valid
-         mask and cuts) to the original file and the local index in that file.
-      2. It then groups, by file, those event indices that fall in that file.
-      3. For each file, it loads the corresponding parameter file (which shares the same suffix as
-         the times file except that "Times" is replaced by the parameter name) and assigns each event
-         its parameter value using the local index.
-    
-    This method avoids loading the full concatenated array from disk.
+    but now loads and adds the parameter value only for events where it is missing.
+    After processing each station, the updated events_dict is saved to a temporary file.
+    This function also takes into account that some stations may appear multiple times in the
+    same coincidence, so the number of parameter values must match the number of indices per station.
     """
-
     station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
     cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date)
     threshold = datetime.datetime(2013, 1, 1).timestamp()
@@ -190,7 +182,18 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
             unique_stations.add(int(st))
     unique_stations = list(unique_stations)
 
+    # Define temporary folder where updated events are stored.
+    temp_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'processedNumpyData', date)
+    if not os.path.exists(temp_folder):
+        os.makedirs(temp_folder)
+
     for station in unique_stations:
+        temp_save_file = os.path.join(temp_folder, f'temp_param_{parameter_name}_Station{station}.npy')
+        # If the parameter for the current station is already processed, skip further processing.
+        if os.path.exists(temp_save_file):
+            ic(f"Parameter {parameter_name} for station {station} already processed. Skipping.")
+            continue
+
         ic(f"Processing station {station} for parameter {parameter_name}")
 
         # Get all times files for this station.
@@ -217,16 +220,11 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
         if cuts and os.path.exists(cuts_file):
             with open(cuts_file, 'rb') as f:
                 cuts_data = np.load(f, allow_pickle=True)[()]
-            # Build the overall cuts mask (on the concatenated valid times)
             final_cuts = np.ones(total_valid, dtype=bool)
             for cut in cuts_data.keys():
                 final_cuts &= cuts_data[cut]
 
-        # Second pass: Build file info mapping.
-        # For each file, we will record:
-        #   - the file path,
-        #   - the global start and end indices (in the processed, concatenated array),
-        #   - an array ("local_surviving") that maps the processed order to the local index inside the file.
+        # Second pass: Build mapping of file info.
         file_info_list = []
         current_global = 0  # running count of processed (valid+cut) entries
         cumulative_valid = 0  # running count of valid entries (before applying cuts)
@@ -235,16 +233,14 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
                 f_times = np.load(f)
             f_times = np.array(f_times).squeeze()
             valid_mask = (f_times != 0) & (f_times >= threshold)
-            # Get indices in this file that pass the valid_mask.
             valid_indices = np.nonzero(valid_mask)[0]
             count_in_file = len(valid_indices)
 
-            # Apply cuts on this file's portion.
+            # Apply cuts to this file's portion.
             if cuts and final_cuts is not None:
-                file_cut_mask = final_cuts[cumulative_valid : cumulative_valid + count_in_file]
+                file_cut_mask = final_cuts[cumulative_valid: cumulative_valid + count_in_file]
             else:
                 file_cut_mask = np.ones(count_in_file, dtype=bool)
-            # local_surviving: positions (in the valid_indices array) that survived the cuts.
             local_surviving = np.nonzero(file_cut_mask)[0]
             processed_count = len(local_surviving)
 
@@ -252,36 +248,32 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
                 'file': tfile,
                 'global_start': current_global,
                 'global_end': current_global + processed_count,
-                'local_surviving': local_surviving,  # maps processed order to local index
+                'local_surviving': local_surviving,  # maps processed order to local index in the file
             })
             current_global += processed_count
             cumulative_valid += count_in_file
 
         # Group, for this station, the events by which file their global index falls into.
-        # The event indices in each station's event data correspond to the index in the processed
-        # (concatenated) times array.
-        # We'll build a dictionary: key = file path, value = list of tuples:
-        # (event, station_key, position_in_event_indices, local_index)
+        # Only add the parameter value for entries where it is missing.
         file_updates = {}
-
-        # Loop over events that include this station.
         for event in events_dict.values():
-            # Station keys may be stored as int or as str.
             if station in event["stations"]:
                 st_key = station
             elif str(station) in event["stations"]:
                 st_key = str(station)
             else:
                 continue
-            st_data = event["stations"][st_key]
-            indices_list = st_data.get("indices", [])
-            # Initialize the parameter list so that we can assign values by position.
-            st_data[parameter_name] = [None] * len(indices_list)
+            indices_list = event["stations"][st_key].get("indices", [])
+            # Initialize the parameter list if it is missing or if its length is insufficient.
+            if (parameter_name not in event["stations"][st_key] or
+                    len(event["stations"][st_key][parameter_name]) < len(indices_list)):
+                event["stations"][st_key][parameter_name] = [None] * len(indices_list)
             for pos, global_idx in enumerate(indices_list):
-                # Find which file this global index belongs to.
+                if event["stations"][st_key][parameter_name][pos] is not None:
+                    # Parameter already added for this occurrence; skip.
+                    continue
                 for finfo in file_info_list:
                     if finfo['global_start'] <= global_idx < finfo['global_end']:
-                        # Determine the corresponding local index.
                         local_pos = global_idx - finfo['global_start']
                         local_index = int(finfo['local_surviving'][local_pos])
                         file_path = finfo['file']
@@ -290,8 +282,8 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
                         )
                         break
 
-        # For each times file that has events needing parameter values,
-        # load the corresponding parameter file (the suffix is matched by replacing "Times" with parameter_name)
+        # For each times file with events needing parameter values,
+        # load the corresponding parameter file (matched by replacing "Times" with parameter_name)
         for tfile, updates in file_updates.items():
             param_file = tfile.replace('Times', parameter_name)
             if not os.path.exists(param_file):
@@ -309,7 +301,11 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
                     value = np.nan
                 event["stations"][st_key][parameter_name][pos] = value
 
-        gc.collect()
+        # Save the updated events_dict for this station.
+        np.save(temp_save_file, events_dict, allow_pickle=True)
+        ic(f"Saved parameter {parameter_name} for station {station} to {temp_save_file}")
+
+    gc.collect()
 
 
 if __name__ == "__main__": 
