@@ -202,6 +202,7 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
         times = np.array(times)
         # Apply initial masking.
         valid_mask = (times != 0) & (times >= datetime.datetime(2013, 1, 1).timestamp())
+        times = times[valid_mask]
         # Apply cuts if required.
         if cuts:
             cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station}_Cuts.npy')
@@ -213,7 +214,6 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
             else:
                 # If cuts file is missing, skip this station.
                 continue
-        times = times[valid_mask]
         times = times[final_cuts]
 
         # Load parameter data from corresponding files and apply the same mask.
