@@ -203,7 +203,8 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
         file_counts = []
         total_valid = 0
         for tfile in times_files:
-            f_times = np.load(tfile)
+            with open(tfile, 'rb') as f:
+                f_times = np.load(f)
             f_times = np.array(f_times).squeeze()
             valid_mask = (f_times != 0) & (f_times >= threshold)
             count = int(np.sum(valid_mask))
@@ -214,7 +215,8 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
         final_cuts = None
         cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station}_Cuts.npy')
         if cuts and os.path.exists(cuts_file):
-            cuts_data = np.load(cuts_file, allow_pickle=True)[()]
+            with open(cuts_file, 'rb') as f:
+                cuts_data = np.load(f, allow_pickle=True)[()]
             # Build the overall cuts mask (on the concatenated valid times)
             final_cuts = np.ones(total_valid, dtype=bool)
             for cut in cuts_data.keys():
@@ -229,7 +231,8 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
         current_global = 0  # running count of processed (valid+cut) entries
         cumulative_valid = 0  # running count of valid entries (before applying cuts)
         for idx, tfile in enumerate(times_files):
-            f_times = np.load(tfile)
+            with open(tfile, 'rb') as f:
+                f_times = np.load(f)
             f_times = np.array(f_times).squeeze()
             valid_mask = (f_times != 0) & (f_times >= threshold)
             # Get indices in this file that pass the valid_mask.
@@ -294,7 +297,8 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
             if not os.path.exists(param_file):
                 ic(f"Parameter file {param_file} not found for station {station} and parameter {parameter_name}.")
                 continue
-            param_array = np.load(param_file)
+            with open(param_file, 'rb') as pf:
+                param_array = np.load(pf)
             param_array = np.array(param_array)
             if parameter_name != 'Traces':
                 param_array = param_array.squeeze()
