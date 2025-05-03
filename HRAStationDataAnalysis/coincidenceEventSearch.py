@@ -163,7 +163,7 @@ def analyze_coincidence_events(coincidence_datetimes, coincidence_with_repeated_
         for num, count in sorted(repeated_coincidence_counts.items()):
             ic(f"Number of events with {num} unique station coincidences: {count}")
 
-def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
+def add_parameter_to_events(events_dict, parameter_name, date, cuts=True, flag='base'):
     """
     Loads the given parameter (e.g., 'SNR') for each station present in the coincidence events,
     but now loads and adds the parameter value even when it was processed before.
@@ -183,7 +183,7 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
     unique_stations = list(unique_stations)
 
     # Define temporary folder where updated events are stored.
-    temp_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'processedNumpyData', date)
+    temp_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'processedNumpyData', date, flag)
     if not os.path.exists(temp_folder):
         os.makedirs(temp_folder)
 
@@ -359,8 +359,8 @@ if __name__ == "__main__":
     parameters_to_add = ['Traces', 'SNR', 'ChiRCR', 'Chi2016', 'ChiBad', 'Zen', 'Azi']
     for param in parameters_to_add:
         ic(f"Adding parameter: {param}")
-        add_parameter_to_events(coincidence_datetimes, param, date, cuts=True)
-        add_parameter_to_events(coincidence_with_repeated_stations, param, date, cuts=True)
+        add_parameter_to_events(coincidence_datetimes, param, date, cuts=True, flag='no_repeats')
+        add_parameter_to_events(coincidence_with_repeated_stations, param, date, cuts=True, flag='repeats')
     # Optional: ic first few coincidences for verification.
     for key in list(coincidence_datetimes.keys()):
         ic(key, coincidence_datetimes[key])
