@@ -221,11 +221,17 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True):
         param_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date}_Station{station}_{parameter_name}*')))
         if not param_files:
             continue
+        ic('a')
         param_list = [np.load(f) for f in param_files]
+        ic('a')
         param_array = np.concatenate(param_list, axis=0).squeeze()
+        ic('a')
         param_array = np.array(param_array)
+        ic('a')
         param_array = param_array[valid_mask]
+        ic('a')
         param_array = param_array[final_cuts]
+        ic('a')
         # Ensure the parameter array is the same length as the times array.
         if len(param_array) != len(times):
             ic(f"Warning: Length mismatch for station {station} and parameter {parameter_name}.")
