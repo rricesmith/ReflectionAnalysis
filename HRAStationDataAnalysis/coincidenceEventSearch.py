@@ -165,11 +165,10 @@ def analyze_coincidence_events(coincidence_datetimes, coincidence_with_repeated_
 
 def add_parameter_to_events(events_dict, parameter_name, date, cuts=True, flag='base'):
     """
-    Loads the given parameter (e.g., 'SNR') for each station present in the coincidence events,
-    but now loads and adds the parameter value even when it was processed before.
-    After processing each station, the updated events_dict is saved to a temporary file.
-    This function also takes into account that some stations may appear multiple times in the
-    same coincidence, so the number of parameter values must match the number of indices per station.
+    Loads the given parameter for each station present in the coincidence events.
+    This refactored version uses a precomputed global mask (time + cuts) per station
+    to map valid event indices from the concatenated times array back to individual files.
+    The processing for each station is saved so that it is not repeated.
     """
     station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
     cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date)
@@ -182,17 +181,17 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True, flag='
             unique_stations.add(int(st))
     unique_stations = list(unique_stations)
 
-    # Define temporary folder where updated events are stored.
+    # Temporary folder to store processed station data & global mask.
     temp_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'processedNumpyData', date, flag)
     if not os.path.exists(temp_folder):
         os.makedirs(temp_folder)
 
     for station in unique_stations:
         temp_save_file = os.path.join(temp_folder, f'temp_param_{parameter_name}_Station{station}.npy')
+        global_mask_file = os.path.join(temp_folder, f'global_mask_{station}.npy')
         if os.path.exists(temp_save_file):
             ic(f"Parameter {parameter_name} for station {station} already processed. Loading saved values.")
             processed_events = np.load(temp_save_file, allow_pickle=True).item()
-            # Update the current events_dict for this station.
             for event_id, event in events_dict.items():
                 st_key = None
                 if station in event["stations"]:
@@ -200,79 +199,86 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True, flag='
                 elif str(station) in event["stations"]:
                     st_key = str(station)
                 if st_key is not None and parameter_name in processed_events[event_id]["stations"][st_key]:
-                    event["stations"][st_key][parameter_name] = processed_events[event_id]["stations"][st_key][parameter_name]
+                    event["stations"][st_key][parameter_name] = (
+                        processed_events[event_id]["stations"][st_key][parameter_name]
+                    )
             continue
 
         ic(f"Processing station {station} for parameter {parameter_name}")
 
-        # Get all times files for this station.
-        time_pattern = os.path.join(station_data_folder, f'{date}_Station{station}_Times*')
-        times_files = sorted(glob.glob(time_pattern))
-        if not times_files:
+        # Get list of times files.
+        files = sorted(glob.glob(os.path.join(station_data_folder, f'{date}_Station{station}_Times*')))
+        if not files:
             continue
 
-        # First pass: Get the number of valid entries per file (after applying the valid mask).
-        file_counts = []
-        total_valid = 0
-        for tfile in times_files:
-            with open(tfile, 'rb') as f:
-                f_times = np.load(f)
-            f_times = np.array(f_times).squeeze()
-            valid_mask = (f_times != 0) & (f_times >= threshold)
-            count = int(np.sum(valid_mask))
-            file_counts.append(count)
-            total_valid += count
-
-        # Load and apply cuts at the station level (if available).
-        final_cuts = None
-        cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station}_Cuts.npy')
-        if cuts and os.path.exists(cuts_file):
-            with open(cuts_file, 'rb') as f:
-                cuts_data = np.load(f, allow_pickle=True)[()]
-            final_cuts = np.ones(total_valid, dtype=bool)
-            for cut in cuts_data.keys():
-                resized_cut = np.full(total_valid, False, dtype=bool)
-                available_length = min(len(cuts_data[cut]), total_valid)
-                resized_cut[:available_length] = cuts_data[cut][:available_length]
-                final_cuts &= resized_cut
-
-        current_global = 0
-        cumulative_valid = 0
-
-        # Second pass: Build mapping of file info.
-        file_info_list = []
-        for tfile in times_files:
-            with open(tfile, 'rb') as f:
-                f_times = np.load(f)
-            f_times = np.array(f_times).squeeze()
-            valid_mask = (f_times != 0) & (f_times >= threshold)
-            valid_indices = np.nonzero(valid_mask)[0]
-            count_in_file = len(valid_indices)
-            valid_mask = (f_times != 0) & (f_times >= threshold)
-            valid_indices = np.nonzero(valid_mask)[0]
-            count_in_file = len(valid_indices)
-
-            # Apply cuts to this file's portion.
-            if cuts and final_cuts is not None:
-                file_cut_mask = final_cuts[cumulative_valid: cumulative_valid + count_in_file]
+        # === Step 1: Compute or load the global mask for valid events for this station.
+        if os.path.exists(global_mask_file):
+            ic(f"Loading global mask for station {station}")
+            global_mask = np.load(global_mask_file, allow_pickle=True)
+        else:
+            ic(f"Building global mask for station {station}")
+            all_times_list = []
+            for fpath in files:
+                times = np.load(fpath)
+                times = np.array(times).squeeze()
+                all_times_list.append(times)
+            all_times = np.concatenate(all_times_list, axis=0)
+            # Create a time mask: times != 0 and times >= threshold.
+            time_mask = (all_times != 0) & (all_times >= threshold)
+            # Initialize a mask for cuts.
+            if cuts:
+                cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station}_Cuts.npy')
+                if os.path.exists(cuts_file):
+                    ic(f"Loading cuts file: {cuts_file} for station {station}")
+                    cuts_data = np.load(cuts_file, allow_pickle=True)[()]
+                    # First, combine all cuts into one array for valid events.
+                    num_valid = np.sum(time_mask)
+                    combined_cut = np.ones(num_valid, dtype=bool)
+                    for cut in cuts_data.keys():
+                        # Ensure we use only the first num_valid entries.
+                        combined_cut &= cuts_data[cut][:num_valid]
+                else:
+                    ic(f"Warning: Cuts file not found for station {station} on date {date}.")
+                    combined_cut = np.ones(np.sum(time_mask), dtype=bool)
             else:
-                file_cut_mask = np.ones(count_in_file, dtype=bool)
-            local_surviving = np.nonzero(file_cut_mask)[0]
-            processed_count = len(local_surviving)
+                combined_cut = np.ones(np.sum(time_mask), dtype=bool)
+            # Build the global mask. For every position in all_times, if time_mask is True,
+            # replace with the next value from combined_cut. Otherwise keep False.
+            global_mask = np.zeros(all_times.shape, dtype=bool)
+            valid_indices = np.where(time_mask)[0]
+            for idx, pos in enumerate(valid_indices):
+                global_mask[pos] = combined_cut[idx]
+            np.save(global_mask_file, global_mask, allow_pickle=True)
+            ic(f"Saved global mask for station {station} to {global_mask_file}")
 
+        # === Step 2: For each times file, determine the mapping of valid events using the global mask.
+        file_info_list = []
+        global_valid_counter = 0  # Counter over valid events (per file) based on time_mask.
+        current_global = 0        # Counter for processed events (after cuts) across files.
+        for fpath in files:
+            times = np.load(fpath)
+            times = np.array(times).squeeze()
+            # Local time mask from this file.
+            local_time_mask = (times != 0) & (times >= threshold)
+            valid_local_indices = np.where(local_time_mask)[0]
+            num_valid_local = len(valid_local_indices)
+            # Get corresponding segment from global_mask.
+            global_segment = global_mask[global_valid_counter: global_valid_counter + num_valid_local]
+            # Determine which of the valid local events survived the cuts.
+            local_surviving = np.where(global_segment)[0]
             file_info_list.append({
-                'file': tfile,
+                'file': fpath,
                 'global_start': current_global,
-                'global_end': current_global + processed_count,
-                'local_surviving': local_surviving,  # maps processed order to local index in the file
+                'global_end': current_global + len(local_surviving),
+                'local_surviving': local_surviving,  # mapping: processed order -> index in valid_local_indices
             })
-            current_global += processed_count
-            cumulative_valid += count_in_file
+            current_global += len(local_surviving)
+            global_valid_counter += num_valid_local
 
-        # Group, for this station, the events by which file their global index falls into.
-        # Only add the parameter value for entries where it is missing.
+        # === Step 3: Build file_updates using the global mapping and update events.
         file_updates = {}
         for event in events_dict.values():
+            # Try to find the key matching the station.
             st_key = None
             if station in event["stations"]:
                 st_key = station
@@ -281,24 +287,26 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True, flag='
             else:
                 continue
             indices_list = event["stations"][st_key].get("indices", [])
-            # Initialize the parameter list if it is missing or if its length is insufficient.
+            # Initialize parameter list if missing or too short.
             if (parameter_name not in event["stations"][st_key] or
                     len(event["stations"][st_key][parameter_name]) < len(indices_list)):
                 event["stations"][st_key][parameter_name] = [None] * len(indices_list)
             for pos, global_idx in enumerate(indices_list):
                 if event["stations"][st_key][parameter_name][pos] is not None:
-                    # Parameter already added for this occurrence; skip.
-                    continue
+                    continue  # Already processed.
+                # Find the file info in which this global index falls.
                 for finfo in file_info_list:
                     if finfo['global_start'] <= global_idx < finfo['global_end']:
-                        local_pos = global_idx - finfo['global_start']
-                        local_index = int(finfo['local_surviving'][local_pos])
+                        # Map from global index in the processed (surviving) events
+                        # to local index in the file.
+                        local_counter = global_idx - finfo['global_start']
+                        local_index = int(finfo['local_surviving'][local_counter])
                         file_updates.setdefault(finfo['file'], []).append(
                             (event, st_key, pos, local_index)
                         )
                         break
 
-        # For each times file with events needing parameter values,
+        # === Step 4: For each times file with pending updates,
         # load the corresponding parameter file (matched by replacing "Times" with parameter_name)
         for tfile, updates in file_updates.items():
             param_file = tfile.replace('Times', parameter_name)
