@@ -618,6 +618,251 @@ def add_parameter_to_events_improved(events_dict, parameter_name, date, cuts=Tru
     # but returning it can sometimes be convenient.
     # return events_dict
 
+def add_parameter_to_events_file_by_file(events_dict, parameter_name, date, cuts=True, flag='base'):
+    """
+    Loads parameters by processing station files sequentially to avoid building
+    a potentially huge index map in memory.
+    """
+    station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
+    cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date)
+    # Cache folder isn't used for index maps in this version
+    
+    threshold = datetime.datetime(2013, 1, 1, tzinfo=datetime.timezone.utc).timestamp()
+
+    unique_stations = set()
+    for event in events_dict.values():
+        for st in event.get("stations", {}).keys():
+            try:
+                unique_stations.add(int(st))
+            except ValueError:
+                print(f"Warning: Could not convert station key '{st}' to int.")
+
+    unique_stations = sorted(list(unique_stations))
+    # ic(f"Unique stations found: {unique_stations}")
+
+    for station in unique_stations:
+        # ic(f"Processing Station {station} for Parameter '{parameter_name}'")
+
+        # === Step 1: Gather all required final_indices for this station ===
+        # Structure: { final_idx: [ (event_ref, st_key, pos_in_event_list), ... ] }
+        requests = defaultdict(list)
+        total_requests_for_station = 0
+        
+        for event_id, event in events_dict.items():
+            st_key = None
+            if station in event.get("stations", {}): st_key = station
+            elif str(station) in event.get("stations", {}): st_key = str(station)
+            if st_key is None: continue
+
+            station_event_data = event["stations"][st_key]
+            final_indices = station_event_data.get("indices")
+            if not final_indices: continue 
+
+            param_list = station_event_data.get(parameter_name)
+            # Ensure list exists and has correct length, mark entries as None initially
+            if not isinstance(param_list, list) or len(param_list) != len(final_indices):
+                 param_list = [None] * len(final_indices)
+                 station_event_data[parameter_name] = param_list
+
+            for pos, final_idx in enumerate(final_indices):
+                # Only add request if value is not already filled (e.g., from previous run)
+                if param_list[pos] is None: 
+                    requests[final_idx].append((event, st_key, pos))
+                    total_requests_for_station += 1
+        
+        if not requests:
+            # ic(f"Station {station}: No parameter values needed or all already present.")
+            continue # Skip station if no requests
+
+        # ic(f"Station {station}: Gathered {total_requests_for_station} requests for {len(requests)} unique final indices.")
+
+        # === Step 2: Load cuts mask for the station (potential memory point) ===
+        cuts_mask_for_time_valid = None
+        cuts_data_dict = None
+        if cuts:
+            cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station}_Cuts.npy')
+            if os.path.exists(cuts_file):
+                try:
+                    cuts_data_dict = np.load(cuts_file, allow_pickle=True)[()]
+                    first_cut_key = next(iter(cuts_data_dict), None)
+                    if first_cut_key:
+                        num_cut_entries = len(cuts_data_dict[first_cut_key])
+                        cuts_mask_for_time_valid = np.ones(num_cut_entries, dtype=bool)
+                        for cut_name, cut_array in cuts_data_dict.items():
+                            if len(cut_array) == num_cut_entries:
+                                cuts_mask_for_time_valid &= cut_array
+                            else:
+                                print(f"Warning: Cut '{cut_name}' length mismatch {cuts_file}. Skip cut.")
+                        # ic(f"Station {station}: Loaded cuts mask, shape {cuts_mask_for_time_valid.shape}")
+                    else: print(f"Cuts file {cuts_file} is empty.")
+                    del cuts_data_dict # Free memory from raw cuts dict
+                except Exception as e: print(f"Error loading cuts {cuts_file}: {e}")
+            else: print(f"Warning: Cuts file not found: {cuts_file}.")
+
+
+        # === Step 3: Iterate through files, apply cuts, load params, fulfill requests ===
+        final_event_counter = 0  # Tracks the index *after* all cuts across files
+        cumulative_time_valid_count = 0 # Tracks index *after* time cuts across files
+        
+        time_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date}_Station{station}_Times*.npy')))
+        if not time_files:
+            print(f"No time files found for station {station}. Cannot fulfill requests.")
+            # Mark all requests for this station as failed (NaN)
+            for final_idx, targets in requests.items():
+                 for event_ref, target_st_key, target_pos in targets:
+                      event_ref["stations"][target_st_key][parameter_name][target_pos] = np.nan
+            requests.clear() # Clear requests as they are handled (failed)
+            if cuts_mask_for_time_valid is not None: del cuts_mask_for_time_valid
+            gc.collect()
+            continue
+
+        # --- File Iteration Loop ---
+        for fpath in time_files:
+            if not requests: break # Stop processing files if all requests are fulfilled
+
+            times = None
+            param_array = None
+            indices_in_file_all_cuts = None # Define in outer scope for cleanup
+
+            try:
+                # Load times for current file
+                try:
+                    times = np.load(fpath).squeeze()
+                    if times.ndim == 0: times = times.reshape(1,) 
+                    if times.size == 0: continue # Skip empty time files
+                except Exception as e:
+                    print(f"Error loading time file {fpath}: {e}. Skipping.")
+                    continue
+
+                # Apply time cuts
+                local_time_mask = (times != 0) & (times >= threshold)
+                indices_in_file_time_valid = np.where(local_time_mask)[0]
+                num_time_valid_in_file = len(indices_in_file_time_valid)
+                del local_time_mask # Free mask memory
+
+                if num_time_valid_in_file == 0:
+                    del times, indices_in_file_time_valid
+                    continue # Skip if no time-valid events
+
+                # Apply external cuts (if applicable)
+                indices_in_file_all_cuts = indices_in_file_time_valid # Default assumption
+                if cuts_mask_for_time_valid is not None:
+                    start_idx = cumulative_time_valid_count
+                    end_idx = cumulative_time_valid_count + num_time_valid_in_file
+                    
+                    if end_idx <= len(cuts_mask_for_time_valid):
+                        local_cuts_mask = cuts_mask_for_time_valid[start_idx:end_idx]
+                        indices_in_file_all_cuts = indices_in_file_time_valid[local_cuts_mask]
+                        del local_cuts_mask
+                    else:
+                        print(f"Warning: Cuts data length mismatch station {station}, file {fpath}.")
+                        available_len = len(cuts_mask_for_time_valid) - start_idx
+                        if available_len > 0:
+                            local_cuts_mask = cuts_mask_for_time_valid[start_idx:]
+                            indices_in_file_all_cuts = indices_in_file_time_valid[:available_len][local_cuts_mask]
+                            del local_cuts_mask
+                        else:
+                            indices_in_file_all_cuts = np.array([], dtype=int)
+                
+                num_all_cuts_in_file = len(indices_in_file_all_cuts)
+
+                # Check if any requested final_indices fall within the range covered by this file
+                file_final_idx_start = final_event_counter
+                file_final_idx_end = final_event_counter + num_all_cuts_in_file
+                
+                # Find which requested indices are covered by this file's range
+                relevant_requests = {idx: req_list for idx, req_list in requests.items() 
+                                      if file_final_idx_start <= idx < file_final_idx_end}
+
+                if relevant_requests:
+                    # If requests match this file, load the corresponding parameter file
+                    param_file_path = fpath.replace('_Times', f'_{parameter_name}')
+                    if param_file_path == fpath and parameter_name != 'Times':
+                         print(f"Warning: Param file name construction failed {fpath}/{parameter_name}")
+                         # Mark relevant requests as failed
+                         for final_idx, targets in relevant_requests.items():
+                            for event_ref, target_st_key, target_pos in targets:
+                                event_ref["stations"][target_st_key][parameter_name][target_pos] = np.nan
+                            del requests[final_idx] # Remove handled (failed) request
+                         continue # Skip to next file? Or continue processing file logic below? Safer to continue.
+
+                    param_loaded = False
+                    try:
+                        if os.path.exists(param_file_path):
+                            param_array = np.load(param_file_path, allow_pickle=True)
+                            if isinstance(param_array, np.ndarray) and parameter_name != 'Traces':
+                                param_array = param_array.squeeze()
+                                if param_array.ndim == 0: param_array = param_array.reshape(1,)
+                            param_loaded = True
+                        else:
+                            print(f"Warning: Parameter file not found: {param_file_path}")
+                    except Exception as e:
+                        print(f"Error loading param file {param_file_path}: {e}")
+
+                    # Iterate through the events in *this* file that passed *all* cuts
+                    for i, original_index in enumerate(indices_in_file_all_cuts):
+                        current_final_idx = file_final_idx_start + i
+                        
+                        if current_final_idx in relevant_requests:
+                            value = np.nan # Default value if param loading failed or index invalid
+                            if param_loaded:
+                                try:
+                                    # Check bounds before indexing
+                                    is_sequence = isinstance(param_array, (np.ndarray, list, tuple))
+                                    length = -1
+                                    if is_sequence:
+                                        try: length = len(param_array)
+                                        except TypeError: is_sequence = False
+                                    
+                                    if is_sequence and 0 <= original_index < length:
+                                        value = param_array[original_index]
+                                    elif not is_sequence:
+                                        print(f"Warning: Param data {param_file_path} not sequence.")
+                                    else: # Out of bounds
+                                        print(f"Error: Index {original_index} out of bounds {param_file_path} len {length}.")
+                                except Exception as e:
+                                    print(f"Error extracting index {original_index} from {param_file_path}: {e}")
+
+                            # Update all events needing this final_idx
+                            targets = requests[current_final_idx]
+                            for event_ref, target_st_key, target_pos in targets:
+                                event_ref["stations"][target_st_key][parameter_name][target_pos] = value
+                            
+                            # Remove fulfilled request
+                            del requests[current_final_idx] 
+                
+                # Update counters for the next file
+                final_event_counter += num_all_cuts_in_file
+                cumulative_time_valid_count += num_time_valid_in_file
+
+            finally:
+                # Clean up memory for this file iteration
+                if times is not None: del times
+                if param_array is not None: del param_array
+                if indices_in_file_all_cuts is not None: del indices_in_file_all_cuts
+                # indices_in_file_time_valid was deleted earlier or became indices_in_file_all_cuts
+                gc.collect() # Collect garbage more frequently, after each file
+
+        # --- End File Iteration Loop ---
+
+        # Handle any remaining requests (indices not found in any file)
+        if requests:
+            print(f"Warning: Station {station}: {len(requests)} requests remaining after processing all files. Indices likely out of bounds.")
+            for final_idx, targets in requests.items():
+                print(f"  - Unfulfilled final_idx: {final_idx}")
+                for event_ref, target_st_key, target_pos in targets:
+                    event_ref["stations"][target_st_key][parameter_name][target_pos] = np.nan # Mark as failed
+            requests.clear()
+
+        # Clean up cuts mask for the station
+        if cuts_mask_for_time_valid is not None:
+            del cuts_mask_for_time_valid
+        
+        # ic(f"Finished processing station {station}.")
+        gc.collect() # Collect after each station
+
+    # ic("Finished adding parameter (file-by-file method).")
+
 if __name__ == "__main__": 
     # Read configuration and get date 
     config = configparser.ConfigParser() 
@@ -659,8 +904,10 @@ if __name__ == "__main__":
         ic(f"Adding parameter: {param}")
         # add_parameter_to_events(coincidence_datetimes, param, date, cuts=True, flag='no_repeats')
         # add_parameter_to_events(coincidence_with_repeated_stations, param, date, cuts=True, flag='repeats')
-        add_parameter_to_events_improved(coincidence_datetimes, param, date, cuts=True, flag='no_repeats')
-        add_parameter_to_events_improved(coincidence_with_repeated_stations, param, date, cuts=True, flag='repeats')
+        # add_parameter_to_events_improved(coincidence_datetimes, param, date, cuts=True, flag='no_repeats')
+        # add_parameter_to_events_improved(coincidence_with_repeated_stations, param, date, cuts=True, flag='repeats')
+        add_parameter_to_events_file_by_file(coincidence_datetimes, param, date, cuts=True, flag='no_repeats')
+        add_parameter_to_events_file_by_file(coincidence_with_repeated_stations, param, date, cuts=True, flag='repeats')
     # Optional: ic first few coincidences for verification.
     for key in list(coincidence_datetimes.keys()):
         ic(key, coincidence_datetimes[key])
