@@ -236,6 +236,9 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True, flag='
                 resized_cut[:available_length] = cuts_data[cut][:available_length]
                 final_cuts &= resized_cut
 
+        current_global = 0
+        cumulative_valid = 0
+
         # Second pass: Build mapping of file info.
         file_info_list = []
         for tfile in times_files:
