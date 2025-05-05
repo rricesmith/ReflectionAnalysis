@@ -231,16 +231,19 @@ def add_parameter_to_events(events_dict, parameter_name, date, cuts=True, flag='
                 cuts_data = np.load(f, allow_pickle=True)[()]
             final_cuts = np.ones(total_valid, dtype=bool)
             for cut in cuts_data.keys():
-                final_cuts &= cuts_data[cut]
+                resized_cut = np.full(total_valid, False, dtype=bool)
+                available_length = min(len(cuts_data[cut]), total_valid)
+                resized_cut[:available_length] = cuts_data[cut][:available_length]
+                final_cuts &= resized_cut
 
         # Second pass: Build mapping of file info.
-        file_info_list = []
-        current_global = 0  # running count of processed (valid+cut) entries
-        cumulative_valid = 0  # running count of valid entries (before applying cuts)
-        for idx, tfile in enumerate(times_files):
+        for tfile in times_files:
             with open(tfile, 'rb') as f:
                 f_times = np.load(f)
             f_times = np.array(f_times).squeeze()
+            valid_mask = (f_times != 0) & (f_times >= threshold)
+            valid_indices = np.nonzero(valid_mask)[0]
+            count_in_file = len(valid_indices)
             valid_mask = (f_times != 0) & (f_times >= threshold)
             valid_indices = np.nonzero(valid_mask)[0]
             count_in_file = len(valid_indices)
