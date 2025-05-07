@@ -522,7 +522,7 @@ if __name__ == '__main__':
 
     CONFIG = {
         'time_threshold_timestamp': datetime.datetime(2013, 1, 1, tzinfo=datetime.timezone.utc).timestamp(),
-        'time_files_template': os.path.join(data_path, "nurFiles", "{date}", "{date}_Station{station_id}_Times_part*.npy"),
+        'time_files_template': os.path.join(data_path, "nurFiles", "{date}", "{date}_Station{station_id}_Times_*.npy"),
         'external_cuts_file_template': os.path.join(data_path, "cuts", "{date}", "{date}_Station{station_id}_Cuts.npy"),
         'map_cache_template': os.path.join(cache_path, "{date}", "{flag}", "maps", "st_{station_id}_final_to_grci.pkl"),
         'parameter_files_template': os.path.join(data_path, "nurFiles", "{date}", "{date}_Station{station_id}_{parameter_name}_*_Xevts_*.npy").replace("_Xevts_", "_*evts_"), # Adjusted for glob
