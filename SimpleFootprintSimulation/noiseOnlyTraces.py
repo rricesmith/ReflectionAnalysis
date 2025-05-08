@@ -27,7 +27,7 @@ if __name__ == '__main__':
         if True:
             # Plot the noise
             import matplotlib.pyplot as plt
-            plt.plot(noise[0])
+            plt.plot(noise)
             plt.title('Noise Trace')
             plt.xlabel('Sample Number')
             plt.ylabel('Amplitude (V)')
