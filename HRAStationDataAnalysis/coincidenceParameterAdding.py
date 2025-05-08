@@ -17,7 +17,7 @@ def _load_pickle(filepath):
             with open(filepath, 'rb') as f:
                 return pickle.load(f)
         except Exception as e:
-            print(f"Error loading pickle file {filepath}: {e}")
+            ic(f"Error loading pickle file {filepath}: {e}")
     return None
 
 def _save_pickle(data, filepath):
@@ -27,7 +27,7 @@ def _save_pickle(data, filepath):
         with open(filepath, 'wb') as f:
             pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
     except Exception as e:
-        print(f"Error saving pickle file {filepath}: {e}")
+        ic(f"Error saving pickle file {filepath}: {e}")
 
 # --- Function 1: Create Final Index to GRCI Map ---
 def create_final_idx_to_grci_map(
@@ -55,15 +55,15 @@ def create_final_idx_to_grci_map(
     Returns:
         dict: A dictionary mapping {final_idx: GRCI}, or None if an error occurs.
     """
-    print(f"Attempting to create/load final_idx_to_grci_map for Station {station_id} on {date_str}")
+    ic(f"Attempting to create/load final_idx_to_grci_map for Station {station_id} on {date_str}")
     
     # 1. Caching
     cached_map = _load_pickle(map_cache_file_path)
     if cached_map is not None:
-        print(f"Loaded final_idx_to_grci_map from cache: {map_cache_file_path}")
+        ic(f"Loaded final_idx_to_grci_map from cache: {map_cache_file_path}")
         return cached_map
 
-    print(f"Cache not found. Building map for Station {station_id}...")
+    ic(f"Cache not found. Building map for Station {station_id}...")
 
     # 2. Initialization
     global_raw_counter = 0  # This will be the GRCI
@@ -78,10 +78,10 @@ def create_final_idx_to_grci_map(
     sorted_time_files = sorted(glob.glob(actual_time_files_glob))
 
     if not sorted_time_files:
-        print(f"Warning: No time files found for Station {station_id} using pattern: {actual_time_files_glob}")
+        ic(f"Warning: No time files found for Station {station_id} using pattern: {actual_time_files_glob}")
         return {} # Return empty map if no time files
 
-    print(f"Found {len(sorted_time_files)} time files for Station {station_id}.")
+    ic(f"Found {len(sorted_time_files)} time files for Station {station_id}.")
 
     for time_file_path in sorted_time_files:
         try:
@@ -102,12 +102,12 @@ def create_final_idx_to_grci_map(
             
             del times_in_file # Memory management
         except Exception as e:
-            print(f"Error processing time file {time_file_path}: {e}")
+            ic(f"Error processing time file {time_file_path}: {e}")
             # Decide if to continue or return None/empty
     gc.collect()
 
     if time_passed_event_index == 0:
-        print(f"No events passed time/threshold cut for Station {station_id}.")
+        ic(f"No events passed time/threshold cut for Station {station_id}.")
         _save_pickle({}, map_cache_file_path) # Cache empty map
         return {}
 
@@ -119,15 +119,15 @@ def create_final_idx_to_grci_map(
             # or a dictionary from which a combined mask can be derived.
             # For simplicity, let's assume it's a direct boolean mask.
             cuts_data = np.load(external_cuts_file_path, allow_pickle=True)[()]
-            print(f"cuts_data {cuts_data}, isinstance {type(cuts_data)}, {isinstance(cuts_data, dict)}")
+            # ic(f"cuts_data {cuts_data}, isinstance {type(cuts_data)}, {isinstance(cuts_data, dict)}")
             if isinstance(cuts_data, dict): # If it's a dict of cuts
-                print(f"Cuts file {external_cuts_file_path} is a dictionary. Combining cuts.")
+                ic(f"Cuts file {external_cuts_file_path} is a dictionary. Combining cuts.")
                 # Find a representative cut to get the expected length
                 first_cut_key = next(iter(cuts_data), None)
                 if first_cut_key:
                     num_cut_entries = len(cuts_data[first_cut_key])
                     if num_cut_entries != time_passed_event_index:
-                        print(f"Warning: Length of cuts ({num_cut_entries}) in {external_cuts_file_path} "
+                        ic(f"Warning: Length of cuts ({num_cut_entries}) in {external_cuts_file_path} "
                               f"does not match number of time-passed events ({time_passed_event_index}). "
                               f"Cuts may not be applied correctly.")
                         # Truncate or pad if necessary, or error out. For now, try to use intersection.
@@ -147,13 +147,13 @@ def create_final_idx_to_grci_map(
                         for cut_array in cuts_data.values():
                             combined_external_cut_mask &= cut_array
                 else: # Empty cuts dictionary
-                    print(f"Warning: Cuts file {external_cuts_file_path} is an empty dictionary. Assuming all pass external cuts.")
+                    ic(f"Warning: Cuts file {external_cuts_file_path} is an empty dictionary. Assuming all pass external cuts.")
                     combined_external_cut_mask = np.ones(time_passed_event_index, dtype=bool)
 
             elif isinstance(cuts_data, np.ndarray) and cuts_data.dtype == bool:
                 combined_external_cut_mask = cuts_data
                 if len(combined_external_cut_mask) != time_passed_event_index:
-                    print(f"Warning: Length of external_cuts_mask ({len(combined_external_cut_mask)}) "
+                    ic(f"Warning: Length of external_cuts_mask ({len(combined_external_cut_mask)}) "
                           f"does not match time_passed_event_index ({time_passed_event_index}). "
                           f"Cuts may not be applied correctly. Taking intersection.")
                     min_len = min(len(combined_external_cut_mask), time_passed_event_index)
@@ -164,14 +164,14 @@ def create_final_idx_to_grci_map(
                     combined_external_cut_mask = final_mask
 
             else:
-                print(f"Warning: External cuts file {external_cuts_file_path} has unexpected format. Assuming all pass.")
+                ic(f"Warning: External cuts file {external_cuts_file_path} has unexpected format. Assuming all pass.")
                 combined_external_cut_mask = np.ones(time_passed_event_index, dtype=bool)
 
         except Exception as e:
-            print(f"Error loading or processing external cuts file {external_cuts_file_path}: {e}. Assuming all pass.")
+            ic(f"Error loading or processing external cuts file {external_cuts_file_path}: {e}. Assuming all pass.")
             combined_external_cut_mask = np.ones(time_passed_event_index, dtype=bool)
     else:
-        print(f"Warning: External cuts file not found: {external_cuts_file_path}. Assuming all pass external cuts.")
+        ic(f"Warning: External cuts file not found: {external_cuts_file_path}. Assuming all pass external cuts.")
         combined_external_cut_mask = np.ones(time_passed_event_index, dtype=bool)
 
     # 5. Final Map Creation
@@ -183,11 +183,11 @@ def create_final_idx_to_grci_map(
             final_map_final_idx_to_grci[current_final_idx] = grci_for_this_event
             current_final_idx += 1
     
-    print(f"Station {station_id}: {current_final_idx} events passed all cuts.")
+    ic(f"Station {station_id}: {current_final_idx} events passed all cuts.")
 
     # 6. Caching
     _save_pickle(final_map_final_idx_to_grci, map_cache_file_path)
-    print(f"Saved final_idx_to_grci_map to cache: {map_cache_file_path}")
+    ic(f"Saved final_idx_to_grci_map to cache: {map_cache_file_path}")
     
     return final_map_final_idx_to_grci
 
@@ -219,7 +219,7 @@ def fetch_parameters_by_grci(
     if not list_of_grcis:
         return {}
 
-    print(f"Fetching param '{parameter_name}' for {len(list_of_grcis)} GRCIs, Station {station_id}...")
+    ic(f"Fetching param '{parameter_name}' for {len(list_of_grcis)} GRCIs, Station {station_id}...")
 
     # 1. File Discovery and Sorting
     actual_param_files_glob = parameter_files_template.format(
@@ -228,7 +228,7 @@ def fetch_parameters_by_grci(
     sorted_param_files = sorted(glob.glob(actual_param_files_glob))
 
     if not sorted_param_files:
-        print(f"Warning: No parameter files found for {parameter_name}, Station {station_id} "
+        ic(f"Warning: No parameter files found for {parameter_name}, Station {station_id} "
               f"using pattern: {actual_param_files_glob}")
         results_error = {grci: np.nan for grci in list_of_grcis} # Mark all as not found
         return results_error
@@ -249,16 +249,16 @@ def fetch_parameters_by_grci(
 
         match = filename_event_count_regex.search(os.path.basename(param_file_path))
         if not match:
-            print(f"Warning: Could not extract event count from filename: {param_file_path}. Skipping file.")
+            ic(f"Warning: Could not extract event count from filename: {param_file_path}. Skipping file.")
             continue
         
         try:
             events_in_this_file = int(match.group(1))
             if events_in_this_file <= 0:
-                 print(f"Warning: Invalid event count {events_in_this_file} in {param_file_path}. Skipping.")
+                 ic(f"Warning: Invalid event count {events_in_this_file} in {param_file_path}. Skipping.")
                  continue
         except ValueError:
-            print(f"Warning: Non-integer event count in {param_file_path}. Skipping.")
+            ic(f"Warning: Non-integer event count in {param_file_path}. Skipping.")
             continue
 
         file_grci_start = cumulative_grci_offset
@@ -281,7 +281,7 @@ def fetch_parameters_by_grci(
             else:
                 # This GRCI should have been in a previous file. This indicates an issue
                 # or the GRCI is out of bounds of any file.
-                print(f"Warning: Target GRCI {target_grci} is less than current file start {file_grci_start}. "
+                ic(f"Warning: Target GRCI {target_grci} is less than current file start {file_grci_start}. "
                       f"File: {param_file_path}. Marking as NaN.")
                 results[target_grci] = np.nan 
                 temp_grci_pointer += 1 # Move to next GRCI
@@ -290,7 +290,7 @@ def fetch_parameters_by_grci(
         if grcis_in_current_file_data:
             parameter_data_array = None # Ensure defined for finally
             try:
-                # print(f"Loading {param_file_path} for {len(grcis_in_current_file_data)} values.")
+                # ic(f"Loading {param_file_path} for {len(grcis_in_current_file_data)} values.")
                 parameter_data_array = np.load(param_file_path, allow_pickle=True)
                 if parameter_name != 'Traces': # Traces can be multi-dimensional
                     if parameter_data_array.ndim > 1:
@@ -303,7 +303,7 @@ def fetch_parameters_by_grci(
                     if 0 <= local_file_idx < len(parameter_data_array):
                         results[target_grci] = parameter_data_array[local_file_idx]
                     else:
-                        print(f"Error: Local index {local_file_idx} out of bounds for file {param_file_path} "
+                        ic(f"Error: Local index {local_file_idx} out of bounds for file {param_file_path} "
                               f"(len: {len(parameter_data_array)}) for GRCI {target_grci}. Setting to NaN.")
                         results[target_grci] = np.nan
                     # Advance the main grci_pointer if we've successfully processed or marked this GRCI
@@ -311,7 +311,7 @@ def fetch_parameters_by_grci(
                          grci_pointer +=1
 
             except Exception as e:
-                print(f"Error loading or processing parameter file {param_file_path}: {e}")
+                ic(f"Error loading or processing parameter file {param_file_path}: {e}")
                 for target_grci in grcis_in_current_file_data.values():
                     results[target_grci] = np.nan # Mark all GRCIs intended for this file as NaN
                     if target_grci == unique_grcis_to_fetch_sorted[grci_pointer]: # Ensure pointer advances
@@ -327,7 +327,7 @@ def fetch_parameters_by_grci(
     while grci_pointer < len(unique_grcis_to_fetch_sorted):
         target_grci = unique_grcis_to_fetch_sorted[grci_pointer]
         if target_grci not in results: # If not already marked due to other errors
-            print(f"Warning: GRCI {target_grci} was not found in any parameter file. Setting to NaN.")
+            ic(f"Warning: GRCI {target_grci} was not found in any parameter file. Setting to NaN.")
             results[target_grci] = np.nan
         grci_pointer += 1
         
@@ -365,7 +365,7 @@ def add_parameter_orchestrator(
     Returns:
         dict: The modified events_dict.
     """
-    print(f"\nOrchestrating addition of parameter '{parameter_name}' for date {date_str}, flag {run_flag}")
+    ic(f"\nOrchestrating addition of parameter '{parameter_name}' for date {date_str}, flag {run_flag}")
 
     # Extract config
     time_thresh = config['time_threshold_timestamp']
@@ -386,7 +386,7 @@ def add_parameter_orchestrator(
         # Attempt to load from checkpoint - This function assumes events_dict is ALREADY loaded
         # from a checkpoint by the CALLER if resumption is desired.
         # This function will SAVE checkpoints if path is provided.
-        print(f"Checkpoint for events_dict (save only): {checkpoint_file}")
+        ic(f"Checkpoint for events_dict (save only): {checkpoint_file}")
 
 
     # 1. Identify Unique Stations from events_dict
@@ -396,18 +396,18 @@ def add_parameter_orchestrator(
             try:
                 unique_stations.add(int(st_id_key))
             except ValueError:
-                print(f"Warning: Could not parse station ID '{st_id_key}' to int.")
+                ic(f"Warning: Could not parse station ID '{st_id_key}' to int.")
     
     sorted_unique_stations = sorted(list(unique_stations))
     if not sorted_unique_stations:
-        print("No stations found in events_dict.")
+        ic("No stations found in events_dict.")
         return events_dict
         
-    print(f"Processing {len(sorted_unique_stations)} stations: {sorted_unique_stations}")
+    ic(f"Processing {len(sorted_unique_stations)} stations: {sorted_unique_stations}")
 
     # 2. Loop Through Stations
     for station_id in sorted_unique_stations:
-        print(f"\n--- Processing Station {station_id} for parameter '{parameter_name}' ---")
+        ic(f"\n--- Processing Station {station_id} for parameter '{parameter_name}' ---")
         
         # Resolve paths for this station
         current_map_cache_path = map_cache_tmpl.format(date=date_str, flag=run_flag, station_id=station_id)
@@ -420,7 +420,7 @@ def add_parameter_orchestrator(
         )
 
         if not final_idx_to_grci_map: # Handles None or empty dict
-            print(f"Warning: No final_idx_to_GRCI map for station {station_id}. Skipping parameter addition for this station.")
+            ic(f"Warning: No final_idx_to_GRCI map for station {station_id}. Skipping parameter addition for this station.")
             continue
 
         # 2b. Collect GRCIs needed for this station from events_dict
@@ -460,21 +460,21 @@ def add_parameter_orchestrator(
                                 (event_data_ref, station_key_in_event, pos)
                             )
                         else:
-                            print(f"Warning: final_idx {final_idx} not in map for station {station_id}. "
+                            ic(f"Warning: final_idx {final_idx} not in map for station {station_id}. "
                                   f"Event {event_id}. Setting param '{parameter_name}' pos {pos} to NaN.")
                             station_event_data[parameter_name][pos] = np.nan
         
         if not grcis_to_fetch_for_station:
             if events_needing_param_count == 0:
-                 print(f"Station {station_id}: No '{parameter_name}' values needed (all seem filled or no indices).")
+                 ic(f"Station {station_id}: No '{parameter_name}' values needed (all seem filled or no indices).")
             else: # This implies all needed final_idx were not in the map
-                 print(f"Station {station_id}: No GRCIs to fetch for '{parameter_name}' (likely all final_idx missing from map).")
+                 ic(f"Station {station_id}: No GRCIs to fetch for '{parameter_name}' (likely all final_idx missing from map).")
             # Save checkpoint even if no fetching, in case some NaNs were set
             if checkpoint_file: _save_pickle(events_dict, checkpoint_file)
             continue
         
         unique_grcis_to_fetch = sorted(list(set(grcis_to_fetch_for_station)))
-        print(f"Station {station_id}: Need to fetch {len(unique_grcis_to_fetch)} unique GRCIs for '{parameter_name}'.")
+        ic(f"Station {station_id}: Need to fetch {len(unique_grcis_to_fetch)} unique GRCIs for '{parameter_name}'.")
 
         # 2c. Fetch parameter values for these GRCIs
         fetched_params_by_grci = fetch_parameters_by_grci(
@@ -489,16 +489,16 @@ def add_parameter_orchestrator(
             for event_data_ref, st_key, pos_in_list in update_targets_list:
                 event_data_ref["stations"][st_key][parameter_name][pos_in_list] = value_to_assign
                 updated_count +=1
-        print(f"Station {station_id}: Updated {updated_count} entries for '{parameter_name}'.")
+        ic(f"Station {station_id}: Updated {updated_count} entries for '{parameter_name}'.")
 
         # 2e. Save Checkpoint (for the entire events_dict)
         if checkpoint_file:
-            print(f"Saving checkpoint after processing station {station_id} for '{parameter_name}'...")
+            ic(f"Saving checkpoint after processing station {station_id} for '{parameter_name}'...")
             _save_pickle(events_dict, checkpoint_file)
         
         gc.collect() # Collect garbage after each station
 
-    print(f"\nFinished orchestrating parameter '{parameter_name}'.")
+    ic(f"\nFinished orchestrating parameter '{parameter_name}'.")
     return events_dict
 
 # --- Example Usage (Illustrative) ---
@@ -549,7 +549,7 @@ if __name__ == '__main__':
             external_cuts_file_path=CONFIG['external_cuts_file_template'].format(date=date, station_id=station_id),
             map_cache_file_path=map_cache_path
         )
-        print(f"Station {station_id} final_idx_to_grci_map made")
+        ic(f"Station {station_id} final_idx_to_grci_map made")
 
 
     # Load coincidence events dictionary
@@ -559,7 +559,7 @@ if __name__ == '__main__':
         coincidence_events = events_dict[0]
         coincidence_with_repeat_stations_events = events_dict[1]
     else:
-        print(f"Warning: Coincidence events file not found at {coincidence_events_path}.")
+        ic(f"Warning: Coincidence events file not found at {coincidence_events_path}.")
         quit()
 
 
@@ -573,28 +573,28 @@ if __name__ == '__main__':
             run_flag="base",
             config=CONFIG
         )
-        print(f"Finished adding parameter: {param} for coincidence events.")
+        ic(f"Finished adding parameter: {param} for coincidence events.")
 
         # Save checkpoint after each parameter addition
         checkpoint_path = CONFIG['checkpoint_path_template'].format(
             date=date, flag="base", dataset_name=CONFIG['dataset_name_for_checkpoint'], parameter_name=param
         )
         _save_pickle(coincidence_events, checkpoint_path)
-        print(f"Saved checkpoint for parameter '{param}' at {checkpoint_path}.")
+        ic(f"Saved checkpoint for parameter '{param}' at {checkpoint_path}.")
         
     # Save the final events_dict with all parameters added
     final_events_dict_path = os.path.join('HRAStationDataAnalysis', 'StationData', 'processedNumpyData', date, f'{date}_CoincidenceDatetimes_with_all_params.pkl')
     _save_pickle(coincidence_events, final_events_dict_path)
-    print(f"Final events_dict with all parameters saved at {final_events_dict_path}.")
+    ic(f"Final events_dict with all parameters saved at {final_events_dict_path}.")
 
     # Test the addition of SNR parameter
     # This is a mock test, assuming the SNR parameter is added correctly
     # Check if SNR was added correctly
     for event_id, event_data in coincidence_events.items():
         if 'SNR' in event_data['stations'][13]:
-            print(f"Event {event_id} Station 13 SNR: {event_data['stations'][13]['SNR']}")
+            ic(f"Event {event_id} Station 13 SNR: {event_data['stations'][13]['SNR']}")
         else:
-            print(f"Event {event_id} Station 13 SNR not found.")
+            ic(f"Event {event_id} Station 13 SNR not found.")
 
     # Now process the coincidence_with_repeat_stations_events
     for param in parameters_to_add:
@@ -606,13 +606,13 @@ if __name__ == '__main__':
             run_flag="with_repeat",
             config=CONFIG
         )
-        print(f"Finished adding parameter: {param} for repeat stations events.")
+        ic(f"Finished adding parameter: {param} for repeat stations events.")
 
         # Save checkpoint after each parameter addition
         checkpoint_path = CONFIG['checkpoint_path_template'].format(
             date=date, flag="base", dataset_name=CONFIG['dataset_name_for_checkpoint'], parameter_name=param
         )
         _save_pickle(coincidence_with_repeat_stations_events, checkpoint_path)
-        print(f"Saved checkpoint for parameter '{param}' at {checkpoint_path}.")
+        ic(f"Saved checkpoint for parameter '{param}' at {checkpoint_path}.")
 
     
