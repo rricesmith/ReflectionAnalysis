@@ -346,7 +346,7 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
 
                 # Trace Plot
                 if trace_val is not None and hasattr(trace_val, "__len__") and len(trace_val) > 0 :
-                    time_axis_trace = np.arange(0, 256, 0.5) # Assuming 256 samples and 0.5 microsecond time step
+                    time_axis_trace = np.arange(0, 128, 0.5) # Assuming 256 samples and 0.5 microsecond time step
                     # Only want to plot the largest two traces for each station
                     for trace in trace_val:
                         ic(time_axis_trace, trace)
