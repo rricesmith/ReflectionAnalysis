@@ -112,7 +112,9 @@ def plot_snr_vs_chi(events_dict, output_dir, dataset_name):
         axs[plot_idx].set_ylabel(chi_param_name)
         axs[plot_idx].set_title(f'SNR vs {chi_param_name}')
         axs[plot_idx].grid(True, linestyle='--', alpha=0.6)
-        axs[plot_idx].set_yscale('log') # Chi parameters often benefit from log scale
+        axs[plot_idx].set_xscale('log') # Chi parameters often benefit from log scale
+        axs[plot_idx].set_xlim(3, 100) 
+        axs[plot_idx].set_ylim(0, 1)
     
     axs[-1].set_xlabel('SNR')
     
@@ -167,9 +169,14 @@ def plot_parameter_histograms(events_dict, output_dir, dataset_name):
             ax.set_title(f'{param_name}')
             ax.set_xlabel("Value")
             ax.set_ylabel('Frequency')
-            if param_name in ['ChiRCR', 'Chi2016', 'ChiBad', 'SNR'] and any(v > 0 for v in values): # Apply log for positive skewed data
+            if param_name in ['ChiRCR', 'Chi2016', 'ChiBad', 'SNR', 'Zen', 'Azi'] and any(v > 0 for v in values): # Apply log for positive skewed data
                 ax.set_yscale('log')
                 ax.set_ylabel('Frequency (log scale)')
+            if param_name in ['ChiRCR', 'Chi2016', 'ChiBad'] and any(v > 0 for v in values): # Set xlim for Chi parameters
+                ax.set_xlim(0, 1)
+            if param_name in ['SNR'] and any(v > 0 for v in values): 
+                ax.set_xlim(3, 100)
+                ax.set_xscale('log')
             ax.grid(True, linestyle='--', alpha=0.6)
         else:
             ax.text(0.5, 0.5, f"No data for\n{param_name}", ha='center', va='center', transform=ax.transAxes)
@@ -296,6 +303,7 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
             zen_values = station_data.get("Zen", [])
             azi_values = station_data.get("Azi", [])
             trace_values = station_data.get("Traces", [])
+            ic(trace_values)
 
             num_triggers = len(snr_values)
             if num_triggers == 0 : continue
@@ -306,6 +314,8 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
             zen_values = (zen_values + [np.nan] * num_triggers)[:num_triggers]
             azi_values = (azi_values + [np.nan] * num_triggers)[:num_triggers]
             trace_values = (trace_values + [None] * num_triggers)[:num_triggers]
+            ic(trace_values)
+            quit()
 
             for trigger_idx in range(num_triggers):
                 marker = marker_list[trigger_idx % len(marker_list)] 
@@ -338,7 +348,7 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
 
                 # Trace Plot
                 if trace_val is not None and hasattr(trace_val, "__len__") and len(trace_val) > 0 :
-                    time_axis_trace = np.linspace(0, (len(trace_val) -1) * 0.05, len(trace_val)) # 50ns sampling -> 0.05 us
+                    time_axis_trace = np.arange(0, 256, 0.5) # Assuming 256 samples and 0.5 microsecond time step
                     ax_trace.plot(time_axis_trace, trace_val, color=color, 
                                   linestyle='-' if trigger_idx % 2 == 0 else '--', # Vary linestyle for triggers
                                   alpha=0.8, label=f"St {station_id_int} T{trigger_idx+1}")
@@ -356,8 +366,11 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
 
         # --- Finalize Subplots ---
         ax_scatter.set_xlabel("SNR")
-        ax_scatter.set_ylabel("Chi value")
+        ax_scatter.set_ylabel("Chi")
         ax_scatter.set_title("SNR vs $\chi$ (Arrow: $\chi_{2016} \longrightarrow \chi_{RCR}$)")
+        ax_scatter.set_xscale('log')
+        ax_scatter.set_xlim(3, 100)
+        ax_scatter.set_ylim(0, 1)
         ax_scatter.grid(True, linestyle='--', alpha=0.6)
         if any(ax_scatter.collections): ax_scatter.legend(fontsize='x-small', loc='best')
 
@@ -420,7 +433,7 @@ if __name__ == '__main__':
     dataset1_path = os.path.join(processed_data_dir_for_date, dataset1_filename)
     dataset2_path = os.path.join(processed_data_dir_for_date, dataset2_filename)
 
-    output_plot_basedir = f"HRA_Plots_Output_{date_of_data}" 
+    output_plot_basedir = f"HRAStationDataAnalysis/plots" 
     os.makedirs(output_plot_basedir, exist_ok=True)
     
     datasets_to_plot_info = []
