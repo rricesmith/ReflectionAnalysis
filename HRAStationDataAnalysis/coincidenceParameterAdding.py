@@ -119,7 +119,7 @@ def create_final_idx_to_grci_map(
             # or a dictionary from which a combined mask can be derived.
             # For simplicity, let's assume it's a direct boolean mask.
             cuts_data = np.load(external_cuts_file_path, allow_pickle=True)
-            print(f"cuts_data {cuts_data}")
+            print(f"cuts_data {cuts_data}, isinstance {type(cuts_data)}, {isinstance(cuts_data, dict)}")
             if isinstance(cuts_data, dict): # If it's a dict of cuts
                 print(f"Cuts file {external_cuts_file_path} is a dictionary. Combining cuts.")
                 # Find a representative cut to get the expected length
