@@ -1,4 +1,4 @@
-import NuRadioReco.modules.channelGenericNoiseAdder.channelGenericNoiseAdder
+import NuRadioReco.modules.channelGenericNoiseAdder
 from NuRadioReco.utilities import units
 import numpy as np
 
@@ -6,7 +6,7 @@ import numpy as np
 if __name__ == '__main__':
 
     # Using modules from channelGenericNoiseAdder, will generate pure noise traces
-    channelGenericNoiseAdder = NuRadioReco.modules.channelGenericNoiseAdder.channelGenericNoiseAdder.ChannelGenericNoiseAdder()
+    channelGenericNoiseAdder = NuRadioReco.modules.channelGenericNoiseAdder.channelGenericNoiseAdder()
     channelGenericNoiseAdder.begin()
 
     sampling_rate = 2*units.GHz
