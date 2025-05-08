@@ -348,10 +348,10 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
                 if trace_val is not None and hasattr(trace_val, "__len__") and len(trace_val) > 0 :
                     time_axis_trace = np.arange(0, 128, 0.5) # Assuming 256 samples and 0.5 microsecond time step
                     # Only want to plot the largest two traces for each station
-                    max_ids = np.argsort([np.max(np.abs(t)) for t in trace_values])[-2:] # Get indices of the two largest traces
+                    max_ids = np.argsort([np.max(np.abs(t)) for t in trace_val])[-2:] # Get indices of the two largest traces
 #                    for trace in trace_val:
                     for trace_idx in max_ids:
-                        trace = trace_values[trace_idx]
+                        trace = trace_val[trace_idx]
                         ic(time_axis_trace, trace)
                         ic(len(time_axis_trace), len(trace))
                         ax_trace.plot(time_axis_trace, trace, color=color, 
