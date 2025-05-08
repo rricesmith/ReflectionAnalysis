@@ -510,8 +510,8 @@ if __name__ == '__main__':
 
 
     # --- Mock Configuration ---
-    data_path = "mock_data/HRAStationDataAnalysis/StationData"
-    cache_path = "mock_data/cache"
+    data_path = "HRAStationDataAnalysis/StationData"
+    cache_path = "HRAStationDataAnalysis/cache"
     
     # Create mock directories
     os.makedirs(os.path.join(data_path, "nurFiles", date), exist_ok=True)
