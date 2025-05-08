@@ -351,7 +351,6 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
                 # Trace Plot
                 if trace_val is not None and hasattr(trace_val, "__len__") and len(trace_val) > 0 :
                     time_axis_trace = np.arange(0, 256, 0.5) # Assuming 256 samples and 0.5 microsecond time step
-                    for trace in 
                     ax_trace.plot(time_axis_trace, trace_val, color=color, 
                                   linestyle='-' if trigger_idx % 2 == 0 else '--', # Vary linestyle for triggers
                                   alpha=0.8, label=f"St {station_id_int} T{trigger_idx+1}")
