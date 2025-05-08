@@ -314,11 +314,6 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
             zen_values = (zen_values + [np.nan] * num_triggers)[:num_triggers]
             azi_values = (azi_values + [np.nan] * num_triggers)[:num_triggers]
             trace_values = (trace_values + [None] * num_triggers)[:num_triggers]
-            ic(trace_values)
-            ic(trace_values[0])
-            ic(trace_values[0][0])
-            ic(trace_values[0][0][0])
-            quit()
 
             for trigger_idx in range(num_triggers):
                 marker = marker_list[trigger_idx % len(marker_list)] 
@@ -329,6 +324,10 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
                 zen_val = zen_values[trigger_idx]
                 azi_val = azi_values[trigger_idx]
                 trace_val = trace_values[trigger_idx]
+                ic(trace_val)
+                ic(trace_val[0])
+                ic(trace_val[0][0])
+                quit()
 
                 # Scatter Plot
                 if snr_val is not None and not np.isnan(snr_val):
@@ -352,6 +351,7 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
                 # Trace Plot
                 if trace_val is not None and hasattr(trace_val, "__len__") and len(trace_val) > 0 :
                     time_axis_trace = np.arange(0, 256, 0.5) # Assuming 256 samples and 0.5 microsecond time step
+                    for trace in 
                     ax_trace.plot(time_axis_trace, trace_val, color=color, 
                                   linestyle='-' if trigger_idx % 2 == 0 else '--', # Vary linestyle for triggers
                                   alpha=0.8, label=f"St {station_id_int} T{trigger_idx+1}")
