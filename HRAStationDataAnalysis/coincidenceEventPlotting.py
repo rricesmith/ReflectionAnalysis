@@ -348,11 +348,14 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
                 if trace_val is not None and hasattr(trace_val, "__len__") and len(trace_val) > 0 :
                     time_axis_trace = np.arange(0, 128, 0.5) # Assuming 256 samples and 0.5 microsecond time step
                     # Only want to plot the largest two traces for each station
-                    for trace in trace_val:
+                    max_ids = np.argsort([np.max(np.abs(t)) for t in trace_values])[-2:] # Get indices of the two largest traces
+#                    for trace in trace_val:
+                    for trace_idx in max_ids:
+                        trace = trace_values[trace_idx]
                         ic(time_axis_trace, trace)
                         ic(len(time_axis_trace), len(trace))
                         ax_trace.plot(time_axis_trace, trace, color=color, 
-                                    linestyle='-' if trigger_idx % 2 == 0 else '--', # Vary linestyle for triggers
+                                    linestyle='-' if trace_idx % 2 == 0 else '--', # Vary linestyle for triggers
                                     alpha=0.8)
                 
                 # Add to figure legend map
@@ -474,13 +477,13 @@ if __name__ == '__main__':
             continue
 
         # 1. SNR vs Chi parameters
-        # plot_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+        plot_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
 
         # 2. Parameter Histograms
-        # plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+        plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
 
         # 3. Polar Plot (Zenith vs Azimuth)
-        # plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+        plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
         
         # 4. Master Event Plots
         plot_master_event_updated(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
