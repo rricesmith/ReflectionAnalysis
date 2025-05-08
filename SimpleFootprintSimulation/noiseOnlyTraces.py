@@ -22,12 +22,12 @@ if __name__ == '__main__':
     noise_array = np.zeros((n_noise, n_samples))
 
     for i in range(n_noise):
-        noise = channelGenericNoiseAdder.bandlimited_noise(min_freq, max_freq, n_samples, sampling_rate, amplitude, noise_type, bandwidth)
+        noise_array[i] = channelGenericNoiseAdder.bandlimited_noise(min_freq, max_freq, n_samples, sampling_rate, amplitude, noise_type, bandwidth)
 
         if True:
             # Plot the noise
             import matplotlib.pyplot as plt
-            plt.plot(noise)
+            plt.plot(noise_array[i])
             plt.title('Noise Trace')
             plt.xlabel('Sample Number')
             plt.ylabel('Amplitude (V)')
@@ -35,7 +35,6 @@ if __name__ == '__main__':
             plt.savefig(f'SimpleFootprintSimulation/plots/noise_trace_{i}.png')
             plt.close()
         
-        noise_array[i] = noise
 
     # Save the noise array
     np.save('SimpleFootprintSimulation/output/noise_array.npy', noise_array)
