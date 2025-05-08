@@ -1,7 +1,7 @@
 import NuRadioReco.modules.channelGenericNoiseAdder
 from NuRadioReco.utilities import units
 import numpy as np
-
+from icecream import ic
 
 if __name__ == '__main__':
 
@@ -24,7 +24,10 @@ if __name__ == '__main__':
     noise_array = np.zeros((n_noise, n_samples))
 
     for i in range(n_noise):
-        noise_array[i] = channelGenericNoiseAdder.bandlimited_noise(min_freq, max_freq, n_samples, sampling_rate, amplitude, noise_type, bandwidth)
+        noise = channelGenericNoiseAdder.bandlimited_noise(min_freq=min_freq, max_freq=max_freq, n_samples=n_samples, sampling_rate=sampling_rate, amplitude=amplitude, type=noise_type, bandwidth=bandwidth)
+        ic(noise.shape, noise.dtype, noise[0].shape, noise[0].dtype)
+        ic(noise_array.shape, noise_array.dtype, noise_array[0].shape, noise_array[0].dtype)
+        noise_array[i] = noise
 
         if True:
             # Plot the noise
