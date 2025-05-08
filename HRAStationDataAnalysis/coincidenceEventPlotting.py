@@ -350,6 +350,7 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
                     # Only want to plot the largest two traces for each station
                     for trace in trace_val:
                         ic(time_axis_trace, trace)
+                        ic(len(time_axis_trace), len(trace))
                         ax_trace.plot(time_axis_trace, trace, color=color, 
                                     linestyle='-' if trigger_idx % 2 == 0 else '--', # Vary linestyle for triggers
                                     alpha=0.8)
