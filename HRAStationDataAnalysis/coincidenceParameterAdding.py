@@ -546,7 +546,7 @@ if __name__ == '__main__':
             time_threshold_timestamp=CONFIG['time_threshold_timestamp'],
             time_files_template=CONFIG['time_files_template'],
             external_cuts_file_path=CONFIG['external_cuts_file_template'].format(date=date, station_id=station_id),
-            map_cache_file_path=map_cache_path[station_id]
+            map_cache_file_path=map_cache_path
         )
         print(f"Station {station_id} final_idx_to_grci_map: {station_map[station_id]}")
 
