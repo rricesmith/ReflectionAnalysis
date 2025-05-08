@@ -315,6 +315,9 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
             azi_values = (azi_values + [np.nan] * num_triggers)[:num_triggers]
             trace_values = (trace_values + [None] * num_triggers)[:num_triggers]
             ic(trace_values)
+            ic(trace_values[0])
+            ic(trace_values[0][0])
+            ic(trace_values[0][0][0])
             quit()
 
             for trigger_idx in range(num_triggers):
@@ -472,13 +475,13 @@ if __name__ == '__main__':
             continue
 
         # 1. SNR vs Chi parameters
-        plot_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+        # plot_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
 
         # 2. Parameter Histograms
-        plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+        # plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
 
         # 3. Polar Plot (Zenith vs Azimuth)
-        plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+        # plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
         
         # 4. Master Event Plots
         plot_master_event_updated(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
