@@ -43,7 +43,7 @@ def plot_snr_vs_chi(events_dict, output_dir, dataset_name):
         plt.close(fig)
         return
         
-    colors_cmap = cm.get_cmap('turbo', num_events if num_events > 1 else 2) # Ensure cmap has enough colors
+    colors_cmap = cm.get_cmap('jet', num_events if num_events > 1 else 2) # Ensure cmap has enough colors
 
 
     for i, (event_id, event_data) in enumerate(events_dict.items()):
