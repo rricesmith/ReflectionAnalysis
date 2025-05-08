@@ -522,7 +522,7 @@ if __name__ == '__main__':
 
     CONFIG = {
         'time_threshold_timestamp': datetime.datetime(2013, 1, 1, tzinfo=datetime.timezone.utc).timestamp(),
-        'time_files_template': os.path.join(data_path, "nurFiles", "{date}", "{date}_Station{station_id}_Times_*.npy"),
+        'time_files_template': os.path.join(data_path, "nurFiles", "{date}", "{date}_Station{station_id}_Times*.npy"),
         'external_cuts_file_template': os.path.join(data_path, "cuts", "{date}", "{date}_Station{station_id}_Cuts.npy"),
         'map_cache_template': os.path.join(cache_path, "{date}", "{flag}", "maps", "st_{station_id}_final_to_grci.pkl"),
         'parameter_files_template': os.path.join(data_path, "nurFiles", "{date}", "{date}_Station{station_id}_{parameter_name}_*_Xevts_*.npy").replace("_Xevts_", "_*evts_"), # Adjusted for glob
@@ -548,7 +548,7 @@ if __name__ == '__main__':
             external_cuts_file_path=CONFIG['external_cuts_file_template'].format(date=date, station_id=station_id),
             map_cache_file_path=map_cache_path
         )
-        print(f"Station {station_id} final_idx_to_grci_map: {station_map[station_id]}")
+        print(f"Station {station_id} final_idx_to_grci_map: {station_map[station_id][0:10]}")
 
 
     # Load coincidence events dictionary
