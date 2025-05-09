@@ -9,6 +9,8 @@ from icecream import ic # Keep user's preference for icecream
 import datetime # For master plot title
 import gc # For garbage collection
 from collections import defaultdict # For histogram data collection
+import matplotlib.gridspec as gridspec # For more complex subplot layouts
+from NuRadioReco.utilities import fft, units
 
 # --- Helper for Loading Data (from context) ---
 def _load_pickle(filepath):
@@ -250,24 +252,37 @@ def plot_polar_zen_azi(events_dict, output_dir, dataset_name):
 def plot_master_event_updated(events_dict, output_dir, dataset_name):
     """
     Generates a master plot for each event, showing its parameters.
-    Adapted from user's provided function to work with the new events_dict structure.
+    Features 4 trace channel plots and 4 dummy spectrum plots.
     """
     ic(f"Generating master event plots for {dataset_name}")
     master_folder = os.path.join(output_dir, f"{dataset_name}_master_event_plots")
     os.makedirs(master_folder, exist_ok=True)
 
     color_map = {13: 'tab:blue', 14: 'tab:orange', 15: 'tab:green',
-                   17: 'tab:red', 18: 'tab:purple', 19: 'sienna', 30: 'tab:brown',
-                   # Fallback for other stations if any
-                   } 
-    default_color = 'grey' # Fallback color
+                   17: 'tab:red', 18: 'tab:purple', 19: 'sienna', 30: 'tab:brown'}
+    default_color = 'grey'
     marker_list = ['o', 's', 'D', '^', 'v', '>', '<', 'p', '*', 'X', '+']
+    num_trace_channels = 4 # As per user request
 
     for event_id, event_details in events_dict.items():
-        fig, axs = plt.subplots(2, 2, figsize=(15, 13)) 
+        # Define figure and GridSpec layout
+        # Taller figure to accommodate more subplots
+        fig = plt.figure(figsize=(18, 20)) 
+        # GridSpec: 8 rows total. Top plots take 3 rows. Bottom 4 rows for traces/FFTs. Last row for legend.
+        gs = gridspec.GridSpec(8, 2, figure=fig, hspace=0.5, wspace=0.3)
+
+        ax_scatter = fig.add_subplot(gs[0:3, 0])
+        ax_polar = fig.add_subplot(gs[0:3, 1], polar=True)
+        
+        trace_axs = []
+        for i in range(num_trace_channels):
+            trace_axs.append(fig.add_subplot(gs[3+i, 0])) # Traces in the first column, rows 3,4,5,6
+
+        spectrum_axs = []
+        for i in range(num_trace_channels):
+            spectrum_axs.append(fig.add_subplot(gs[3+i, 1])) # Spectrums in the second column, rows 3,4,5,6
 
         event_time_str = "Unknown Time"
-        # Assuming 'datetime' key holds a single timestamp for the event
         if "datetime" in event_details and event_details["datetime"] is not None:
             try:
                 event_time_dt = datetime.datetime.fromtimestamp(event_details["datetime"])
@@ -275,20 +290,47 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
             except Exception as e:
                 ic(f"Error formatting datetime for event {event_id}: {e}. Timestamp: {event_details['datetime']}")
         
-        fig.suptitle(f"Master Plot: Event {event_id} ({dataset_name})\nTime: {event_time_str}", fontsize=16)
+        fig.suptitle(f"Master Plot: Event {event_id} ({dataset_name})\nTime: {event_time_str}", fontsize=18, y=0.98)
 
-        ax_scatter = axs[0, 0]
-        ax_polar = fig.add_subplot(2, 2, 2, polar=True) # Correct way to add polar subplot to existing figure
-        ax_trace = axs[1, 0]
-        ax_text_info = axs[1, 1] 
-        ax_text_info.axis('off')
         text_info_lines = [f"Event ID: {event_id}", f"Time: {event_time_str}", "--- Station Triggers ---"]
+        legend_handles_for_fig = {}
+        
+        # --- Pre-calculate global y-limits for traces ---
+        global_trace_min = float('inf')
+        global_trace_max = float('-inf')
+        all_event_traces_data = [] # Store (station_id_int, trigger_idx, channel_idx, trace_array)
 
-        legend_handles_for_fig = {} # For the main figure legend: {station_id: Line2D_handle}
-
-        station_plot_count = 0 # To manage layout if many stations
         for station_id_str, station_data in event_details.get("stations", {}).items():
-            station_plot_count +=1
+            all_traces_for_station_trigger = station_data.get("Traces", []) # List of triggers, each trigger has list of 4 channel traces
+            for trigger_idx, traces_for_one_trigger in enumerate(all_traces_for_station_trigger):
+                if traces_for_one_trigger and isinstance(traces_for_one_trigger, (list, np.ndarray)):
+                    # Ensure it's a list of 4 channels, even if some are None or empty
+                    padded_traces_for_trigger = (list(traces_for_one_trigger) + [None]*num_trace_channels)[:num_trace_channels]
+                    for channel_idx in range(num_trace_channels):
+                        trace_array = padded_traces_for_trigger[channel_idx]
+                        if trace_array is not None and hasattr(trace_array, "__len__") and len(trace_array) > 0:
+                            all_event_traces_data.append({
+                                "station_id_str": station_id_str, 
+                                "trigger_idx": trigger_idx, 
+                                "channel_idx": channel_idx, 
+                                "trace_array": np.asarray(trace_array) # Ensure numpy array
+                            })
+                            current_min, current_max = np.min(trace_array), np.max(trace_array)
+                            if not np.isnan(current_min): global_trace_min = min(global_trace_min, current_min)
+                            if not np.isnan(current_max): global_trace_max = max(global_trace_max, current_max)
+        
+        if global_trace_min == float('inf'): global_trace_min = -1 # Default if no valid traces
+        if global_trace_max == float('-inf'): global_trace_max = 1  # Default
+        if global_trace_min == global_trace_max: # Avoid zero range
+            global_trace_min -= 0.5 
+            global_trace_max += 0.5
+        
+        y_margin = (global_trace_max - global_trace_min) * 0.1 # 10% margin
+        final_trace_ylim = (global_trace_min - y_margin, global_trace_max + y_margin)
+
+
+        # --- Plotting Loop ---
+        for station_id_str, station_data in event_details.get("stations", {}).items():
             try:
                 station_id_int = int(station_id_str)
             except ValueError:
@@ -297,23 +339,16 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
             
             color = color_map.get(station_id_int, default_color)
             
+            # Get parameter lists for this station
             snr_values = station_data.get("SNR", [])
-            chi_rcr_values = station_data.get("ChiRCR", [])
-            chi_2016_values = station_data.get("Chi2016", [])
-            zen_values = station_data.get("Zen", [])
-            azi_values = station_data.get("Azi", [])
-            trace_values = station_data.get("Traces", [])
-            ic(trace_values)
+            chi_rcr_values = (station_data.get("ChiRCR", []) + [np.nan] * len(snr_values))[:len(snr_values)]
+            chi_2016_values = (station_data.get("Chi2016", []) + [np.nan] * len(snr_values))[:len(snr_values)]
+            zen_values = (station_data.get("Zen", []) + [np.nan] * len(snr_values))[:len(snr_values)]
+            azi_values = (station_data.get("Azi", []) + [np.nan] * len(snr_values))[:len(snr_values)]
+            all_traces_for_station = station_data.get("Traces", []) # List of triggers; each trigger is list of 4 channel traces
 
             num_triggers = len(snr_values)
-            if num_triggers == 0 : continue
-
-            # Pad lists if necessary
-            chi_rcr_values = (chi_rcr_values + [np.nan] * num_triggers)[:num_triggers]
-            chi_2016_values = (chi_2016_values + [np.nan] * num_triggers)[:num_triggers]
-            zen_values = (zen_values + [np.nan] * num_triggers)[:num_triggers]
-            azi_values = (azi_values + [np.nan] * num_triggers)[:num_triggers]
-            trace_values = (trace_values + [None] * num_triggers)[:num_triggers]
+            if num_triggers == 0: continue
 
             for trigger_idx in range(num_triggers):
                 marker = marker_list[trigger_idx % len(marker_list)] 
@@ -323,94 +358,121 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
                 chi_2016_val = chi_2016_values[trigger_idx]
                 zen_val = zen_values[trigger_idx]
                 azi_val = azi_values[trigger_idx]
-                trace_val = trace_values[trigger_idx]
+                
+                traces_for_this_trigger = (all_traces_for_station[trigger_idx] if trigger_idx < len(all_traces_for_station) else [])
+                # Ensure traces_for_this_trigger is a list of 4 (padded with None if necessary)
+                padded_traces_for_this_trigger = (list(traces_for_this_trigger) + [None]*num_trace_channels)[:num_trace_channels]
 
-                # Scatter Plot
+
+                # Scatter Plot (SNR vs Chi)
                 if snr_val is not None and not np.isnan(snr_val):
-                    # Plot Chi2016 point
                     if chi_2016_val is not None and not np.isnan(chi_2016_val):
-                        ax_scatter.scatter(snr_val, chi_2016_val, color=color, marker=marker, s=60, alpha=0.9, label=f"St {station_id_int} T{trigger_idx+1} Chi16" if trigger_idx==0 else None, zorder=3)
-                    # Plot ChiRCR point (perhaps hollow or different style)
+                        ax_scatter.scatter(snr_val, chi_2016_val, color=color, marker=marker, s=60, alpha=0.9, zorder=3)
                     if chi_rcr_val is not None and not np.isnan(chi_rcr_val):
-                        ax_scatter.scatter(snr_val, chi_rcr_val, color=color, marker=marker, s=60, alpha=0.9, facecolors='none', edgecolors=color, linewidths=1.5, label=f"St {station_id_int} T{trigger_idx+1} ChiRCR" if trigger_idx==0 and (chi_2016_val is None or np.isnan(chi_2016_val)) else None, zorder=3)
-                    # Arrow
+                        ax_scatter.scatter(snr_val, chi_rcr_val, color=color, marker=marker, s=60, alpha=0.9, facecolors='none', edgecolors=color, linewidths=1.5, zorder=3)
                     if (chi_2016_val is not None and not np.isnan(chi_2016_val) and
                         chi_rcr_val is not None and not np.isnan(chi_rcr_val)):
                         ax_scatter.annotate("", xy=(snr_val, chi_rcr_val), xytext=(snr_val, chi_2016_val),
                                             arrowprops=dict(arrowstyle="->", color=color, lw=1.2, shrinkA=3, shrinkB=3), zorder=2)
 
                 # Polar Plot
-                if zen_val is not None and not np.isnan(zen_val) and \
-                   azi_val is not None and not np.isnan(azi_val):
-                    ax_polar.scatter(azi_val, np.degrees(zen_val), color=color, marker=marker, s=60, alpha=0.9, label=f"St {station_id_int} T{trigger_idx+1}" if trigger_idx==0 else None)
+                if zen_val is not None and not np.isnan(zen_val) and azi_val is not None and not np.isnan(azi_val):
+                    ax_polar.scatter(azi_val, np.degrees(zen_val), color=color, marker=marker, s=60, alpha=0.9)
 
-                # Trace Plot
-                if trace_val is not None and hasattr(trace_val, "__len__") and len(trace_val) > 0 :
-                    time_axis_trace = np.arange(0, 128, 0.5) # Assuming 256 samples and 0.5 microsecond time step
-                    # Only want to plot the largest two traces for each station
-                    max_ids = np.argsort([np.max(np.abs(t)) for t in trace_val])[-2:] # Get indices of the two largest traces
-#                    for trace in trace_val:
-                    for trace_idx in max_ids:
-                        trace = trace_val[trace_idx]
-                        ic(time_axis_trace, trace)
-                        ic(len(time_axis_trace), len(trace))
-                        ax_trace.plot(time_axis_trace, trace, color=color, 
-                                    linestyle='-' if trace_idx % 2 == 0 else '--', # Vary linestyle for triggers
-                                    alpha=0.8)
-                
-                # Add to figure legend map
+                # Trace and Spectrum Plots (Loop per channel)
+                for channel_idx in range(num_trace_channels):
+                    # Plot Trace for this channel
+                    trace_data_one_channel = padded_traces_for_this_trigger[channel_idx]
+                    if trace_data_one_channel is not None and hasattr(trace_data_one_channel, "__len__") and len(trace_data_one_channel) > 0:
+                        trace_data_one_channel = np.asarray(trace_data_one_channel) # Ensure numpy array
+                        # Assuming 256 samples, 50ns sampling -> 0.05 us per sample
+                        # Time axis from 0 to (N-1)*dt
+                        time_axis = np.linspace(0, (len(trace_data_one_channel) - 1) * 0.05, len(trace_data_one_channel))
+                        trace_axs[channel_idx].plot(time_axis, trace_data_one_channel, color=color, 
+                                                    linestyle='-' if trigger_idx % 2 == 0 else '--', 
+                                                    alpha=0.7)
+                    
+                    # Plot FFT for this channel
+                    if trace_data_one_channel is not None and hasattr(trace_data_one_channel, "__len__") and len(trace_data_one_channel) > 0:
+                        sampling_rate = 2 # Assuming 2 GHz sampling rate
+                        freq_axis = np.fft.rfftfreq(len(trace_data_one_channel), d=(1 / sampling_rate*units.GHz)) / units.MHz
+                        spectrum_data = np.abs(fft.time2freq(trace_data_one_channel, sampling_rate=sampling_rate*units.GHz)) # FFT magnitude
+                        spectrum_axs[channel_idx].plot(freq_axis, spectrum_data, color=color,
+                                                       linestyle=':' if trigger_idx % 2 == 0 else '-.',
+                                                       alpha=0.5)
+                    else: # If no trace data, plot a placeholder text
+                         spectrum_axs[channel_idx].text(0.5, 0.5, "No Data", ha="center", va="center", transform=spectrum_axs[channel_idx].transAxes, fontsize=9, color='lightgrey')
+
+
+                # Add to figure legend map (once per station)
                 if station_id_int not in legend_handles_for_fig:
-                    legend_handles_for_fig[station_id_int] = Line2D([0], [0], marker=marker_list[0], color=color, linestyle='None',
+                    legend_handles_for_fig[station_id_int] = Line2D([0], [0], marker='o', color=color, linestyle='None', # Use a consistent marker for legend
                                                        markersize=8, label=f"Station {station_id_int}")
                 
-                # Text info
+                # Text info for this trigger
                 zen_deg = f"{np.degrees(zen_val):.1f}" if zen_val is not None and not np.isnan(zen_val) else "N/A"
                 azi_deg = f"{np.degrees(azi_val):.1f}" if azi_val is not None and not np.isnan(azi_val) else "N/A"
                 snr_f = f"{snr_val:.1f}" if snr_val is not None and not np.isnan(snr_val) else "N/A"
                 text_info_lines.append(f"  St{station_id_int} T{trigger_idx+1}: SNR={snr_f}, Zen={zen_deg}°, Azi={azi_deg}°")
 
         # --- Finalize Subplots ---
+        # SNR vs Chi
         ax_scatter.set_xlabel("SNR")
-        ax_scatter.set_ylabel("Chi")
+        ax_scatter.set_ylabel("Chi value")
         ax_scatter.set_title("SNR vs $\chi$ (Arrow: $\chi_{2016} \longrightarrow \chi_{RCR}$)")
-        ax_scatter.set_xscale('log')
-        ax_scatter.set_xlim(3, 100)
-        ax_scatter.set_ylim(0, 1)
+        ax_scatter.set_xscale('log') # As per original
+        ax_scatter.set_xlim(3, 100)  # As per original
+        ax_scatter.set_ylim(0, 1)    # As per original
         ax_scatter.grid(True, linestyle='--', alpha=0.6)
-        if any(ax_scatter.collections): ax_scatter.legend(fontsize='x-small', loc='best')
+        # Add text box to ax_scatter
+        ax_scatter.text(0.98, 0.02, "\n".join(text_info_lines[:15]), # Limit lines for readability
+                        transform=ax_scatter.transAxes, ha='right', va='bottom',
+                        fontsize=7, family='monospace', linespacing=1.2,
+                        bbox=dict(boxstyle="round,pad=0.3", fc="wheat", ec="orange", alpha=0.7, lw=0.5))
 
 
+        # Polar
         ax_polar.set_theta_zero_location("N")
         ax_polar.set_theta_direction(-1)
-        ax_polar.set_rlabel_position(22.5) # Degrees from North
+        ax_polar.set_rlabel_position(22.5)
         ax_polar.set_rlim(0, 90)
         ax_polar.set_rticks(np.arange(0, 91, 30))
         ax_polar.set_title("Zenith (radius) vs Azimuth (angle)")
         ax_polar.grid(True, linestyle='--', alpha=0.5)
-        if any(ax_polar.collections): ax_polar.legend(fontsize='x-small', loc='lower left', bbox_to_anchor=(1.05, 0))
+
+        # Traces and Spectrums
+        for i in range(num_trace_channels):
+            trace_axs[i].set_title(f"Trace - Channel {i}", fontsize=10)
+            trace_axs[i].set_ylabel("Amplitude", fontsize=8)
+            trace_axs[i].grid(True, linestyle=':', alpha=0.5)
+            trace_axs[i].set_ylim(final_trace_ylim) # Apply normalized y-limits
+            if i < num_trace_channels -1 : trace_axs[i].set_xticklabels([]) # Remove x-labels for upper trace plots
+            else: trace_axs[i].set_xlabel("Time ($\mu s$)", fontsize=8)
+            if any(trace_axs[i].get_lines()): trace_axs[i].legend(fontsize='xx-small', loc='upper right')
 
 
-        ax_trace.set_xlabel("Time ($\mu s$)")
-        ax_trace.set_ylabel("Amplitude (V)")
-        ax_trace.set_title("Time Traces")
-        ax_trace.grid(True, linestyle='--', alpha=0.6)
-        if any(ax_trace.get_lines()): ax_trace.legend(fontsize='x-small', loc='best')
+            spectrum_axs[i].set_title(f"Spectrum - Channel {i}", fontsize=10)
+            spectrum_axs[i].set_ylabel("Magnitude", fontsize=8)
+            spectrum_axs[i].grid(True, linestyle=':', alpha=0.5)
+            if i < num_trace_channels -1 : spectrum_axs[i].set_xticklabels([])
+            else: spectrum_axs[i].set_xlabel("Frequency (MHz)", fontsize=8)
+            if any(spectrum_axs[i].get_lines()): spectrum_axs[i].legend(fontsize='xx-small', loc='upper right')
 
-        ax_text_info.text(0.02, 0.98, "\n".join(text_info_lines[:20]), # Limit lines
-                          ha='left', va='top', fontsize=8, family='monospace',
-                          bbox=dict(boxstyle="round,pad=0.5", fc="aliceblue", ec="lightsteelblue", lw=1))
-        ax_text_info.set_title("Trigger Summary", fontsize=10)
 
+        # Figure Legend (at the bottom, using the last gs row)
         if legend_handles_for_fig:
             fig.legend(handles=list(legend_handles_for_fig.values()), 
-                       loc='lower center', ncol=min(len(legend_handles_for_fig), 6), 
-                       bbox_to_anchor=(0.5, 0.01), title="Stations", fontsize='medium')
+                       loc='lower center', 
+                       bbox_to_anchor=(0.5, 0.01), # Positioned at the very bottom center of the figure
+                       ncol=min(len(legend_handles_for_fig), 6), 
+                       title="Stations", fontsize='medium')
 
-        plt.tight_layout(rect=[0, 0.05, 1, 0.93]) # Adjust for suptitle and figure legend
+        # plt.tight_layout(rect=[0, 0.05, 1, 0.95]) # Adjust for suptitle and figure legend
+        # tight_layout might conflict with GridSpec, manual adjustment or hspace/wspace in GridSpec is better.
         
         master_filename = os.path.join(master_folder, f'master_event_{event_id}.png')
         try:
-            plt.savefig(master_filename, dpi=150) # Slightly higher DPI for master plots
+            plt.savefig(master_filename, dpi=150)
             ic(f"Saved master plot: {master_filename}")
         except Exception as e:
             ic(f"Error saving master plot {master_filename}: {e}")
