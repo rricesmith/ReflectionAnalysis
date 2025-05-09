@@ -303,7 +303,7 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
         for station_id_str, station_data in event_details.get("stations", {}).items():
             all_traces_for_station_trigger = station_data.get("Traces", []) # List of triggers, each trigger has list of 4 channel traces
             for trigger_idx, traces_for_one_trigger in enumerate(all_traces_for_station_trigger):
-                if traces_for_one_trigger and isinstance(traces_for_one_trigger, (list, np.ndarray)):
+                if traces_for_one_trigger.any() and isinstance(traces_for_one_trigger, (list, np.ndarray)):
                     # Ensure it's a list of 4 channels, even if some are None or empty
                     padded_traces_for_trigger = (list(traces_for_one_trigger) + [None]*num_trace_channels)[:num_trace_channels]
                     for channel_idx in range(num_trace_channels):
