@@ -39,13 +39,13 @@ ic(saveTrace.shape)
 if True:
     # Plot the noise
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(1, 8, figsize=(20, 10), sharex=True, sharey=True)
+    fig, ax = plt.subplots(8, 1, figsize=(20, 10), sharex=True, sharey=True)
     for ch in range(8):
         ax[ch].plot(saveTrace[ch])
         ax[ch].set_title(f'Channel {ch}')
         ax[ch].set_ylabel('Amplitude (V)')
     ax[-1].set_xlabel('time (ns)')
-    plt.title('300s sample trace')
+    fig.suptitle('300s sample trace')
     plt.grid()
     plt.savefig(f'SimpleFootprintSimulation/plots/300s_trace_FPGA_Andrew.png')
     plt.close()
