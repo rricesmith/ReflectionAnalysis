@@ -14,8 +14,9 @@ template = NuRadioRecoio.NuRadioRecoio(file)
 channelLengthAdjuster = channelLengthAdjuster()
 channelLengthAdjuster.begin()
 
-saveTrace = np.zeros((8, 256))
+saveTrace = np.zeros((100, 8, 256))
 
+n=0
 for i, evt in enumerate(template.get_events()):
     station = evt.get_station(61)
     if not station.has_triggered('LPDA_2of4_4.4sigma'):
@@ -31,25 +32,27 @@ for i, evt in enumerate(template.get_events()):
         #     saveTrace[i][ChID+4] = trace * 0.1
         # else:
         #     saveTrace[i][-1] = trace
-        saveTrace[ChID] = trace
+        saveTrace[n][ChID] = trace
+    n += 1
     break
 ic(saveTrace)
 ic(saveTrace.shape)
 
 
 if True:
-    # Plot the noise
-    import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(8, 1, figsize=(20, 10), sharex=True, sharey=True)
-    for ch in range(8):
-        ax[ch].plot(saveTrace[ch])
-        ax[ch].set_title(f'Channel {ch}')
-        ax[ch].set_ylabel('Amplitude (V)')
-    ax[-1].set_xlabel('time (ns)')
-    fig.suptitle('300s sample trace')
-    plt.grid()
-    plt.savefig(f'SimpleFootprintSimulation/plots/300s_trace_FPGA_Andrew.png')
-    plt.close()
+    for n in range(100):
+        # Plot the noise
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(8, 1, figsize=(20, 10), sharex=True, sharey=True)
+        for ch in range(8):
+            ax[ch].plot(saveTrace[ch])
+            ax[ch].set_title(f'Channel {ch}')
+            ax[ch].set_ylabel('Amplitude (V)')
+        ax[-1].set_xlabel('time (ns)')
+        fig.suptitle('300s sample trace')
+        plt.grid()
+        plt.savefig(f'SimpleFootprintSimulation/plots/300s_trace_FPGA_Andrew_{n}.png')
+        plt.close()
 
 
 
