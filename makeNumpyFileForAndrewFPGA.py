@@ -1,0 +1,39 @@
+from NuRadioReco.modules.io import NuRadioRecoio
+from icecream import ic
+from NuRadioReco.modules.channelLengthAdjuster import channelLengthAdjuster
+import numpy as np
+
+# file = 'NeutrinoAnalysis/output/MJob/400/SP/MJob_SP_Allsigma_1e+20_n10000.0.nur'
+# savename = 'data/AndrewFPGA_Neutrino.npy'
+file = 'NeutrinoAnalysis/output/MJob/400/SP/MJob_SP_Allsigma_1e+17_n1000000.0_part0001.nur'
+savename = 'data/AndrewFPGA_Near-Noise-Only.npy'
+
+template = NuRadioRecoio.NuRadioRecoio(file)
+
+channelLengthAdjuster = channelLengthAdjuster()
+channelLengthAdjuster.begin()
+
+saveTrace = np.zeros((8, 256))
+
+for i, evt in enumerate(template.get_events()):
+    station = evt.get_station(1)
+    if not station.has_triggered():
+        continue
+    channelLengthAdjuster.run(evt, station)
+    for ChID, channel in enumerate(station.iter_channels()):
+        ic(ChID)
+        trace = channel.get_trace()
+        ic(len(trace))
+        ic(channel.get_sampling_rate())
+        if not ChID == 4:
+            saveTrace[ChID] = trace
+            saveTrace[ChID+4] = trace * 0.1
+        else:
+            saveTrace[-1] = trace
+    break
+ic(saveTrace)
+ic(saveTrace.shape)
+
+np.save(savename, saveTrace)
+ic(f'Saved {savename}')
+
