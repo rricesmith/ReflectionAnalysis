@@ -26,8 +26,8 @@ def makeAndRunFile(loc, energy, n_nu, part=0 ,parts=False, part_max=9):
     if parts == True:
         cmd += f'.part{part:04d}'
     # cmd += f' NeutrinoAnalysis/station_configs/gen2_{loc}_infirn.json '
-    cmd += 'configurations/station61.json'
-    cmd += f'NeutrinoAnalysis/{loc}_config.yaml '
+    cmd += ' configurations/station61.json'
+    cmd += f' NeutrinoAnalysis/{loc}_config.yaml '
 
     #Output, can add prefix here
 #    folder = "GL_Higher_Sampling/"
