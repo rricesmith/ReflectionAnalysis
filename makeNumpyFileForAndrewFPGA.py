@@ -14,7 +14,7 @@ template = NuRadioRecoio.NuRadioRecoio(file)
 channelLengthAdjuster = channelLengthAdjuster()
 channelLengthAdjuster.begin()
 
-saveTrace = np.zeros((10, 8, 256))
+saveTrace = np.zeros((8, 256))
 
 for i, evt in enumerate(template.get_events()):
     station = evt.get_station(61)
