@@ -21,7 +21,8 @@ def makeAndRunFile(loc, energy, n_nu, part=0 ,parts=False, part_max=9):
     cmd = f'python NeutrinoAnalysis/M02_RunSimulation{amp}s.py '
     # cmd = f'python NeutrinoAnalysis/M02_CombinedSim.py '
 #    neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/AddedStats_{loc}_{energy:.4e}_n{n_nu:.4e}.hdf5'
-    neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/{save_prefix}_{loc}_{energy:.4e}_n{n_nu:.4e}.hdf5'
+    # neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/{save_prefix}_{loc}_{energy:.4e}_n{n_nu:.4e}.hdf5' # Use this for r6km
+    neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/MJob_SP_1.1288e+19_n1.0000e+04.hdf5' # Single file for testing
     cmd += neutrino_file
     if parts == True:
         cmd += f'.part{part:04d}'
@@ -92,6 +93,9 @@ def makeAndRunFile(loc, energy, n_nu, part=0 ,parts=False, part_max=9):
             makeAndRunFile(loc, energy, n_nu, part=new_part, parts=parts, part_max=part_max)
 
 
+# Testing only
+makeAndRunFile('SP', 1e19, 1e4, part=0, parts=False, part_max=9)
+quit()
 
 # loc = ['MB', 'SP']
 loc = ['SP']
