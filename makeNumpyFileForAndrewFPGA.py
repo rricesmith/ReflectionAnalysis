@@ -33,6 +33,7 @@ for i, evt in enumerate(template.get_events()):
         # else:
         #     saveTrace[i][-1] = trace
         saveTrace[n][ChID] = trace
+    saveTrace[n][7] = saveTrace[n][4]
     n += 1
     break
 ic(saveTrace)
