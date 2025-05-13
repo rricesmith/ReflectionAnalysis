@@ -40,7 +40,6 @@ for i, evt in enumerate(template.get_events()):
         saveTrace[n][ChID] = trace
     saveTrace[n][7] = saveTrace[n][4]
     n += 1
-    break
 ic(saveTrace)
 ic(saveTrace.shape)
 
@@ -60,6 +59,7 @@ if True:
         fig.suptitle('300s sample trace')
         plt.grid()
         plt.savefig(f'SimpleFootprintSimulation/plots/300s_trace_FPGA_Andrew_{n}.png')
+        print(f'Saved {n}')
         plt.close()
 
 
