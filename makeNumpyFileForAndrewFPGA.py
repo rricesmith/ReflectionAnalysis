@@ -31,7 +31,7 @@ for i, evt in enumerate(template.get_events()):
         #     saveTrace[i][ChID+4] = trace * 0.1
         # else:
         #     saveTrace[i][-1] = trace
-        saveTrace[i][ChID] = trace
+        saveTrace[ChID]] = trace
     break
 ic(saveTrace)
 ic(saveTrace.shape)
