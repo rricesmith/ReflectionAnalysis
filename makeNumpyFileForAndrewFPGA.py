@@ -18,7 +18,7 @@ saveTrace = np.zeros((8, 256))
 
 for i, evt in enumerate(template.get_events()):
     station = evt.get_station(61)
-    if not station.has_triggered():
+    if not station.has_triggered('LPDA_2of4_4.4sigma'):
         continue
     channelLengthAdjuster.run(evt, station)
     for ChID, channel in enumerate(station.iter_channels()):
