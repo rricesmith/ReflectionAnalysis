@@ -129,7 +129,7 @@
             "ant_position_z": -2.695,
             "ant_rotation_phi": 0.0,
             "ant_rotation_theta": 0.0,
-            "ant_type": "KU_dipole",
+            "ant_type": "bicone_v8_inf_n1.32",
             "cab_id": "18-14",
             "cab_length": 10.0,
             "cab_reference_measurement": null,
