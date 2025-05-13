@@ -448,7 +448,7 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
             trace_axs[i].set_ylim(final_trace_ylim) # Apply normalized y-limits
             if i < num_trace_channels -1 : trace_axs[i].set_xticklabels([]) # Remove x-labels for upper trace plots
             else: trace_axs[i].set_xlabel("Time ($\mu s$)", fontsize=8)
-            if any(trace_axs[i].get_lines()): trace_axs[i].legend(fontsize='xx-small', loc='upper right')
+            # if any(trace_axs[i].get_lines()): trace_axs[i].legend(fontsize='xx-small', loc='upper right')
 
 
             spectrum_axs[i].set_title(f"Spectrum - Channel {i}", fontsize=10)
@@ -456,7 +456,7 @@ def plot_master_event_updated(events_dict, output_dir, dataset_name):
             spectrum_axs[i].grid(True, linestyle=':', alpha=0.5)
             if i < num_trace_channels -1 : spectrum_axs[i].set_xticklabels([])
             else: spectrum_axs[i].set_xlabel("Frequency (MHz)", fontsize=8)
-            if any(spectrum_axs[i].get_lines()): spectrum_axs[i].legend(fontsize='xx-small', loc='upper right')
+            # if any(spectrum_axs[i].get_lines()): spectrum_axs[i].legend(fontsize='xx-small', loc='upper right')
 
 
         # Figure Legend (at the bottom, using the last gs row)

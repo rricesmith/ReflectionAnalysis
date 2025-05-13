@@ -5,8 +5,9 @@ import numpy as np
 
 # file = 'NeutrinoAnalysis/output/MJob/400/SP/MJob_SP_Allsigma_1e+20_n10000.0.nur'
 # savename = 'data/AndrewFPGA_Neutrino.npy'
-file = 'NeutrinoAnalysis/output/MJob/400/SP/MJob_SP_Allsigma_1e+17_n1000000.0_part0001.nur'
-savename = 'data/AndrewFPGA_Near-Noise-Only.npy'
+# file = 'NeutrinoAnalysis/output/MJob/400/SP/MJob_SP_Allsigma_1e+17_n1000000.0_part0001.nur'
+file = 'NeutrinoAnalysis/output/MJob/300/SP/MJob_SP_Allsigma_5.336699231206302e+19_n10000.0.nur'
+savename = 'data/AndrewFPGA_300s_Noiseless.npy'
 
 template = NuRadioRecoio.NuRadioRecoio(file)
 
@@ -33,6 +34,23 @@ for i, evt in enumerate(template.get_events()):
     break
 ic(saveTrace)
 ic(saveTrace.shape)
+
+
+if True:
+    # Plot the noise
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(1, 8, figsize=(20, 10), sharex=True, sharey=True)
+    for ch in range(8):
+        ax[ch].plot(saveTrace[ch])
+        ax[ch].set_title(f'Channel {ch}')
+        ax[ch].set_ylabel('Amplitude (V)')
+    ax[-1].set_xlabel('time (ns)')
+    plt.title('300s sample trace')
+    plt.grid()
+    plt.savefig(f'SimpleFootprintSimulation/plots/300s_trace_FPGA_Andrew.png')
+    plt.close()
+
+
 
 np.save(savename, saveTrace)
 ic(f'Saved {savename}')
