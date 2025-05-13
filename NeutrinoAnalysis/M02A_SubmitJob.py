@@ -112,10 +112,10 @@ for l in loc:
     for energy in energies:
         # if energy < 5*1e17:
         #     num = 1e6
-        if energy < 1e18:
-            num = 5e6
-        else:
-            continue
+        # if energy < 1e18:
+        #     num = 5e6
+        # else:
+        #     continue
         # elif energy > 1e19:
         #     num = 1e4
         #     parts=False
@@ -123,6 +123,7 @@ for l in loc:
         #     num = 1e5
         if not energy > 1e19:
             continue
+        num = 1e3
         makeAndRunFile(l, energy, num, part=0, parts=parts, part_max=part_max)
 
 
