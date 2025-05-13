@@ -14,7 +14,7 @@ template = NuRadioRecoio.NuRadioRecoio(file)
 channelLengthAdjuster = channelLengthAdjuster()
 channelLengthAdjuster.begin()
 
-saveTrace = np.zeros((8, 256))
+saveTrace = np.zeros((10, 8, 256))
 
 for i, evt in enumerate(template.get_events()):
     station = evt.get_station(1)
@@ -27,10 +27,10 @@ for i, evt in enumerate(template.get_events()):
         ic(len(trace))
         ic(channel.get_sampling_rate())
         if not ChID == 4:
-            saveTrace[ChID] = trace
-            saveTrace[ChID+4] = trace * 0.1
+            saveTrace[i][ChID] = trace
+            saveTrace[i][ChID+4] = trace * 0.1
         else:
-            saveTrace[-1] = trace
+            saveTrace[i][-1] = trace
     break
 ic(saveTrace)
 ic(saveTrace.shape)

@@ -13,19 +13,20 @@ def makeAndRunFile(loc, energy, n_nu, part=0 ,parts=False, part_max=9):
     filename = f'RunSim_{loc}_E{energy}_N{n_nu}_part{part}'
 
 
-    # amp = '300'
-    amp = 'r6km'
+    amp = '300'
+    # amp = 'r6km'
     save_prefix = "MJob"
-    extra_stat = 'AddedLowEng3kmExtraSPonly'
+    extra_stat = 'EventForAndrew'
 
-    # cmd = f'python NeutrinoAnalysis/M02_RunSimulation{amp}s.py '
-    cmd = f'python NeutrinoAnalysis/M02_CombinedSim.py '
+    cmd = f'python NeutrinoAnalysis/M02_RunSimulation{amp}s.py '
+    # cmd = f'python NeutrinoAnalysis/M02_CombinedSim.py '
 #    neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/AddedStats_{loc}_{energy:.4e}_n{n_nu:.4e}.hdf5'
     neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/{save_prefix}_{loc}_{energy:.4e}_n{n_nu:.4e}.hdf5'
     cmd += neutrino_file
     if parts == True:
         cmd += f'.part{part:04d}'
-    cmd += f' NeutrinoAnalysis/station_configs/gen2_{loc}_infirn.json '
+    # cmd += f' NeutrinoAnalysis/station_configs/gen2_{loc}_infirn.json '
+    cmd += '../NuRadioMC/NuRadioReco/detector/ARIANNA/arianna_detector_db.json'
     cmd += f'NeutrinoAnalysis/{loc}_config.yaml '
 
     #Output, can add prefix here
@@ -93,13 +94,13 @@ def makeAndRunFile(loc, energy, n_nu, part=0 ,parts=False, part_max=9):
 
 
 # loc = ['MB', 'SP']
-loc = ['MB']
+loc = ['SP']
 #energy_number = [['3e16', '1e6'], ['5e16', '1e6'], ['1e17', '1e5']]
 #energy_number = [['1e17', '1e6'], ['3e16', '1e6']]
 #energy_number = [['1e16', '1e7'], ['3e17', '1e6'], ['1e17', '5e6']]
 #energy_number = [['1e17', '5e6']]
 
-parts = True
+parts = False # Break up the jobs into parts if True
 part_max = 299
 part = 0
 
@@ -109,7 +110,6 @@ energies = np.logspace(17, 20, num=n_bins)
 
 for l in loc:
     for energy in energies:
-        parts=True
         # if energy < 5*1e17:
         #     num = 1e6
         if energy < 1e18:
@@ -121,6 +121,8 @@ for l in loc:
         #     parts=False
         # else:
         #     num = 1e5
+        if not energy > 1e19:
+            continue
         makeAndRunFile(l, energy, num, part=0, parts=parts, part_max=part_max)
 
 

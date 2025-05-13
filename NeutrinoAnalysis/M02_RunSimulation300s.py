@@ -46,11 +46,11 @@ class mySimulation(simulation.simulation):
 
 
         # first run a simple threshold trigger to speed up logic
-        simpleThreshold.run(evt, station, det,
-                             threshold=1 * Vrms,
-                             triggered_channels=None,  # run trigger on all channels
-                             number_concidences=1,
-                             trigger_name='simple_threshold')  # the name of the trigger
+        # simpleThreshold.run(evt, station, det,
+        #                      threshold=1 * Vrms,
+        #                      triggered_channels=None,  # run trigger on all channels
+        #                      number_concidences=1,
+        #                      trigger_name='simple_threshold')  # the name of the trigger
 
 
         # run a high/low trigger on the 4 downward pointing LPDAs
