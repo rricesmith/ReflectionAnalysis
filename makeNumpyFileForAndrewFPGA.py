@@ -26,11 +26,12 @@ for i, evt in enumerate(template.get_events()):
         trace = channel.get_trace()
         ic(len(trace))
         ic(channel.get_sampling_rate())
-        if not ChID == 4:
-            saveTrace[i][ChID] = trace
-            saveTrace[i][ChID+4] = trace * 0.1
-        else:
-            saveTrace[i][-1] = trace
+        # if not ChID == 4:
+        #     saveTrace[i][ChID] = trace
+        #     saveTrace[i][ChID+4] = trace * 0.1
+        # else:
+        #     saveTrace[i][-1] = trace
+        saveTrace[i][ChID] = trace
     break
 ic(saveTrace)
 ic(saveTrace.shape)
