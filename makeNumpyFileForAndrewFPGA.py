@@ -6,8 +6,8 @@ import numpy as np
 # file = 'NeutrinoAnalysis/output/MJob/400/SP/MJob_SP_Allsigma_1e+20_n10000.0.nur'
 # savename = 'data/AndrewFPGA_Neutrino.npy'
 # file = 'NeutrinoAnalysis/output/MJob/400/SP/MJob_SP_Allsigma_1e+17_n1000000.0_part0001.nur'
-file = 'NeutrinoAnalysis/output/MJob/300/SP/MJob_SP_Allsigma_5.336699231206302e+19_n10000.0.nur'
-savename = 'data/AndrewFPGA_300s_Noiseless.npy'
+file = 'NeutrinoAnalysis/output/MJob/300/SP/MJob_SP_Allsigma_1e+19_n10000.0_EventForAndrew.nur'
+savename = 'data/AndrewFPGA_300s_Noise.npy'
 
 template = NuRadioRecoio.NuRadioRecoio(file)
 
