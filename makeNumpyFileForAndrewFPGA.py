@@ -11,8 +11,9 @@ import numpy as np
 # Also I had to make some changes to the config that I'm not sure matched it
 # The downward facing LPDAs should be correct, but maybe not the others
 # Should be fine, but if need new ones, check configurations/station61.json before running NeutrinoAnalysis/M02a_SubmitJob.py again
-file = 'NeutrinoAnalysis/output/MJob/300/SP/MJob_SP_Allsigma_1e+19_n10000.0_EventForAndrew.nur' 
-savename = 'data/AndrewFPGA_300s_Noise.npy'
+# file = 'NeutrinoAnalysis/output/MJob/300/SP/MJob_SP_Allsigma_1e+19_n10000.0_EventForAndrew.nur' 
+file = 'NeutrinoAnalysis/output/MJob/300/SP/MJob_SP_Allsigma_4.281332398719396e+17_n1000000.0_EventForAndrew_part0018.nur'
+savename = 'data/AndrewFPGA_300s_Noise_1e17.npy'
 
 template = NuRadioRecoio.NuRadioRecoio(file)
 
@@ -40,6 +41,9 @@ for i, evt in enumerate(template.get_events()):
         saveTrace[n][ChID] = trace
     saveTrace[n][7] = saveTrace[n][4]
     n += 1
+if n == 0:
+    ic('No events found')
+    exit(0)
 ic(saveTrace)
 ic(saveTrace.shape)
 
