@@ -21,8 +21,8 @@ def makeAndRunFile(loc, energy, n_nu, part=0 ,parts=False, part_max=9):
     cmd = f'python NeutrinoAnalysis/M02_RunSimulation{amp}s.py '
     # cmd = f'python NeutrinoAnalysis/M02_CombinedSim.py '
 #    neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/AddedStats_{loc}_{energy:.4e}_n{n_nu:.4e}.hdf5'
-    # neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/{save_prefix}_{loc}_{energy:.4e}_n{n_nu:.4e}.hdf5' # Use this for r6km
-    neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/MJob_SP_1.1288e+19_n1.0000e+04.hdf5' # Single file for testing
+    neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/{save_prefix}_{loc}_{energy:.4e}_n{n_nu:.4e}.hdf5' # Use this for r6km
+    # neutrino_file = f'NeutrinoAnalysis/GeneratedEvents/MJob_SP_8.8587e+17_n5.0000e+06.hdf5.part0098' # Single file for testing
     cmd += neutrino_file
     if parts == True:
         cmd += f'.part{part:04d}'
@@ -94,8 +94,8 @@ def makeAndRunFile(loc, energy, n_nu, part=0 ,parts=False, part_max=9):
 
 
 # Testing only
-makeAndRunFile('SP', 1e19, 1e4, part=0, parts=False, part_max=9)
-quit()
+# makeAndRunFile('SP', 1e17, 1e6, part=0, parts=False, part_max=9)
+# quit()
 
 # loc = ['MB', 'SP']
 loc = ['SP']
@@ -114,8 +114,8 @@ energies = np.logspace(17, 20, num=n_bins)
 
 for l in loc:
     for energy in energies:
-        # if energy < 5*1e17:
-        #     num = 1e6
+        if energy < 5*1e17:
+            num = 1e6
         # if energy < 1e18:
         #     num = 5e6
         # else:
@@ -125,9 +125,11 @@ for l in loc:
         #     parts=False
         # else:
         #     num = 1e5
-        if not energy > 5*1e17:
+        # if not energy > 1e19:
+        #     continue
+        # num = 1e3
+        else:
             continue
-        num = 1e6
         makeAndRunFile(l, energy, num, part=0, parts=parts, part_max=part_max)
 
 
