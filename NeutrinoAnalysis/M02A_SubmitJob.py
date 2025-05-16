@@ -104,7 +104,7 @@ loc = ['SP']
 #energy_number = [['1e16', '1e7'], ['3e17', '1e6'], ['1e17', '5e6']]
 #energy_number = [['1e17', '5e6']]
 
-parts = False # Break up the jobs into parts if True
+parts = True # Break up the jobs into parts if True
 part_max = 299
 part = 0
 
@@ -125,9 +125,9 @@ for l in loc:
         #     parts=False
         # else:
         #     num = 1e5
-        if not energy > 1e19:
+        if not energy > 5*1e17:
             continue
-        num = 1e3
+        num = 1e6
         makeAndRunFile(l, energy, num, part=0, parts=parts, part_max=part_max)
 
 
