@@ -13,7 +13,7 @@ def loadStationNurFiles(station_id):
     if station_id == 52:
         HRAdataPath = "/dfs8/sbarwick_lab/ariannaproject/leshanz_backup/arianna/station_52/data/"
     for file in os.listdir(HRAdataPath):
-        if file.endswith('_statDatPak.root.nur'):
+        if file.endswith('_statDatPak.root.nur') or not file.endswith('.nur'):
             continue
         else:
             nurFiles.append(HRAdataPath + file)
