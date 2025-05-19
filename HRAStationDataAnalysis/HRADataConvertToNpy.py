@@ -103,7 +103,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
     template_series_200 = D00_helperFunctions.loadMultipleTemplates(200)                         # selection of 'good' RCR simulated events for templates
     template_series_bad_200 = D00_helperFunctions.loadMultipleTemplates(200, bad=True)           # selection of 'bad' RCR simulated events for templates    
     stations_100s = [13, 15, 18, 32]
-    stations_200s = [14, 17, 19, 30]
+    stations_200s = [14, 17, 19, 30, 52]
 
     blackoutTimes = getBlackoutTimes()
 

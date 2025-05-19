@@ -10,6 +10,8 @@ def loadStationNurFiles(station_id):
     # Load the station nur files
     nurFiles = []
     HRAdataPath = f"/dfs8/sbarwick_lab/ariannaproject/station_nur/station_{station_id}/"
+    if station_id == 52:
+        HRAdataPath = "/dfs8/sbarwick_lab/ariannaproject/leshanz_backup/arianna/station_52/data/"
     for file in os.listdir(HRAdataPath):
         if file.endswith('_statDatPak.root.nur'):
             continue
@@ -26,7 +28,7 @@ if __name__ == "__main__":
 
 
     # stations = [13, 14, 15, 17, 18, 19, 30]
-    stations = [13]
+    stations = [52]
 
     n_slurm_jobs = 100
 
