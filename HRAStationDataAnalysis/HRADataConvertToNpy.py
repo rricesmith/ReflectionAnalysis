@@ -88,6 +88,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
     # No calculation for Chi, as that is done in separate script depending upon templates desired
     save_azi = np.zeros((max_events))
     save_zen = np.zeros((max_events))
+    save_eventIDs = np.zeros((max_events))
 
 
     file_reader = NuRadioRecoio.NuRadioRecoio(nurFiles)
@@ -103,7 +104,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
     template_series_200 = D00_helperFunctions.loadMultipleTemplates(200)                         # selection of 'good' RCR simulated events for templates
     template_series_bad_200 = D00_helperFunctions.loadMultipleTemplates(200, bad=True)           # selection of 'bad' RCR simulated events for templates    
     stations_100s = [13, 15, 18, 32]
-    stations_200s = [14, 17, 19, 30, 52]
+    stations_200s = [14, 17, 19, 30]
 
     blackoutTimes = getBlackoutTimes()
 
@@ -162,6 +163,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
             np.save(savename + '_ChiBad' + savesuffix, save_chi_RCR_bad[~mask_empty])
             np.save(savename + '_Azi' + savesuffix, save_azi[~mask_empty])
             np.save(savename + '_Zen' + savesuffix, save_zen[~mask_empty])
+            np.save(savename + '_EventIDs' + savesuffix, save_eventIDs[~mask_empty])
             ic(f'Saved {savename} to {save_folder}')
             part += 1
 
@@ -189,7 +191,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
         # Calculate the SNR from the traces
         SNR = calcSNR(traces, Vrms)
         save_snr[n_event] = SNR
-
+        save_eventIDs[n_event] = evt.get_id()
         save_chi_2016[n_event] = getMaxAllChi(traces, 2*units.GHz, templates_2016, 2*units.GHz)
         save_chi_RCR[n_event] = getMaxAllChi(traces, 2*units.GHz, use_templates, 2*units.GHz)
         save_chi_RCR_bad[n_event] = getMaxAllChi(traces, 2*units.GHz, use_templates_bad, 2*units.GHz)
@@ -218,6 +220,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
     save_chi_RCR_bad = save_chi_RCR_bad[:n_event]
     save_azi = save_azi[:n_event]
     save_zen = save_zen[:n_event]
+    save_eventIDs = save_eventIDs[:n_event]
     # Remove empty spots from arrays that were skipped due to blackout times or no trigger
     mask_empty = save_times == 0
     # Save the last part
@@ -231,6 +234,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
     np.save(savename + '_ChiBad' + savesuffix, save_chi_RCR_bad[~mask_empty])
     np.save(savename + '_Azi' + savesuffix, save_azi[~mask_empty])
     np.save(savename + '_Zen' + savesuffix, save_zen[~mask_empty])
+    np.save(savename + '_EventIDs' + savesuffix, save_eventIDs[~mask_empty])
     print(f'Saved {savename} to {save_folder}')
 
 

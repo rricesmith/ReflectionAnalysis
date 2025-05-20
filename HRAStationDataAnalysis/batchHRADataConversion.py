@@ -27,8 +27,8 @@ if __name__ == "__main__":
     date = config['PARAMETERS']['date']
 
 
-    # stations = [13, 14, 15, 17, 18, 19, 30]
-    stations = [52]
+    stations = [13, 14, 15, 17, 18, 19, 30]
+    # stations = [52]
 
     n_slurm_jobs = 100
 
