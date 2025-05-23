@@ -10,114 +10,144 @@ import pickle # Using pickle for potentially complex dict structure
 import tempfile # For atomic saving
 import time # For timestamping save messages
 
-def findCoincidenceDatetimes(date, cuts=True): 
-    """ 
+def findCoincidenceDatetimes(date, cuts=True):
+    """
     Finds all coincidence events between stations within a one-second window.
-    
+
     For each station data file in the corresponding date folder, this function loads the event
     timestamps and records the station and the index of the event.
-    Instead of grouping events by exact timestamp, events are grouped if they occur within one second
-    of the earliest event in the group.
-    
+    Events are grouped if they occur within one second of the earliest event in the group.
+
     Each stored coincidence event is a dictionary with the following keys:
     - "numCoincidences": Number of events in the coincidence group.
     - "datetime": The representative event timestamp (the first event in the group).
     - "stations": Dictionary where each key is a station number, and its value is another dictionary.
-                  Initially, this inner dictionary contains the key 'indices' with a list of indices 
-                  corresponding to the events for that station.
-    
+                  This inner dictionary contains:
+                    - 'indices': A list of indices corresponding to the events for that station.
+                    - 'event_ids': A list of Event IDs for the events for that station.
+
     Args:
       date (str): The date folder to process, as read from the configuration.
-    
-    Returns:
-      A tuple of two dictionaries: (coincidence_datetimes, coincidence_with_repeated_stations)
-    """
-    import os
-    import numpy as np
-    import datetime
-    from icecream import ic
-    import gc
-    import glob
+      cuts (bool, optional): Whether to apply cuts. Defaults to True.
 
+    Returns:
+      A tuple of three dictionaries:
+      (coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs)
+    """
     station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
     cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date)
 
-    # Use a subset of stations for the example.
     station_ids = [13, 14, 15, 17, 18, 19, 30]
 
-    # Each event is represented as a tuple: (timestamp, station_id, event_index)
-    all_events = []
+    all_events = [] # Each event is represented as a tuple: (timestamp, station_id, event_index, event_id)
 
     # Load data for each station.
     for station_id in station_ids:
+        # Load times
         file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_Times*'))
-        times = [np.load(f) for f in file_list]
+        times = [np.load(f).squeeze() for f in file_list]
         times = np.concatenate(times, axis=0)
-        times = times.squeeze()
-        times = np.array(times)
-        # Filter out zero timestamps and pre-time events.
+
+        # Load Event IDs
+        event_id_files = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_EventIDs*'))
+        event_ids = [np.load(f).squeeze() for f in event_id_files]
+        event_ids = np.concatenate(event_ids, axis=0)
+
+        # Ensure times and event_ids have the same length
+        if len(times) != len(event_ids):
+            ic(f"Error: Mismatch in length between Times ({len(times)}) and EventIDs ({len(event_ids)}) for station {station_id}.")
+            continue
+
+        # Initial filtering for times
         zerotime_mask = times != 0
         times = times[zerotime_mask]
+        event_ids = event_ids[zerotime_mask] # Apply the same mask to event_ids
+
         pretime_mask = times >= datetime.datetime(2013, 1, 1).timestamp()
         times = times[pretime_mask]
+        event_ids = event_ids[pretime_mask] # Apply the same mask to event_ids
+
+        final_cuts_mask = np.ones(len(times), dtype=bool) # Initialize final cuts mask
 
         if cuts:
             cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station_id}_Cuts.npy')
             if os.path.exists(cuts_file):
                 ic(f"Loading cuts file: {cuts_file}")
-                cuts_data = np.load(cuts_file, allow_pickle=True)
-                cuts_data = cuts_data[()]
+                cuts_data = np.load(cuts_file, allow_pickle=True)[()]
+                for cut_key in cuts_data.keys():
+                    ic(f"Applying cut: {cut_key}")
+                    # Ensure cut_data matches the length of current times/event_ids
+                    # before applying the mask
+                    current_cut = cuts_data[cut_key][:len(times)]
+                    final_cuts_mask &= current_cut
+                times = times[final_cuts_mask]
+                event_ids = event_ids[final_cuts_mask] # Apply the same mask to event_ids
             else:
-                ic(f"Warning: Cuts file not found for station {station_id} on date {date}.")
-                continue
-            final_cuts = np.ones(len(times), dtype=bool)
-            for cut in cuts_data.keys():
-                ic(f"Applying cut: {cut}")
-                final_cuts &= cuts_data[cut]
-            times = times[final_cuts]
+                ic(f"Warning: Cuts file not found for station {station_id} on date {date}. No cuts applied for this station.")
 
         for idx, event_time in enumerate(times):
-            if event_time == 0:
-                continue
-            ts = event_time  
-            all_events.append((ts, station_id, idx))
+            # The idx here is the post-cut index, which is what we want for mapping later
+            all_events.append((event_time, station_id, idx, event_ids[idx]))
 
-    all_events.sort(key=lambda x: x[0])
+    all_events.sort(key=lambda x: x[0]) # Sort all events by timestamp.
 
     coincidence_datetimes = {}
     coincidence_with_repeated_stations = {}
+    coincidence_with_repeated_eventIDs = {} # New dictionary for events with repeated IDs within a station
+
     valid_counter = 0
-    duplicate_counter = 0
+    duplicate_station_counter = 0
+    repeated_event_id_counter = 0
 
     n_events = len(all_events)
     i = 0
-    one_second = 1
+    one_second = 1 # One-second window for coincidence
+
     while i < n_events:
         current_group = [all_events[i]]
         j = i + 1
+        # Include subsequent events only if their time is within one second of the first event in the group.
         while j < n_events and (all_events[j][0] - all_events[i][0]) <= one_second:
             current_group.append(all_events[j])
             j += 1
 
+        # Only record a coincidence if at least 2 events are found.
         if len(current_group) > 1:
-            # Build a dictionary that separates station information.
+            # Build a dictionary that separates station information, including indices and Event IDs.
             stations_info = {}
-            for ts, station_id, idx in current_group:
+            for ts, station_id, idx, event_id in current_group:
                 if station_id not in stations_info:
-                    stations_info[station_id] = {"indices": []}
+                    stations_info[station_id] = {"indices": [], "event_ids": []}
                 stations_info[station_id]["indices"].append(idx)
-            
-            # Skip groups where all events come from the same station.
-            if len(stations_info) == 1:
+                stations_info[station_id]["event_ids"].append(event_id)
+
+            # Check for repeated Event IDs within any single station in the current group
+            has_repeated_event_ids_within_station = False
+            for info in stations_info.values():
+                if len(info["event_ids"]) > len(set(info["event_ids"])):
+                    has_repeated_event_ids_within_station = True
+                    break # Found a repeat, no need to check other stations in this group
+
+            # Skip groups where all events come from the same station (unless they have repeated Event IDs)
+            # The original logic was `len(set(stations)) == 1`. With the new `stations_info` structure,
+            # this translates to `len(stations_info) == 1`.
+            if len(stations_info) == 1 and not has_repeated_event_ids_within_station:
                 i = j
                 continue
 
             # Determine which dictionary to add this event to.
-            if any(len(info["indices"]) > 1 for info in stations_info.values()):
+            if has_repeated_event_ids_within_station:
+                target_dict = coincidence_with_repeated_eventIDs
+                idx_counter = repeated_event_id_counter
+                repeated_event_id_counter += 1
+            elif any(len(info["indices"]) > 1 for info in stations_info.values()):
+                # This condition checks if there are multiple events from the same station
+                # but without repeated Event IDs. This is the original 'repeated stations' case.
                 target_dict = coincidence_with_repeated_stations
-                idx_counter = duplicate_counter
-                duplicate_counter += 1
+                idx_counter = duplicate_station_counter
+                duplicate_station_counter += 1
             else:
+                # No repeated stations and no repeated event IDs within stations.
                 target_dict = coincidence_datetimes
                 idx_counter = valid_counter
                 valid_counter += 1
@@ -125,45 +155,16 @@ def findCoincidenceDatetimes(date, cuts=True):
             target_dict[idx_counter] = {
                 "numCoincidences": len(current_group),
                 "datetime": all_events[i][0],
-                "stations": stations_info
+                "stations": stations_info # stations_info now contains both indices and event_ids
             }
+            # Skip over the events already grouped.
             i = j
         else:
-            i += 1
+            i += 1 # Move to the next event if it's not part of a coincidence
 
-    return coincidence_datetimes, coincidence_with_repeated_stations
+    return coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs
 
 
-def analyze_coincidence_events(coincidence_datetimes, coincidence_with_repeated_stations):
-        """
-        Analyzes and logs the number of coincidence events for different coincidence numbers,
-        and counts unique stations while taking into account that each 'stations' entry may have multiple keys.
-
-        Args:
-            coincidence_datetimes (dict): Dictionary of coincidence events with unique stations.
-            coincidence_with_repeated_stations (dict): Dictionary of coincidence events with potentially repeated stations.
-        """
-        # Analyze coincidence_datetimes (unique stations)
-        coincidence_counts = {}
-        for event_data in coincidence_datetimes.values():
-            num_coincidences = event_data["numCoincidences"]
-            coincidence_counts[num_coincidences] = coincidence_counts.get(num_coincidences, 0) + 1
-
-        ic("Analysis of coincidence events with unique stations:")
-        for num, count in sorted(coincidence_counts.items()):
-            ic(f"Number of events with {num} coincidences: {count}")
-
-        ic("\nAnalysis of coincidence events with potentially repeated stations:")
-        repeated_coincidence_counts = {}
-        for event_data in coincidence_with_repeated_stations.values():
-            # Here the 'stations' dictionary may contain multiple keys (e.g., 'indices', 'metadata', etc.)
-            # We count unique station IDs by iterating over its keys.
-            unique_station_ids = list(event_data["stations"].keys())
-            unique_stations_count = len(unique_station_ids)
-            repeated_coincidence_counts[unique_stations_count] = repeated_coincidence_counts.get(unique_stations_count, 0) + 1
-
-        for num, count in sorted(repeated_coincidence_counts.items()):
-            ic(f"Number of events with {num} unique station coincidences: {count}")
 
 
 
@@ -415,19 +416,10 @@ if __name__ == "__main__":
         coincidence_with_repeated_stations = data[1]
         ic("Loaded processed coincidences", len(coincidence_datetimes))
     else:
-        coincidence_datetimes, coincidence_with_repeated_stations = findCoincidenceDatetimes(date, cuts=True)
-        np.save(output_file, [coincidence_datetimes, coincidence_with_repeated_stations], allow_pickle=True)
+        coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs = findCoincidenceDatetimes(date, cuts=True)
+        np.save(output_file, [coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs], allow_pickle=True)
         ic("Saved new coincidences", len(coincidence_datetimes))
 
-    # Optional: ic first few coincidences for verification.
-    # for key in list(coincidence_datetimes.keys()):
-    #     ic(key, coincidence_datetimes[key])
-
-    # for key in list(coincidence_with_repeated_stations.keys()):
-    #     ic(key, coincidence_with_repeated_stations[key])
-
-    # Analyze the coincidence events.
-    # analyze_coincidence_events(coincidence_datetimes, coincidence_with_repeated_stations)
 
 
     # Optional: ic first few coincidences for verification.
@@ -439,5 +431,10 @@ if __name__ == "__main__":
         ic(key, coincidence_with_repeated_stations[key])
         if isinstance(coincidence_with_repeated_stations[key], dict):
             ic(coincidence_with_repeated_stations[key].keys()) 
+
+    for key in list(coincidence_with_repeated_eventIDs.keys()):
+        ic(key, coincidence_with_repeated_eventIDs[key])
+        if isinstance(coincidence_with_repeated_eventIDs[key], dict):
+            ic(coincidence_with_repeated_eventIDs[key].keys())
 
 

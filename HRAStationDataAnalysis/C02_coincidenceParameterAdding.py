@@ -436,12 +436,14 @@ if __name__ == '__main__':
     initial_events_data_path = os.path.join(data_path, 'processedNumpyData', date, f'{date}_CoincidenceDatetimes.npy')
     initial_coincidence_events = None
     initial_coincidence_with_repeat_stations_events = None
+    initial_coincidence_with_repeated_eventIDs = None
 
     if os.path.exists(initial_events_data_path):
         loaded_npy_data = np.load(initial_events_data_path, allow_pickle=True)
         if len(loaded_npy_data) >= 2:
             initial_coincidence_events = loaded_npy_data[0]
             initial_coincidence_with_repeat_stations_events = loaded_npy_data[1]
+            initial_coincidence_with_repeated_eventIDs = loaded_npy_data[2] if len(loaded_npy_data) > 2 else None
             ic(f"Successfully loaded initial event dictionaries from {initial_events_data_path}")
         else:
             ic(f"Error: Expected at least 2 dictionaries in {initial_events_data_path}, found {len(loaded_npy_data)}.")
@@ -454,7 +456,8 @@ if __name__ == '__main__':
     
     datasets_to_process = [
         {"name": "CoincidenceEvents", "data_dict": initial_coincidence_events, "run_flag": "base", "final_save_name": f'{date}_CoincidenceDatetimes_with_all_params.pkl'},
-        {"name": "CoincidenceEventsWithRepeat", "data_dict": initial_coincidence_with_repeat_stations_events, "run_flag": "with_repeat", "final_save_name": f'{date}_CoincidenceRepeatStations_with_all_params.pkl'}
+        {"name": "CoincidenceEventsWithRepeat", "data_dict": initial_coincidence_with_repeat_stations_events, "run_flag": "with_repeat", "final_save_name": f'{date}_CoincidenceRepeatStations_with_all_params.pkl'},
+        {"name": "CoincidenceEventsWithRepeatedEventIDs", "data_dict": initial_coincidence_with_repeated_eventIDs, "run_flag": "with_repeated_eventIDs", "final_save_name": f'{date}_CoincidenceRepeatEventIDs_with_all_params.pkl'}
     ]
 
     for dataset_info in datasets_to_process:

@@ -72,10 +72,8 @@ def main():
     ic(f"Processing Station {station_id} for Date {date_str}")
 
     # --- Configuration for Paths ---
-    # Assuming a similar project structure to your C00_eventSearchCuts.py
-    # base_input_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date_str)
     base_input_folder = os.path.join('/dfs8/sbarwick_lab/ariannaproject/rricesmi/numpy_arrays/station_data/', date_str)
-    base_output_folder = os.path.join('highChiForTraining', date_str, f"Station{station_id}")
+    base_output_folder = os.path.join('highChiForTraining', date_str, f"Station{station_id}")   # Modify as needed
     
     os.makedirs(base_output_folder, exist_ok=True)
 
