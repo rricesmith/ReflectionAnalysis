@@ -16,7 +16,7 @@ def makeAndRunFile(loc, energy, n_nu, part=0 ,parts=False, part_max=9):
     amp = '300'
     # amp = 'r6km'
     save_prefix = "MJob"
-    extra_stat = 'EventForAndrew'
+    extra_stat = 'EventForAndrewRedo'
 
     cmd = f'python NeutrinoAnalysis/M02_RunSimulation{amp}s.py '
     # cmd = f'python NeutrinoAnalysis/M02_CombinedSim.py '

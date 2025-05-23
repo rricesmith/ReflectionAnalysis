@@ -13,7 +13,7 @@ propagation:
 signal:
   model: Alvarez2009
 trigger:
-  noise_temperature: 100  # in Kelvin
+  noise_temperature: 200  # in Kelvin
 weights:
   weight_mode: core_mantle_crust # core_mantle_crust: use the three
   #layer earth model, which considers the different densities of the

@@ -25,7 +25,7 @@ saveTrace = np.zeros((100, 8, 256))
 n=0
 for i, evt in enumerate(template.get_events()):
     station = evt.get_station(61)
-    if not station.has_triggered('LPDA_2of4_4.4sigma'):
+    if not station.has_triggered('LPDA_2of4_2sigma'):
         continue
     channelLengthAdjuster.run(evt, station)
     for ChID, channel in enumerate(station.iter_channels()):
@@ -39,7 +39,6 @@ for i, evt in enumerate(template.get_events()):
         # else:
         #     saveTrace[i][-1] = trace
         saveTrace[n][ChID] = trace
-    saveTrace[n][7] = saveTrace[n][4]
     n += 1
 if n == 0:
     ic('No events found')
@@ -62,7 +61,7 @@ if True:
         ax[-1].set_xlabel('time (ns)')
         fig.suptitle('300s sample trace')
         plt.grid()
-        plt.savefig(f'SimpleFootprintSimulation/plots/300s_trace_FPGA_Andrew_{n}.png')
+        plt.savefig(f'SimpleFootprintSimulation/plots/300s_trace_FPGA_Andrew_REDO_{n}.png')
         print(f'Saved {n}')
         plt.close()
 

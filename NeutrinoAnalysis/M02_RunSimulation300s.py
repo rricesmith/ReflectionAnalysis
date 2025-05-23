@@ -54,22 +54,30 @@ class mySimulation(simulation.simulation):
 
 
         # run a high/low trigger on the 4 downward pointing LPDAs
-        highLowThreshold.run(evt, station, det,
-                                    threshold_high=3.8 * Vrms,
-                                    threshold_low=-3.8 * Vrms,
+        for i in [1.5, 2, 2.5, 3]:
+            highLowThreshold.run(evt, station, det,
+                                    threshold_high=i * Vrms,
+                                    threshold_low=-i * Vrms,
                                     triggered_channels=[0, 1, 2, 3],  # select the LPDA channels
                                     number_concidences=2,  # 2/4 majority logic
-                                    trigger_name='LPDA_2of4_3.8sigma')
-                                    # set_not_triggered=(not station.has_triggered("simple_threshold")))  # calculate more time consuming ARIANNA trigger only if station passes simple trigger
+                                    trigger_name=f'LPDA_2of4_{i}sigma')
 
-        # run a high/low trigger on the 4 downward pointing LPDAs
-        highLowThreshold.run(evt, station, det,
-                                    threshold_high=4.4 * Vrms,
-                                    threshold_low=-4.4 * Vrms,
-                                    triggered_channels=[0, 1, 2, 3],  # select the LPDA channels
-                                    number_concidences=2,  # 2/4 majority logic
-                                    trigger_name='LPDA_2of4_4.4sigma')
-                                    # set_not_triggered=(not station.has_triggered("LPDA_2of4_3.8sigma")))  # calculate more time consuming ARIANNA trigger only if station passes simple trigger
+        # highLowThreshold.run(evt, station, det,
+        #                             threshold_high=3.8 * Vrms,
+        #                             threshold_low=-3.8 * Vrms,
+        #                             triggered_channels=[0, 1, 2, 3],  # select the LPDA channels
+        #                             number_concidences=2,  # 2/4 majority logic
+        #                             trigger_name='LPDA_2of4_3.8sigma')
+        #                             # set_not_triggered=(not station.has_triggered("simple_threshold")))  # calculate more time consuming ARIANNA trigger only if station passes simple trigger
+
+        # # run a high/low trigger on the 4 downward pointing LPDAs
+        # highLowThreshold.run(evt, station, det,
+        #                             threshold_high=4.4 * Vrms,
+        #                             threshold_low=-4.4 * Vrms,
+        #                             triggered_channels=[0, 1, 2, 3],  # select the LPDA channels
+        #                             number_concidences=2,  # 2/4 majority logic
+        #                             trigger_name='LPDA_2of4_4.4sigma')
+        #                             # set_not_triggered=(not station.has_triggered("LPDA_2of4_3.8sigma")))  # calculate more time consuming ARIANNA trigger only if station passes simple trigger
 
 
 parser = argparse.ArgumentParser(description='Run NuRadioMC simulation')
