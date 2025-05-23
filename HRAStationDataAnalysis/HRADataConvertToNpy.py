@@ -120,7 +120,7 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
     n_event = 0
     for i, evt in enumerate(file_reader.get_events()):
         n_event += 1
-
+        
         station = evt.get_station(station_id)
         station_id = station.get_id()
         stationtime = station.get_station_time().unix
@@ -197,7 +197,8 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
         save_chi_RCR_bad[n_event] = getMaxAllChi(traces, 2*units.GHz, use_templates_bad, 2*units.GHz)
 
         # Calculate the azimuth and zenith angles from the correlation fitter only for high Chi events
-        if save_chi_2016[n_event] > 0.65 or save_chi_RCR[n_event] > 0.65:
+        # if save_chi_2016[n_event] > 0.65 or save_chi_RCR[n_event] > 0.65:
+        if False: # Skipping for now to speedup, can do calculations later if needed
             # Some events have bad datetimes, so check if the time is valid
             # Change the date to one that falls within HRA livetime if it isn't, but the bad datetime is saved still so data can be culled later
             try:
