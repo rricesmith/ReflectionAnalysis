@@ -265,10 +265,10 @@ for evt, iE, x, y in readCoREAS.run(detector=det, ray_type='by_depth', layer_dep
                                 trigger_name=f'direct_LPDA_2of4_4.4sigma')
 
 
-            fig, axs = plt.subplots(2, 4, figsize=(12, 6))
-            for iC, ch in enumerate(refl_LPDA_channels):
-                trace = station.get_channel(ch).get_trace()
-                axs[0][iC].plot(trace)
+            # fig, axs = plt.subplots(2, 4, figsize=(12, 6))
+            # for iC, ch in enumerate(refl_LPDA_channels):
+            #     trace = station.get_channel(ch).get_trace()
+            #     axs[0][iC].plot(trace)
 
             triggerTimeAdjuster.run(evt, station, det)
             # channelResampler.run(evt, station, det, 2*units.GHz)

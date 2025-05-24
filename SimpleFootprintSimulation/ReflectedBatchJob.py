@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 
 
-date = '3.28.25'
+date = '5.23.25'
 n_cores = 500   #Decenty sensitivity to RCRs, so don't overdo
 loc = 'MB'  #Or SP, not setup yet though
 # Need to change default distance and layer depth for SP, but for MB its fine right now
