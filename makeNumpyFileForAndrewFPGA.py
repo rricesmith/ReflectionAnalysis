@@ -21,7 +21,8 @@ template = NuRadioRecoio.NuRadioRecoio(file)
 channelLengthAdjuster = channelLengthAdjuster()
 channelLengthAdjuster.begin()
 
-saveTrace = np.zeros((100, 8, 256))
+max = 100
+saveTrace = np.zeros((max, 8, 256))
 
 n=0
 for i, evt in enumerate(template.get_events()):
@@ -41,6 +42,8 @@ for i, evt in enumerate(template.get_events()):
         #     saveTrace[i][-1] = trace
         saveTrace[n][ChID] = trace
     n += 1
+    if n >= max:
+        break
 if n == 0:
     ic('No events found')
     exit(0)
