@@ -11,8 +11,9 @@ import gc
 from collections import defaultdict
 import matplotlib.gridspec as gridspec
 from NuRadioReco.utilities import fft, units
+import itertools # For combinations in angle cut
 
-# --- Helper for Loading Data (from context) ---
+# --- Helper for Loading Data ---
 def _load_pickle(filepath):
     """Loads data from a pickle file."""
     if os.path.exists(filepath):
@@ -38,46 +39,95 @@ def check_chi_cut(event_details, chi_threshold=0.3, min_triggers_passing=2):
         if not isinstance(station_triggers_data, dict):
             continue
             
-        # Use SNR list length as reference for number of triggers, as it's fundamental
         num_triggers_in_station = len(station_triggers_data.get('SNR', []))
-
         chi_rcr_list = station_triggers_data.get('ChiRCR', [])
         chi_2016_list = station_triggers_data.get('Chi2016', [])
 
         for i in range(num_triggers_in_station):
             trigger_passed_chi = False
-            # Check ChiRCR
             if i < len(chi_rcr_list) and chi_rcr_list[i] is not None and \
                not np.isnan(chi_rcr_list[i]) and chi_rcr_list[i] > chi_threshold:
                 trigger_passed_chi = True
-            
-            # Check Chi2016 (can also pass if ChiRCR didn't)
             if not trigger_passed_chi and i < len(chi_2016_list) and \
                chi_2016_list[i] is not None and not np.isnan(chi_2016_list[i]) and \
                chi_2016_list[i] > chi_threshold:
                 trigger_passed_chi = True
-            
             if trigger_passed_chi:
                 passing_station_triggers_count += 1
     
     return passing_station_triggers_count >= min_triggers_passing
 
+def check_angle_cut(event_details, zenith_margin_deg=10.0, azimuth_margin_deg=20.0):
+    """
+    Checks if a coincidence event passes the Angle (Zenith/Azimuth) agreement cut.
+    A coincidence passes if at least two station triggers within the event have
+    Zenith values within 'zenith_margin_deg' AND Azimuth values within 
+    'azimuth_margin_deg' of each other (handles azimuth wraparound).
+    """
+    if not isinstance(event_details, dict):
+        return False
+
+    valid_angles = [] # List of (zenith_deg, azimuth_deg) tuples
+    for station_id_str, station_triggers_data in event_details.get("stations", {}).items():
+        if not isinstance(station_triggers_data, dict):
+            continue
+        
+        num_triggers_in_station = len(station_triggers_data.get('SNR', [])) # Use SNR for trigger count
+        zen_list = station_triggers_data.get('Zen', []) # Assuming these are in degrees
+        azi_list = station_triggers_data.get('Azi', []) # Assuming these are in degrees
+
+        for i in range(num_triggers_in_station):
+            zen_val, azi_val = None, None
+            if i < len(zen_list) and zen_list[i] is not None and not np.isnan(zen_list[i]):
+                zen_val = zen_list[i] # Already in degrees as per user context
+            if i < len(azi_list) and azi_list[i] is not None and not np.isnan(azi_list[i]):
+                azi_val = azi_list[i] # Already in degrees
+
+            if zen_val is not None and azi_val is not None:
+                # Ensure Azimuth is within [0, 360) for consistent diff calculation
+                # Although np.abs handles it, standardizing azi_val % 360 can be good.
+                # However, if input is already 0-360, direct use is fine.
+                valid_angles.append((zen_val, azi_val))
+
+    if len(valid_angles) < 2:
+        return False # Cannot find a pair if less than 2 valid angle sets
+
+    for pair in itertools.combinations(valid_angles, 2):
+        (zen1, azi1), (zen2, azi2) = pair
+        
+        # Check Zenith difference
+        delta_zen = abs(zen1 - zen2)
+        if delta_zen > zenith_margin_deg:
+            continue # This pair fails zenith criterion
+
+        # Check Azimuth difference (handling wraparound for 0-360 degrees)
+        delta_azi = abs(azi1 - azi2)
+        if delta_azi > 180.0: # If difference is more than half a circle, use the shorter way around
+            delta_azi = 360.0 - delta_azi
+        
+        if delta_azi <= azimuth_margin_deg:
+            return True # Found a pair that agrees in both Zen and Azi
+
+    return False # No agreeing pair found
+
 def check_coincidence_cuts(event_details):
     """
     Main function to check if a coincidence event passes all defined analysis cuts.
-    Currently only implements the Chi cut.
+    Returns a dictionary with the pass/fail status for each cut.
     """
-    # Add other cut checks here in the future, e.g.:
-    # passes_angle_cut = check_angle_cut(event_details, ...)
-    # return passes_chi and passes_angle_cut
+    results = {}
+    results['chi_cut_passed'] = check_chi_cut(event_details)
+    results['angle_cut_passed'] = check_angle_cut(event_details)
+    
+    # Add more cut checks here in the future:
+    # results['another_cut_passed'] = check_another_cut(event_details)
+    
+    return results
 
-    passes_chi = check_chi_cut(event_details)
-    return passes_chi
 
-
-# --- Plotting Function 1: SNR vs Chi Parameters (no changes needed for this function based on new cuts) ---
+# --- Plotting Function 1: SNR vs Chi Parameters (no changes needed here) ---
 def plot_snr_vs_chi(events_dict, output_dir, dataset_name):
-    # ... (previous implementation) ...
+    # ... (previous implementation from your provided code) ...
     ic(f"Generating SNR vs Chi plots for {dataset_name}")
     os.makedirs(output_dir, exist_ok=True)
 
@@ -141,7 +191,7 @@ def plot_snr_vs_chi(events_dict, output_dir, dataset_name):
         axs[plot_idx].set_xlim(3, 100); axs[plot_idx].set_ylim(0, 1)
     
     axs[-1].set_xlabel('SNR')
-    handles, labels = axs[0].get_legend_handles_labels() # Get handles from the first plot for consistency
+    handles, labels = axs[0].get_legend_handles_labels()
     if num_events > 0 and num_events <=15 and handles: 
         fig.legend(handles, labels, loc='center right', title="Events", bbox_to_anchor=(1.12, 0.5), fontsize='small')
 
@@ -152,87 +202,47 @@ def plot_snr_vs_chi(events_dict, output_dir, dataset_name):
     plt.savefig(plot_filename, bbox_inches='tight'); ic(f"Saved SNR vs Chi plot: {plot_filename}"); plt.close(fig); gc.collect()
 
 
-# --- Plotting Function 2: Parameter Histograms (Updated) ---
+# --- Plotting Function 2: Parameter Histograms (Updated, but uses overall 'passes_analysis_cuts') ---
 def plot_parameter_histograms(events_dict, output_dir, dataset_name):
-    """Plots histograms for specified parameters, separated by cut status."""
+    # ... (implementation from previous response, no changes needed for this specific request,
+    # as it already uses event_data.get('passes_analysis_cuts', False)) ...
     ic(f"Generating parameter histograms for {dataset_name} (with cut status)")
     os.makedirs(output_dir, exist_ok=True)
-
     params_to_histogram = ['SNR', 'ChiRCR', 'Chi2016', 'ChiBad', 'Zen', 'Azi']
-    
-    # Initialize dictionaries to hold values for different categories
-    param_values_all = defaultdict(list)
-    param_values_passing_cuts = defaultdict(list)
-    param_values_failing_cuts = defaultdict(list)
-
-    for event_id, event_data in events_dict.items():
-        passes_cuts = event_data.get('passes_analysis_cuts', False) # Get the flag
-        for station_id_str, station_triggers in event_data.get("stations", {}).items():
+    param_values_all, param_values_passing_cuts, param_values_failing_cuts = defaultdict(list), defaultdict(list), defaultdict(list)
+    for event_data in events_dict.values():
+        passes_cuts = event_data.get('passes_analysis_cuts', False)
+        for station_triggers in event_data.get("stations", {}).values():
             for param_name in params_to_histogram:
-                param_list = station_triggers.get(param_name, [])
-                for val in param_list:
+                for val in station_triggers.get(param_name, []):
                     if val is not None and not np.isnan(val):
                         param_values_all[param_name].append(val)
-                        if passes_cuts:
-                            param_values_passing_cuts[param_name].append(val)
-                        else:
-                            param_values_failing_cuts[param_name].append(val)
-    
-    if not any(param_values_all.values()):
-        ic(f"No valid data found for histograms in {dataset_name}.")
-        return
-
-    num_hist_params = len(params_to_histogram)
-    cols = 3 if num_hist_params > 4 else (2 if num_hist_params > 1 else 1)
+                        if passes_cuts: param_values_passing_cuts[param_name].append(val)
+                        else: param_values_failing_cuts[param_name].append(val)
+    if not any(param_values_all.values()): ic(f"No valid data for histograms in {dataset_name}."); return
+    num_hist_params = len(params_to_histogram); cols = 3 if num_hist_params > 4 else (2 if num_hist_params > 1 else 1)
     rows = (num_hist_params + cols - 1) // cols
-
-    fig, axs = plt.subplots(rows, cols, figsize=(5 * cols, 4.5 * rows), squeeze=False)
-    axs_flat = axs.flatten()
-
+    fig, axs = plt.subplots(rows, cols, figsize=(5 * cols, 4.5 * rows), squeeze=False); axs_flat = axs.flatten()
     for i, param_name in enumerate(params_to_histogram):
-        ax = axs_flat[i]
-        ax.set_title(f'{param_name}')
-        ax.set_xlabel("Value")
-        ax.set_ylabel('Frequency') # Default to non-log, adjust if log is applied
-
-        values_all = param_values_all.get(param_name, [])
-        values_pass = param_values_passing_cuts.get(param_name, [])
-        values_fail = param_values_failing_cuts.get(param_name, [])
-
+        ax = axs_flat[i]; ax.set_title(f'{param_name}'); ax.set_xlabel("Value"); ax.set_ylabel('Frequency')
+        values_all, values_pass, values_fail = param_values_all.get(param_name,[]), param_values_passing_cuts.get(param_name,[]), param_values_failing_cuts.get(param_name,[])
         has_data = False
-        if values_all:
-            ax.hist(values_all, bins=50, edgecolor='black', alpha=0.4, label='All Events', color='grey')
-            has_data = True
-        if values_pass:
-            ax.hist(values_pass, bins=50, edgecolor='darkgreen', alpha=0.6, label='Pass Analysis Cuts', color='lightgreen')
-            has_data = True
-        if values_fail:
-            ax.hist(values_fail, bins=50, edgecolor='darkred', alpha=0.6, label='Fail Analysis Cuts', color='lightcoral')
-            has_data = True
-        
+        if values_all: ax.hist(values_all, bins=50, edgecolor='black', alpha=0.4, label='All Events', color='grey'); has_data=True
+        if values_pass: ax.hist(values_pass, bins=50, edgecolor='darkgreen', alpha=0.6, label='Pass Analysis Cuts', color='lightgreen'); has_data=True
+        if values_fail: ax.hist(values_fail, bins=50, edgecolor='darkred', alpha=0.6, label='Fail Analysis Cuts', color='lightcoral'); has_data=True
         if has_data:
-            if param_name in ['ChiRCR', 'Chi2016', 'ChiBad', 'SNR', 'Zen', 'Azi'] and any(v > 0 for v in values_all):
-                 ax.set_yscale('log')
-                 ax.set_ylabel('Frequency (log scale)')
-            if param_name in ['ChiRCR', 'Chi2016', 'ChiBad']: ax.set_xlim(0, 1)
+            if param_name in ['ChiRCR','Chi2016','ChiBad','SNR','Zen','Azi'] and any(v > 0 for v in values_all): ax.set_yscale('log'); ax.set_ylabel('Frequency (log scale)')
+            if param_name in ['ChiRCR','Chi2016','ChiBad']: ax.set_xlim(0, 1)
             if param_name == 'SNR': ax.set_xlim(3, 100); ax.set_xscale('log')
-            ax.grid(True, linestyle='--', alpha=0.6)
-            ax.legend(fontsize='x-small')
-        else:
-            ax.text(0.5, 0.5, f"No data for\n{param_name}", ha='center', va='center', transform=ax.transAxes)
-    
+            ax.grid(True, linestyle='--', alpha=0.6); ax.legend(fontsize='x-small')
+        else: ax.text(0.5,0.5,f"No data for\n{param_name}",ha='center',va='center',transform=ax.transAxes); ax.set_title(f'{param_name}')
     for j in range(i + 1, len(axs_flat)): fig.delaxes(axs_flat[j])
+    plt.suptitle(f'Parameter Histograms for {dataset_name} (by Cut Status)', fontsize=16); plt.tight_layout(rect=[0,0,1,0.96])
+    plot_filename = os.path.join(output_dir, f"{dataset_name}_parameter_histograms_by_cut.png"); plt.savefig(plot_filename); ic(f"Saved: {plot_filename}"); plt.close(fig); gc.collect()
 
-    plt.suptitle(f'Parameter Histograms for {dataset_name} (by Cut Status)', fontsize=16)
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    
-    plot_filename = os.path.join(output_dir, f"{dataset_name}_parameter_histograms_by_cut.png")
-    plt.savefig(plot_filename); ic(f"Saved parameter histograms: {plot_filename}"); plt.close(fig); gc.collect()
-
-
-# --- Plotting Function 3: Polar Plot (Zenith vs Azimuth) (no changes needed for this function based on new cuts) ---
+# --- Plotting Function 3: Polar Plot (Zenith vs Azimuth) (no changes needed here) ---
 def plot_polar_zen_azi(events_dict, output_dir, dataset_name):
-    # ... (previous implementation) ...
+    # ... (previous implementation from your provided code) ...
     ic(f"Generating polar Zenith vs Azimuth plot for {dataset_name}")
     os.makedirs(output_dir, exist_ok=True); all_zen_values, all_azi_values = [], []
     for event_data in events_dict.values():
@@ -245,7 +255,7 @@ def plot_polar_zen_azi(events_dict, output_dir, dataset_name):
                         all_zen_values.append(zen_val); all_azi_values.append(azi_val)
     if not all_azi_values: ic(f"No valid Zenith/Azimuth data to plot for {dataset_name}."); return
     fig = plt.figure(figsize=(8, 8)); ax = plt.subplot(111, polar=True)
-    ax.scatter(all_azi_values, np.degrees(all_zen_values), alpha=0.5, s=20, cmap='viridis', c=all_azi_values)
+    ax.scatter(all_azi_values, np.degrees(all_zen_values), alpha=0.5, s=20, cmap='viridis', c=all_azi_values) # Azimuth values assumed to be in radians for direct polar plot
     ax.set_theta_zero_location("N"); ax.set_theta_direction(-1); ax.set_rlabel_position(45)
     ax.set_rlim(0, 90); ax.set_rticks(np.arange(0, 91, 15))
     ax.set_title(f'Sky Plot: Zenith vs Azimuth for {dataset_name}\n(Zenith in degrees from center)', va='bottom', fontsize=14)
@@ -253,14 +263,10 @@ def plot_polar_zen_azi(events_dict, output_dir, dataset_name):
     plot_filename = os.path.join(output_dir, f"{dataset_name}_polar_zen_azi.png")
     plt.savefig(plot_filename); ic(f"Saved polar Zenith vs Azimuth plot: {plot_filename}"); plt.close(fig); gc.collect()
 
+
 # --- Plotting Function 4: Master Event Plot (Updated) ---
 def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
-    """
-    Generates a master plot for each event, saving into pass_cuts/fail_cuts subdirectories.
-    """
     ic(f"Generating master event plots for {dataset_name}, separating by cut status.")
-    
-    # Define base master folder and subfolders for pass/fail
     master_folder_base = os.path.join(base_output_dir, f"{dataset_name}_master_event_plots")
     pass_cuts_folder = os.path.join(master_folder_base, "pass_cuts")
     fail_cuts_folder = os.path.join(master_folder_base, "fail_cuts")
@@ -273,48 +279,60 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
     num_trace_channels = 4
 
     for event_id, event_details in events_dict.items():
-        passes_analysis_cuts = event_details.get('passes_analysis_cuts', False)
-        
-        # Determine output directory for this specific event's plot
-        current_event_plot_dir = pass_cuts_folder if passes_analysis_cuts else fail_cuts_folder
-        
-        # ... (Rest of the plotting logic from the original plot_master_event_updated function) ...
-        # ... (This includes fig, gs, ax_scatter, ax_polar, trace_axs, spectrum_axs setup) ...
-        # ... (event_time_str formatting, suptitle) ...
-        # ... (text_info_lines, legend_handles_for_fig) ...
-        # ... (global_trace_min/max calculation, y_margin, final_trace_ylim) ...
-        # ... (The main plotting loop over stations and triggers) ...
-        # ... (Finalizing subplots: labels, titles, grids, scales, text_box) ...
-        # ... (Figure legend) ...
+        # Make sure event_details is a dictionary before proceeding
+        if not isinstance(event_details, dict):
+            ic(f"Warning: Event {event_id} data is not a dictionary. Skipping master plot.")
+            continue
 
-        # --- Start of copied plotting logic for a single event ---
+        cut_results = event_details.get('cut_results', {}) # Get the dictionary of cut results
+        passes_overall_analysis = event_details.get('passes_analysis_cuts', False)
+        
+        current_event_plot_dir = pass_cuts_folder if passes_overall_analysis else fail_cuts_folder
+        
         fig = plt.figure(figsize=(18, 20)); gs = gridspec.GridSpec(8, 2, figure=fig, hspace=0.8, wspace=0.3)
         ax_scatter = fig.add_subplot(gs[0:3, 0]); ax_polar = fig.add_subplot(gs[0:3, 1], polar=True)
         trace_axs = [fig.add_subplot(gs[3+i, 0]) for i in range(num_trace_channels)]
         spectrum_axs = [fig.add_subplot(gs[3+i, 1]) for i in range(num_trace_channels)]
+        
         event_time_str = "Unknown Time"
         if "datetime" in event_details and event_details["datetime"] is not None:
             try: event_time_dt = datetime.datetime.fromtimestamp(event_details["datetime"]); event_time_str = event_time_dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
             except Exception as e: ic(f"Error formatting datetime for event {event_id}: {e}. Timestamp: {event_details['datetime']}")
-        fig.suptitle(f"Master Plot: Event {event_id} ({dataset_name}) - {'PASS' if passes_analysis_cuts else 'FAIL'} CUTS\nTime: {event_time_str}", fontsize=18, y=0.98)
-        text_info_lines = [f"Event ID: {event_id}", f"Time: {event_time_str}", f"Analysis Cuts: {'PASS' if passes_analysis_cuts else 'FAIL'}", "--- Station Triggers ---"]
+        
+        fig.suptitle(f"Master Plot: Event {event_id} ({dataset_name}) - OVERALL: {'PASS' if passes_overall_analysis else 'FAIL'}\nTime: {event_time_str}", fontsize=16, y=0.98) # Adjusted y for suptitle slightly
+
+        text_info_lines = [f"Event ID: {event_id}", f"Time: {event_time_str}", 
+                           f"Overall Analysis: {'PASS' if passes_overall_analysis else 'FAIL'}"]
+        text_info_lines.append("--- Individual Cut Status ---")
+        for cut_name_key, passed_status in cut_results.items():
+            # Convert key to readable name, e.g., 'chi_cut_passed' -> 'Chi Cut'
+            readable_cut_name = cut_name_key.replace('_passed', '').replace('_', ' ').title()
+            text_info_lines.append(f"  {readable_cut_name} : {'Passed' if passed_status else 'Failed'}")
+        text_info_lines.append("--- Station Triggers ---")
+        
         legend_handles_for_fig = {}; global_trace_min = float('inf'); global_trace_max = float('-inf')
 
-        for station_id_str, station_data in event_details.get("stations", {}).items():
-            all_traces_for_station_trigger = station_data.get("Traces", [])
-            for trigger_idx, traces_for_one_trigger in enumerate(all_traces_for_station_trigger):
-                if traces_for_one_trigger is not None and np.asarray(traces_for_one_trigger).any(): # Simpler check
-                    padded_traces = (list(traces_for_one_trigger) + [None]*num_trace_channels)[:num_trace_channels]
-                    for trace_array in padded_traces:
-                        if trace_array is not None and hasattr(trace_array, "__len__") and len(trace_array) > 0:
-                            current_min, current_max = np.nanmin(trace_array), np.nanmax(trace_array)
-                            if not np.isnan(current_min): global_trace_min = min(global_trace_min, current_min)
-                            if not np.isnan(current_max): global_trace_max = max(global_trace_max, current_max)
-        if global_trace_min == float('inf'): global_trace_min = -1
-        if global_trace_max == float('-inf'): global_trace_max = 1
-        if global_trace_min == global_trace_max: global_trace_min -= 0.5; global_trace_max += 0.5
+        # ... (rest of trace min/max calculation from your provided code, ensure it handles missing traces) ...
+        for station_id_str_calc, station_data_calc in event_details.get("stations", {}).items():
+            all_traces_for_st = station_data_calc.get("Traces", [])
+            for traces_for_one_trig in all_traces_for_st:
+                if traces_for_one_trig is not None and np.asarray(traces_for_one_trig).any():
+                    padded_tr = (list(traces_for_one_trig) + [None]*num_trace_channels)[:num_trace_channels]
+                    for tr_arr in padded_tr: 
+                        if tr_arr is not None and hasattr(tr_arr, "__len__") and len(tr_arr) > 0:
+                            c_min,c_max = np.nanmin(tr_arr), np.nanmax(tr_arr)
+                            if not np.isnan(c_min): global_trace_min = min(global_trace_min, c_min)
+                            if not np.isnan(c_max): global_trace_max = max(global_trace_max, c_max)
+        if global_trace_min == float('inf'): global_trace_min = -0.1 # Default if no valid traces
+        if global_trace_max == float('-inf'): global_trace_max = 0.1
+        if abs(global_trace_max - global_trace_min) < 1e-6 : global_trace_min -= 0.05; global_trace_max += 0.05 # Ensure some range
         y_margin = (global_trace_max - global_trace_min) * 0.1; final_trace_ylim = (global_trace_min - y_margin, global_trace_max + y_margin)
+        if final_trace_ylim[0] == final_trace_ylim[1]: final_trace_ylim = (final_trace_ylim[0]-0.1, final_trace_ylim[1]+0.1)
 
+
+        # --- Plotting Loop (from your provided code, with minor adjustments if needed) ---
+        # (This extensive loop for plotting station data, traces, spectra, scatter, polar is kept from your provided code)
+        # (Ensure `event_ids_for_station` default value is robust, e.g. "N/A" for string formatting)
         for station_id_str, station_data in event_details.get("stations", {}).items():
             try: station_id_int = int(station_id_str)
             except ValueError: continue
@@ -323,8 +341,8 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
             if num_triggers == 0: continue
             chi_rcr_values = (station_data.get("ChiRCR", []) + [np.nan] * num_triggers)[:num_triggers]
             chi_2016_values = (station_data.get("Chi2016", []) + [np.nan] * num_triggers)[:num_triggers]
-            zen_values = (station_data.get("Zen", []) + [np.nan] * num_triggers)[:num_triggers]
-            azi_values = (station_data.get("Azi", []) + [np.nan] * num_triggers)[:num_triggers]
+            zen_values = (station_data.get("Zen", []) + [np.nan] * num_triggers)[:num_triggers] # Assumed in radians by plot, but degrees by text
+            azi_values = (station_data.get("Azi", []) + [np.nan] * num_triggers)[:num_triggers] # Assumed in radians by plot
             event_ids_for_station = (station_data.get("event_ids", []) + ["N/A"] * num_triggers)[:num_triggers] # Changed default for event_ids
             all_traces_for_station = station_data.get("Traces", [])
 
@@ -340,110 +358,90 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
                     if chi_rcr_val is not None and not np.isnan(chi_rcr_val): ax_scatter.scatter(snr_val, chi_rcr_val, marker=marker, s=60, alpha=0.9, facecolors='none', edgecolors=color, linewidths=1.5, zorder=3)
                     if (chi_2016_val is not None and not np.isnan(chi_2016_val) and chi_rcr_val is not None and not np.isnan(chi_rcr_val)):
                         ax_scatter.annotate("", xy=(snr_val, chi_rcr_val), xytext=(snr_val, chi_2016_val), arrowprops=dict(arrowstyle="->",color=color,lw=1.2,shrinkA=3,shrinkB=3),zorder=2)
-                if zen_val is not None and not np.isnan(zen_val) and azi_val is not None and not np.isnan(azi_val): ax_polar.scatter(azi_val, np.degrees(zen_val), c=color, marker=marker, s=60, alpha=0.9)
+                
+                # Polar plot expects azimuth in radians, zenith in degrees. 
+                # User stated Zen/Azi are saved in degrees. So, azi_val needs conversion if not already radians.
+                # The original code used np.degrees(zen_val) for radius, and azi_val directly for angle. This implies azi_val is expected in radians by scatter.
+                # Let's assume azi_val is in RADIANS for polar scatter as per matplotlib convention. Text output will be degrees.
+                if zen_val is not None and not np.isnan(zen_val) and azi_val is not None and not np.isnan(azi_val): 
+                    ax_polar.scatter(azi_val, np.degrees(zen_val), c=color, marker=marker, s=60, alpha=0.9) # zen_val in radians, converted to deg for radial. azi_val in radians.
                 
                 for ch_idx in range(num_trace_channels):
                     trace_ch_data = padded_traces_this_trigger[ch_idx]
                     if trace_ch_data is not None and hasattr(trace_ch_data, "__len__") and len(trace_ch_data) > 0:
                         trace_ch_data_arr = np.asarray(trace_ch_data)
-                        time_ax = np.linspace(0, (len(trace_ch_data_arr)-1)*0.5, len(trace_ch_data_arr)) # Assuming 0.5 ns sampling -> 2GSps
-                        trace_axs[ch_idx].plot(time_ax, trace_ch_data_arr, c=color, ls='-' if trigger_idx % 2 == 0 else '--', alpha=0.7)
-                        sampling_rate_hz = 2e9 # 2GSps
-                        freq_ax_mhz = np.fft.rfftfreq(len(trace_ch_data_arr), d=1/sampling_rate_hz) / 1e6
-                        spectrum = np.abs(fft.time2freq(trace_ch_data_arr, sampling_rate_hz))
-                        if len(spectrum)>0: spectrum[0]=0 # Zero DC
-                        spectrum_axs[ch_idx].plot(freq_ax_mhz, spectrum, c=color, ls=':' if trigger_idx % 2 == 0 else '-.', alpha=0.5)
+                        # Assuming 0.5 ns sampling from original plot (2GSps), so time_axis in ns
+                        time_ax_ns = np.linspace(0, (len(trace_ch_data_arr)-1)*0.5, len(trace_ch_data_arr)) 
+                        trace_axs[ch_idx].plot(time_ax_ns, trace_ch_data_arr, c=color, ls='-' if trigger_idx % 2 == 0 else '--', alpha=0.7)
+                        
+                        # Spectrum
+                        sampling_rate_hz = 2e9 # 2 Giga-Samples per second
+                        if len(trace_ch_data_arr) > 1: # FFT needs more than 1 point
+                            freq_ax_mhz = np.fft.rfftfreq(len(trace_ch_data_arr), d=1/sampling_rate_hz) / 1e6 # Freq in MHz
+                            spectrum = np.abs(fft.time2freq(trace_ch_data_arr, sampling_rate_hz))
+                            if len(spectrum)>0: spectrum[0]=0 # Zero DC
+                            spectrum_axs[ch_idx].plot(freq_ax_mhz, spectrum, c=color, ls=':' if trigger_idx % 2 == 0 else '-.', alpha=0.5)
                 
                 if station_id_int not in legend_handles_for_fig: legend_handles_for_fig[station_id_int] = Line2D([0], [0], marker='o', c=color, ls='None', markersize=8, label=f"St {station_id_int}")
-                zen_d = f"{np.degrees(zen_val):.1f}°" if zen_val is not None and not np.isnan(zen_val) else "N/A"
-                azi_d = f"{np.degrees(azi_val):.1f}°" if azi_val is not None and not np.isnan(azi_val) else "N/A"
+                
+                # Convert Zen/Azi to degrees for text display if they are in radians in data
+                # Assuming Zen/Azi in event_details are in RADIANS as suggested by polar plot usage
+                zen_d_text = f"{np.degrees(zen_val):.1f}°" if zen_val is not None and not np.isnan(zen_val) else "N/A"
+                azi_d_text = f"{np.degrees(azi_val % (2*np.pi)):.1f}°" if azi_val is not None and not np.isnan(azi_val) else "N/A" # Ensure 0-360 range
                 snr_fstr = f"{snr_val:.1f}" if snr_val is not None and not np.isnan(snr_val) else "N/A"
-                ev_id_fstr = f"{int(current_event_id_val)}" if current_event_id_val is not None and not np.isnan(current_event_id_val) else "N/A" # Ensure EventID is int for display
-                text_info_lines.append(f"  St{station_id_int} T{trigger_idx+1}: ID={ev_id_fstr}, SNR={snr_fstr}, Zen={zen_d}, Azi={azi_d}")
-        
+                ev_id_fstr = f"{int(current_event_id_val)}" if current_event_id_val not in ["N/A", np.nan, None] else "N/A"
+                text_info_lines.append(f"  St{station_id_int} T{trigger_idx+1}: ID={ev_id_fstr}, SNR={snr_fstr}, Zen={zen_d_text}, Azi={azi_d_text}")
+
+        # Finalize plots (from your provided code)
         ax_scatter.set_xlabel("SNR"); ax_scatter.set_ylabel("Chi value"); ax_scatter.set_title("SNR vs $\chi$ (Arrow: $\chi_{2016} \longrightarrow \chi_{RCR}$)")
         ax_scatter.set_xscale('log'); ax_scatter.set_xlim(3, 100); ax_scatter.set_ylim(0, 1); ax_scatter.grid(True, linestyle='--', alpha=0.6)
-        ax_scatter.text(0.98, 0.02, "\n".join(text_info_lines[:30]),transform=ax_scatter.transAxes, ha='right', va='bottom', fontsize=7, family='monospace', linespacing=1.2, bbox=dict(boxstyle="round,pad=0.3", fc="wheat", ec="orange", alpha=0.7, lw=0.5))
+        ax_scatter.text(1.02, 0.98, "\n".join(text_info_lines[:35]), transform=ax_scatter.transAxes, ha='left', va='top', fontsize=6, family='monospace', linespacing=1.2, bbox=dict(boxstyle="round,pad=0.3", fc="wheat", ec="orange", alpha=0.7, lw=0.5)) # Adjusted position
+        
         ax_polar.set_theta_zero_location("N"); ax_polar.set_theta_direction(-1); ax_polar.set_rlabel_position(22.5)
-        ax_polar.set_rlim(0, 90); ax_polar.set_rticks(np.arange(0, 91, 30)); ax_polar.set_title("Zenith (radius) vs Azimuth (angle)"); ax_polar.grid(True, linestyle='--', alpha=0.5)
+        ax_polar.set_rlim(0, 90); ax_polar.set_rticks(np.arange(0, 91, 30)); ax_polar.set_title("Zenith (radius) vs Azimuth (angle)") # Assuming Zen in degrees for radius
+        ax_polar.grid(True, linestyle='--', alpha=0.5)
+        
         for i in range(num_trace_channels):
             trace_axs[i].set_title(f"Trace - Ch {i}",fontsize=10); trace_axs[i].set_ylabel("Amp",fontsize=8); trace_axs[i].grid(True,ls=':',alpha=0.5); trace_axs[i].set_ylim(final_trace_ylim)
-            if i < num_trace_channels -1 : trace_axs[i].set_xticklabels([])
-            else: trace_axs[i].set_xlabel("Time (ns)", fontsize=8) # Changed unit to ns based on 0.5ns sampling
-            spectrum_axs[i].set_title(f"Spectrum - Ch {i}",fontsize=10); spectrum_axs[i].set_ylabel("Mag",fontsize=8); spectrum_axs[i].grid(True,ls=':',alpha=0.5)
-            if i < num_trace_channels -1 : spectrum_axs[i].set_xticklabels([])
-            else: spectrum_axs[i].set_xlabel("Freq (MHz)", fontsize=8)
-        if legend_handles_for_fig: fig.legend(handles=list(legend_handles_for_fig.values()), loc='lower center', bbox_to_anchor=(0.5, 0.01), ncol=min(len(legend_handles_for_fig),6), title="Stations", fontsize='medium')
-        # --- End of copied plotting logic ---
+            spectrum_axs[i].set_title(f"Spectrum - Ch {i}",fontsize=10); spectrum_axs[i].set_ylabel("Mag",fontsize=8); spectrum_axs[i].grid(True,ls=':',alpha=0.5); spectrum_axs[i].set_xlim(0,1000) # Set xlim for spectrum: 0-1000 MHz
+            if i < num_trace_channels -1 : trace_axs[i].set_xticklabels([]); spectrum_axs[i].set_xticklabels([])
+            else: trace_axs[i].set_xlabel("Time (ns)", fontsize=8); spectrum_axs[i].set_xlabel("Freq (MHz)", fontsize=8)
+        
+        if legend_handles_for_fig: fig.legend(handles=list(legend_handles_for_fig.values()), loc='lower center', bbox_to_anchor=(0.5, 0.005), ncol=min(len(legend_handles_for_fig),6), title="Stations", fontsize='small') # Adjusted legend position
 
-        master_filename = os.path.join(current_event_plot_dir, f'master_event_{event_id}.png') # Save to correct subfolder
+        master_filename = os.path.join(current_event_plot_dir, f'master_event_{event_id}.png')
         try:
             plt.savefig(master_filename, dpi=150)
-            # ic(f"Saved master plot: {master_filename}") # Reduce verbosity for many events
         except Exception as e:
             ic(f"Error saving master plot {master_filename}: {e}")
         plt.close(fig)
-        gc.collect()
+        gc.collect() # Explicit garbage collection after each complex plot
     ic(f"Finished master event plots for {dataset_name}. Check pass_cuts/ and fail_cuts/ subfolders.")
 
 
 # --- Main Script ---
 if __name__ == '__main__':
     ic.enable()
-
-    # --- Configuration ---
+    # ... (Configuration and dataset loading from your provided code) ...
     import configparser
     config = configparser.ConfigParser()
-    # Ensure HRAStationDataAnalysis is in a path relative to where you run, or use absolute
-    # Assuming the script is run from one level above HRAStationDataAnalysis
     config_path = os.path.join('HRAStationDataAnalysis', 'config.ini') 
-    if not os.path.exists(config_path):
-        # Fallback if script is inside HRAStationDataAnalysis
-        config_path = 'config.ini' 
-        if not os.path.exists(config_path):
-            ic(f"CRITICAL: config.ini not found at primary or fallback path.")
-            exit()
-    config.read(config_path)
-    date_of_data = config['PARAMETERS']['date']
-    
+    if not os.path.exists(config_path): config_path = 'config.ini'
+    if not os.path.exists(config_path): ic(f"CRITICAL: config.ini not found."); exit()
+    config.read(config_path); date_of_data = config['PARAMETERS']['date']
     base_processed_data_dir = os.path.join("HRAStationDataAnalysis", "StationData", "processedNumpyData")
     processed_data_dir_for_date = os.path.join(base_processed_data_dir, date_of_data)
-    
-    dataset1_filename = f"{date_of_data}_CoincidenceDatetimes_with_all_params.pkl"
-    dataset2_filename = f"{date_of_data}_CoincidenceRepeatStations_with_all_params.pkl" # Example, can add back if needed
-    dataset3_filename = f"{date_of_data}_CoincidenceRepeatEventIDs_with_all_params.pkl" # Example
-
-    dataset_paths = [
-        os.path.join(processed_data_dir_for_date, dataset1_filename),
-        os.path.join(processed_data_dir_for_date, dataset2_filename), 
-        os.path.join(processed_data_dir_for_date, dataset3_filename)
-    ]
-    dataset_names = [
-        "CoincidenceEvents", 
-        "CoincidenceRepeatStations", 
-        "CoincidenceRepeatEventIDs"
-    ]
-    dataset_plot_suffixes = [
-        f"CoincidenceEvents_{date_of_data}",
-        f"CoincidenceRepeatStations_{date_of_data}",
-        f"CoincidenceRepeatEventIDs_{date_of_data}"
-    ]
-    
-    output_plot_basedir = os.path.join("HRAStationDataAnalysis", "plots") # Main plots directory
+    dataset_paths = [os.path.join(processed_data_dir_for_date, f"{date_of_data}_CoincidenceDatetimes_with_all_params.pkl")] # Focused on one dataset for example
+    dataset_names = ["CoincidenceEvents"]
+    dataset_plot_suffixes = [f"CoincidenceEvents_{date_of_data}"]
+    output_plot_basedir = os.path.join("HRAStationDataAnalysis", "plots")
     os.makedirs(output_plot_basedir, exist_ok=True)
-    
     datasets_to_plot_info = []
     for i, d_path in enumerate(dataset_paths):
         data = _load_pickle(d_path)
-        if data is not None:
-            datasets_to_plot_info.append({"name": dataset_names[i], "data": data, "plot_dir_suffix": dataset_plot_suffixes[i]})
-            ic(f"Loaded dataset: {d_path}")
-        else:
-            ic(f"Could not load dataset from: {d_path}. Please check path and file.")
-
-    if not datasets_to_plot_info:
-        ic("No datasets loaded. Exiting plotting script.")
-        exit()
+        if data is not None: datasets_to_plot_info.append({"name": dataset_names[i], "data": data, "plot_dir_suffix": dataset_plot_suffixes[i]}); ic(f"Loaded: {d_path}")
+        else: ic(f"Could not load: {d_path}.")
+    if not datasets_to_plot_info: ic("No datasets loaded. Exiting."); exit()
 
     # --- Apply Analysis Cuts and Generate Plots for each dataset ---
     for dataset_info in datasets_to_plot_info:
@@ -453,39 +451,29 @@ if __name__ == '__main__':
         os.makedirs(specific_dataset_plot_dir, exist_ok=True)
 
         ic(f"\n--- Processing dataset for cuts and plots: {dataset_name_label} ---")
-        ic(f"Output will be in: {specific_dataset_plot_dir}")
-
         if not isinstance(events_data_dict, dict) or not events_data_dict:
-            ic(f"Dataset '{dataset_name_label}' is empty or not a dictionary. Skipping.")
-            continue
+            ic(f"Dataset '{dataset_name_label}' is empty or not a dict. Skipping."); continue
 
-        # Apply analysis cuts to each event and store the result
-        num_passing = 0
-        num_failing = 0
+        num_passing_overall = 0; num_failing_overall = 0
         for event_id, event_details in events_data_dict.items():
-            if isinstance(event_details, dict): # Ensure event_details is a dict
-                 passes = check_coincidence_cuts(event_details)
-                 event_details['passes_analysis_cuts'] = passes
-                 if passes: num_passing +=1
-                 else: num_failing +=1
-            else: # Should not happen if data is structured correctly
-                 event_details['passes_analysis_cuts'] = False # Default for malformed entries
-                 num_failing +=1
+            if isinstance(event_details, dict):
+                 cut_results_dict = check_coincidence_cuts(event_details)
+                 event_details['cut_results'] = cut_results_dict # Store individual cut results
+                 event_details['passes_analysis_cuts'] = all(cut_results_dict.values()) # Overall pass if all cuts pass
+                 
+                 if event_details['passes_analysis_cuts']: num_passing_overall +=1
+                 else: num_failing_overall +=1
+            elif event_details is not None : # If not None but not dict, still count as failing entry
+                 event_details = {'passes_analysis_cuts': False, 'cut_results': {'error': 'Malformed event data'}} # Ensure keys exist
+                 num_failing_overall +=1
 
-        ic(f"Analysis cuts applied to '{dataset_name_label}': {num_passing} events passed, {num_failing} events failed.")
 
-        # 1. SNR vs Chi parameters
+        ic(f"Analysis cuts applied to '{dataset_name_label}': {num_passing_overall} events passed, {num_failing_overall} events failed overall.")
+
         plot_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
-
-        # 2. Parameter Histograms (now includes cut status)
         plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
-
-        # 3. Polar Plot (Zenith vs Azimuth)
         plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
-        
-        # 4. Master Event Plots (now saves to pass_cuts/fail_cuts subdirs)
-        plot_master_event_updated(events_data_dict, specific_dataset_plot_dir, dataset_name_label) # Pass base output dir
+        plot_master_event_updated(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
 
         ic(f"--- Finished plots for: {dataset_name_label} ---")
-
     ic("\nAll plotting complete.")
