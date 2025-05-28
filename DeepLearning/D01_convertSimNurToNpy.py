@@ -230,7 +230,7 @@ def converter(nurFiles, folder, save_prefix, save_chans, station_id = 1, det=Non
     # plot          : bool
     #       -if True, plots every 1000th trace to view a sub-selection with
     save_prefix = save_prefix + f'_forced{forced}'
-
+    os.makedirs(f'DeepLearning/data/{folder}', exist_ok=True)
 
     count = 0
     part = 0
@@ -387,7 +387,7 @@ def converter(nurFiles, folder, save_prefix, save_chans, station_id = 1, det=Non
     print(ary.shape)
 
 
-    saveName = f'DeepLearning/data/{folder}/{save_prefix}_{len(ary)}events_part{part}.npy'
+    saveName = f'DeepLearning/data/{folder}/{save_prefix}_{len(ary)}events_Filter{filter}_part{part}.npy'
     print(f'Saving to {saveName}')
     np.save(saveName, ary)
 
@@ -419,6 +419,8 @@ config.read('DeepLearning/config.ini')
 amp_type = config['SIMPARAMETERS']['amp']
 simdate = config['SIMPARAMETERS']['date']
 folder = config['SIMPARAMETERS']['datapass']
+noise = config['SIMPARAMETERS']['noise']
+filter = config['SIMPARAMETERS']['filter']
 
 amp_type = amp_type[:-1]
 
@@ -431,11 +433,20 @@ if True:
     for filename in os.listdir(station_files_path):
         # if filename.startswith(f'RCRs_MB_MB_old_{amp_type}s_refracted') and filename.endswith('.nur'):
         if filename.startswith(f'RCR_MB') and filename.endswith('.nur'):
+            # Check if file has NoiseTrue or NoiseFalse in the name
+            if noise == 'True' and 'NoiseFalse' in filename:
+                continue
+            if noise == 'False' and 'NoiseTrue' in filename:
+                continue
             print(f'adding events from file {filename}')
             SimRCRFiles.append(os.path.join(station_files_path, filename))
 
     saveChannels = [4, 5, 6, 7]
-    converter(SimRCRFiles, folder, f'SimRCR_{amp_type}s', saveChannels, station_id = 1, det=det, filter=True, saveTimes=False, plot=False, sim=True, reconstruct=False, blackout=False, forced=False)
+    if filter == 'True':
+        filter = True
+    else:
+        filter = False
+    converter(SimRCRFiles, folder, f'SimRCR_{amp_type}s_Noise{noise}', saveChannels, station_id = 1, det=det, filter=filter, saveTimes=False, plot=False, sim=True, reconstruct=False, blackout=False, forced=False)
     print(f'saved RCRs!')
 
     quit()
