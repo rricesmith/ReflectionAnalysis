@@ -313,7 +313,7 @@ def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".", cuts_to_
         bin_centers_unix = (bins[:-1] + bins[1:]) / 2.0; dt_bin_centers = [datetime.datetime.fromtimestamp(ts) for ts in bin_centers_unix]
         plt.figure(figsize=(12, 7)); plt.title(f"Season {start_year}-{start_year + 1} Event Rate"); plt.xlabel("Time"); plt.ylabel(f"Event Rate (Hz, {bin_size_seconds/60:.0f}min bins)")
         count_all, _ = np.histogram(current_season_times_all, bins=bins); rate_all = count_all / bin_size_seconds
-        plt.scatter(dt_bin_centers, rate_all, marker='o', markersize=3, label="All Events Rate", color="lightgray", alpha=0.7)
+        plt.scatter(dt_bin_centers, rate_all, s=3, marker='o', label="All Events Rate", color="lightgray", alpha=0.7)
         if cuts_to_plot_dict:
             for legend_label_base, cut_mask_for_series in cuts_to_plot_dict.items():
                 if not (isinstance(cut_mask_for_series, np.ndarray) and cut_mask_for_series.dtype == bool and len(cut_mask_for_series) == len(times_unix)): continue
