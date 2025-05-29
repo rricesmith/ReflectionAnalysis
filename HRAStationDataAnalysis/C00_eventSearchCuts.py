@@ -359,14 +359,14 @@ REPORT_CUT_STAGES = collections.OrderedDict([
 # --- Main Script Execution ---
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Apply cuts, calculate individual and overlapping livetimes.')
-    parser.add_argument('--stnID', type=int, required=False, default=None, 
+    parser.add_argument('--stnID', type=int, required=False, default=None,
                         help="Station ID for single-station processing. If absent, runs overlap analysis.")
-    parser.add_argument('--date', type=str, required=True, 
+    parser.add_argument('--date', type=str, required=True,
                         help="Date string for data processing (e.g., YYYYMMDD).")
-    parser.add_argument('--stations_for_overlap', nargs='+', type=int, 
-                        default=[13, 14, 15, 17, 18, 19, 30], # Example default list
+    parser.add_argument('--stations_for_overlap', nargs='+', type=int,
+                        default=[13, 14, 15, 17, 18, 19, 30], # Example default list from your C00
                         help="List of station IDs for overlap analysis mode.")
-    
+
     args = parser.parse_args()
     date_filter = args.date
     ic.enable()
@@ -374,8 +374,9 @@ if __name__ == "__main__":
     # --- Path Definitions ---
     base_project_path = 'HRAStationDataAnalysis'
     base_data_path = os.path.join(base_project_path, 'StationData')
-    station_data_folder = os.path.join(base_data_path, 'nurFiles', date_filter)
-    cuts_data_folder = os.path.join(base_data_path, 'cuts', date_filter)
+    # Corrected path to align with C00 structure if nurFiles are directly under StationData
+    station_data_folder = os.path.join(base_data_path, 'nurFiles', date_filter) # From your C00 structure for data files
+    cuts_data_folder = os.path.join(base_data_path, 'cuts', date_filter) # From your C00 structure for cut files
     plot_folder_base = os.path.join(base_project_path, 'plots', date_filter)
 
     os.makedirs(cuts_data_folder, exist_ok=True)
@@ -397,108 +398,140 @@ if __name__ == "__main__":
         try:
             time_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Times*')))
             trace_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Traces*')))
-            eventid_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_EventIDs*'))) # Load EventIDs
+            eventid_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_EventIDs*')))
 
-            if not time_files or not trace_files or not eventid_files: # Check for EventID files
-                raise FileNotFoundError("Time, Trace, or EventID files missing for Station {current_station_id}")
+            if not time_files or not trace_files or not eventid_files:
+                raise FileNotFoundError(f"Time, Trace, or EventID files missing for Station {current_station_id} on {date_filter}")
 
             times_list = [np.load(f) for f in time_files]; times_raw = np.concatenate(times_list, axis=0).squeeze()
             traces_list = [np.load(f) for f in trace_files]; traces_raw = np.concatenate(traces_list, axis=0)
-            eventids_list = [np.load(f) for f in eventid_files]; eventids_raw = np.concatenate(eventids_list, axis=0).squeeze() # Load and squeeze EventIDs
+            eventids_list = [np.load(f) for f in eventid_files]; eventids_raw = np.concatenate(eventids_list, axis=0).squeeze()
 
-            # Handle scalar results from squeeze if only one event in files
             if times_raw.ndim == 0: times_raw = np.array([times_raw.item()])
             if eventids_raw.ndim == 0: eventids_raw = np.array([eventids_raw.item()])
-            # Handle single event trace data that might be (4,256) or (1024,)
             if traces_raw.ndim == 2 and traces_raw.shape[0] == 4 and traces_raw.shape[1] == 256 : traces_raw = traces_raw.reshape(1,4,256)
             if traces_raw.ndim == 1 and traces_raw.size == 4*256: traces_raw = traces_raw.reshape(1,4,256)
 
-
         except Exception as e:
             ic(f"Error loading data for Station {current_station_id}: {e}. Aborting for this station.")
-            # Consider how to handle this if the script is part of a larger batch
-            # For now, if single station mode fails to load, it might just exit.
-            # If you want it to create an empty .pkl so overlap mode knows it was attempted:
-            # _save_pickle_atomic({}, os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl"))
-            exit(1) 
-        
+            exit(1)
+
         if times_raw.size == 0 or traces_raw.size == 0 or eventids_raw.size == 0 or \
            not (times_raw.shape[0] == traces_raw.shape[0] == eventids_raw.shape[0]):
             ic(f"Empty or mismatched data arrays for Station {current_station_id} after loading. Aborting.")
-            # _save_pickle_atomic({}, os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl"))
             exit(1)
 
-        # --- Initial Time Filtering (Applied to Times, Traces, and EventIDs) ---
         zerotime_mask = (times_raw != 0)
         min_datetime_threshold = datetime.datetime(2013, 1, 1).timestamp()
         pretime_mask = (times_raw >= min_datetime_threshold)
         initial_valid_mask = zerotime_mask & pretime_mask
-        
+
         base_times_for_cuts = times_raw[initial_valid_mask]
         base_traces_for_cuts = traces_raw[initial_valid_mask]
-        base_event_ids_for_cuts = eventids_raw[initial_valid_mask] # Filter EventIDs as well
+        base_event_ids_for_cuts = eventids_raw[initial_valid_mask]
 
         if base_times_for_cuts.size == 0:
             ic(f"No data for Station {current_station_id} after initial time filters. Saving empty report and aborting.")
             _save_pickle_atomic({}, os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl"))
-            exit(0) # Clean exit, just no data
-        
+            exit(0)
+
         ic(f"Data for cuts: Times {base_times_for_cuts.shape}, Traces {base_traces_for_cuts.shape}, EventIDs {base_event_ids_for_cuts.shape}")
 
-        # --- Apply Cuts ---
+        # --- Apply Cuts with Incremental Saving ---
         cut_file_path = os.path.join(cuts_data_folder, f'{date_filter}_Station{current_station_id}_Cuts.npy')
-        L1_mask_final, storm_mask_final, burst_mask_final = None, None, None
+        # This dictionary will hold all masks, loaded or computed.
+        # It will be saved after each new computation.
+        current_all_cut_masks = {} 
+        
+        L1_mask_final, storm_mask_final, burst_mask_final = None, None, None # Initialize to None
 
         if os.path.exists(cut_file_path):
             ic(f"Attempting to load existing cut masks from: {cut_file_path}")
-            cuts_data = np.load(cut_file_path, allow_pickle=True).item()
-            L1_f, S_f, B_f = cuts_data.get('L1_mask'), cuts_data.get('storm_mask'), cuts_data.get('burst_mask')
-            # Check dimensions against current base_times_for_cuts
-            if all(m is not None and isinstance(m, np.ndarray) and len(m) == len(base_times_for_cuts) for m in [L1_f, S_f, B_f]):
-                L1_mask_final, storm_mask_final, burst_mask_final = L1_f, S_f, B_f
-                ic(f"Successfully loaded and validated cut masks.")
-            else: 
-                ic(f"Warning: Loaded cut masks dimensions mismatch (Expected {len(base_times_for_cuts)}, L1:{len(L1_f) if L1_f is not None else 'None'}, S:{len(S_f) if S_f is not None else 'None'}, B:{len(B_f) if B_f is not None else 'None'}) or masks are invalid. Recalculating cuts.")
+            try:
+                loaded_data = np.load(cut_file_path, allow_pickle=True).item()
+                if isinstance(loaded_data, dict):
+                    current_all_cut_masks = loaded_data # Start with what's in the file
+                else:
+                    ic("Warning: Cuts file did not contain a dictionary. Will recalculate all.")
+            except Exception as e:
+                ic(f"Error loading or parsing cuts file {cut_file_path}: {e}. Will recalculate all.")
         
-        if L1_mask_final is None: # Recalculate if not loaded or mismatch
-            ic(f"Recalculating L1 cut for {len(base_times_for_cuts)} events...")
-            L1_mask_final = L1_cut(base_traces_for_cuts, power_cut=0.3)
-            
-            ic(f"Recalculating storm cut (Amp > 0.3V, Win: 1hr, Freq >= 2)...")
-            storm_mask_final = cluster_cut(base_times_for_cuts, base_traces_for_cuts, base_event_ids_for_cuts, # Pass EventIDs
-                                           amplitude_threshold=0.4, 
-                                           time_period=datetime.timedelta(seconds=3600), 
-                                           cut_frequency=2)
-            
-            ic(f"Recalculating burst cut (Amp > 0.2V, Win: 60s, Freq >= 2)...")
-            burst_mask_final = cluster_cut(base_times_for_cuts, base_traces_for_cuts, base_event_ids_for_cuts, # Pass EventIDs
-                                           amplitude_threshold=0.2, 
-                                           time_period=datetime.timedelta(seconds=60), 
-                                           cut_frequency=2)
-            
-            ic(f"Saving new cut masks to: {cut_file_path}")
-            np.save(cut_file_path, {
-                'L1_mask': L1_mask_final, 
-                'storm_mask': storm_mask_final, 
-                'burst_mask': burst_mask_final
-            }, allow_pickle=True)
+        # Check and assign L1_mask
+        temp_L1 = current_all_cut_masks.get('L1_mask')
+        if temp_L1 is not None and isinstance(temp_L1, np.ndarray) and len(temp_L1) == len(base_times_for_cuts):
+            L1_mask_final = temp_L1
+            ic("Loaded valid L1_mask from file.")
+        else:
+            if temp_L1 is not None: ic("L1_mask from file is invalid. Will recalculate.")
+            L1_mask_final = None # Ensure it's None to trigger recalculation
 
-        # ... (Rest of single-station processing: livetime calculation for this station, saving its .pkl, plotting its individual plots) ...
-        # (This part uses station_specific_report and calls to plot_cuts_amplitudes, plot_cuts_rates)
+        # Check and assign storm_mask
+        temp_storm = current_all_cut_masks.get('storm_mask')
+        if temp_storm is not None and isinstance(temp_storm, np.ndarray) and len(temp_storm) == len(base_times_for_cuts):
+            storm_mask_final = temp_storm
+            ic("Loaded valid storm_mask from file.")
+        else:
+            if temp_storm is not None: ic("storm_mask from file is invalid. Will recalculate.")
+            storm_mask_final = None
+
+        # Check and assign burst_mask
+        temp_burst = current_all_cut_masks.get('burst_mask')
+        if temp_burst is not None and isinstance(temp_burst, np.ndarray) and len(temp_burst) == len(base_times_for_cuts):
+            burst_mask_final = temp_burst
+            ic("Loaded valid burst_mask from file.")
+        else:
+            if temp_burst is not None: ic("burst_mask from file is invalid. Will recalculate.")
+            burst_mask_final = None
+            
+        # Calculate L1_mask if not loaded/valid
+        if L1_mask_final is None:
+            ic(f"Calculating L1 cut for {len(base_times_for_cuts)} events...")
+            L1_mask_final = L1_cut(base_traces_for_cuts, power_cut=0.3) #
+            current_all_cut_masks['L1_mask'] = L1_mask_final
+            ic(f"Saving L1_mask to: {cut_file_path}")
+            np.save(cut_file_path, current_all_cut_masks, allow_pickle=True)
+        
+        # Calculate storm_mask if not loaded/valid
+        if storm_mask_final is None:
+            ic(f"Calculating storm cut (Amp > 0.4V, Win: 1hr, Freq >= 2)...") # User had 0.4 in last C00
+            storm_mask_final = cluster_cut(base_times_for_cuts, base_traces_for_cuts, base_event_ids_for_cuts,
+                                           amplitude_threshold=0.4,
+                                           time_period=datetime.timedelta(seconds=3600),
+                                           cut_frequency=2) #
+            current_all_cut_masks['storm_mask'] = storm_mask_final
+            ic(f"Saving storm_mask to: {cut_file_path}")
+            np.save(cut_file_path, current_all_cut_masks, allow_pickle=True)
+
+        # Calculate burst_mask if not loaded/valid
+        if burst_mask_final is None:
+            ic(f"Calculating burst cut (Amp > 0.2V, Win: 60s, Freq >= 2)...")
+            burst_mask_final = cluster_cut(base_times_for_cuts, base_traces_for_cuts, base_event_ids_for_cuts,
+                                           amplitude_threshold=0.2,
+                                           time_period=datetime.timedelta(seconds=60),
+                                           cut_frequency=2) #
+            current_all_cut_masks['burst_mask'] = burst_mask_final
+            ic(f"Saving burst_mask to: {cut_file_path}")
+            np.save(cut_file_path, current_all_cut_masks, allow_pickle=True)
+
+        ic(f"Final Cut results for Station {current_station_id} (on {len(base_times_for_cuts)} events):")
+        ic(f"  L1_mask passed: {np.sum(L1_mask_final)} ({np.sum(L1_mask_final)/len(base_times_for_cuts)*100:.2f}%)")
+        ic(f"  storm_mask passed: {np.sum(storm_mask_final)} ({np.sum(storm_mask_final)/len(base_times_for_cuts)*100:.2f}%)")
+        ic(f"  burst_mask passed: {np.sum(burst_mask_final)} ({np.sum(burst_mask_final)/len(base_times_for_cuts)*100:.2f}%)")
+
         station_specific_report = collections.OrderedDict()
         report_masks = {
             "Total (after initial time filters)": np.ones_like(base_times_for_cuts, dtype=bool),
             "After L1": L1_mask_final,
             "After L1 + Storm": L1_mask_final & storm_mask_final,
             "After L1 + Storm + Burst": L1_mask_final & storm_mask_final & burst_mask_final
-        }
-        for stage_label in REPORT_CUT_STAGES.keys(): 
+        } #
+        for stage_label in REPORT_CUT_STAGES.keys():
             current_stage_mask = report_masks[stage_label]
             times_survived_stage = base_times_for_cuts[current_stage_mask]
             lt_s, active_periods = calculate_livetime(times_survived_stage, LIVETIME_THRESHOLD_SECONDS)
             station_specific_report[stage_label] = (lt_s, active_periods)
             ic(f"Station {current_station_id}, {stage_label}: Livetime = {format_duration(lt_s)}")
-        
+
         station_gti_file_to_save = os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl")
         _save_pickle_atomic(station_specific_report, station_gti_file_to_save)
 
@@ -506,31 +539,30 @@ if __name__ == "__main__":
             ("L1 cut", L1_mask_final),
             ("L1+Storm cut", L1_mask_final & storm_mask_final),
             ("L1+Storm+Burst cut", L1_mask_final & storm_mask_final & burst_mask_final),
-        ])
-        plot_cuts_amplitudes(base_times_for_cuts, base_traces_for_cuts, "Max Amplitude", plot_folder_station, LIVETIME_THRESHOLD_SECONDS, cuts_dict_for_plotting)
-        plot_cuts_rates(base_times_for_cuts, output_dir=plot_folder_station, cuts_to_plot_dict=cuts_dict_for_plotting)
+        ]) #
+        plot_cuts_amplitudes(base_times_for_cuts, base_traces_for_cuts, "Max Amplitude", plot_folder_station, LIVETIME_THRESHOLD_SECONDS, cuts_dict_for_plotting) #
+        plot_cuts_rates(base_times_for_cuts, output_dir=plot_folder_station, cuts_to_plot_dict=cuts_dict_for_plotting) #
         ic(f"Single-station processing for Station {current_station_id} complete.")
+        gc.collect()
 
-
-    else: # No --stnID provided, run OVERLAP ANALYSIS MODE
+    else:
+        # --- OVERLAP ANALYSIS MODE ---
         STATIONS_FOR_OVERLAP_ANALYSIS = args.stations_for_overlap
         ic("\n\n" + "*"*20)
         ic(f"MODE: Overlap Analysis for Stations: {STATIONS_FOR_OVERLAP_ANALYSIS}, Date Ref: {date_filter}")
         ic("*"*20)
 
-        all_stations_loaded_reports = {} # {st_id: {cut_label: (livetime_s, gti_list)}}
+        all_stations_loaded_reports = {}
         stations_with_missing_data = []
 
         for st_id_overlap in STATIONS_FOR_OVERLAP_ANALYSIS:
-            # Construct path based on the fixed structure where single-station mode saves its output
-            # plot_folder_base is defined based on args.date
             station_livetime_input_dir = os.path.join(plot_folder_base, f"Station{st_id_overlap}", "livetime_data")
             station_gti_file_to_load = os.path.join(station_livetime_input_dir, f"livetime_gti_St{st_id_overlap}_{date_filter}.pkl")
             
-            loaded_data = _load_pickle(station_gti_file_to_load)
-            if loaded_data is not None : # Note: {} is a valid load for a station with no data post initial filters
+            loaded_data = _load_pickle(station_gti_file_to_load) #
+            if loaded_data is not None :
                 all_stations_loaded_reports[st_id_overlap] = loaded_data
-                if not loaded_data: # Empty dictionary means it was processed but had no valid livetime stages
+                if not loaded_data: 
                      ic(f"Loaded empty livetime/GTI data for Station {st_id_overlap} (likely no data post initial filters).")
                 else:
                      ic(f"Successfully loaded livetime/GTI data for Station {st_id_overlap}")
@@ -545,19 +577,17 @@ if __name__ == "__main__":
 
         if not final_station_ids_for_overlap:
             ic("No station livetime data available for any station. Cannot perform overlap analysis. Exiting.")
-            exit(0) # Clean exit
+            exit(0)
         
         ic(f"Overlap analysis will use data from stations: {final_station_ids_for_overlap}")
 
-        # --- Requirement 1: Combinatorial Livetime Report ---
-        # (This section remains the same as in the previous response, using final_station_ids_for_overlap and all_stations_loaded_reports)
+        # --- Requirement 1: Combinatorial Livetime Report (from C00_eventSearchCuts.py) ---
         if len(final_station_ids_for_overlap) >= 1: 
             combo_livetime_file_path = os.path.join(plot_folder_base, f"combinatorial_livetimes_{date_filter}.txt")
             ic(f"Generating combinatorial livetime report to: {combo_livetime_file_path}")
             with open(combo_livetime_file_path, "w") as f_combo:
-                # ... (content from previous response) ...
                 f_combo.write(f"COMBINATORIAL LIVETIME REPORT (Date: {date_filter})\nStations considered: {final_station_ids_for_overlap}\nLivetime Threshold: {LIVETIME_THRESHOLD_SECONDS / 3600.0:.1f} hours\n\n")
-                for stage_label in REPORT_CUT_STAGES.keys():
+                for stage_label in REPORT_CUT_STAGES.keys(): #
                     f_combo.write(f"--- Cut Stage: {stage_label} ---\n")
                     if len(final_station_ids_for_overlap) >=2:
                         for k in range(2, len(final_station_ids_for_overlap) + 1):
@@ -568,48 +598,46 @@ if __name__ == "__main__":
                                     if stage_label in all_stations_loaded_reports.get(st_id_in_combo, {}): combo_gti_dict[st_id_in_combo] = all_stations_loaded_reports[st_id_in_combo][stage_label][1]
                                     else: valid_combo = False; break
                                 if valid_combo and len(combo_gti_dict) == k :
-                                    overlap_s, _ = calculate_stations_combination_overlap(combo_gti_dict)
-                                    if overlap_s > 1e-9 : f_combo.write(f"    {list(station_combo_ids_tuple)} : {format_duration(overlap_s)}\n"); found_any_for_k = True
+                                    overlap_s, _ = calculate_stations_combination_overlap(combo_gti_dict) #
+                                    if overlap_s > 1e-9 : f_combo.write(f"    {list(station_combo_ids_tuple)} : {format_duration(overlap_s)}\n"); found_any_for_k = True #
                             if not found_any_for_k and k > 1 : f_combo.write(f"    (No combinations of {k} stations had >0s overlap for this cut stage)\n")       
                     else: f_combo.write(f"  (Need at least 2 stations for combinatorial overlap)\n")
                     f_combo.write("\n")
 
-        # --- Requirement 2 & 3: Enhanced Station Summary & N-Concurrent Data & Timestrip Plots ---
-        # (This section remains the same, using final_station_ids_for_overlap and all_stations_loaded_reports)
+        # --- Requirement 2 & 3: Enhanced Station Summary & N-Concurrent Data & Timestrip Plots (from C00_eventSearchCuts.py) ---
         summary_report_path = os.path.join(plot_folder_base, f"{date_filter}_station_summary_livetimes.txt")
         ic(f"Generating enhanced station summary report to: {summary_report_path}")
         with open(summary_report_path, "w") as f_stat:
-            # ... (content from previous response for individual and N-concurrent sections) ...
-            f_stat.write("STATION LIVETIMES REPORT\nDate Ref: {date_filter}\nLivetime Threshold: {LIVETIME_THRESHOLD_SECONDS / 3600.0:.1f} hours\n\nINDIVIDUAL STATION LIVETIMES REPORT\n")
-            for st_id_report in STATIONS_FOR_OVERLAP_ANALYSIS: # Report for all originally requested
+            f_stat.write(f"STATION LIVETIMES REPORT\nDate Ref: {date_filter}\nLivetime Threshold: {LIVETIME_THRESHOLD_SECONDS / 3600.0:.1f} hours\n\nINDIVIDUAL STATION LIVETIMES REPORT\n") #
+            for st_id_report in STATIONS_FOR_OVERLAP_ANALYSIS: 
                 f_stat.write(f"Station {st_id_report}:\n")
                 report_data = all_stations_loaded_reports.get(st_id_report)
                 if report_data:
-                    for stage_label, (lt_s, _) in report_data.items(): f_stat.write(f"  {stage_label}: {format_duration(lt_s)}\n")
+                    for stage_label, (lt_s, _) in report_data.items(): f_stat.write(f"  {stage_label}: {format_duration(lt_s)}\n") #
                 else: f_stat.write(f"  Data not processed or not found for this station.\n")
                 f_stat.write("\n")
             if final_station_ids_for_overlap:
-                f_stat.write("CONCURRENT STATION LIVETIMES\nStations in this analysis: {final_station_ids_for_overlap}\n\n")
-                for stage_label in REPORT_CUT_STAGES.keys():
+                f_stat.write(f"CONCURRENT STATION LIVETIMES\nStations in this analysis: {final_station_ids_for_overlap}\n\n") #
+                for stage_label in REPORT_CUT_STAGES.keys(): #
                     f_stat.write(f"  --- Cut Stage: {stage_label} ---\n")
                     gtis_for_all_relevant = {st_id: all_stations_loaded_reports[st_id][stage_label][1] for st_id in final_station_ids_for_overlap if stage_label in all_stations_loaded_reports.get(st_id,{}) and all_stations_loaded_reports[st_id][stage_label][1]}
                     if not gtis_for_all_relevant: f_stat.write("    No station data for N-concurrent analysis.\n"); continue
                     max_N_possible = len(gtis_for_all_relevant)
                     if max_N_possible == 0: continue
                     for N_val in range(1, max_N_possible + 1):
-                        lt_N_s, gtis_N = calculate_N_or_more_stations_livetime(gtis_for_all_relevant, N_val)
+                        lt_N_s, gtis_N = calculate_N_or_more_stations_livetime(gtis_for_all_relevant, N_val) #
                         label_N = f"At least {N_val} station{'s' if N_val > 1 else ''}"
                         if N_val == 1: label_N += " (Union)"
                         if N_val == max_N_possible and max_N_possible > 1: label_N = f"All {max_N_possible} stations concurrently"
-                        f_stat.write(f"    {label_N}: {format_duration(lt_N_s)}\n")
-                        # --- Timestrip Plots (Requirement 3) ---
-                        if N_val ==1 and lt_N_s > 0: # Plot for N>=1 (union) for each season
+                        f_stat.write(f"    {label_N}: {format_duration(lt_N_s)}\n") #
+                        
+                        if N_val ==1 and lt_N_s > 0: 
                             for year_plot in range(2013, 2020):
                                 season_s_dt = datetime.datetime(year_plot, 10, 1); season_e_dt = datetime.datetime(year_plot + 1, 4, 30, 23, 59, 59)
                                 plot_s_unix, plot_e_unix = season_s_dt.timestamp(), season_e_dt.timestamp()
                                 data_in_season_flag = any(any(max(g_s, plot_s_unix) < min(g_e, plot_e_unix) for g_s, g_e in g_list) for g_list in gtis_for_all_relevant.values())
                                 if not data_in_season_flag : continue
-                                plot_concurrent_station_summary_strips(gtis_for_all_relevant, plot_s_unix, plot_e_unix, plot_folder_base, f"{stage_label}_season_{year_plot}-{year_plot+1}", list(gtis_for_all_relevant.keys()), f"Season {year_plot}-{year_plot+1} - ")
+                                plot_concurrent_station_summary_strips(gtis_for_all_relevant, plot_s_unix, plot_e_unix, plot_folder_base, f"{stage_label}_season_{year_plot}-{year_plot+1}", list(gtis_for_all_relevant.keys()), f"Season {year_plot}-{year_plot+1} - ") #
                     f_stat.write("\n")
-
+        ic("Enhanced station summary report and timestrip plots (if any) generation complete.")
     ic("Script finished.")
