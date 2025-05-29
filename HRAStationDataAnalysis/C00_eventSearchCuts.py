@@ -163,15 +163,17 @@ def cluster_cut(times, traces, event_ids, amplitude_threshold, time_period, cut_
     traces = np.array(traces)
     event_ids = np.array(event_ids) # Ensure event_ids is also a numpy array
     n = len(times)
-
+    ic('1')
     if n == 0: 
         return np.array([], dtype=bool)
     if len(event_ids) != n:
         ic("Error: times and event_ids arrays must have the same length in cluster_cut.")
         # Fallback: return a mask that passes all events or handle error as appropriate
         return np.ones(n, dtype=bool) 
+    ic('1')
 
     mask = np.ones(n, dtype=bool)
+    ic('1')
 
     # Determine which events have high amplitude
     if traces.ndim == 3 and traces.shape[1:3] == (4,256) : # Expected (N,4,256)
@@ -181,6 +183,7 @@ def cluster_cut(times, traces, event_ids, amplitude_threshold, time_period, cut_
     else: 
         ic(f"Warning: Unexpected traces shape {traces.shape} in cluster_cut. Assuming no high_amplitude_events.")
         high_amplitude_events = np.zeros(n, dtype=bool)
+    ic('1')
 
     # Determine which high-amplitude events are "primary triggers" (not repeats of immediate predecessor)
     # An event is a primary trigger if it's high amplitude AND it's the first event,
@@ -196,6 +199,7 @@ def cluster_cut(times, traces, event_ids, amplitude_threshold, time_period, cut_
                     if not (times[i] == times[i-1] and event_ids[i] == event_ids[i-1]):
                         is_primary_trigger_event[i] = True
                     # Else, it's a repeat of the immediate previous (Time, EventID), so is_primary_trigger_event[i] remains False
+    ic('1')
 
     start_idx = 0 
     current_primary_trigger_count_in_window = 0
@@ -221,6 +225,7 @@ def cluster_cut(times, traces, event_ids, amplitude_threshold, time_period, cut_
         # in this window for removal.
         if current_primary_trigger_count_in_window >= cut_frequency:
             mask[start_idx : end_idx+1] = False # Mask events from current window start to current window end
+    ic('1')
             
     return mask
 
