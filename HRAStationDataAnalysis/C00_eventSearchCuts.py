@@ -85,35 +85,115 @@ def intersect_gti_lists(gti_list1, gti_list2):
 
 # --- Livetime and Overlap Calculation Functions (from previous response) ---
 def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None, end_bound=None):
-    # ... (implementation from previous response remains the same) ...
-    if not isinstance(times_survived_input, np.ndarray): times_survived_input = np.array(times_survived_input)
-    if len(times_survived_input) == 0: return 0.0, []
+    # Ensure input is a NumPy array
+    if not isinstance(times_survived_input, np.ndarray):
+        times_survived_input = np.array(times_survived_input)
+
+    # Initial check for empty input before sorting
+    if len(times_survived_input) == 0:
+        ic("Input 'times_survived_input' is empty, returning 0.0 livetime.")
+        return 0.0, []
+
+    # Sort the timestamps; crucial for delta calculations
     times_survived_input.sort()
-    times_survived = times_survived_input
+    ic(f"Original input event count: {len(times_survived_input)}")
+
+    # Apply overall start and end bounds to the timestamps
+    times_survived = times_survived_input # Start with all sorted times
     if start_bound is not None or end_bound is not None:
-        temp_times = times_survived_input
-        if start_bound is not None: temp_times = temp_times[temp_times >= start_bound]
-        if end_bound is not None: temp_times = temp_times[temp_times <= end_bound]
+        ic(f"Applying bounds: Start={start_bound}, End={end_bound}")
+        temp_times = times_survived_input # Use the already sorted array
+        if start_bound is not None:
+            temp_times = temp_times[temp_times >= start_bound]
+        if end_bound is not None:
+            temp_times = temp_times[temp_times <= end_bound] # Corrected to <=
         times_survived = temp_times
-    n = len(times_survived); raw_active_periods = []
-    if n == 0: return 0.0, []
+        ic(f"Event count after applying bounds: {len(times_survived)}")
+
+    n = len(times_survived)
+    raw_active_periods = [] # This list will store [start, end] time intervals
+
+    # If no events remain after bounding, return 0 livetime
+    if n == 0:
+        ic("No events after applying bounds, returning 0.0 livetime.")
+        return 0.0, []
+
+    # --- Logic for defining raw active periods based on events ---
+
+    # Case 1: Only a single event remains
     if n == 1:
-        t_event = times_survived[0]; duration_singular = 0.5 * threshold_seconds
-        raw_active_periods.append([t_event - duration_singular / 2.0, t_event + duration_singular / 2.0])
-    else:
-        for i in range(n - 1):
-            t_current, t_next = times_survived[i], times_survived[i+1]
-            if (t_next - t_current) < threshold_seconds: raw_active_periods.append([t_current, t_next])
+        t_event = times_survived[0]
+        duration_singular_contribution = 0.5 * threshold_seconds
+        # The active period for a single event is centered around it, with total duration of 'duration_singular_contribution'
+        period_start = t_event - duration_singular_contribution / 2.0
+        period_end = t_event + duration_singular_contribution / 2.0
+        raw_active_periods.append([period_start, period_end])
+        ic(f"Single event at {t_event:.2f}. Added singular period: [{period_start:.2f}, {period_end:.2f}] based on 0.5 * threshold ({duration_singular_contribution:.2f}s)")
+    
+    else: # n > 1 (multiple events)
+        # Part A: Define active periods from closely connected events (delta_t < threshold)
+        # These periods are [t_current, t_next]
+        ic("Processing connected segments (n > 1):")
+        for i in range(n - 1): # Iterate through pairs of consecutive events
+            t_current = times_survived[i]
+            t_next = times_survived[i+1]
+            delta_t = t_next - t_current
+            
+            if delta_t < threshold_seconds:
+                raw_active_periods.append([t_current, t_next])
+                ic(f"  Connected: Event {i} ({t_current:.2f}) and Event {i+1} ({t_next:.2f}), delta_t={delta_t:.2f}s. Added raw period: [{t_current:.2f}, {t_next:.2f}]")
+            else:
+                ic(f"  NOT Connected: Event {i} ({t_current:.2f}) and Event {i+1} ({t_next:.2f}), delta_t={delta_t:.2f}s (>= threshold {threshold_seconds:.2f}s)")
+
+        # Part B: Add contribution for "singular" events.
+        # A singular event is one NOT connected to its immediate neighbors by a short delta_t.
+        # This means its delta_t to the previous (if exists) is >= threshold, AND
+        # its delta_t to the next (if exists) is >= threshold.
+        ic("Processing singular event contributions (n > 1):")
         for i in range(n):
-            t_event = times_survived[i]; is_first, is_last = (i == 0), (i == n - 1)
-            conn_prev = not is_first and (t_event - times_survived[i-1]) < threshold_seconds
-            conn_next = not is_last and (times_survived[i+1] - t_event) < threshold_seconds
-            if not conn_prev and not conn_next:
-                duration_singular = 0.5 * threshold_seconds
-                raw_active_periods.append([t_event - duration_singular / 2.0, t_event + duration_singular / 2.0])
-    if not raw_active_periods: return 0.0, []
+            t_event = times_survived[i]
+            
+            is_first_event_in_list = (i == 0)
+            is_last_event_in_list = (i == n - 1)
+            
+            # Check connection to the PREVIOUS event
+            # True if it's the first event OR the delta to the previous event is large
+            prev_delta_is_large_or_first = is_first_event_in_list or \
+                                     (times_survived[i] - times_survived[i-1] >= threshold_seconds)
+            
+            # Check connection to the NEXT event
+            # True if it's the last event OR the delta to the next event is large
+            next_delta_is_large_or_last = is_last_event_in_list or \
+                                    (times_survived[i+1] - times_survived[i] >= threshold_seconds)
+            
+            if prev_delta_is_large_or_first and next_delta_is_large_or_last:
+                # This event is considered "singular" or an "isolated segment start/end"
+                duration_singular_contribution = 0.5 * threshold_seconds
+                period_start = t_event - duration_singular_contribution / 2.0
+                period_end = t_event + duration_singular_contribution / 2.0
+                raw_active_periods.append([period_start, period_end])
+                ic(f"  Singular contribution for event {i} ({t_event:.2f}). Added raw period: [{period_start:.2f}, {period_end:.2f}] (duration: {duration_singular_contribution:.2f}s)")
+            # else:
+                # ic(f"  Event {i} ({t_event:.2f}) is part of a connected segment, no separate singular contribution.")
+                # This else branch isn't strictly needed if the goal is just to add singular periods,
+                # as connected segments are already handled by delta_t sums implicitly via merging [t_current, t_next] periods.
+
+    # If after all logic, no raw active periods were defined (e.g., n > 1 but all deltas were >= threshold AND no singular contributions were made, which is unlikely with the current singular logic)
+    if not raw_active_periods:
+        ic("No raw active periods were defined after processing all events, returning 0.0 livetime.")
+        return 0.0, []
+    
+    ic("Raw active periods before merging:", raw_active_periods)
+
+    # Merge any overlapping or touching periods from the raw_active_periods list
+    # The merge_gti_list function is assumed to be correct and sorts by start time.
     merged_periods = merge_gti_list(raw_active_periods)
+    ic("Merged active periods:", merged_periods)
+    
+    # Calculate total livetime by summing the durations of the merged periods
     total_livetime_seconds = sum(end - start for start, end in merged_periods)
+    ic(f"Total calculated livetime: {total_livetime_seconds:.2f} seconds ({format_duration_short(total_livetime_seconds)})") # Using your short formatter
+    
     return total_livetime_seconds, merged_periods
 
 
@@ -320,7 +400,7 @@ def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".", cuts_to_
                 times_for_series_cut = times_unix_valid[seasonal_unix_mask & cut_mask_for_series[valid_times_mask]]
                 if len(times_for_series_cut) > 0:
                     count_cut, _ = np.histogram(times_for_series_cut, bins=bins); rate_cut = count_cut / bin_size_seconds
-                    plt.plot(dt_bin_centers, rate_cut, linestyle='-', marker=next(markers), markersize=3, label=f'{legend_label_base} Rate')
+                    plt.scatter(dt_bin_centers, rate_cut, s=3, marker=next(markers), label=f'{legend_label_base} Rate')
         plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y')); plt.gcf().autofmt_xdate(); plt.legend(fontsize=8); plt.yscale('log')
         min_rate = np.min(rate_all[rate_all > 0]) if np.any(rate_all > 0) else 1e-5
         plt.ylim(max(1e-5, min_rate / 2) , 10); plt.grid(True, linestyle=':', alpha=0.7); plt.tight_layout()
