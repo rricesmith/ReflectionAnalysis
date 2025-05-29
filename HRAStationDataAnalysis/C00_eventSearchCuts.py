@@ -154,40 +154,28 @@ def calculate_N_or_more_stations_livetime(all_station_gti_lists, N_min_stations,
     return total_N_overlap_seconds, merged_N_overlap_gtis
 
 # --- Cut Functions (Modified cluster_cut) ---
-def cluster_cut(times, traces, event_ids, amplitude_threshold, time_period, cut_frequency):
+def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold, time_period, cut_frequency):
     """
-    Creates a mask to remove events that occur in bursts, considering unique (Time, EventID) pairs
-    for triggering the cut frequency.
+    Creates a mask to remove events that occur in bursts, using pre-calculated max amplitudes.
+    Considers unique (Time, EventID) pairs for triggering the cut frequency.
     """
     times = np.array(times)
-    traces = np.array(traces)
-    event_ids = np.array(event_ids) # Ensure event_ids is also a numpy array
+    # max_amplitudes_per_event is now a 1D array of max |amplitude| for each event
+    max_amplitudes = np.array(max_amplitudes_per_event)
+    event_ids = np.array(event_ids)
     n = len(times)
-    ic('1')
-    if n == 0: 
+
+    if n == 0:
         return np.array([], dtype=bool)
-    if len(event_ids) != n:
-        ic("Error: times and event_ids arrays must have the same length in cluster_cut.")
-        # Fallback: return a mask that passes all events or handle error as appropriate
-        return np.ones(n, dtype=bool) 
-    ic('1')
+    if len(max_amplitudes) != n or len(event_ids) != n:
+        ic("Error: times, max_amplitudes, and event_ids arrays must have the same length in cluster_cut.")
+        return np.ones(n, dtype=bool) # Fails open or raise error
 
     mask = np.ones(n, dtype=bool)
-    ic('1')
 
-    # Determine which events have high amplitude
-    if traces.ndim == 3 and traces.shape[1:3] == (4,256) : # Expected (N,4,256)
-        high_amplitude_events = np.any(np.abs(traces) > amplitude_threshold, axis=(1, 2))
-    elif traces.ndim == 1: # If traces is already a 1D max amplitude array
-        high_amplitude_events = np.abs(traces) > amplitude_threshold
-    else: 
-        ic(f"Warning: Unexpected traces shape {traces.shape} in cluster_cut. Assuming no high_amplitude_events.")
-        high_amplitude_events = np.zeros(n, dtype=bool)
-    ic('1')
+    # Determine which events have high amplitude using the pre-calculated max_amplitudes
+    high_amplitude_events = np.abs(max_amplitudes) > amplitude_threshold # np.abs might be redundant if already absolute
 
-    # Determine which high-amplitude events are "primary triggers" (not repeats of immediate predecessor)
-    # An event is a primary trigger if it's high amplitude AND it's the first event,
-    # OR its (Time, EventID) is different from the previous event's (Time, EventID).
     is_primary_trigger_event = np.zeros(n, dtype=bool)
     if n > 0:
         for i in range(n):
@@ -195,39 +183,30 @@ def cluster_cut(times, traces, event_ids, amplitude_threshold, time_period, cut_
                 if i == 0:
                     is_primary_trigger_event[i] = True
                 else:
-                    # Check if it's a repeat of the immediate previous event
                     if not (times[i] == times[i-1] and event_ids[i] == event_ids[i-1]):
                         is_primary_trigger_event[i] = True
-                    # Else, it's a repeat of the immediate previous (Time, EventID), so is_primary_trigger_event[i] remains False
-    ic('1')
-
-    start_idx = 0 
+    
+    start_idx = 0
     current_primary_trigger_count_in_window = 0
     time_period_seconds_val = time_period.total_seconds()
 
     for end_idx in range(n):
-        # Add the event at 'end_idx' to the current window count IF it's a primary trigger
         if is_primary_trigger_event[end_idx]:
             current_primary_trigger_count_in_window += 1
         
-        # Shrink the window from the 'start_idx'
         while (times[end_idx] - times[start_idx]) >= time_period_seconds_val:
-            if is_primary_trigger_event[start_idx]: # Decrement count if a primary trigger is leaving window
+            if is_primary_trigger_event[start_idx]:
                 current_primary_trigger_count_in_window -= 1
             start_idx += 1
-            if start_idx > end_idx: # Safety break, window is now empty or invalid
-                 # Reset count if window becomes empty this way, though ideally start_idx <= end_idx
+            if start_idx > end_idx:
                 if start_idx > end_idx : current_primary_trigger_count_in_window = 0
-                break 
+                break
         
-        # If the current count of *primary trigger* events in the window [start_idx, end_idx]
-        # is greater than or equal to the cut frequency, mark ALL events (including repeats)
-        # in this window for removal.
         if current_primary_trigger_count_in_window >= cut_frequency:
-            mask[start_idx : end_idx+1] = False # Mask events from current window start to current window end
-    ic('1')
+            mask[start_idx : end_idx+1] = False
             
     return mask
+
 
 # ... (L1_cut, approximate_bad_times, format_duration, calculate_livetime, GTI functions, plotting functions remain the same) ...
 def L1_cut(traces, power_cut=0.3):
@@ -246,37 +225,75 @@ def L1_cut(traces, power_cut=0.3):
 # approximate_bad_times can be included if used.
 
 # --- Plotting Functions (plot_cuts_amplitudes, plot_cuts_rates, plot_concurrent_station_summary_strips - from previous response) ---
-def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".", livetime_threshold_seconds=3600.0, cuts_to_plot_dict=None):
-    # ... (implementation from previous response) ...
-    if not os.path.exists(output_dir): os.makedirs(output_dir)
+def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
+                         livetime_threshold_seconds=3600.0,
+                         cuts_to_plot_dict=None, is_max_amp_data=False): # New flag
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        
     dt_times = np.array([datetime.datetime.fromtimestamp(t) if t > 0 else datetime.datetime(1970,1,1) for t in times_unix])
-    if values_data.ndim == 3 and values_data.shape[1:3] == (4, 256): max_amps = np.max(np.abs(values_data), axis=(1, 2))
-    elif values_data.ndim == 1 and len(values_data) == len(times_unix): max_amps = np.array(values_data)
-    else: return
-    valid_data_mask = np.isfinite(times_unix) & np.isfinite(max_amps)
-    for start_year in range(2013, 2020):
+    
+    max_amps_to_plot = None
+    if is_max_amp_data: # values_data is already the 1D max amplitude array
+        if values_data.ndim == 1 and len(values_data) == len(times_unix):
+            max_amps_to_plot = np.array(values_data)
+        else:
+            ic(f"Warning: 'values_data' provided as max_amp_data has unexpected shape {values_data.shape} for {amp_name}. Expected 1D array of length {len(times_unix)}.")
+            return
+    elif values_data.ndim == 3 and values_data.shape[1:3] == (4, 256): # Full traces
+        max_amps_to_plot = np.max(np.abs(values_data), axis=(1, 2))
+    elif values_data.ndim == 1 and len(values_data) == len(times_unix): # Other 1D data like Chi
+        max_amps_to_plot = np.array(values_data) # Plot as is
+    else:
+        ic(f"Warning: Unexpected 'values_data' shape {values_data.shape} in plot_cuts_amplitudes for {amp_name}. Skipping plot.")
+        return
+
+    valid_data_mask = np.isfinite(times_unix) & np.isfinite(max_amps_to_plot)
+    
+    for start_year in range(2013, 2020): # Assuming this range is still relevant
         markers = itertools.cycle(("v", "s", "*", "d", "P", "X"))
         season_start_dt = datetime.datetime(start_year, 10, 1); season_end_dt = datetime.datetime(start_year + 1, 4, 30, 23, 59, 59)
         season_start_unix, season_end_unix = season_start_dt.timestamp(), season_end_dt.timestamp()
         seasonal_dt_mask = (dt_times >= season_start_dt) & (dt_times <= season_end_dt)
         base_seasonal_mask_for_plot = seasonal_dt_mask & valid_data_mask
         if not np.any(base_seasonal_mask_for_plot): continue
+
         plt.figure(figsize=(12,7)); plt.title(f"Season {start_year}-{start_year + 1} Activity - {amp_name}"); plt.xlabel("Time"); plt.ylabel(amp_name)
+        
+        # For "All Events" label in plot, calculate livetime based on the initially passed times_unix
+        # (which should be after global time filters but before specific cuts_to_plot_dict are applied)
         lt_all_s, _ = calculate_livetime(times_unix, livetime_threshold_seconds, season_start_unix, season_end_unix)
         label_all_events = f"All Events (station data) (Livetime: {format_duration_short(lt_all_s)})"
-        plt.scatter(dt_times[base_seasonal_mask_for_plot], max_amps[base_seasonal_mask_for_plot], color="lightgray", s=10, label=label_all_events, alpha=0.7, edgecolor='k', linewidths=0.5)
+        plt.scatter(dt_times[base_seasonal_mask_for_plot], max_amps_to_plot[base_seasonal_mask_for_plot], 
+                    color="lightgray", s=10, label=label_all_events, alpha=0.7, edgecolor='k', linewidths=0.5)
+        
         if cuts_to_plot_dict:
             for legend_label_base, cut_mask_for_series in cuts_to_plot_dict.items():
                 if not (isinstance(cut_mask_for_series, np.ndarray) and cut_mask_for_series.dtype == bool and len(cut_mask_for_series) == len(times_unix)): continue
                 final_series_mask = base_seasonal_mask_for_plot & cut_mask_for_series 
                 if np.any(final_series_mask):
-                    times_for_cut_seasonal = times_unix[cut_mask_for_series] 
-                    lt_s, _ = calculate_livetime(times_for_cut_seasonal, livetime_threshold_seconds, season_start_unix, season_end_unix)
+                    # For livetime calculation, use times that passed this specific cut_mask_for_series
+                    times_for_livetime_calc = times_unix[cut_mask_for_series] 
+                    lt_s, _ = calculate_livetime(times_for_livetime_calc, livetime_threshold_seconds, season_start_unix, season_end_unix)
                     plot_label = f"{legend_label_base} (Livetime: {format_duration_short(lt_s)})"
-                    plt.scatter(dt_times[final_series_mask], max_amps[final_series_mask], s=15, label=plot_label, marker=next(markers), alpha=0.8)
-        if np.nanmin(max_amps[base_seasonal_mask_for_plot]) >= 0 and np.nanmax(max_amps[base_seasonal_mask_for_plot]) <=1.0 and "Chi" in amp_name : plt.ylim(0, 1.05)
+                    plt.scatter(dt_times[final_series_mask], max_amps_to_plot[final_series_mask], 
+                                s=15, label=plot_label, marker=next(markers), alpha=0.8)
+        
+        # Adjust y-limits based on data type
+        if "Chi" in amp_name and np.any(np.isfinite(max_amps_to_plot[base_seasonal_mask_for_plot])) :
+             plt.ylim(0, 1.05)
+        elif is_max_amp_data and np.any(np.isfinite(max_amps_to_plot[base_seasonal_mask_for_plot])): # Max Amplitude plot
+             min_val = np.nanmin(max_amps_to_plot[base_seasonal_mask_for_plot])
+             max_val = np.nanmax(max_amps_to_plot[base_seasonal_mask_for_plot])
+             if min_val == max_val : min_val -=0.01; max_val +=0.01 # ensure some range
+             if max_val < 0.5 : plt.ylim(0, max(0.5, max_val * 1.1)) # Sensible scale for amplitudes
+             elif max_val < 1.0 : plt.ylim(0, max(1.0, max_val * 1.1))
+             else : plt.ylim(0, max_val * 1.1)
+
+
         plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y')); plt.gcf().autofmt_xdate(); plt.legend(fontsize=8); plt.grid(True, linestyle=':', alpha=0.7); plt.tight_layout()
         filename = os.path.join(output_dir, f"{amp_name.replace(' ', '_')}_season_{start_year}_{start_year+1}.png"); plt.savefig(filename); plt.close(); ic(f"Saved: {filename}")
+
 
 def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".", cuts_to_plot_dict=None):
     # ... (implementation from previous response) ...
@@ -391,164 +408,221 @@ if __name__ == "__main__":
     if args.stnID is not None:
         # --- SINGLE-STATION PROCESSING MODE ---
         current_station_id = args.stnID
-        ic("\n\n" + "*"*20)
-        ic(f"MODE: Single-Station Processing for Station {current_station_id}, Date Ref: {date_filter}")
-        ic("*"*20)
-
-        plot_folder_station = os.path.join(plot_folder_base, f'Station{current_station_id}')
-        os.makedirs(plot_folder_station, exist_ok=True)
-        station_livetime_output_dir = os.path.join(plot_folder_station, "livetime_data")
-        os.makedirs(station_livetime_output_dir, exist_ok=True)
+        # ... (setup paths and initial ic messages) ...
+        ic("\n\n" + "*"*20); ic(f"MODE: Single-Station Processing for St {current_station_id}, Date: {date_filter}"); ic("*"*20)
+        plot_folder_station = os.path.join(plot_folder_base, f'Station{current_station_id}'); os.makedirs(plot_folder_station, exist_ok=True)
+        station_livetime_output_dir = os.path.join(plot_folder_station, "livetime_data"); os.makedirs(station_livetime_output_dir, exist_ok=True)
 
         try:
             time_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Times*')))
-            trace_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Traces*')))
+            trace_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Traces*'))) # Paths to trace parts
             eventid_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_EventIDs*')))
 
             if not time_files or not trace_files or not eventid_files:
-                raise FileNotFoundError(f"Time, Trace, or EventID files missing for Station {current_station_id} on {date_filter}")
+                raise FileNotFoundError(f"Core data files (Times, Traces, or EventIDs) missing for St {current_station_id}, Date {date_filter}")
 
             times_list = [np.load(f) for f in time_files]; times_raw = np.concatenate(times_list, axis=0).squeeze()
-            traces_list = [np.load(f) for f in trace_files]; traces_raw = np.concatenate(traces_list, axis=0)
             eventids_list = [np.load(f) for f in eventid_files]; eventids_raw = np.concatenate(eventids_list, axis=0).squeeze()
-
             if times_raw.ndim == 0: times_raw = np.array([times_raw.item()])
             if eventids_raw.ndim == 0: eventids_raw = np.array([eventids_raw.item()])
-            if traces_raw.ndim == 2 and traces_raw.shape[0] == 4 and traces_raw.shape[1] == 256 : traces_raw = traces_raw.reshape(1,4,256)
-            if traces_raw.ndim == 1 and traces_raw.size == 4*256: traces_raw = traces_raw.reshape(1,4,256)
+            
+            # --- Max Amplitudes & Traces Loading/Calculation ---
+            max_amplitudes_parts_collected = []
+            traces_parts_collected = [] # Still collect trace parts for L1/plotting
+
+            ic("Processing Traces and MaxAmplitudes (part by part if necessary)...")
+            for i, trace_file_path in enumerate(trace_files):
+                expected_max_amp_f_path = trace_file_path.replace("_Traces_", "_MaxAmplitudes_")
+                
+                current_trace_part = np.load(trace_file_path)
+                # Ensure current_trace_part has a leading dimension for N_events in part
+                if current_trace_part.ndim == 2 and current_trace_part.shape == (4,256): current_trace_part = current_trace_part.reshape(1,4,256)
+                elif current_trace_part.ndim == 1 and current_trace_part.size == 4*256: current_trace_part = current_trace_part.reshape(1,4,256)
+                elif current_trace_part.ndim != 3 or current_trace_part.shape[1:3] != (4,256): # Check if not (N,4,256)
+                    if current_trace_part.size == 0: # Empty part
+                         ic(f"Trace part {trace_file_path} is empty.")
+                         traces_parts_collected.append(np.array([]).reshape(0,4,256))
+                         max_amplitudes_parts_collected.append(np.array([]))
+                         if not os.path.exists(expected_max_amp_f_path): # Save empty if calc needed
+                            np.save(expected_max_amp_f_path, np.array([]))
+                         continue # Skip to next part
+                    else:
+                        ic(f"Warning: Trace part {trace_file_path} has unexpected shape {current_trace_part.shape}. Attempting reshape or skipping.")
+                        # Attempt to reshape based on total size, if fails, this part is problematic
+                        try:
+                            num_events_in_part_candidate = current_trace_part.size // (4*256)
+                            if current_trace_part.size % (4*256) == 0:
+                                current_trace_part = current_trace_part.reshape(num_events_in_part_candidate, 4, 256)
+                                ic(f"Reshaped trace part to {current_trace_part.shape}")
+                            else:
+                                raise ValueError("Cannot reshape to N,4,256")
+                        except ValueError as e:
+                            ic(f"Could not reshape trace part {trace_file_path}: {e}. Skipping this part for traces and max_amps.")
+                            traces_parts_collected.append(np.array([]).reshape(0,4,256)) # Add empty placeholder
+                            max_amplitudes_parts_collected.append(np.array([])) # Add empty placeholder
+                            continue
+
+
+                traces_parts_collected.append(current_trace_part)
+                
+                max_amp_part_data = None
+                if os.path.exists(expected_max_amp_f_path):
+                    try:
+                        loaded_max_amp_part = np.load(expected_max_amp_f_path)
+                        # Validate length against the number of events in the current trace part
+                        if loaded_max_amp_part.ndim == 1 and loaded_max_amp_part.shape[0] == current_trace_part.shape[0]:
+                            max_amp_part_data = loaded_max_amp_part
+                            # ic(f"Loaded valid MaxAmplitudes part: {expected_max_amp_f_path}")
+                        elif loaded_max_amp_part.ndim == 0 and current_trace_part.shape[0] == 1: # Scalar saved for single event part
+                            max_amp_part_data = np.array([loaded_max_amp_part.item()])
+                        elif current_trace_part.shape[0] == 0 and loaded_max_amp_part.size == 0: # both empty
+                            max_amp_part_data = np.array([])
+                        else:
+                            ic(f"MaxAmplitudes part {expected_max_amp_f_path} event count mismatch (Trace evts: {current_trace_part.shape[0]}, MaxAmp evts: {loaded_max_amp_part.shape}). Recalculating.")
+                    except Exception as e:
+                        ic(f"Error loading MaxAmplitudes part {expected_max_amp_f_path}: {e}. Recalculating.")
+                
+                if max_amp_part_data is None: # Calculate if missing or validation failed
+                    ic(f"Calculating MaxAmplitudes for part: {os.path.basename(trace_file_path)}")
+                    if current_trace_part.shape[0] == 0: # Empty trace part
+                        max_amp_part_data = np.array([])
+                    else: # Should be (N_in_part, 4, 256)
+                        max_amp_part_data = np.max(np.abs(current_trace_part), axis=(1, 2))
+                    
+                    np.save(expected_max_amp_f_path, max_amp_part_data)
+                    ic(f"Saved calculated MaxAmplitudes part: {expected_max_amp_f_path}")
+                max_amplitudes_parts_collected.append(max_amp_part_data)
+
+            # Concatenate all parts
+            traces_raw = np.concatenate(traces_parts_collected, axis=0) if traces_parts_collected and any(p.size > 0 for p in traces_parts_collected) else np.array([]).reshape(0,4,256)
+            max_amplitudes_raw = np.concatenate(max_amplitudes_parts_collected, axis=0) if max_amplitudes_parts_collected and any(p.size>0 for p in max_amplitudes_parts_collected) else np.array([])
+            
+            # Final reshape/squeeze for single total event cases if needed
+            if traces_raw.ndim == 2 and traces_raw.shape == (4,256) : traces_raw = traces_raw.reshape(1,4,256)
+            if max_amplitudes_raw.ndim == 0 and max_amplitudes_raw.size == 1: max_amplitudes_raw = np.array([max_amplitudes_raw.item()])
+
 
         except Exception as e:
-            ic(f"Error loading data for Station {current_station_id}: {e}. Aborting for this station.")
+            ic(f"Error during data loading/MaxAmplitude processing for St {current_station_id}: {e}")
             exit(1)
 
-        if times_raw.size == 0 or traces_raw.size == 0 or eventids_raw.size == 0 or \
-           not (times_raw.shape[0] == traces_raw.shape[0] == eventids_raw.shape[0]):
-            ic(f"Empty or mismatched data arrays for Station {current_station_id} after loading. Aborting.")
-            exit(1)
+        if times_raw.size == 0 or eventids_raw.size == 0 or max_amplitudes_raw.size == 0 or \
+           not (times_raw.shape[0] == eventids_raw.shape[0] == max_amplitudes_raw.shape[0]):
+            ic(f"Empty or mismatched data arrays for St {current_station_id} before trace check. T:{times_raw.shape}, E:{eventids_raw.shape}, MA:{max_amplitudes_raw.shape}")
+            # If traces_raw is also needed for L1 and is empty/mismatched, that's an issue too.
+            # For now, proceed if these core arrays for cluster_cut are okay.
+            if traces_raw.size > 0 and times_raw.shape[0] != traces_raw.shape[0] :
+                 ic(f"CRITICAL MISMATCH: Traces count {traces_raw.shape[0]} differs from Times/EventID/MaxAmp count {times_raw.shape[0]}. Aborting.")
+                 exit(1)
+            elif traces_raw.size == 0 and (times_raw.size > 0): # L1 cut and plotting will fail if traces_raw is empty but other data exists.
+                 ic(f"Warning: Traces data is empty while other parameters are not. L1 cut and trace plotting will be affected.")
 
+
+        # --- Initial Time Filtering (Applied to Times, EventIDs, MaxAmplitudes, and Traces) ---
+        # ... (initial_valid_mask calculated from times_raw as before) ...
         zerotime_mask = (times_raw != 0)
         min_datetime_threshold = datetime.datetime(2013, 1, 1).timestamp()
         pretime_mask = (times_raw >= min_datetime_threshold)
         initial_valid_mask = zerotime_mask & pretime_mask
 
         base_times_for_cuts = times_raw[initial_valid_mask]
-        base_traces_for_cuts = traces_raw[initial_valid_mask]
         base_event_ids_for_cuts = eventids_raw[initial_valid_mask]
+        base_max_amplitudes_for_cuts = max_amplitudes_raw[initial_valid_mask]
+        # Conditionally filter traces if they were loaded successfully
+        base_traces_for_cuts = traces_raw[initial_valid_mask] if traces_raw.size > 0 else np.array([]).reshape(0,4,256)
+
 
         if base_times_for_cuts.size == 0:
             ic(f"No data for Station {current_station_id} after initial time filters. Saving empty report and aborting.")
             _save_pickle_atomic({}, os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl"))
             exit(0)
-
-        ic(f"Data for cuts: Times {base_times_for_cuts.shape}, Traces {base_traces_for_cuts.shape}, EventIDs {base_event_ids_for_cuts.shape}")
-
-        # --- Apply Cuts with Incremental Saving ---
-        cut_file_path = os.path.join(cuts_data_folder, f'{date_filter}_Station{current_station_id}_Cuts.npy')
-        # This dictionary will hold all masks, loaded or computed.
-        # It will be saved after each new computation.
-        current_all_cut_masks = {} 
         
-        L1_mask_final, storm_mask_final, burst_mask_final = None, None, None # Initialize to None
+        ic(f"Data for cuts: Times {base_times_for_cuts.shape}, EventIDs {base_event_ids_for_cuts.shape}, MaxAmps {base_max_amplitudes_for_cuts.shape}, Traces {base_traces_for_cuts.shape}")
+
+        # --- Apply Cuts with Incremental Saving (L1 cut needs full traces) ---
+        cut_file_path = os.path.join(cuts_data_folder, f'{date_filter}_Station{current_station_id}_Cuts.npy')
+        current_all_cut_masks = {} 
+        L1_mask_final, storm_mask_final, burst_mask_final = None, None, None
 
         if os.path.exists(cut_file_path):
-            ic(f"Attempting to load existing cut masks from: {cut_file_path}")
+            # ... (loading logic for current_all_cut_masks as in previous response) ...
             try:
                 loaded_data = np.load(cut_file_path, allow_pickle=True).item()
-                if isinstance(loaded_data, dict):
-                    current_all_cut_masks = loaded_data # Start with what's in the file
-                else:
-                    ic("Warning: Cuts file did not contain a dictionary. Will recalculate all.")
-            except Exception as e:
-                ic(f"Error loading or parsing cuts file {cut_file_path}: {e}. Will recalculate all.")
+                if isinstance(loaded_data, dict): current_all_cut_masks = loaded_data
+            except: pass # Ignore errors, will recalc
         
-        # Check and assign L1_mask
         temp_L1 = current_all_cut_masks.get('L1_mask')
-        if temp_L1 is not None and isinstance(temp_L1, np.ndarray) and len(temp_L1) == len(base_times_for_cuts):
-            L1_mask_final = temp_L1
-            ic("Loaded valid L1_mask from file.")
-        else:
-            if temp_L1 is not None: ic("L1_mask from file is invalid. Will recalculate.")
-            L1_mask_final = None # Ensure it's None to trigger recalculation
-
-        # Check and assign storm_mask
+        if temp_L1 is not None and isinstance(temp_L1, np.ndarray) and len(temp_L1) == len(base_times_for_cuts): L1_mask_final = temp_L1; ic("Loaded L1_mask.")
+        else: L1_mask_final = None; # Invalidate
+        # ... (similar validation for storm_mask and burst_mask) ...
         temp_storm = current_all_cut_masks.get('storm_mask')
-        if temp_storm is not None and isinstance(temp_storm, np.ndarray) and len(temp_storm) == len(base_times_for_cuts):
-            storm_mask_final = temp_storm
-            ic("Loaded valid storm_mask from file.")
-        else:
-            if temp_storm is not None: ic("storm_mask from file is invalid. Will recalculate.")
-            storm_mask_final = None
-
-        # Check and assign burst_mask
+        if temp_storm is not None and isinstance(temp_storm, np.ndarray) and len(temp_storm) == len(base_times_for_cuts): storm_mask_final = temp_storm; ic("Loaded storm_mask.")
+        else: storm_mask_final = None; 
         temp_burst = current_all_cut_masks.get('burst_mask')
-        if temp_burst is not None and isinstance(temp_burst, np.ndarray) and len(temp_burst) == len(base_times_for_cuts):
-            burst_mask_final = temp_burst
-            ic("Loaded valid burst_mask from file.")
-        else:
-            if temp_burst is not None: ic("burst_mask from file is invalid. Will recalculate.")
-            burst_mask_final = None
-            
-        # Calculate L1_mask if not loaded/valid
+        if temp_burst is not None and isinstance(temp_burst, np.ndarray) and len(temp_burst) == len(base_times_for_cuts): burst_mask_final = temp_burst; ic("Loaded burst_mask.")
+        else: burst_mask_final = None; 
+
         if L1_mask_final is None:
-            ic(f"Calculating L1 cut for {len(base_times_for_cuts)} events...")
-            L1_mask_final = L1_cut(base_traces_for_cuts, power_cut=0.3) #
+            ic(f"Calculating L1 cut...")
+            if base_traces_for_cuts.size == 0:
+                ic("WARNING: No trace data available for L1 cut. Assuming all pass L1.")
+                L1_mask_final = np.ones_like(base_times_for_cuts, dtype=bool)
+            else:
+                L1_mask_final = L1_cut(base_traces_for_cuts, power_cut=0.3)
             current_all_cut_masks['L1_mask'] = L1_mask_final
-            ic(f"Saving L1_mask to: {cut_file_path}")
-            np.save(cut_file_path, current_all_cut_masks, allow_pickle=True)
+            np.save(cut_file_path, current_all_cut_masks, allow_pickle=True); ic("Saved L1_mask.")
         
-        # Calculate storm_mask if not loaded/valid
         if storm_mask_final is None:
-            ic(f"Calculating storm cut (Amp > 0.4V, Win: 1hr, Freq >= 2)...") # User had 0.4 in last C00
-            storm_mask_final = cluster_cut(base_times_for_cuts, base_traces_for_cuts, base_event_ids_for_cuts,
-                                           amplitude_threshold=0.4,
-                                           time_period=datetime.timedelta(seconds=3600),
-                                           cut_frequency=2) #
+            ic(f"Calculating storm cut...")
+            storm_mask_final = cluster_cut(base_times_for_cuts, base_max_amplitudes_for_cuts, base_event_ids_for_cuts, # USE MAX AMPS
+                                           amplitude_threshold=0.4, 
+                                           time_period=datetime.timedelta(seconds=3600), 
+                                           cut_frequency=2)
             current_all_cut_masks['storm_mask'] = storm_mask_final
-            ic(f"Saving storm_mask to: {cut_file_path}")
-            np.save(cut_file_path, current_all_cut_masks, allow_pickle=True)
+            np.save(cut_file_path, current_all_cut_masks, allow_pickle=True); ic("Saved storm_mask.")
 
-        # Calculate burst_mask if not loaded/valid
         if burst_mask_final is None:
-            ic(f"Calculating burst cut (Amp > 0.2V, Win: 60s, Freq >= 2)...")
-            burst_mask_final = cluster_cut(base_times_for_cuts, base_traces_for_cuts, base_event_ids_for_cuts,
-                                           amplitude_threshold=0.2,
-                                           time_period=datetime.timedelta(seconds=60),
-                                           cut_frequency=2) #
+            ic(f"Calculating burst cut...")
+            burst_mask_final = cluster_cut(base_times_for_cuts, base_max_amplitudes_for_cuts, base_event_ids_for_cuts, # USE MAX AMPS
+                                           amplitude_threshold=0.2, 
+                                           time_period=datetime.timedelta(seconds=60), 
+                                           cut_frequency=2)
             current_all_cut_masks['burst_mask'] = burst_mask_final
-            ic(f"Saving burst_mask to: {cut_file_path}")
-            np.save(cut_file_path, current_all_cut_masks, allow_pickle=True)
+            np.save(cut_file_path, current_all_cut_masks, allow_pickle=True); ic("Saved burst_mask.")
 
-        ic(f"Final Cut results for Station {current_station_id} (on {len(base_times_for_cuts)} events):")
-        ic(f"  L1_mask passed: {np.sum(L1_mask_final)} ({np.sum(L1_mask_final)/len(base_times_for_cuts)*100:.2f}%)")
-        ic(f"  storm_mask passed: {np.sum(storm_mask_final)} ({np.sum(storm_mask_final)/len(base_times_for_cuts)*100:.2f}%)")
-        ic(f"  burst_mask passed: {np.sum(burst_mask_final)} ({np.sum(burst_mask_final)/len(base_times_for_cuts)*100:.2f}%)")
-
+        # ... (Livetime calculation for this station and saving its .pkl: station_specific_report) ...
+        # ... (Plotting individual station plots: plot_cuts_amplitudes will now get base_max_amplitudes_for_cuts for "Max Amplitude" plot) ...
         station_specific_report = collections.OrderedDict()
         report_masks = {
             "Total (after initial time filters)": np.ones_like(base_times_for_cuts, dtype=bool),
             "After L1": L1_mask_final,
             "After L1 + Storm": L1_mask_final & storm_mask_final,
             "After L1 + Storm + Burst": L1_mask_final & storm_mask_final & burst_mask_final
-        } #
+        }
         for stage_label in REPORT_CUT_STAGES.keys():
             current_stage_mask = report_masks[stage_label]
             times_survived_stage = base_times_for_cuts[current_stage_mask]
             lt_s, active_periods = calculate_livetime(times_survived_stage, LIVETIME_THRESHOLD_SECONDS)
             station_specific_report[stage_label] = (lt_s, active_periods)
-            ic(f"Station {current_station_id}, {stage_label}: Livetime = {format_duration(lt_s)}")
-
         station_gti_file_to_save = os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl")
-        _save_pickle_atomic(station_specific_report, station_gti_file_to_save)
+        _save_pickle_atomic(station_specific_report, station_gti_file_to_save) # Using your atomic save for pkl
 
         cuts_dict_for_plotting = collections.OrderedDict([
             ("L1 cut", L1_mask_final),
             ("L1+Storm cut", L1_mask_final & storm_mask_final),
             ("L1+Storm+Burst cut", L1_mask_final & storm_mask_final & burst_mask_final),
-        ]) #
-        plot_cuts_amplitudes(base_times_for_cuts, base_traces_for_cuts, "Max Amplitude", plot_folder_station, LIVETIME_THRESHOLD_SECONDS, cuts_dict_for_plotting) #
-        plot_cuts_rates(base_times_for_cuts, output_dir=plot_folder_station, cuts_to_plot_dict=cuts_dict_for_plotting) #
+        ])
+        # Plot Max Amplitudes using pre-calculated ones
+        plot_cuts_amplitudes(base_times_for_cuts, base_max_amplitudes_for_cuts, "Max Amplitude", 
+                             plot_folder_station, LIVETIME_THRESHOLD_SECONDS, 
+                             cuts_dict_for_plotting, is_max_amp_data=True) # Pass flag
+        # Plot Chi values if available (these don't depend on traces directly here)
+        # ... (load ChiRCR, call plot_cuts_amplitudes with ChiRCR data and is_max_amp_data=False) ...
+        plot_cuts_rates(base_times_for_cuts, output_dir=plot_folder_station, cuts_to_plot_dict=cuts_dict_for_plotting)
+        
         ic(f"Single-station processing for Station {current_station_id} complete.")
         gc.collect()
+
 
     else:
         # --- OVERLAP ANALYSIS MODE ---
