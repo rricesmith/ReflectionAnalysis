@@ -21,4 +21,4 @@ if __name__ == "__main__":
     # Also run without a station ID to process time overlaps
 
     cmd = f'python HRAStationDataAnalysis/C00_eventSearchCuts.py --date {date}'
-    A00_SlurmUtil.makeAndRunJob(cmd, 'eventSearchCuts', runDirectory='run/ALL_eventSearchCuts', partition='standard', n_cpus=2)
+    A00_SlurmUtil.makeAndRunJob(cmd, 'ALL_eventSearchCuts', runDirectory='run/ALL_eventSearchCuts', partition='standard', n_cpus=2)
