@@ -45,12 +45,14 @@ def findCoincidenceDatetimes(date, cuts=True):
     for station_id in station_ids:
         # Load times
         file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_Times*'))
-        times = [np.load(f).squeeze() for f in file_list]
+        # times = [np.load(f).squeeze() for f in file_list]
+        times = [np.load(f) for f in file_list]
         times = np.concatenate(times, axis=0)
 
         # Load Event IDs
         event_id_files = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_EventIDs*'))
-        event_ids = [np.load(f).squeeze() for f in event_id_files]
+        # event_ids = [np.load(f).squeeze() for f in event_id_files]
+        event_ids = [np.load(f) for f in event_id_files]
         event_ids = np.concatenate(event_ids, axis=0)
 
         # Ensure times and event_ids have the same length
