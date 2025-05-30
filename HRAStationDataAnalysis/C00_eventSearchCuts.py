@@ -441,7 +441,7 @@ def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
             legend_handles.append(plt.Rectangle((0,0),1,1,fc="red", alpha=0.1, label="Final Cut Active Periods"))
 
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
-        ax.gcf().autofmt_xdate()
+        plt.gcf().autofmt_xdate()
         ax.legend(handles=legend_handles, fontsize=8, loc='upper left', bbox_to_anchor=(1.02, 1))
         ax.grid(True, linestyle=':', alpha=0.7)
         plt.tight_layout(rect=[0, 0, 0.82, 1])
@@ -540,7 +540,7 @@ def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".",
 
 
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
-        ax.gcf().autofmt_xdate()
+        plt.gcf().autofmt_xdate()
         ax.legend(handles=legend_handles, fontsize=8, loc='upper left', bbox_to_anchor=(1.02, 1))
         ax.grid(True, linestyle=':', alpha=0.7)
         plt.tight_layout(rect=[0, 0, 0.82, 1])
