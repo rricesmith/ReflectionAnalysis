@@ -12,6 +12,7 @@ import gc
 import collections # For OrderedDict and defaultdict
 import pickle
 import tempfile
+from matplotlib.lines import Line2D
 
 # --- Pickle Load/Save Helpers (from previous response, ensure these are defined) ---
 def _load_pickle(filepath):
@@ -59,16 +60,33 @@ def format_duration_short(total_seconds):
     if abs(minutes) >= 0.1: return f"{minutes:.1f}m"
     return f"{total_seconds:.1f}s"
 
-# --- GTI Manipulation Functions (from previous response) ---
-def merge_gti_list(gti_list):
-    if not gti_list: return []
-    gti_list.sort(key=lambda x: (x[0], x[1]))
-    merged = []; current_start, current_end = gti_list[0]
+# --- GTI Manipulation Functions (Updated merge_gti_list) ---
+def merge_gti_list(gti_list_input):
+    """Merges a list of [start, end] time intervals. Sorts and handles overlaps/touches."""
+    if not gti_list_input: 
+        return []
+    
+    # Create a copy to sort in place without modifying the original list if it's passed by reference elsewhere
+    gti_list = sorted(list(gti_list_input), key=lambda x: (x[0], x[1]))
+    
+    merged = []
+    if not gti_list: # Still possible if input was e.g. [None] which became []
+        return merged
+
+    current_start, current_end = gti_list[0]
+    
     for i in range(1, len(gti_list)):
         next_start, next_end = gti_list[i]
-        if next_start < current_end: current_end = max(current_end, next_end)
-        else: merged.append([current_start, current_end]); current_start, current_end = next_start, next_end
-    merged.append([current_start, current_end]); return merged
+        # Merge if the next period starts before or EXACTLY where the current one ends
+        if next_start <= current_end: 
+            current_end = max(current_end, next_end) # Extend the current period
+        else: 
+            # Gap found, finalize the current period and start a new one
+            merged.append([current_start, current_end])
+            current_start, current_end = next_start, next_end
+            
+    merged.append([current_start, current_end]) # Add the last processed or single period
+    return merged
 
 def intersect_gti_lists(gti_list1, gti_list2):
     if not gti_list1 or not gti_list2: return []
@@ -83,116 +101,110 @@ def intersect_gti_lists(gti_list1, gti_list2):
     return merge_gti_list(intersection)
 
 
-# --- Livetime and Overlap Calculation Functions (from previous response) ---
+# --- Livetime and Overlap Calculation Functions  ---
 def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None, end_bound=None):
-    # Ensure input is a NumPy array
+    """
+    Calculates approximate livetime and active periods from a list of event timestamps.
+    1. Filters by start/end bounds.
+    2. Removes duplicate timestamps.
+    3. Defines raw active periods:
+        - [t_current, t_next] if (t_next - t_current) < threshold.
+        - [t_event - 0.25*thresh, t_event + 0.25*thresh] for "singular" events.
+    4. Merges these raw periods to get final GTIs and total livetime.
+    """
+    ic. Kontext = f"calculate_livetime called with {len(times_survived_input) if hasattr(times_survived_input, '__len__') else 'N/A'} events"
+    
     if not isinstance(times_survived_input, np.ndarray):
         times_survived_input = np.array(times_survived_input)
 
-    # Initial check for empty input before sorting
     if len(times_survived_input) == 0:
-        ic("Input 'times_survived_input' is empty, returning 0.0 livetime.")
+        ic("Input 'times_survived_input' is empty. Livetime: 0.0s")
         return 0.0, []
 
-    # Sort the timestamps; crucial for delta calculations
-    times_survived_input.sort()
-    ic(f"Original input event count: {len(times_survived_input)}")
+    # Step 1: Remove duplicate timestamps FIRST, then sort.
+    # Sorting is implicit with np.unique for 1D arrays.
+    times_unique_sorted = np.unique(times_survived_input)
+    ic(f"Original event count: {len(times_survived_input)}, Unique timestamps: {len(times_unique_sorted)}")
 
-    # Apply overall start and end bounds to the timestamps
-    times_survived = times_survived_input # Start with all sorted times
+    # Step 2: Apply overall start and end bounds
+    times_survived = times_unique_sorted
     if start_bound is not None or end_bound is not None:
-        ic(f"Applying bounds: Start={start_bound}, End={end_bound}")
-        temp_times = times_survived_input # Use the already sorted array
+        # ic(f"Applying bounds: Start={start_bound}, End={end_bound}") # Optional debug
         if start_bound is not None:
-            temp_times = temp_times[temp_times >= start_bound]
+            times_survived = times_survived[times_survived >= start_bound]
         if end_bound is not None:
-            temp_times = temp_times[temp_times <= end_bound] # Corrected to <=
-        times_survived = temp_times
-        ic(f"Event count after applying bounds: {len(times_survived)}")
+            times_survived = times_survived[times_survived <= end_bound]
+        ic(f"Event count after bounding: {len(times_survived)}")
 
     n = len(times_survived)
-    raw_active_periods = [] # This list will store [start, end] time intervals
+    raw_active_periods = [] 
 
-    # If no events remain after bounding, return 0 livetime
     if n == 0:
-        ic("No events after applying bounds, returning 0.0 livetime.")
+        ic("No events after unique filtering & bounding. Livetime: 0.0s")
         return 0.0, []
 
-    # --- Logic for defining raw active periods based on events ---
-
-    # Case 1: Only a single event remains
+    # Step 3a: Handle single unique event case
     if n == 1:
         t_event = times_survived[0]
-        duration_singular_contribution = 0.5 * threshold_seconds
-        # The active period for a single event is centered around it, with total duration of 'duration_singular_contribution'
-        period_start = t_event - duration_singular_contribution / 2.0
-        period_end = t_event + duration_singular_contribution / 2.0
+        duration_singular = 0.5 * threshold_seconds
+        period_start = t_event - duration_singular / 2.0
+        period_end = t_event + duration_singular / 2.0
         raw_active_periods.append([period_start, period_end])
-        ic(f"Single event at {t_event:.2f}. Added singular period: [{period_start:.2f}, {period_end:.2f}] based on 0.5 * threshold ({duration_singular_contribution:.2f}s)")
+        ic(f"Single unique event at {t_event:.2f}. Added singular period [{period_start:.2f}, {period_end:.2f}] (duration {duration_singular:.2f}s)")
     
-    else: # n > 1 (multiple events)
-        # Part A: Define active periods from closely connected events (delta_t < threshold)
-        # These periods are [t_current, t_next]
-        ic("Processing connected segments (n > 1):")
-        for i in range(n - 1): # Iterate through pairs of consecutive events
+    # Step 3b: Handle multiple unique events
+    else: # n > 1
+        # Part A: Define active periods from closely connected events [t_i, t_{i+1}]
+        # ic("Processing connected segments (n > 1):") # Optional debug
+        for i in range(n - 1): 
             t_current = times_survived[i]
             t_next = times_survived[i+1]
             delta_t = t_next - t_current
             
             if delta_t < threshold_seconds:
                 raw_active_periods.append([t_current, t_next])
-                ic(f"  Connected: Event {i} ({t_current:.2f}) and Event {i+1} ({t_next:.2f}), delta_t={delta_t:.2f}s. Added raw period: [{t_current:.2f}, {t_next:.2f}]")
-            else:
-                ic(f"  NOT Connected: Event {i} ({t_current:.2f}) and Event {i+1} ({t_next:.2f}), delta_t={delta_t:.2f}s (>= threshold {threshold_seconds:.2f}s)")
+                # ic(f"  Connected: Ev {i} ({t_current:.2f}) to Ev {i+1} ({t_next:.2f}), dt={delta_t:.2f}s. Raw period: [{t_current:.2f}, {t_next:.2f}]")
+            # else:
+                # ic(f"  NOT Connected: Ev {i} ({t_current:.2f}) to Ev {i+1} ({t_next:.2f}), dt={delta_t:.2f}s")
 
-        # Part B: Add contribution for "singular" events.
-        # A singular event is one NOT connected to its immediate neighbors by a short delta_t.
-        # This means its delta_t to the previous (if exists) is >= threshold, AND
-        # its delta_t to the next (if exists) is >= threshold.
-        ic("Processing singular event contributions (n > 1):")
+        # Part B: Add contribution for "singular" events
+        # An event is singular if it's not "connected" (delta_t < threshold) to EITHER neighbor.
+        # ic("Processing singular event contributions (n > 1):") # Optional debug
         for i in range(n):
             t_event = times_survived[i]
             
-            is_first_event_in_list = (i == 0)
-            is_last_event_in_list = (i == n - 1)
+            # Check if connected to previous (if previous exists)
+            connected_to_prev = False
+            if i > 0: # If not the first event
+                if (t_event - times_survived[i-1]) < threshold_seconds:
+                    connected_to_prev = True
             
-            # Check connection to the PREVIOUS event
-            # True if it's the first event OR the delta to the previous event is large
-            prev_delta_is_large_or_first = is_first_event_in_list or \
-                                     (times_survived[i] - times_survived[i-1] >= threshold_seconds)
+            # Check if connected to next (if next exists)
+            connected_to_next = False
+            if i < n - 1: # If not the last event
+                if (times_survived[i+1] - t_event) < threshold_seconds:
+                    connected_to_next = True
             
-            # Check connection to the NEXT event
-            # True if it's the last event OR the delta to the next event is large
-            next_delta_is_large_or_last = is_last_event_in_list or \
-                                    (times_survived[i+1] - times_survived[i] >= threshold_seconds)
-            
-            if prev_delta_is_large_or_first and next_delta_is_large_or_last:
-                # This event is considered "singular" or an "isolated segment start/end"
-                duration_singular_contribution = 0.5 * threshold_seconds
-                period_start = t_event - duration_singular_contribution / 2.0
-                period_end = t_event + duration_singular_contribution / 2.0
+            # If NOT connected to previous AND NOT connected to next, it's singular
+            if not connected_to_prev and not connected_to_next:
+                duration_singular = 0.5 * threshold_seconds
+                period_start = t_event - duration_singular / 2.0
+                period_end = t_event + duration_singular / 2.0
                 raw_active_periods.append([period_start, period_end])
-                ic(f"  Singular contribution for event {i} ({t_event:.2f}). Added raw period: [{period_start:.2f}, {period_end:.2f}] (duration: {duration_singular_contribution:.2f}s)")
-            # else:
-                # ic(f"  Event {i} ({t_event:.2f}) is part of a connected segment, no separate singular contribution.")
-                # This else branch isn't strictly needed if the goal is just to add singular periods,
-                # as connected segments are already handled by delta_t sums implicitly via merging [t_current, t_next] periods.
+                # ic(f"  Singular contribution for event {i} ({t_event:.2f}). Raw period: [{period_start:.2f}, {period_end:.2f}] (duration {duration_singular:.2f}s)")
 
-    # If after all logic, no raw active periods were defined (e.g., n > 1 but all deltas were >= threshold AND no singular contributions were made, which is unlikely with the current singular logic)
     if not raw_active_periods:
-        ic("No raw active periods were defined after processing all events, returning 0.0 livetime.")
+        ic("No raw active periods defined (e.g., n>1 but all deltas >= threshold and no singulars). Livetime: 0.0s")
         return 0.0, []
     
-    ic("Raw active periods before merging:", raw_active_periods)
+    # ic("Raw active periods before merging:", raw_active_periods) # Potentially very long output
 
-    # Merge any overlapping or touching periods from the raw_active_periods list
-    # The merge_gti_list function is assumed to be correct and sorts by start time.
-    merged_periods = merge_gti_list(raw_active_periods)
-    ic("Merged active periods:", merged_periods)
-    
-    # Calculate total livetime by summing the durations of the merged periods
+    # Step 4: Merge raw periods and calculate total livetime
+    merged_periods = merge_gti_list(raw_active_periods) # Uses updated merge_gti_list
+    # ic("Merged active periods:", merged_periods) # Can also be long
+
     total_livetime_seconds = sum(end - start for start, end in merged_periods)
-    ic(f"Total calculated livetime: {total_livetime_seconds:.2f} seconds ({format_duration_short(total_livetime_seconds)})") # Using your short formatter
+    ic(f"Final Livetime: {total_livetime_seconds:.2f}s ({format_duration_short(total_livetime_seconds)}). Num merged periods: {len(merged_periods)}")
     
     return total_livetime_seconds, merged_periods
 
@@ -307,104 +319,234 @@ def L1_cut(traces, power_cut=0.3):
 # --- Plotting Functions (plot_cuts_amplitudes, plot_cuts_rates, plot_concurrent_station_summary_strips - from previous response) ---
 def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
                          livetime_threshold_seconds=3600.0,
-                         cuts_to_plot_dict=None, is_max_amp_data=False): # New flag
+                         cuts_to_plot_dict=None, is_max_amp_data=False,
+                         final_cut_mask_for_gti_fill=None): # New argument
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         
-    dt_times = np.array([datetime.datetime.fromtimestamp(t) if t > 0 else datetime.datetime(1970,1,1) for t in times_unix])
+    dt_times_all_events = np.array([datetime.datetime.fromtimestamp(t) if t > 0 else datetime.datetime(1970,1,1) for t in times_unix])
     
     max_amps_to_plot = None
-    if is_max_amp_data: # values_data is already the 1D max amplitude array
-        if values_data.ndim == 1 and len(values_data) == len(times_unix):
-            max_amps_to_plot = np.array(values_data)
-        else:
-            ic(f"Warning: 'values_data' provided as max_amp_data has unexpected shape {values_data.shape} for {amp_name}. Expected 1D array of length {len(times_unix)}.")
-            return
-    elif values_data.ndim == 3 and values_data.shape[1:3] == (4, 256): # Full traces
-        max_amps_to_plot = np.max(np.abs(values_data), axis=(1, 2))
-    elif values_data.ndim == 1 and len(values_data) == len(times_unix): # Other 1D data like Chi
-        max_amps_to_plot = np.array(values_data) # Plot as is
-    else:
-        ic(f"Warning: Unexpected 'values_data' shape {values_data.shape} in plot_cuts_amplitudes for {amp_name}. Skipping plot.")
-        return
+    # ... (max_amps_to_plot calculation remains the same as your previous version) ...
+    if is_max_amp_data:
+        if values_data.ndim == 1 and len(values_data) == len(times_unix): max_amps_to_plot = np.array(values_data)
+        else: ic(f"Values_data (max_amp_data) shape {values_data.shape} mismatch."); return
+    elif values_data.ndim == 3 and values_data.shape[1:3] == (4, 256): max_amps_to_plot = np.max(np.abs(values_data), axis=(1, 2))
+    elif values_data.ndim == 1 and len(values_data) == len(times_unix): max_amps_to_plot = np.array(values_data)
+    else: ic(f"Unexpected 'values_data' shape {values_data.shape}."); return
 
-    valid_data_mask = np.isfinite(times_unix) & np.isfinite(max_amps_to_plot)
+    valid_data_mask_global = np.isfinite(times_unix) & np.isfinite(max_amps_to_plot)
     
-    for start_year in range(2013, 2020): # Assuming this range is still relevant
-        markers = itertools.cycle(("v", "s", "*", "d", "P", "X"))
-        season_start_dt = datetime.datetime(start_year, 10, 1); season_end_dt = datetime.datetime(start_year + 1, 4, 30, 23, 59, 59)
-        season_start_unix, season_end_unix = season_start_dt.timestamp(), season_end_dt.timestamp()
-        seasonal_dt_mask = (dt_times >= season_start_dt) & (dt_times <= season_end_dt)
-        base_seasonal_mask_for_plot = seasonal_dt_mask & valid_data_mask
-        if not np.any(base_seasonal_mask_for_plot): continue
-
-        plt.figure(figsize=(12,7)); plt.title(f"Season {start_year}-{start_year + 1} Activity - {amp_name}"); plt.xlabel("Time"); plt.ylabel(amp_name)
-        
-        # For "All Events" label in plot, calculate livetime based on the initially passed times_unix
-        # (which should be after global time filters but before specific cuts_to_plot_dict are applied)
-        lt_all_s, _ = calculate_livetime(times_unix, livetime_threshold_seconds, season_start_unix, season_end_unix)
-        label_all_events = f"All Events (station data) (Livetime: {format_duration_short(lt_all_s)})"
-        plt.scatter(dt_times[base_seasonal_mask_for_plot], max_amps_to_plot[base_seasonal_mask_for_plot], 
-                    color="lightgray", s=10, label=label_all_events, alpha=0.7, edgecolor='k', linewidths=0.5)
-        
-        if cuts_to_plot_dict:
-            for legend_label_base, cut_mask_for_series in cuts_to_plot_dict.items():
-                if not (isinstance(cut_mask_for_series, np.ndarray) and cut_mask_for_series.dtype == bool and len(cut_mask_for_series) == len(times_unix)): continue
-                final_series_mask = base_seasonal_mask_for_plot & cut_mask_for_series 
-                if np.any(final_series_mask):
-                    # For livetime calculation, use times that passed this specific cut_mask_for_series
-                    times_for_livetime_calc = times_unix[cut_mask_for_series] 
-                    lt_s, _ = calculate_livetime(times_for_livetime_calc, livetime_threshold_seconds, season_start_unix, season_end_unix)
-                    plot_label = f"{legend_label_base} (Livetime: {format_duration_short(lt_s)})"
-                    plt.scatter(dt_times[final_series_mask], max_amps_to_plot[final_series_mask], 
-                                s=15, label=plot_label, marker=next(markers), alpha=0.8)
-        
-        # Adjust y-limits based on data type
-        if "Chi" in amp_name and np.any(np.isfinite(max_amps_to_plot[base_seasonal_mask_for_plot])) :
-             plt.ylim(0, 1.05)
-        elif is_max_amp_data and np.any(np.isfinite(max_amps_to_plot[base_seasonal_mask_for_plot])): # Max Amplitude plot
-             min_val = np.nanmin(max_amps_to_plot[base_seasonal_mask_for_plot])
-             max_val = np.nanmax(max_amps_to_plot[base_seasonal_mask_for_plot])
-             if min_val == max_val : min_val -=0.01; max_val +=0.01 # ensure some range
-             if max_val < 0.5 : plt.ylim(0, max(0.5, max_val * 1.1)) # Sensible scale for amplitudes
-             elif max_val < 1.0 : plt.ylim(0, max(1.0, max_val * 1.1))
-             else : plt.ylim(0, max_val * 1.1)
-
-
-        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y')); plt.gcf().autofmt_xdate(); plt.legend(fontsize=8); plt.grid(True, linestyle=':', alpha=0.7); plt.tight_layout()
-        filename = os.path.join(output_dir, f"{amp_name.replace(' ', '_')}_season_{start_year}_{start_year+1}.png"); plt.savefig(filename); plt.close(); ic(f"Saved: {filename}")
-
-
-def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".", cuts_to_plot_dict=None):
-    # ... (implementation from previous response) ...
-    if not os.path.exists(output_dir): os.makedirs(output_dir)
-    valid_times_mask = np.isfinite(times_unix) & (times_unix > 0); times_unix_valid = times_unix[valid_times_mask]
-    if len(times_unix_valid) == 0: return
     for start_year in range(2013, 2020):
         markers = itertools.cycle(("v", "s", "*", "d", "P", "X"))
         season_start_dt = datetime.datetime(start_year, 10, 1); season_end_dt = datetime.datetime(start_year + 1, 4, 30, 23, 59, 59)
         season_start_unix, season_end_unix = season_start_dt.timestamp(), season_end_dt.timestamp()
-        seasonal_unix_mask = (times_unix_valid >= season_start_unix) & (times_unix_valid <= season_end_unix)
-        if not np.any(seasonal_unix_mask): continue
-        current_season_times_all = times_unix_valid[seasonal_unix_mask]
-        if len(current_season_times_all) == 0: continue
+        
+        seasonal_dt_mask_plotting = (dt_times_all_events >= season_start_dt) & (dt_times_all_events <= season_end_dt)
+        base_seasonal_mask_for_plot = seasonal_dt_mask_plotting & valid_data_mask_global
+
+        if not np.any(base_seasonal_mask_for_plot):
+            continue
+            
+        plt.figure(figsize=(14,7))
+        ax = plt.gca()
+        plt.title(f"Season {start_year}-{start_year + 1} Activity - {amp_name}")
+        plt.xlabel("Time"); plt.ylabel(amp_name)
+        
+        legend_handles = []
+
+        # --- Plot Final Livetime Periods (Background Fill) ---
+        active_periods_to_fill_final_cut = []
+        if final_cut_mask_for_gti_fill is not None and \
+           isinstance(final_cut_mask_for_gti_fill, np.ndarray) and \
+           len(final_cut_mask_for_gti_fill) == len(times_unix):
+            
+            times_for_final_gti_calc = times_unix[final_cut_mask_for_gti_fill] # Apply the most restrictive cut
+            _, active_periods_to_fill_final_cut = calculate_livetime(
+                times_for_final_gti_calc,
+                livetime_threshold_seconds,
+                season_start_unix,
+                season_end_unix
+            )
+        # This fill will be done after data points are plotted, to get y-axis range.
+        # Store the periods for now.
+
+        # --- Plot Data Points ---
+        # "All Events (station data)" points and its livetime in legend
+        lt_all_s, _ = calculate_livetime(times_unix, livetime_threshold_seconds, season_start_unix, season_end_unix)
+        label_all_events = f"All Events (station data) (Livetime: {format_duration_short(lt_all_s)})"
+        ax.scatter(dt_times_all_events[base_seasonal_mask_for_plot], 
+                   max_amps_to_plot[base_seasonal_mask_for_plot], 
+                   color="lightgray", s=10, label="_nolegend_", alpha=0.7, edgecolor='k', linewidths=0.5)
+        legend_handles.append(Line2D([0], [0], marker='o', color='w', markeredgecolor='k', markerfacecolor='lightgray', markersize=5, label=label_all_events))
+
+        data_y_values_for_ylim = []
+        if np.any(base_seasonal_mask_for_plot):
+            data_y_values_for_ylim.extend(max_amps_to_plot[base_seasonal_mask_for_plot])
+
+        # Plot for specific cuts
+        if cuts_to_plot_dict:
+            # Get the actual marker objects to use in legend, advance cycle manually
+            marker_instances = [next(markers) for _ in cuts_to_plot_dict] 
+            
+            for idx, (legend_label_base, cut_mask_for_series) in enumerate(cuts_to_plot_dict.items()):
+                if not (isinstance(cut_mask_for_series, np.ndarray) and cut_mask_for_series.dtype == bool and len(cut_mask_for_series) == len(times_unix)): continue
+                
+                final_series_mask_global = valid_data_mask_global & cut_mask_for_series
+                final_series_mask_plotting = base_seasonal_mask_for_plot & cut_mask_for_series
+                
+                current_marker = marker_instances[idx % len(marker_instances)] # Use pre-cycled marker
+
+                if np.any(final_series_mask_plotting):
+                    # Use a color for the series points if desired, or let scatter auto-cycle
+                    points_collection = ax.scatter(dt_times_all_events[final_series_mask_plotting], 
+                               max_amps_to_plot[final_series_mask_plotting], 
+                               s=15, label="_nolegend_", marker=current_marker, alpha=0.8)
+                    if np.any(final_series_mask_plotting):
+                         data_y_values_for_ylim.extend(max_amps_to_plot[final_series_mask_plotting])
+                else: # No points, but still need a dummy for legend color
+                    points_collection = ax.scatter([],[], s=15, marker=current_marker, alpha=0.8)
+
+
+                times_for_this_cut_series = times_unix[final_series_mask_global]
+                lt_s, _ = calculate_livetime(times_for_this_cut_series, livetime_threshold_seconds, season_start_unix, season_end_unix)
+                plot_label_with_livetime = f"{legend_label_base} (Livetime: {format_duration_short(lt_s)})"
+                legend_handles.append(Line2D([0], [0], marker=current_marker, color='w', 
+                                             markerfacecolor=points_collection.get_facecolor()[0], # Get color from actual plot
+                                             markeredgecolor=points_collection.get_edgecolor()[0],
+                                             markersize=5, label=plot_label_with_livetime))
+        
+        # Determine y-limits from plotted data
+        if data_y_values_for_ylim:
+            min_y_data = np.nanmin([y for y in data_y_values_for_ylim if np.isfinite(y)])
+            max_y_data = np.nanmax([y for y in data_y_values_for_ylim if np.isfinite(y)])
+            if np.isnan(min_y_data) or np.isnan(max_y_data): # Fallback if all NaNs
+                min_y_data, max_y_data = (0,1) if "Chi" in amp_name else (0, 0.5 if is_max_amp_data else 1)
+            if min_y_data == max_y_data: min_y_data -= 0.1*(abs(min_y_data)+1e-6); max_y_data += 0.1*(abs(max_y_data)+1e-6)
+            padding = (max_y_data - min_y_data) * 0.05 if (max_y_data - min_y_data) > 1e-6 else 0.1
+            current_ymin, current_ymax = min_y_data - padding, max_y_data + padding
+            ax.set_ylim(current_ymin, current_ymax)
+        else: # Default if no points plotted
+            current_ymin, current_ymax = (0, 1.05) if "Chi" in amp_name else (0, 0.5 if is_max_amp_data else 1.0)
+            ax.set_ylim(current_ymin, current_ymax)
+
+
+        # Plot the final livetime fill using the determined y-limits
+        if active_periods_to_fill_final_cut:
+            for start_p, end_p in active_periods_to_fill_final_cut:
+                dt_start = datetime.datetime.fromtimestamp(start_p)
+                dt_end = datetime.datetime.fromtimestamp(end_p)
+                ax.fill_betweenx(y=[current_ymin, current_ymax], x1=dt_start, x2=dt_end, 
+                                 color='red', alpha=0.1, zorder=-2) # Low zorder
+            legend_handles.append(plt.Rectangle((0,0),1,1,fc="red", alpha=0.1, label="Final Cut Active Periods"))
+
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
+        ax.gcf().autofmt_xdate()
+        ax.legend(handles=legend_handles, fontsize=8, loc='upper left', bbox_to_anchor=(1.02, 1))
+        ax.grid(True, linestyle=':', alpha=0.7)
+        plt.tight_layout(rect=[0, 0, 0.82, 1])
+
+        filename = os.path.join(output_dir, f"{amp_name.replace(' ', '_')}_season_{start_year}_{start_year+1}.png")
+        plt.savefig(filename); plt.close(); ic(f"Saved: {filename}")
+
+
+
+def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".", 
+                    cuts_to_plot_dict=None, livetime_threshold_seconds=3600.0,
+                    final_cut_mask_for_gti_fill=None): # New argument
+    # ... (setup and seasonal loop as before) ...
+    if not os.path.exists(output_dir): os.makedirs(output_dir)
+    valid_times_mask_global = np.isfinite(times_unix) & (times_unix > 0)
+    times_unix_valid_global = times_unix[valid_times_mask_global] 
+    if len(times_unix_valid_global) == 0: ic("No valid times for rate plotting."); return
+
+    for start_year in range(2013, 2020):
+        markers = itertools.cycle(("v", "s", "*", "d", "P", "X"))
+        season_start_dt = datetime.datetime(start_year, 10, 1); season_end_dt = datetime.datetime(start_year + 1, 4, 30, 23, 59, 59)
+        season_start_unix, season_end_unix = season_start_dt.timestamp(), season_end_dt.timestamp()
+        seasonal_unix_mask_for_plot = (times_unix_valid_global >= season_start_unix) & (times_unix_valid_global <= season_end_unix)
+        if not np.any(seasonal_unix_mask_for_plot): continue
+        
         bins = np.arange(season_start_unix, season_end_unix + bin_size_seconds, bin_size_seconds)
         if len(bins) < 2 : continue
-        bin_centers_unix = (bins[:-1] + bins[1:]) / 2.0; dt_bin_centers = [datetime.datetime.fromtimestamp(ts) for ts in bin_centers_unix]
-        plt.figure(figsize=(12, 7)); plt.title(f"Season {start_year}-{start_year + 1} Event Rate"); plt.xlabel("Time"); plt.ylabel(f"Event Rate (Hz, {bin_size_seconds/60:.0f}min bins)")
-        count_all, _ = np.histogram(current_season_times_all, bins=bins); rate_all = count_all / bin_size_seconds
-        plt.scatter(dt_bin_centers, rate_all, s=3, marker='o', label="All Events Rate", color="lightgray", alpha=0.7)
+        bin_centers_unix = (bins[:-1] + bins[1:]) / 2.0
+        dt_bin_centers = [datetime.datetime.fromtimestamp(ts) for ts in bin_centers_unix]
+        
+        plt.figure(figsize=(14, 7))
+        ax = plt.gca()
+        plt.title(f"Season {start_year}-{start_year + 1} Event Rate")
+        plt.xlabel("Time"); plt.ylabel(f"Event Rate (Hz, {bin_size_seconds/60:.0f}min bins)")
+        
+        legend_handles = []
+        # Set y-limits first for fill_betweenx
+        plot_ymin, plot_ymax = 1e-5, 10 # Default y-range for rate plot
+        ax.set_yscale('log'); ax.set_ylim(plot_ymin, plot_ymax)
+
+
+        # --- Plot Final Livetime Periods (Background Fill) ---
+        if final_cut_mask_for_gti_fill is not None and \
+           isinstance(final_cut_mask_for_gti_fill, np.ndarray) and \
+           len(final_cut_mask_for_gti_fill) == len(times_unix):
+            
+            times_for_final_gti_calc = times_unix[final_cut_mask_for_gti_fill]
+            _, active_periods_to_fill_final_cut = calculate_livetime(
+                times_for_final_gti_calc,
+                livetime_threshold_seconds,
+                season_start_unix,
+                season_end_unix
+            )
+            if active_periods_to_fill_final_cut:
+                for start_p, end_p in active_periods_to_fill_final_cut:
+                    dt_start = datetime.datetime.fromtimestamp(start_p)
+                    dt_end = datetime.datetime.fromtimestamp(end_p)
+                    ax.fill_betweenx(y=[plot_ymin, plot_ymax], x1=dt_start, x2=dt_end, 
+                                     color='red', alpha=0.1, zorder=-2) 
+                legend_handles.append(plt.Rectangle((0,0),1,1,fc="red", alpha=0.1, label="Final Cut Active Periods"))
+
+        # --- Plot Rate Data Points ---
+        current_season_times_all_for_hist = times_unix_valid_global[seasonal_unix_mask_for_plot]
+        min_overall_rate_in_season = plot_ymax # For adjusting ylim later
+        if len(current_season_times_all_for_hist) > 0:
+            count_all, _ = np.histogram(current_season_times_all_for_hist, bins=bins)
+            rate_all = count_all / bin_size_seconds
+            # Use plot for scatter-like appearance, connect if desired
+            line_all, = plt.plot(dt_bin_centers, rate_all, linestyle='None', marker='o', markersize=3, label="All Events Rate", color="lightgray", alpha=0.7) # Changed to plot
+            legend_handles.append(line_all)
+            if np.any(rate_all > 0): min_overall_rate_in_season = min(min_overall_rate_in_season, np.min(rate_all[rate_all>0]))
+
+
         if cuts_to_plot_dict:
-            for legend_label_base, cut_mask_for_series in cuts_to_plot_dict.items():
-                if not (isinstance(cut_mask_for_series, np.ndarray) and cut_mask_for_series.dtype == bool and len(cut_mask_for_series) == len(times_unix)): continue
-                times_for_series_cut = times_unix_valid[seasonal_unix_mask & cut_mask_for_series[valid_times_mask]]
-                if len(times_for_series_cut) > 0:
-                    count_cut, _ = np.histogram(times_for_series_cut, bins=bins); rate_cut = count_cut / bin_size_seconds
-                    plt.scatter(dt_bin_centers, rate_cut, s=3, marker=next(markers), label=f'{legend_label_base} Rate')
-        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y')); plt.gcf().autofmt_xdate(); plt.legend(fontsize=8); plt.yscale('log')
-        min_rate = np.min(rate_all[rate_all > 0]) if np.any(rate_all > 0) else 1e-5
-        plt.ylim(max(1e-5, min_rate / 2) , 10); plt.grid(True, linestyle=':', alpha=0.7); plt.tight_layout()
-        out_filename = os.path.join(output_dir, f"season_{start_year}_{start_year+1}_rate.png"); plt.savefig(out_filename); plt.close(); ic(f"Saved: {out_filename}")
+            # Get marker instances for legend
+            marker_instances_rate = [next(markers) for _ in cuts_to_plot_dict]
+            for idx, (legend_label_base, cut_mask_for_series_orig_len) in enumerate(cuts_to_plot_dict.items()):
+                if not (isinstance(cut_mask_for_series_orig_len, np.ndarray) and 
+                        cut_mask_for_series_orig_len.dtype == bool and 
+                        len(cut_mask_for_series_orig_len) == len(times_unix)): continue
+
+                cut_mask_aligned_with_valid_global = cut_mask_for_series_orig_len[valid_times_mask_global]
+                times_for_series_cut_in_season = times_unix_valid_global[seasonal_unix_mask_for_plot & cut_mask_aligned_with_valid_global]
+                
+                current_marker_rate = marker_instances_rate[idx % len(marker_instances_rate)]
+
+                if len(times_for_series_cut_in_season) > 0:
+                    count_cut, _ = np.histogram(times_for_series_cut_in_season, bins=bins)
+                    rate_cut = count_cut / bin_size_seconds
+                    line_cut, = plt.plot(dt_bin_centers, rate_cut, linestyle='None', marker=current_marker_rate, markersize=3, label=f'{legend_label_base} Rate') # Changed to plot
+                    legend_handles.append(line_cut)
+                    if np.any(rate_cut > 0): min_overall_rate_in_season = min(min_overall_rate_in_season, np.min(rate_cut[rate_cut>0]))
+
+        if min_overall_rate_in_season < plot_ymax : # Ensure min_overall_rate is valid
+             ax.set_ylim(max(plot_ymin, min_overall_rate_in_season / 2.0) , plot_ymax)
+
+
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
+        ax.gcf().autofmt_xdate()
+        ax.legend(handles=legend_handles, fontsize=8, loc='upper left', bbox_to_anchor=(1.02, 1))
+        ax.grid(True, linestyle=':', alpha=0.7)
+        plt.tight_layout(rect=[0, 0, 0.82, 1])
+        
+        out_filename = os.path.join(output_dir, f"season_{start_year}_{start_year+1}_rate_with_livetime.png")
+        plt.savefig(out_filename); plt.close(); ic(f"Saved: {out_filename}")
 
 def plot_concurrent_station_summary_strips(all_station_gti_lists, plot_start_time_unix, plot_end_time_unix, output_dir, filename_suffix, relevant_station_ids=None, title_prefix=""):
     # ... (implementation from previous response) ...
@@ -692,14 +834,24 @@ if __name__ == "__main__":
             ("L1+Storm cut", L1_mask_final & storm_mask_final),
             ("L1+Storm+Burst cut", L1_mask_final & storm_mask_final & burst_mask_final),
         ])
+        # Define the final overall cut mask
+        final_overall_mask = L1_mask_final & storm_mask_final & burst_mask_final # This should align with base_times_for_cuts
         # Plot Max Amplitudes using pre-calculated ones
-        plot_cuts_amplitudes(base_times_for_cuts, base_max_amplitudes_for_cuts, "Max Amplitude", 
-                             plot_folder_station, LIVETIME_THRESHOLD_SECONDS, 
-                             cuts_dict_for_plotting, is_max_amp_data=True) # Pass flag
+        plot_cuts_amplitudes(base_times_for_cuts, 
+                            base_max_amplitudes_for_cuts, # Or base_traces_for_cuts if not Max Amp plot
+                            "Max Amplitude", 
+                            plot_folder_station, 
+                            LIVETIME_THRESHOLD_SECONDS, 
+                            cuts_dict_for_plotting, 
+                            is_max_amp_data=True, # True for Max Amp plot
+                            final_cut_mask_for_gti_fill=final_overall_mask)
         # Plot Chi values if available (these don't depend on traces directly here)
         # ... (load ChiRCR, call plot_cuts_amplitudes with ChiRCR data and is_max_amp_data=False) ...
-        plot_cuts_rates(base_times_for_cuts, output_dir=plot_folder_station, cuts_to_plot_dict=cuts_dict_for_plotting)
-        
+        plot_cuts_rates(base_times_for_cuts, 
+                        output_dir=plot_folder_station, 
+                        cuts_to_plot_dict=cuts_dict_for_plotting,
+                        livetime_threshold_seconds=LIVETIME_THRESHOLD_SECONDS,
+                        final_cut_mask_for_gti_fill=final_overall_mask)       
         ic(f"Single-station processing for Station {current_station_id} complete.")
         gc.collect()
 
