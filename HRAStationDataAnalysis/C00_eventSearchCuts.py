@@ -296,6 +296,33 @@ def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold,
         
         if current_primary_trigger_count_in_window >= cut_frequency:
             mask[start_idx : end_idx+1] = False
+
+            # --- DEBUG CHECK ---
+            # Recalculate the number of primary trigger events strictly within the masked slice [start_idx : end_idx+1]
+            # This count should ideally match current_primary_trigger_count_in_window if the window logic is perfect.
+            actual_primary_triggers_in_masked_slice = np.sum(is_primary_trigger_event[start_idx : end_idx+1])
+            
+            # The core count that triggered the cut is current_primary_trigger_count_in_window.
+            # This count represents primary triggers in the window from times[start_idx] to times[end_idx].
+            # If this count is not equal to the sum of is_primary_trigger_event over the *indices*
+            # start_idx to end_idx, it might indicate a subtle issue.
+            if current_primary_trigger_count_in_window != actual_primary_triggers_in_masked_slice:
+                ic("!!!! DEBUG TRIGGERED IN cluster_cut !!!!")
+                ic("Mismatch between window count and slice sum during cut application.")
+                ic(f"  end_idx: {end_idx}, time_end: {datetime.datetime.fromtimestamp(times[end_idx])}")
+                ic(f"  start_idx: {start_idx}, time_start: {datetime.datetime.fromtimestamp(times[start_idx])}")
+                ic(f"  Window duration (time_end - time_start): {times[end_idx] - times[start_idx]:.2f}s (Threshold: {time_period_seconds_val:.2f}s)")
+                ic(f"  current_primary_trigger_count_in_window (triggered the cut): {current_primary_trigger_count_in_window}")
+                ic(f"  np.sum(is_primary_trigger_event[start_idx : end_idx+1]): {actual_primary_triggers_in_masked_slice}")
+                ic(f"  cut_frequency: {cut_frequency}")
+                # For more detail:
+                # ic(f"  is_primary_trigger_event[start_idx:end_idx+1]: {is_primary_trigger_event[start_idx:end_idx+1]}")
+                # ic(f"  high_amplitude_events[start_idx:end_idx+1]: {high_amplitude_events[start_idx:end_idx+1]}")
+                # ic(f"  times[start_idx:end_idx+1]: {times[start_idx:end_idx+1]}")
+                # ic(f"  event_ids[start_idx:end_idx+1]: {event_ids[start_idx:end_idx+1]}")
+                ic("Quitting due to debug condition.")
+                exit(1) # Terminate as requested for critical debug
+            # --- END DEBUG CHECK ---
             
     return mask
 
@@ -442,7 +469,7 @@ def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
 
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
         plt.gcf().autofmt_xdate()
-        ax.legend(handles=legend_handles, fontsize=8, loc='upper left', bbox_to_anchor=(1.02, 1))
+        ax.legend(handles=legend_handles, fontsize=8, loc='upper left')
         ax.grid(True, linestyle=':', alpha=0.7)
         plt.tight_layout(rect=[0, 0, 0.82, 1])
 
@@ -541,7 +568,7 @@ def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".",
 
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
         plt.gcf().autofmt_xdate()
-        ax.legend(handles=legend_handles, fontsize=8, loc='upper left', bbox_to_anchor=(1.02, 1))
+        ax.legend(handles=legend_handles, fontsize=8, loc='upper left')
         ax.grid(True, linestyle=':', alpha=0.7)
         plt.tight_layout(rect=[0, 0, 0.82, 1])
         
@@ -758,7 +785,31 @@ if __name__ == "__main__":
             ic(f"No data for Station {current_station_id} after initial time filters. Saving empty report and aborting.")
             _save_pickle_atomic({}, os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl"))
             exit(0)
-        
+
+
+        # Now, identify unique (Time, EventID) pairs from these base arrays
+        # This is simpler than trying to create a mask on original indices.
+        if base_times_for_cuts.size > 0:
+            # Create pairs of (time, event_id) for finding unique combinations
+            time_eventid_pairs = np.stack((base_times_for_cuts, base_event_ids_for_cuts), axis=-1)
+
+            # Find unique pairs and the indices of their first occurrences
+            # np.unique returns sorted unique values by default.
+            # We need 'return_index=True' to get the indices of the first time each unique pair appears.
+            # These indices will be relative to time_eventid_pairs (and thus to base_..._for_cuts arrays).
+            _, unique_indices = np.unique(time_eventid_pairs, axis=0, return_index=True)
+
+            # Sort these unique_indices to maintain the original time order of the first occurrences.
+            unique_indices.sort() 
+
+            ic(f"Identified {len(unique_indices)} events after removing Time+EventID duplicates from {len(base_times_for_cuts)} events.")
+
+            # Apply this uniqueness filter
+            base_times_for_cuts = base_times_for_cuts[unique_indices]
+            base_event_ids_for_cuts = base_event_ids_for_cuts[unique_indices]
+            base_max_amplitudes_for_cuts = base_max_amplitudes_for_cuts[unique_indices]
+            base_traces_for_cuts = base_traces_for_cuts[unique_indices]
+
         ic(f"Data for cuts: Times {base_times_for_cuts.shape}, EventIDs {base_event_ids_for_cuts.shape}, MaxAmps {base_max_amplitudes_for_cuts.shape}, Traces {base_traces_for_cuts.shape}")
 
         # --- Apply Cuts with Incremental Saving (L1 cut needs full traces) ---
