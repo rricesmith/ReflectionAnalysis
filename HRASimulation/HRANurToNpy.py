@@ -42,6 +42,7 @@ def getHRAeventsFromDir(directory):
 def loadHRAfromH5(filename):
     HRAeventList = []
     with h5py.File(filename, 'r') as hf:
+        ic(f'Loading n-keys from {filename}: {len(hf.keys())}')
         for i in range(len(hf.keys())):
             if i % 1000 == 0:
                 ic(i)
@@ -52,6 +53,7 @@ def loadHRAfromH5(filename):
                 obj_bytes = dataset[0]
                 obj = pickle.loads(obj_bytes.tobytes())
             HRAeventList.append(obj)
+    ic(f'Loaded {len(HRAeventList)} HRAevents from {filename}')
     return HRAeventList
 
 if __name__ == "__main__":
