@@ -224,9 +224,25 @@ def setHRAeventListRateWeight(HRAeventList, trigger_rate_array, weight_name, max
     return
 
 
-def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=None, sigma=4.5, sigma_52=7):
-    # Return a list of coincidence events
-    # As well as a dictionary of the trigger rate array for each number of coincidences
+def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_stations=None, sigma=4.5, sigma_52=7):
+    """
+    Calculates coincidence trigger rates, with an option to require a trigger 
+    from a specific list of stations.
+
+    Args:
+        HRAeventList (list): List of HRA event objects.
+        bad_stations (list): List of station IDs to ignore.
+        use_secondary (bool): Flag to use secondary trigger conditions.
+        force_stations (int or list, optional): A station ID or a list of station IDs.
+            If provided, only events triggered by at least one of these stations will be counted.
+            Defaults to None.
+        sigma (float): The significance threshold for a station trigger.
+        sigma_52 (float): The significance threshold for stations 52 and 53.
+
+    Returns:
+        dict: A dictionary where keys are the number of coincidences (2-7) and values
+              are 2D numpy arrays of trigger rates binned by energy and zenith.
+    """
     e_bins, z_bins = getEnergyZenithBins()
     n_throws = getnThrows(HRAeventList)
 
@@ -237,9 +253,19 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False,
             if not event.hasCoincidence(i, bad_stations, use_secondary, sigma=sigma, sigma_52=sigma_52):
                 # Event not triggered or meeting coincidence bar
                 continue
-            if force_station is not None and force_station not in event.station_triggers[sigma]:
-                # Event not triggered by the station we want
-                continue
+
+            if force_stations is not None:
+                # Ensure force_stations is a list for uniform processing
+                stations_to_check = force_stations
+                if not isinstance(stations_to_check, list):
+                    stations_to_check = [stations_to_check]
+                
+                # Use sets for an efficient check of whether any required station triggered.
+                # `set.isdisjoint()` returns True if the sets have no common elements.
+                # We `continue` if there is NO overlap between required stations and triggered stations.
+                if set(stations_to_check).isdisjoint(event.station_triggers[sigma]):
+                    continue
+
             energy_bin = np.digitize(event.getEnergy(), e_bins) - 1
             zenith_bin = np.digitize(event.getAngles()[0], z_bins) - 1
             if energy_bin < 0 or zenith_bin < 0 or energy_bin >= len(e_bins) or zenith_bin >= len(z_bins):
@@ -791,6 +817,40 @@ if __name__ == "__main__":
         event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList, max_distance=max_distance)
         plotRateWithError(event_rate_coincidence[i], event_rate_error, f'{save_folder}error_rate/event_rate_coincidence_norefl_52up_error_{i}.png', f'Event Rate Error for {i} Coincidences, 52 upward forced w/o Refl')
 
+
+    # Coincidence with reflection required, no station 52
+    bad_stations = [32, 52, 132, 152]
+    force_stations = [113, 114, 115, 117, 118, 119, 130]   # Use all reflected stations except 52
+    trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_stations=force_stations)
+    event_rate_coincidence = {}
+    for i in trigger_rate_coincidence:
+        if not np.any(trigger_rate_coincidence[i] > 0):
+            ic(f'No events for {i} coincidences')
+            continue
+        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate, {i} Coincidences, Refl Required', f'{save_folder}trigger_rate_coincidence_reflReq_{i}.png', colorbar_label='Trigger Rate')
+        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins, max_distance=max_distance)
+        # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_refl', max_distance=max_distance)
+        ic(event_rate_coincidence[i], np.nansum(event_rate_coincidence[i]))
+        imshowRate(event_rate_coincidence[i], f'Event Rate, {i} Coincidences, Refl Required', f'{save_folder}event_rate_coincidence_reflReq_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
+        event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList, max_distance=max_distance)
+        plotRateWithError(event_rate_coincidence[i], event_rate_error, f'{save_folder}error_rate/event_rate_coincidence_reflReq_error_{i}.png', f'Event Rate Error for {i} Coincidences, Refl Required')
+
+
+    # Coincidence with reflections only
+    bad_stations = [13, 14, 15, 17, 18, 19, 30, 32, 52, 132, 152]   # Use all direct stations
+    trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False)
+    event_rate_coincidence = {}
+    for i in trigger_rate_coincidence:
+        if not np.any(trigger_rate_coincidence[i] > 0):
+            ic(f'No events for {i} coincidences')
+            continue
+        imshowRate(trigger_rate_coincidence[i], f'Trigger Rate, {i} Coincidences, Reflections Only', f'{save_folder}trigger_rate_coincidence_reflectionsOnly_{i}.png', colorbar_label='Trigger Rate')
+        event_rate_coincidence[i] = getEventRate(trigger_rate_coincidence[i], e_bins, z_bins, max_distance=max_distance)
+        # setHRAeventListRateWeight(HRAeventList, trigger_rate_coincidence[i], weight_name=f'{i}_coincidence_reflections', max_distance=max_distance)
+        ic(event_rate_coincidence[i], np.nansum(event_rate_coincidence[i]))
+        imshowRate(event_rate_coincidence[i], f'Event Rate, {i} Coincidences, Reflections Only', f'{save_folder}event_rate_coincidence_reflectionsOnly_{i}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate_coincidence[i]):.3f}')
+        event_rate_error = getErrorEventRates(trigger_rate_coincidence[i], HRAeventList, max_distance=max_distance)
+        plotRateWithError(event_rate_coincidence[i], event_rate_error, f'{save_folder}error_rate/event_rate_coincidence_reflectionsOnly_error_{i}.png', f'Event Rate Error for {i} Coincidences, Reflections Only')
 
     # Plot the zenith and azimuth reconstruction
     angle_save_folder = f'{save_folder}recon_angles/'
