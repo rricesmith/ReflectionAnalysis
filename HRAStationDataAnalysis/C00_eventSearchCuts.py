@@ -637,9 +637,11 @@ if __name__ == "__main__":
     parser.add_argument('--stations_for_overlap', nargs='+', type=int,
                         default=[13, 14, 15, 17, 18, 19, 30], # Example default list from your C00
                         help="List of station IDs for overlap analysis mode.")
+    parser.add_argument('--date_processing', type=str, required=False, default=None, help="Date for processing, if different from --date.")
 
     args = parser.parse_args()
     date_filter = args.date
+    date_save = args.date_processing if args.date_processing else date_filter
     ic.enable()
 
     # --- Path Definitions ---
@@ -647,8 +649,8 @@ if __name__ == "__main__":
     base_data_path = os.path.join(base_project_path, 'StationData')
     # Corrected path to align with C00 structure if nurFiles are directly under StationData
     station_data_folder = os.path.join(base_data_path, 'nurFiles', date_filter) # From your C00 structure for data files
-    cuts_data_folder = os.path.join(base_data_path, 'cuts', date_filter) # From your C00 structure for cut files
-    plot_folder_base = os.path.join(base_project_path, 'plots', date_filter)
+    cuts_data_folder = os.path.join(base_data_path, 'cuts', date_save) # From your C00 structure for cut files
+    plot_folder_base = os.path.join(base_project_path, 'plots', date_save)
 
     os.makedirs(cuts_data_folder, exist_ok=True)
     os.makedirs(plot_folder_base, exist_ok=True)
