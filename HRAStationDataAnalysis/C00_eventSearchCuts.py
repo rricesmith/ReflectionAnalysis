@@ -279,11 +279,6 @@ def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold,
                     if not (event_ids[i] == event_ids[i-1]):    # I think above was error. We want to only check event_ids are different for different events to be primary
                         is_primary_trigger_event[i] = True
     
-    ic(times[0:50])
-    ic(max_amplitudes[0:50])
-    ic(event_ids[0:50])
-    ic(high_amplitude_events[0:50])
-    ic(is_primary_trigger_event[0:50])
 
     start_idx = 0
     current_primary_trigger_count_in_window = 0
@@ -331,6 +326,13 @@ def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold,
                 exit(1) # Terminate as requested for critical debug
             # --- END DEBUG CHECK ---
             
+    ic(times[0:50])
+    ic(max_amplitudes[0:50])
+    ic(event_ids[0:50])
+    ic(high_amplitude_events[0:50])
+    ic(is_primary_trigger_event[0:50])
+    ic(mask[0:50])
+
     return mask
 
 
