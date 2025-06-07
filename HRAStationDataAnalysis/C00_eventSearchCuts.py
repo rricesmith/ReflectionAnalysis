@@ -246,95 +246,161 @@ def calculate_N_or_more_stations_livetime(all_station_gti_lists, N_min_stations,
     return total_N_overlap_seconds, merged_N_overlap_gtis
 
 # --- Cut Functions (Modified cluster_cut) ---
-def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold, time_period, cut_frequency):
-    """
-    Creates a mask to remove events that occur in bursts, using pre-calculated max amplitudes.
-    Considers unique (Time, EventID) pairs for triggering the cut frequency.
-    """
-    times = np.array(times)
-    # max_amplitudes_per_event is now a 1D array of max |amplitude| for each event
-    max_amplitudes = np.array(max_amplitudes_per_event)
-    event_ids = np.array(event_ids)
-    n = len(times)
+# def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold, time_period, cut_frequency):
+#     """
+#     Creates a mask to remove events that occur in bursts, using pre-calculated max amplitudes.
+#     Considers unique (Time, EventID) pairs for triggering the cut frequency.
+#     """
+#     times = np.array(times)
+#     # max_amplitudes_per_event is now a 1D array of max |amplitude| for each event
+#     max_amplitudes = np.array(max_amplitudes_per_event)
+#     event_ids = np.array(event_ids)
+#     n = len(times)
 
-    if n == 0:
-        return np.array([], dtype=bool)
-    if len(max_amplitudes) != n or len(event_ids) != n:
-        ic("Error: times, max_amplitudes, and event_ids arrays must have the same length in cluster_cut.")
-        return np.ones(n, dtype=bool) # Fails open or raise error
+#     if n == 0:
+#         return np.array([], dtype=bool)
+#     if len(max_amplitudes) != n or len(event_ids) != n:
+#         ic("Error: times, max_amplitudes, and event_ids arrays must have the same length in cluster_cut.")
+#         return np.ones(n, dtype=bool) # Fails open or raise error
 
-    mask = np.ones(n, dtype=bool)
+#     mask = np.ones(n, dtype=bool)
 
-    # Determine which events have high amplitude using the pre-calculated max_amplitudes
-    high_amplitude_events = np.abs(max_amplitudes) > amplitude_threshold # np.abs might be redundant if already absolute
+#     # Determine which events have high amplitude using the pre-calculated max_amplitudes
+#     high_amplitude_events = np.abs(max_amplitudes) > amplitude_threshold # np.abs might be redundant if already absolute
 
-    is_primary_trigger_event = np.zeros(n, dtype=bool)
-    if n > 0:
-        for i in range(n):
-            if high_amplitude_events[i]:
-                if i == 0:
-                    is_primary_trigger_event[i] = True
-                else:
-                    # if not (times[i] == times[i-1] and event_ids[i] == event_ids[i-1]):
-                    if not (event_ids[i] == event_ids[i-1]):    # I think above was error. We want to only check event_ids are different for different events to be primary
-                        is_primary_trigger_event[i] = True
+#     is_primary_trigger_event = np.zeros(n, dtype=bool)
+#     if n > 0:
+#         for i in range(n):
+#             if high_amplitude_events[i]:
+#                 if i == 0:
+#                     is_primary_trigger_event[i] = True
+#                 else:
+#                     # if not (times[i] == times[i-1] and event_ids[i] == event_ids[i-1]):
+#                     if not (event_ids[i] == event_ids[i-1]):    # I think above was error. We want to only check event_ids are different for different events to be primary
+#                         is_primary_trigger_event[i] = True
     
 
-    start_idx = 0
-    current_primary_trigger_count_in_window = 0
-    time_period_seconds_val = time_period.total_seconds()
+#     start_idx = 0
+#     current_primary_trigger_count_in_window = 0
+#     time_period_seconds_val = time_period.total_seconds()
 
-    for end_idx in range(n):
-        if is_primary_trigger_event[end_idx]:
-            current_primary_trigger_count_in_window += 1
+#     for end_idx in range(n):
+#         if is_primary_trigger_event[end_idx]:
+#             current_primary_trigger_count_in_window += 1
         
-        while (times[end_idx] - times[start_idx]) >= time_period_seconds_val:
-            if is_primary_trigger_event[start_idx]:
-                current_primary_trigger_count_in_window -= 1
-            start_idx += 1
-            if start_idx > end_idx:
-                if start_idx > end_idx : current_primary_trigger_count_in_window = 0
-                break
+#         while (times[end_idx] - times[start_idx]) >= time_period_seconds_val:
+#             if is_primary_trigger_event[start_idx]:
+#                 current_primary_trigger_count_in_window -= 1
+#             start_idx += 1
+#             if start_idx > end_idx:
+#                 if start_idx > end_idx : current_primary_trigger_count_in_window = 0
+#                 break
         
-        if current_primary_trigger_count_in_window >= cut_frequency:
-            mask[start_idx : end_idx+1] = False
+#         if current_primary_trigger_count_in_window >= cut_frequency:
+#             mask[start_idx : end_idx+1] = False
 
-            # --- DEBUG CHECK ---
-            # Recalculate the number of primary trigger events strictly within the masked slice [start_idx : end_idx+1]
-            # This count should ideally match current_primary_trigger_count_in_window if the window logic is perfect.
-            actual_primary_triggers_in_masked_slice = np.sum(is_primary_trigger_event[start_idx : end_idx+1])
+#             # --- DEBUG CHECK ---
+#             # Recalculate the number of primary trigger events strictly within the masked slice [start_idx : end_idx+1]
+#             # This count should ideally match current_primary_trigger_count_in_window if the window logic is perfect.
+#             actual_primary_triggers_in_masked_slice = np.sum(is_primary_trigger_event[start_idx : end_idx+1])
             
-            # The core count that triggered the cut is current_primary_trigger_count_in_window.
-            # This count represents primary triggers in the window from times[start_idx] to times[end_idx].
-            # If this count is not equal to the sum of is_primary_trigger_event over the *indices*
-            # start_idx to end_idx, it might indicate a subtle issue.
-            if current_primary_trigger_count_in_window != actual_primary_triggers_in_masked_slice:
-                ic("!!!! DEBUG TRIGGERED IN cluster_cut !!!!")
-                ic("Mismatch between window count and slice sum during cut application.")
-                ic(f"  end_idx: {end_idx}, time_end: {datetime.datetime.fromtimestamp(times[end_idx])}")
-                ic(f"  start_idx: {start_idx}, time_start: {datetime.datetime.fromtimestamp(times[start_idx])}")
-                ic(f"  Window duration (time_end - time_start): {times[end_idx] - times[start_idx]:.2f}s (Threshold: {time_period_seconds_val:.2f}s)")
-                ic(f"  current_primary_trigger_count_in_window (triggered the cut): {current_primary_trigger_count_in_window}")
-                ic(f"  np.sum(is_primary_trigger_event[start_idx : end_idx+1]): {actual_primary_triggers_in_masked_slice}")
-                ic(f"  cut_frequency: {cut_frequency}")
-                # For more detail:
-                # ic(f"  is_primary_trigger_event[start_idx:end_idx+1]: {is_primary_trigger_event[start_idx:end_idx+1]}")
-                # ic(f"  high_amplitude_events[start_idx:end_idx+1]: {high_amplitude_events[start_idx:end_idx+1]}")
-                # ic(f"  times[start_idx:end_idx+1]: {times[start_idx:end_idx+1]}")
-                # ic(f"  event_ids[start_idx:end_idx+1]: {event_ids[start_idx:end_idx+1]}")
-                ic("Quitting due to debug condition.")
-                exit(1) # Terminate as requested for critical debug
-            # --- END DEBUG CHECK ---
+#             # The core count that triggered the cut is current_primary_trigger_count_in_window.
+#             # This count represents primary triggers in the window from times[start_idx] to times[end_idx].
+#             # If this count is not equal to the sum of is_primary_trigger_event over the *indices*
+#             # start_idx to end_idx, it might indicate a subtle issue.
+#             if current_primary_trigger_count_in_window != actual_primary_triggers_in_masked_slice:
+#                 ic("!!!! DEBUG TRIGGERED IN cluster_cut !!!!")
+#                 ic("Mismatch between window count and slice sum during cut application.")
+#                 ic(f"  end_idx: {end_idx}, time_end: {datetime.datetime.fromtimestamp(times[end_idx])}")
+#                 ic(f"  start_idx: {start_idx}, time_start: {datetime.datetime.fromtimestamp(times[start_idx])}")
+#                 ic(f"  Window duration (time_end - time_start): {times[end_idx] - times[start_idx]:.2f}s (Threshold: {time_period_seconds_val:.2f}s)")
+#                 ic(f"  current_primary_trigger_count_in_window (triggered the cut): {current_primary_trigger_count_in_window}")
+#                 ic(f"  np.sum(is_primary_trigger_event[start_idx : end_idx+1]): {actual_primary_triggers_in_masked_slice}")
+#                 ic(f"  cut_frequency: {cut_frequency}")
+#                 # For more detail:
+#                 # ic(f"  is_primary_trigger_event[start_idx:end_idx+1]: {is_primary_trigger_event[start_idx:end_idx+1]}")
+#                 # ic(f"  high_amplitude_events[start_idx:end_idx+1]: {high_amplitude_events[start_idx:end_idx+1]}")
+#                 # ic(f"  times[start_idx:end_idx+1]: {times[start_idx:end_idx+1]}")
+#                 # ic(f"  event_ids[start_idx:end_idx+1]: {event_ids[start_idx:end_idx+1]}")
+#                 ic("Quitting due to debug condition.")
+#                 exit(1) # Terminate as requested for critical debug
+#             # --- END DEBUG CHECK ---
             
-    ic(times[0:100])
-    ic(max_amplitudes[0:100])
-    ic(event_ids[0:100])
-    ic(high_amplitude_events[0:100])
-    ic(is_primary_trigger_event[0:100])
-    ic(mask[0:100])
+#     ic(times[0:100])
+#     ic(max_amplitudes[0:100])
+#     ic(event_ids[0:100])
+#     ic(high_amplitude_events[0:100])
+#     ic(is_primary_trigger_event[0:100])
+#     ic(mask[0:100])
+
+#     return mask
+
+import numpy as np
+
+def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold, time_period, cut_frequency):
+    """
+    Creates a boolean mask to identify and cut on events clustered in time.
+
+    This function performs a rolling calculation to find periods where n events
+    (where n >= cut_frequency) occur within a specified time_period and have
+    amplitudes greater than or equal to the amplitude_threshold.
+
+    Args:
+        times (np.ndarray): A 1D numpy array of timestamps for each event.
+        max_amplitudes_per_event (np.ndarray): A 1D numpy array of the maximum
+                                               amplitude for each event.
+        event_ids (np.ndarray): A 1D numpy array of unique event identifiers.
+        amplitude_threshold (float): The minimum amplitude for an event to be
+                                     considered in a cluster.
+        time_period (float): The maximum time duration for a cluster of events.
+        cut_frequency (int): The minimum number of events with high amplitude
+                             to form a cluster.
+
+    Returns:
+        np.ndarray: A boolean numpy array (mask) of the same length as the input
+                    arrays. Events that are part of a cluster are marked as True.
+    """
+
+    # Ensure the input arrays are numpy arrays
+    times = np.asarray(times)
+    max_amplitudes_per_event = np.asarray(max_amplitudes_per_event)
+    event_ids = np.asarray(event_ids)
+
+    # Sort the events by time
+    sort_indices = np.argsort(times)
+    sorted_times = times[sort_indices]
+    sorted_amplitudes = max_amplitudes_per_event[sort_indices]
+    
+    # Initialize the boolean mask that will be returned
+    mask = np.zeros_like(times, dtype=bool)
+    
+    # Pointers for the sliding window
+    start_index = 0
+    
+    # Counter for events in the window that are above the amplitude threshold
+    high_amplitude_count = 0
+
+    # Iterate through the sorted events with the end of the window
+    for end_index in range(len(sorted_times)):
+        
+        # Check if the current event's amplitude is above the threshold
+        if sorted_amplitudes[end_index] >= amplitude_threshold:
+            high_amplitude_count += 1
+
+        # Shrink the window from the left (start_index) if the time period is exceeded
+        while sorted_times[end_index] - sorted_times[start_index] > time_period:
+            # If the event being removed was a high-amplitude event, decrement the count
+            if sorted_amplitudes[start_index] >= amplitude_threshold:
+                high_amplitude_count -= 1
+            start_index += 1
+
+        # If the number of high-amplitude events in the window meets the frequency cut
+        if high_amplitude_count >= cut_frequency:
+            # Mark all events within the current window in the mask
+            original_indices = sort_indices[start_index:end_index + 1]
+            mask[original_indices] = True
 
     return mask
-
 
 # ... (L1_cut, approximate_bad_times, format_duration, calculate_livetime, GTI functions, plotting functions remain the same) ...
 def L1_cut(traces, power_cut=0.3):
