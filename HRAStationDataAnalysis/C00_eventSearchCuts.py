@@ -245,96 +245,7 @@ def calculate_N_or_more_stations_livetime(all_station_gti_lists, N_min_stations,
     total_N_overlap_seconds = sum(end - start for start, end in merged_N_overlap_gtis)
     return total_N_overlap_seconds, merged_N_overlap_gtis
 
-# --- Cut Functions (Modified cluster_cut) ---
-# def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold, time_period, cut_frequency):
-#     """
-#     Creates a mask to remove events that occur in bursts, using pre-calculated max amplitudes.
-#     Considers unique (Time, EventID) pairs for triggering the cut frequency.
-#     """
-#     times = np.array(times)
-#     # max_amplitudes_per_event is now a 1D array of max |amplitude| for each event
-#     max_amplitudes = np.array(max_amplitudes_per_event)
-#     event_ids = np.array(event_ids)
-#     n = len(times)
-
-#     if n == 0:
-#         return np.array([], dtype=bool)
-#     if len(max_amplitudes) != n or len(event_ids) != n:
-#         ic("Error: times, max_amplitudes, and event_ids arrays must have the same length in cluster_cut.")
-#         return np.ones(n, dtype=bool) # Fails open or raise error
-
-#     mask = np.ones(n, dtype=bool)
-
-#     # Determine which events have high amplitude using the pre-calculated max_amplitudes
-#     high_amplitude_events = np.abs(max_amplitudes) > amplitude_threshold # np.abs might be redundant if already absolute
-
-#     is_primary_trigger_event = np.zeros(n, dtype=bool)
-#     if n > 0:
-#         for i in range(n):
-#             if high_amplitude_events[i]:
-#                 if i == 0:
-#                     is_primary_trigger_event[i] = True
-#                 else:
-#                     # if not (times[i] == times[i-1] and event_ids[i] == event_ids[i-1]):
-#                     if not (event_ids[i] == event_ids[i-1]):    # I think above was error. We want to only check event_ids are different for different events to be primary
-#                         is_primary_trigger_event[i] = True
-    
-
-#     start_idx = 0
-#     current_primary_trigger_count_in_window = 0
-#     time_period_seconds_val = time_period.total_seconds()
-
-#     for end_idx in range(n):
-#         if is_primary_trigger_event[end_idx]:
-#             current_primary_trigger_count_in_window += 1
-        
-#         while (times[end_idx] - times[start_idx]) >= time_period_seconds_val:
-#             if is_primary_trigger_event[start_idx]:
-#                 current_primary_trigger_count_in_window -= 1
-#             start_idx += 1
-#             if start_idx > end_idx:
-#                 if start_idx > end_idx : current_primary_trigger_count_in_window = 0
-#                 break
-        
-#         if current_primary_trigger_count_in_window >= cut_frequency:
-#             mask[start_idx : end_idx+1] = False
-
-#             # --- DEBUG CHECK ---
-#             # Recalculate the number of primary trigger events strictly within the masked slice [start_idx : end_idx+1]
-#             # This count should ideally match current_primary_trigger_count_in_window if the window logic is perfect.
-#             actual_primary_triggers_in_masked_slice = np.sum(is_primary_trigger_event[start_idx : end_idx+1])
-            
-#             # The core count that triggered the cut is current_primary_trigger_count_in_window.
-#             # This count represents primary triggers in the window from times[start_idx] to times[end_idx].
-#             # If this count is not equal to the sum of is_primary_trigger_event over the *indices*
-#             # start_idx to end_idx, it might indicate a subtle issue.
-#             if current_primary_trigger_count_in_window != actual_primary_triggers_in_masked_slice:
-#                 ic("!!!! DEBUG TRIGGERED IN cluster_cut !!!!")
-#                 ic("Mismatch between window count and slice sum during cut application.")
-#                 ic(f"  end_idx: {end_idx}, time_end: {datetime.datetime.fromtimestamp(times[end_idx])}")
-#                 ic(f"  start_idx: {start_idx}, time_start: {datetime.datetime.fromtimestamp(times[start_idx])}")
-#                 ic(f"  Window duration (time_end - time_start): {times[end_idx] - times[start_idx]:.2f}s (Threshold: {time_period_seconds_val:.2f}s)")
-#                 ic(f"  current_primary_trigger_count_in_window (triggered the cut): {current_primary_trigger_count_in_window}")
-#                 ic(f"  np.sum(is_primary_trigger_event[start_idx : end_idx+1]): {actual_primary_triggers_in_masked_slice}")
-#                 ic(f"  cut_frequency: {cut_frequency}")
-#                 # For more detail:
-#                 # ic(f"  is_primary_trigger_event[start_idx:end_idx+1]: {is_primary_trigger_event[start_idx:end_idx+1]}")
-#                 # ic(f"  high_amplitude_events[start_idx:end_idx+1]: {high_amplitude_events[start_idx:end_idx+1]}")
-#                 # ic(f"  times[start_idx:end_idx+1]: {times[start_idx:end_idx+1]}")
-#                 # ic(f"  event_ids[start_idx:end_idx+1]: {event_ids[start_idx:end_idx+1]}")
-#                 ic("Quitting due to debug condition.")
-#                 exit(1) # Terminate as requested for critical debug
-#             # --- END DEBUG CHECK ---
-            
-#     ic(times[0:100])
-#     ic(max_amplitudes[0:100])
-#     ic(event_ids[0:100])
-#     ic(high_amplitude_events[0:100])
-#     ic(is_primary_trigger_event[0:100])
-#     ic(mask[0:100])
-
-#     return mask
-
+# --- Cut Function ---
 def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold, time_period, cut_frequency):
     """
     Creates a boolean mask to identify and cut on events clustered in time.
@@ -923,7 +834,7 @@ if __name__ == "__main__":
         if storm_mask_final is None:
             ic(f"Calculating storm cut...")
             storm_mask_final = cluster_cut(base_times_for_cuts, base_max_amplitudes_for_cuts, base_event_ids_for_cuts, # USE MAX AMPS
-                                           amplitude_threshold=0.4, 
+                                           amplitude_threshold=0.3, 
                                            time_period=datetime.timedelta(seconds=3600).total_seconds(), 
                                            cut_frequency=2)
             current_all_cut_masks['storm_mask'] = storm_mask_final
@@ -947,7 +858,7 @@ if __name__ == "__main__":
             "After L1 + Storm": L1_mask_final & storm_mask_final,
             "After L1 + Storm + Burst": L1_mask_final & storm_mask_final & burst_mask_final
         }
-        for stage_label in REPORT_CUT_STAGES.keys():
+        for stage_label in report_masks.keys():
             current_stage_mask = report_masks[stage_label]
             times_survived_stage = base_times_for_cuts[current_stage_mask]
             lt_s, active_periods = calculate_livetime(times_survived_stage, LIVETIME_THRESHOLD_SECONDS)
@@ -955,21 +866,28 @@ if __name__ == "__main__":
         station_gti_file_to_save = os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl")
         _save_pickle_atomic(station_specific_report, station_gti_file_to_save) # Using your atomic save for pkl
 
+        # Also want to save the livetime report for this station next to the gti file
+        livetime_report_file = os.path.join(station_livetime_output_dir, f"livetime_report_St{current_station_id}_{date_filter}.txt")
+        with open(livetime_report_file, "w") as f:
+            f.write(f"Livetime Report for Station {current_station_id} on {date_filter}\n")
+            f.write(f"Livetime Threshold: {LIVETIME_THRESHOLD_SECONDS / 3600.0:.1f} hours\n\n")
+            for stage_label, (lt_s, active_periods) in station_specific_report.items():
+                f.write(f"--- {stage_label} ---\n")
+                t_delta = datetime.timedelta(seconds=lt_s)
+                d = datetime.datetime(1, 1, 1) + t_delta
+                f.write(f"Livetime: {d.month-1} months, {d.day-1} days, {d.hour} hours, {d.minute} minutes, {d.second} seconds\n")
 
+            f.write("\n")
+            f.close()
+        ic(f"Saved station-specific GTI report to: {station_gti_file_to_save}")
+        ic(f"Saved station-specific livetime report to: {livetime_report_file}")
+
+        # Prepare cuts_dict_for_plotting for plotting
         cuts_dict_for_plotting = collections.OrderedDict([
             ("L1 cut", L1_mask_final),
             ("L1+Storm cut", np.logical_and(L1_mask_final,storm_mask_final)),
             ("L1+Storm+Burst cut", np.logical_and(np.logical_and(L1_mask_final, storm_mask_final), burst_mask_final)),
         ])
-
-        ic(L1_mask_final[0:100])
-        ic(storm_mask_final[0:100])
-        ic(np.logical_and(L1_mask_final, storm_mask_final)[0:100])
-        ic((L1_mask_final & storm_mask_final)[0:100])
-        ic(L1_mask_final[500:600])
-        ic(storm_mask_final[500:600])
-        ic(np.logical_and(L1_mask_final, storm_mask_final)[500:600])
-        ic((L1_mask_final & storm_mask_final)[500:600]) 
 
         # Define the final overall cut mask
         final_overall_mask = L1_mask_final & storm_mask_final & burst_mask_final # This should align with base_times_for_cuts
