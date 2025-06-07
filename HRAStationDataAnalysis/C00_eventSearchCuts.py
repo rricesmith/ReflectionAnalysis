@@ -326,12 +326,12 @@ def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold,
                 exit(1) # Terminate as requested for critical debug
             # --- END DEBUG CHECK ---
             
-    ic(times[0:50])
-    ic(max_amplitudes[0:50])
-    ic(event_ids[0:50])
-    ic(high_amplitude_events[0:50])
-    ic(is_primary_trigger_event[0:50])
-    ic(mask[0:50])
+    ic(times[0:100])
+    ic(max_amplitudes[0:100])
+    ic(event_ids[0:100])
+    ic(high_amplitude_events[0:100])
+    ic(is_primary_trigger_event[0:100])
+    ic(mask[0:100])
 
     return mask
 
@@ -891,16 +891,22 @@ if __name__ == "__main__":
         station_gti_file_to_save = os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl")
         _save_pickle_atomic(station_specific_report, station_gti_file_to_save) # Using your atomic save for pkl
 
-        ic(L1_mask_final[0:50])
-        ic(storm_mask_final[0:50])
-        ic(L1_mask_final[500:550])
-        ic(storm_mask_final[500:550])
 
         cuts_dict_for_plotting = collections.OrderedDict([
             ("L1 cut", L1_mask_final),
-            ("L1+Storm cut", L1_mask_final & storm_mask_final),
-            ("L1+Storm+Burst cut", L1_mask_final & storm_mask_final & burst_mask_final),
+            ("L1+Storm cut", np.logical_and(L1_mask_final,storm_mask_final)),
+            ("L1+Storm+Burst cut", np.logical_and(np.logical_and(L1_mask_final, storm_mask_final), burst_mask_final)),
         ])
+
+        ic(L1_mask_final[0:100])
+        ic(storm_mask_final[0:100])
+        ic(np.logical_and(L1_mask_final, storm_mask_final)[0:100])
+        ic((L1_mask_final & storm_mask_final)[0:100])
+        ic(L1_mask_final[500:600])
+        ic(storm_mask_final[500:600])
+        ic(np.logical_and(L1_mask_final, storm_mask_final)[500:600])
+        ic((L1_mask_final & storm_mask_final)[500:600]) 
+
         # Define the final overall cut mask
         final_overall_mask = L1_mask_final & storm_mask_final & burst_mask_final # This should align with base_times_for_cuts
         # Plot Max Amplitudes using pre-calculated ones
