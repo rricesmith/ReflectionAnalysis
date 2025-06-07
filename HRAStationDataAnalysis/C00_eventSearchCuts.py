@@ -891,6 +891,11 @@ if __name__ == "__main__":
         station_gti_file_to_save = os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl")
         _save_pickle_atomic(station_specific_report, station_gti_file_to_save) # Using your atomic save for pkl
 
+        ic(L1_mask_final[0:50])
+        ic(storm_mask_final[0:50])
+        ic(L1_mask_final[500:550])
+        ic(storm_mask_final[500:550])
+
         cuts_dict_for_plotting = collections.OrderedDict([
             ("L1 cut", L1_mask_final),
             ("L1+Storm cut", L1_mask_final & storm_mask_final),
