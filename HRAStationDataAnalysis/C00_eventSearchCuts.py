@@ -370,7 +370,7 @@ def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold,
     sorted_amplitudes = max_amplitudes_per_event[sort_indices]
     
     # Initialize the boolean mask that will be returned
-    mask = np.zeros_like(times, dtype=bool)
+    mask = np.ones_like(times, dtype=bool)
     
     # Pointers for the sliding window
     start_index = 0
@@ -396,7 +396,7 @@ def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold,
         if high_amplitude_count >= cut_frequency:
             # Mark all events within the current window in the mask
             original_indices = sort_indices[start_index:end_index + 1]
-            mask[original_indices] = True
+            mask[original_indices] = False
 
     return mask
 
