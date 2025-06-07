@@ -395,6 +395,8 @@ if __name__ == '__main__':
     config_parser = configparser.ConfigParser() 
     config_parser.read(os.path.join('HRAStationDataAnalysis', 'config.ini')) 
     date = config_parser['PARAMETERS']['date']
+    date_processing = config_parser['PARAMETERS']['date_processing']
+    ic(f"Running parameter addition for date {date} with processing date {date_processing}")
 
     data_path = "HRAStationDataAnalysis/StationData" # Relative to script location
     cache_path = "HRAStationDataAnalysis/cache"   # Relative to script location
@@ -433,7 +435,7 @@ if __name__ == '__main__':
     ic("Finished pre-calculating GRCI maps.")
 
     # Load initial coincidence events dictionary
-    initial_events_data_path = os.path.join(data_path, 'processedNumpyData', date, f'{date}_CoincidenceDatetimes.npy')
+    initial_events_data_path = os.path.join(data_path, 'processedNumpyData', date, f'{date_processing}_CoincidenceDatetimes.npy')
     initial_coincidence_events = None
     initial_coincidence_with_repeat_stations_events = None
     initial_coincidence_with_repeated_eventIDs = None
@@ -455,9 +457,9 @@ if __name__ == '__main__':
     parameters_to_add = ['Traces', 'SNR', 'ChiRCR', 'Chi2016', 'ChiBad', 'Zen', 'Azi']
     
     datasets_to_process = [
-        {"name": "CoincidenceEvents", "data_dict": initial_coincidence_events, "run_flag": "base", "final_save_name": f'{date}_CoincidenceDatetimes_with_all_params.pkl'},
-        {"name": "CoincidenceEventsWithRepeat", "data_dict": initial_coincidence_with_repeat_stations_events, "run_flag": "with_repeat", "final_save_name": f'{date}_CoincidenceRepeatStations_with_all_params.pkl'},
-        {"name": "CoincidenceEventsWithRepeatedEventIDs", "data_dict": initial_coincidence_with_repeated_eventIDs, "run_flag": "with_repeated_eventIDs", "final_save_name": f'{date}_CoincidenceRepeatEventIDs_with_all_params.pkl'}
+        {"name": "CoincidenceEvents", "data_dict": initial_coincidence_events, "run_flag": "base", "final_save_name": f'{date_processing}_CoincidenceDatetimes_with_all_params.pkl'},
+        {"name": "CoincidenceEventsWithRepeat", "data_dict": initial_coincidence_with_repeat_stations_events, "run_flag": "with_repeat", "final_save_name": f'{date_processing}_CoincidenceRepeatStations_with_all_params.pkl'},
+        {"name": "CoincidenceEventsWithRepeatedEventIDs", "data_dict": initial_coincidence_with_repeated_eventIDs, "run_flag": "with_repeated_eventIDs", "final_save_name": f'{date_processing}_CoincidenceRepeatEventIDs_with_all_params.pkl'}
     ]
 
     for dataset_info in datasets_to_process:
