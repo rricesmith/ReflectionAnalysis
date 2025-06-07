@@ -275,7 +275,8 @@ def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold,
                 if i == 0:
                     is_primary_trigger_event[i] = True
                 else:
-                    if not (times[i] == times[i-1] and event_ids[i] == event_ids[i-1]):
+                    # if not (times[i] == times[i-1] and event_ids[i] == event_ids[i-1]):
+                    if not (event_ids[i] == event_ids[i-1]):    # I think above was error. We want to only check event_ids are different for different events to be primary
                         is_primary_trigger_event[i] = True
     
     start_idx = 0
@@ -898,6 +899,7 @@ if __name__ == "__main__":
                             cuts_dict_for_plotting, 
                             is_max_amp_data=True, # True for Max Amp plot
                             final_cut_mask_for_gti_fill=final_overall_mask)
+        
         # Plot Chi values if available (these don't depend on traces directly here)
         # ... (load ChiRCR, call plot_cuts_amplitudes with ChiRCR data and is_max_amp_data=False) ...
         plot_cuts_rates(base_times_for_cuts, 
