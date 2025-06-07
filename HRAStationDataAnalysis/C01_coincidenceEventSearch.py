@@ -403,13 +403,16 @@ if __name__ == "__main__":
     config = configparser.ConfigParser() 
     config.read(os.path.join('HRAStationDataAnalysis', 'config.ini')) 
     date = config['PARAMETERS']['date']
+    date_processing = config['PARAMETERS']['date_processing']
+    ic("Processing date:", date)
+    ic("Saving to date_processing:", date_processing)
 
     # Define folder to save processed data.
     numpy_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'processedNumpyData', date)
     if not os.path.exists(numpy_folder):
         os.makedirs(numpy_folder)
 
-    output_file = os.path.join(numpy_folder, f'{date}_CoincidenceDatetimes.npy')
+    output_file = os.path.join(numpy_folder, f'{date_processing}_CoincidenceDatetimes.npy')
 
     # Check for existing processed data, load if found; otherwise find coincidences and save.
     if os.path.exists(output_file):
