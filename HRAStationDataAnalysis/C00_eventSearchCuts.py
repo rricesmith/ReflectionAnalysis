@@ -755,46 +755,58 @@ if __name__ == "__main__":
 
         # --- Initial Time Filtering (Applied to Times, EventIDs, MaxAmplitudes, and Traces) ---
         # ... (initial_valid_mask calculated from times_raw as before) ...
-        zerotime_mask = (times_raw != 0)
-        min_datetime_threshold = datetime.datetime(2013, 1, 1).timestamp()
-        pretime_mask = (times_raw >= min_datetime_threshold)
-        initial_valid_mask = zerotime_mask & pretime_mask
+        # zerotime_mask = (times_raw != 0)
+        # min_datetime_threshold = datetime.datetime(2013, 1, 1).timestamp()
+        # pretime_mask = (times_raw >= min_datetime_threshold)
+        # initial_valid_mask = zerotime_mask & pretime_mask
 
-        base_times_for_cuts = times_raw[initial_valid_mask]
-        base_event_ids_for_cuts = eventids_raw[initial_valid_mask]
-        base_max_amplitudes_for_cuts = max_amplitudes_raw[initial_valid_mask]
-        # Conditionally filter traces if they were loaded successfully
-        base_traces_for_cuts = traces_raw[initial_valid_mask] if traces_raw.size > 0 else np.array([]).reshape(0,4,256)
+        # base_times_for_cuts = times_raw[initial_valid_mask]
+        # base_event_ids_for_cuts = eventids_raw[initial_valid_mask]
+        # base_max_amplitudes_for_cuts = max_amplitudes_raw[initial_valid_mask]
+        # # Conditionally filter traces if they were loaded successfully
+        # base_traces_for_cuts = traces_raw[initial_valid_mask] if traces_raw.size > 0 else np.array([]).reshape(0,4,256)
 
 
+        # if base_times_for_cuts.size == 0:
+        #     ic(f"No data for Station {current_station_id} after initial time filters. Saving empty report and aborting.")
+        #     _save_pickle_atomic({}, os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl"))
+        #     exit(0)
+
+
+        # # Now, identify unique (Time, EventID) pairs from these base arrays
+        # # This is simpler than trying to create a mask on original indices.
+        # if base_times_for_cuts.size > 0:
+        #     # Create pairs of (time, event_id) for finding unique combinations
+        #     time_eventid_pairs = np.stack((base_times_for_cuts, base_event_ids_for_cuts), axis=-1)
+
+        #     # Find unique pairs and the indices of their first occurrences
+        #     # np.unique returns sorted unique values by default.
+        #     # We need 'return_index=True' to get the indices of the first time each unique pair appears.
+        #     # These indices will be relative to time_eventid_pairs (and thus to base_..._for_cuts arrays).
+        #     _, unique_indices = np.unique(time_eventid_pairs, axis=0, return_index=True)
+
+        #     # Sort these unique_indices to maintain the original time order of the first occurrences.
+        #     unique_indices.sort() 
+
+        #     ic(f"Identified {len(unique_indices)} events after removing Time+EventID duplicates from {len(base_times_for_cuts)} events.")
+
+        #     # Apply this uniqueness filter
+        #     base_times_for_cuts = base_times_for_cuts[unique_indices]
+        #     base_event_ids_for_cuts = base_event_ids_for_cuts[unique_indices]
+        #     base_max_amplitudes_for_cuts = base_max_amplitudes_for_cuts[unique_indices]
+        #     base_traces_for_cuts = base_traces_for_cuts[unique_indices]
+        from HRAStationDataAnalysis import getTimeEventMasks
+        # Use the utility function to get the initial valid mask and unique indices
+        initial_valid_mask, unique_indices = getTimeEventMasks(times_raw, eventids_raw, max_amplitudes_raw, traces_raw)
+        base_times_for_cuts = times_raw[initial_valid_mask][unique_indices]
+        base_event_ids_for_cuts = eventids_raw[initial_valid_mask][unique_indices]
+        base_max_amplitudes_for_cuts = max_amplitudes_raw[initial_valid_mask][unique_indices]
+        base_traces_for_cuts = traces_raw[initial_valid_mask][unique_indices] if traces_raw.size > 0 else np.array([]).reshape(0,4,256)
         if base_times_for_cuts.size == 0:
             ic(f"No data for Station {current_station_id} after initial time filters. Saving empty report and aborting.")
             _save_pickle_atomic({}, os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl"))
             exit(0)
 
-
-        # Now, identify unique (Time, EventID) pairs from these base arrays
-        # This is simpler than trying to create a mask on original indices.
-        if base_times_for_cuts.size > 0:
-            # Create pairs of (time, event_id) for finding unique combinations
-            time_eventid_pairs = np.stack((base_times_for_cuts, base_event_ids_for_cuts), axis=-1)
-
-            # Find unique pairs and the indices of their first occurrences
-            # np.unique returns sorted unique values by default.
-            # We need 'return_index=True' to get the indices of the first time each unique pair appears.
-            # These indices will be relative to time_eventid_pairs (and thus to base_..._for_cuts arrays).
-            _, unique_indices = np.unique(time_eventid_pairs, axis=0, return_index=True)
-
-            # Sort these unique_indices to maintain the original time order of the first occurrences.
-            unique_indices.sort() 
-
-            ic(f"Identified {len(unique_indices)} events after removing Time+EventID duplicates from {len(base_times_for_cuts)} events.")
-
-            # Apply this uniqueness filter
-            base_times_for_cuts = base_times_for_cuts[unique_indices]
-            base_event_ids_for_cuts = base_event_ids_for_cuts[unique_indices]
-            base_max_amplitudes_for_cuts = base_max_amplitudes_for_cuts[unique_indices]
-            base_traces_for_cuts = base_traces_for_cuts[unique_indices]
 
         ic(f"Data for cuts: Times {base_times_for_cuts.shape}, EventIDs {base_event_ids_for_cuts.shape}, MaxAmps {base_max_amplitudes_for_cuts.shape}, Traces {base_traces_for_cuts.shape}")
 

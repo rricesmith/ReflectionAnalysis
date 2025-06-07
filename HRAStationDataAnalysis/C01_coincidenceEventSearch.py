@@ -61,13 +61,17 @@ def findCoincidenceDatetimes(date, cuts=True):
             continue
 
         # Initial filtering for times
-        zerotime_mask = times != 0
-        times = times[zerotime_mask]
-        event_ids = event_ids[zerotime_mask] # Apply the same mask to event_ids
+        # zerotime_mask = times != 0
+        # times = times[zerotime_mask]
+        # event_ids = event_ids[zerotime_mask] # Apply the same mask to event_ids
 
-        pretime_mask = times >= datetime.datetime(2013, 1, 1).timestamp()
-        times = times[pretime_mask]
-        event_ids = event_ids[pretime_mask] # Apply the same mask to event_ids
+        # pretime_mask = times >= datetime.datetime(2013, 1, 1).timestamp()
+        # times = times[pretime_mask]
+        # event_ids = event_ids[pretime_mask] # Apply the same mask to event_ids
+        from HRAStationDataAnalysis.C_utils import getTimeEventMasks
+        initial_mask, unique_indices = getTimeEventMasks(times, event_ids)
+        times = times[initial_mask][unique_indices]
+        event_ids = event_ids[initial_mask][unique_indices]
 
         final_cuts_mask = np.ones(len(times), dtype=bool) # Initialize final cuts mask
 
