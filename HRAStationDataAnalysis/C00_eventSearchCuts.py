@@ -335,8 +335,6 @@ def calculate_N_or_more_stations_livetime(all_station_gti_lists, N_min_stations,
 
 #     return mask
 
-import numpy as np
-
 def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold, time_period, cut_frequency):
     """
     Creates a boolean mask to identify and cut on events clustered in time.
@@ -926,7 +924,7 @@ if __name__ == "__main__":
             ic(f"Calculating storm cut...")
             storm_mask_final = cluster_cut(base_times_for_cuts, base_max_amplitudes_for_cuts, base_event_ids_for_cuts, # USE MAX AMPS
                                            amplitude_threshold=0.4, 
-                                           time_period=datetime.timedelta(seconds=3600), 
+                                           time_period=datetime.timedelta(seconds=3600).total_seconds(), 
                                            cut_frequency=2)
             current_all_cut_masks['storm_mask'] = storm_mask_final
             np.save(cut_file_path, current_all_cut_masks, allow_pickle=True); ic("Saved storm_mask.")
@@ -935,7 +933,7 @@ if __name__ == "__main__":
             ic(f"Calculating burst cut...")
             burst_mask_final = cluster_cut(base_times_for_cuts, base_max_amplitudes_for_cuts, base_event_ids_for_cuts, # USE MAX AMPS
                                            amplitude_threshold=0.2, 
-                                           time_period=datetime.timedelta(seconds=60), 
+                                           time_period=datetime.timedelta(seconds=60).total_seconds(), 
                                            cut_frequency=2)
             current_all_cut_masks['burst_mask'] = burst_mask_final
             np.save(cut_file_path, current_all_cut_masks, allow_pickle=True); ic("Saved burst_mask.")
