@@ -454,7 +454,7 @@ if __name__ == '__main__':
         ic(f"CRITICAL Error: Initial Coincidence events file not found at {initial_events_data_path}. Exiting.")
         exit()
 
-    parameters_to_add = ['Traces', 'SNR', 'ChiRCR', 'Chi2016', 'ChiBad', 'Zen', 'Azi']
+    parameters_to_add = ['Traces', 'SNR', 'ChiRCR', 'Chi2016', 'ChiBad', 'Zen', 'Azi', 'Times']
     
     datasets_to_process = [
         {"name": "CoincidenceEvents", "data_dict": initial_coincidence_events, "run_flag": "base", "final_save_name": f'{date_processing}_CoincidenceDatetimes_with_all_params.pkl'},
