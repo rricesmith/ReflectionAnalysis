@@ -429,11 +429,13 @@ if __name__ == '__main__':
     if not os.path.exists(config_path): config_path = 'config.ini'
     if not os.path.exists(config_path): ic(f"CRITICAL: config.ini not found."); exit()
     config.read(config_path); date_of_data = config['PARAMETERS']['date']
+    date_of_process = config['PARAMETERS']['date_processing']
     base_processed_data_dir = os.path.join("HRAStationDataAnalysis", "StationData", "processedNumpyData")
     processed_data_dir_for_date = os.path.join(base_processed_data_dir, date_of_data)
-    dataset_paths = [os.path.join(processed_data_dir_for_date, f"{date_of_data}_CoincidenceDatetimes_with_all_params.pkl")]
+    # dataset_paths = [os.path.join(processed_data_dir_for_date, f"{date_of_data}_CoincidenceDatetimes_with_all_params.pkl")]
+    dataset_paths = [os.path.join(processed_data_dir_for_date, f"{date_of_data}_CoincidenceDatetimes_with_all_params_recalcZenAzi.pkl")]
     dataset_names = ["CoincidenceEvents"]
-    dataset_plot_suffixes = [f"CoincidenceEvents_{date_of_data}"]
+    dataset_plot_suffixes = [f"CoincidenceEvents_{date_of_process}"]
     output_plot_basedir = os.path.join("HRAStationDataAnalysis", "plots")
     os.makedirs(output_plot_basedir, exist_ok=True)
     datasets_to_plot_info = []
