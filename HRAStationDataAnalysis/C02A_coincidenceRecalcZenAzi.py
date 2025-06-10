@@ -285,27 +285,20 @@ if __name__ == '__main__':
         description="Recalculate Zenith and Azimuth for coincidence events using raw .nur data."
     )
     parser.add_argument(
-        "input_events_file",
-        help="Path to the input events_dict.pkl file (e.g., CoincidenceDatetimes_with_all_params.pkl)"
-    )
-    parser.add_argument(
-        "date_str",
-        help="Date string for processing (e.g., YYYYMMDD), used for context and matching."
-    )
-    parser.add_argument(
-        "output_events_file",
-        help="Path to save the updated events_dict.pkl file"
-    )
-    parser.add_argument(
-        "--config",
-        default="config.ini",
-        help="Path to the configuration (.ini) file (default: config.ini)"
-    )
-    parser.add_argument(
         "--stations",
         nargs='+',
         help="Optional list of station IDs to process. If not provided, all stations in the events_dict are processed."
     )
+
+    import configparser
+    main_config_parser = configparser.ConfigParser() 
+    main_config_parser.read(os.path.join('HRAStationDataAnalysis', 'config.ini')) 
+    date = main_config_parser['PARAMETERS']['date']
+    date_processing = main_config_parser['PARAMETERS']['date_processing']
+    ic(f"Running parameter addition for date {date} with processing date {date_processing}")
+
+    input_events_file = f"HRAStationDataAnalysis/StationData/processedNumpyData/{date}/{date_processing}_CoincidenceDatetimes_with_all_params.pkl"
+    output_events_file = f"HRAStationDataAnalysis/StationData/processedNumpyData/{date}/{date_processing}_CoincidenceDatetimes_with_all_params_recalcZenAzi.pkl"
 
     args = parser.parse_args()
     ic.enable()
@@ -315,23 +308,16 @@ if __name__ == '__main__':
         print("Please ensure 'HRAStationDataAnalysis.batchHRADataConversion' is in your Python path.")
         exit(1)
 
-    if not os.path.exists(args.config):
-        ic(f"CRITICAL: Configuration file not found: {args.config}")
-        exit(1)
-
-    main_config_parser = configparser.ConfigParser()
-    main_config_parser.read(args.config)
-
     if 'DEFAULT' not in main_config_parser or \
        'detector_layout_file' not in main_config_parser['DEFAULT']:
         ic("CRITICAL: 'detector_layout_file' not found in DEFAULT section of config file.")
         exit(1)
 
-    ic(f"Loading initial events dictionary from: {args.input_events_file}")
-    events_dictionary = _load_pickle(args.input_events_file)
+    ic(f"Loading initial events dictionary from: {input_events_file}")
+    events_dictionary = _load_pickle(input_events_file)
 
     if events_dictionary is None:
-        ic(f"CRITICAL: Failed to load events dictionary from {args.input_events_file}. Exiting.")
+        ic(f"CRITICAL: Failed to load events dictionary from {input_events_file}. Exiting.")
         exit(1)
 
     ic(f"Successfully loaded {len(events_dictionary)} events.")
@@ -339,11 +325,11 @@ if __name__ == '__main__':
     updated_events_dictionary = recalculate_zen_azi_for_events(
         events_dictionary,
         main_config_parser,
-        args.date_str,
+        date,
         station_ids_to_process=args.stations
     )
 
-    ic(f"Saving updated events dictionary to: {args.output_events_file}")
-    _save_pickle_atomic(updated_events_dictionary, args.output_events_file)
+    ic(f"Saving updated events dictionary to: {output_events_file}")
+    _save_pickle_atomic(updated_events_dictionary, output_events_file)
 
     ic("Processing complete.")
