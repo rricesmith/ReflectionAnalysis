@@ -192,6 +192,8 @@ def recalculate_zen_azi_for_events(events_dict, main_config, date_str, station_i
                         "list_pos": k,
                         "original_event_id_key": event_id
                     })
+                else:
+                    ic(f"Event {event_id}, St {station_id}, ListPos {k}: Azi={azimuths[k]:.4f}, Zen={zeniths[k]:.4f} - No recalculation needed.")
 
         if not targets_for_station:
             ic(f"Station {station_id}: No events require Zen/Azi recalculation.")
