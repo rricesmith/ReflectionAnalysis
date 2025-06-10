@@ -158,7 +158,7 @@ def recalculate_zen_azi_for_events(events_dict, main_config, date_str, station_i
 
             azimuths = station_event_data.get("Azi")
             zeniths = station_event_data.get("Zen")
-            event_ids_for_param = station_event_data.get("EventIDs")
+            event_ids_for_param = station_event_data.get("event_ids")
             times_for_param = station_event_data.get("Times")
 
             ic(event_data_ref)
