@@ -164,6 +164,8 @@ def recalculate_zen_azi_for_events(events_dict, main_config, date_str, station_i
             ic(event_data_ref)
             ic(f"Event {event_id}, St {station_id}: Found {num_indices} indices, "
                f"Azi={azimuths}, Zen={zeniths}, EventIDs={event_ids_for_param}, Times={times_for_param}")
+            ic(event_data_ref["stations"])
+            ic(event_data_ref["stations"][station_key_in_event])
 
             if not (event_ids_for_param and times_for_param and \
                     len(event_ids_for_param) == num_indices and \
