@@ -108,9 +108,10 @@ def recalculate_zen_azi_for_events(events_dict, main_config, date_str, station_i
 
 
     try:
-        det = detector.Detector(detector_file_path=detector_file,
-                                antenna_by_depth=False,
-                                create_new=True)
+        det = detector.Detector(f"HRASimulation/HRAStationLayoutForCoREAS.json")
+        # det = detector.Detector(detector_file_path=detector_file,
+        #                         antenna_by_depth=False,
+        #                         create_new=True)
         ic(f"Detector initialized from: {detector_file}")
     except Exception as e:
         ic(f"CRITICAL: Failed to initialize detector from {detector_file}: {e}")
