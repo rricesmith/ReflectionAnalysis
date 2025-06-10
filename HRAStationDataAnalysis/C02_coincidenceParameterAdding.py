@@ -264,13 +264,14 @@ def add_parameter_orchestrator(
     events_dict,
     parameter_name,
     date_str,
+    date_processing_str,
     run_flag, 
     config 
     ):
     """
     Adds a specific parameter to the events_dict.
     """
-    ic(f"\nOrchestrating addition of '{parameter_name}' for date {date_str}, flag {run_flag}")
+    ic(f"\nOrchestrating addition of '{parameter_name}' for date {date_str} on {date_processing_str}, flag {run_flag}")
     time_files_tmpl = config['time_files_template']
     # Derive EventID template from Time template
     eventid_files_tmpl = config['time_files_template'].replace("_Times", "_EventIDs")
@@ -282,7 +283,7 @@ def add_parameter_orchestrator(
     checkpoint_file = None
     if 'checkpoint_path_template' in config and 'dataset_name_for_checkpoint' in config:
         checkpoint_file = config['checkpoint_path_template'].format(
-            date=date_str, 
+            date_processing=date_processing_str, 
             flag=run_flag,
             dataset_name=config['dataset_name_for_checkpoint'],
             parameter_name=parameter_name
@@ -296,7 +297,7 @@ def add_parameter_orchestrator(
 
     for station_id in sorted_unique_stations:
         ic(f"\n--- Processing Station {station_id} for parameter '{parameter_name}' ---")
-        current_map_cache_path = map_cache_tmpl.format(date=date_str, flag=run_flag, station_id=station_id)
+        current_map_cache_path = map_cache_tmpl.format(date_processing=date_processing_str, flag=run_flag, station_id=station_id)
         current_ext_cuts_path = ext_cuts_tmpl.format(date=date_str, station_id=station_id)
 
         final_idx_to_grci_map = create_final_idx_to_grci_map(
@@ -394,7 +395,7 @@ if __name__ == '__main__':
     map_creation_flag = "base"
     eventid_files_tmpl_main = CONFIG['time_files_template'].replace("_Times", "_EventIDs")
     for station_id in stations:
-        map_cache_p = CONFIG['map_cache_template'].format(date=date, flag=map_creation_flag, station_id=station_id)
+        map_cache_p = CONFIG['map_cache_template'].format(date_processing=date_processing, flag=map_creation_flag, station_id=station_id)
         create_final_idx_to_grci_map(
             date_str=date, station_id=station_id,
             time_files_template=CONFIG['time_files_template'],
@@ -437,7 +438,7 @@ if __name__ == '__main__':
         for param_idx, param_name in enumerate(parameters_to_add):
             ic(f"--- {dataset_label}: Adding Parameter '{param_name}' ({param_idx + 1}/{len(parameters_to_add)}) ---")
 
-            current_param_checkpoint_path = CONFIG['checkpoint_path_template'].format(date=date, flag=current_run_flag, dataset_name=CONFIG['dataset_name_for_checkpoint'], parameter_name=param_name)
+            current_param_checkpoint_path = CONFIG['checkpoint_path_template'].format(date_processing=date_processing, flag=current_run_flag, dataset_name=CONFIG['dataset_name_for_checkpoint'], parameter_name=param_name)
             
             # Simplified Resume Logic: Always start from the previous parameter's finished state, or initial if it's the first.
             # Resume from a parameter's own mid-run checkpoint if it exists.
@@ -446,7 +447,7 @@ if __name__ == '__main__':
                  working_events_dict = _load_pickle(current_param_checkpoint_path)
             elif param_idx > 0:
                 prev_param_name = parameters_to_add[param_idx - 1]
-                prev_param_checkpoint_path = CONFIG['checkpoint_path_template'].format(date=date, flag=current_run_flag, dataset_name=CONFIG['dataset_name_for_checkpoint'], parameter_name=prev_param_name)
+                prev_param_checkpoint_path = CONFIG['checkpoint_path_template'].format(date_processing=date_processing, flag=current_run_flag, dataset_name=CONFIG['dataset_name_for_checkpoint'], parameter_name=prev_param_name)
                 if os.path.exists(prev_param_checkpoint_path):
                     ic(f"Starting '{param_name}' from '{prev_param_name}'s completed checkpoint.")
                     working_events_dict = _load_pickle(prev_param_checkpoint_path)
@@ -463,7 +464,7 @@ if __name__ == '__main__':
 
             add_parameter_orchestrator(
                 events_dict=working_events_dict, parameter_name=param_name,
-                date_str=date, run_flag=current_run_flag, config=CONFIG
+                date_str=date, date_processing_str=date_processing, run_flag=current_run_flag, config=CONFIG
             )
             ic(f"--- Finished processing '{param_name}' for '{dataset_label}'. ---")
 
