@@ -603,7 +603,8 @@ def plot_concurrent_station_summary_strips(all_station_gti_lists, plot_start_tim
 
 
 # --- Global Definitions ---
-LIVETIME_THRESHOLD_SECONDS = 3600.0
+# LIVETIME_THRESHOLD_SECONDS = 3600.0   # 1 hour
+LIVETIME_THRESHOLD_SECONDS = 86400.0       # 1 day
 REPORT_CUT_STAGES = collections.OrderedDict([
     ("Total (after initial time filters)", "mask_total"),
     ("After L1", "mask_l1"),
