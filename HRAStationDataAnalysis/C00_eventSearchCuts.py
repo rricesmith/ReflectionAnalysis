@@ -796,7 +796,7 @@ if __name__ == "__main__":
         #     base_event_ids_for_cuts = base_event_ids_for_cuts[unique_indices]
         #     base_max_amplitudes_for_cuts = base_max_amplitudes_for_cuts[unique_indices]
         #     base_traces_for_cuts = base_traces_for_cuts[unique_indices]
-        from HRAStationDataAnalysis import getTimeEventMasks
+        from HRAStationDataAnalysis.C_utils import getTimeEventMasks
         # Use the utility function to get the initial valid mask and unique indices
         initial_valid_mask, unique_indices = getTimeEventMasks(times_raw, eventids_raw, max_amplitudes_raw, traces_raw)
         base_times_for_cuts = times_raw[initial_valid_mask][unique_indices]
