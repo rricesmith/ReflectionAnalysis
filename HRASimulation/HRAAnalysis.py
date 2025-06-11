@@ -350,44 +350,122 @@ def calculate_all_station_combination_rates(HRAeventList, output_file, max_dista
     # We exclude 32 and 52 as they are often treated as special cases.
     base_stations = [13, 14, 15, 17, 18, 19, 30]
     
+    # Station combos that are in a \ line like a forward slash
+    forward_combinations = [[18, 19], [13, 14], [15, 30], [17, 18]]
+    # Station combos that are in a / line like a backslash
+    backward_combinations = [[19, 30], [14, 18], [15, 18], [13, 17]]
+    # Station combos that are in a - line like a horizontal line
+    horizontal_combinations = [[14, 19], [18, 30], [13, 18], [15, 17]] 
+
+    n2_combinations = {"Forward-slash": forward_combinations,
+                       "Backslash": backward_combinations,
+                       "Horizontal": horizontal_combinations}
+
+    # Station combos that are triangular, for n=3
+    triangular_combinations = [[18, 19, 30], [13, 14, 18], [14, 18, 19], [15, 18, 30], [15, 17, 18], [13, 17, 18]]
+
     e_bins, z_bins = getEnergyZenithBins()
     
-    print(f"Saving combination rates to: {output_file}")
+    def getRateAndErrorForComboList(combo_list, HRAeventList, require_reflected=True, sigma=4.5):
+        """
+        Helper function to get the trigger rate for a specific combination of stations.
+        """
+        # Get the trigger rate for this specific combination with the reflected requirement
+        trigger_rate = get_specific_combination_trigger_rate(HRAeventList, combo_list, 
+                                                                require_reflected=True, sigma=sigma)
+        
+        # If there are no triggers for this combo, skip to the next one
+        if not np.any(trigger_rate > 0):
+            return 0, 0
+
+        # Calculate the total event rate for the array
+        event_rate = getEventRate(trigger_rate, e_bins, z_bins, max_distance)
+        total_event_rate = np.nansum(event_rate)
+        
+        # Calculate the error on the event rate
+        error_rate_array = getErrorEventRates(trigger_rate, HRAeventList, max_distance=max_distance)
+        total_error = np.nansum(error_rate_array)        
+        return total_event_rate, total_error
+
+    ic(f"Saving combination rates to: {output_file}")
     with open(output_file, 'w') as f:
         # Write the header for the output file
-        f.write("Station_Combination,Total_Event_Rate,Total_Error\n")
+        f.write("Station Combination, Total_Event_Rate, Total_Error (both in Evts/Yr)\n")
 
         # Iterate through all coincidence levels (2-station, 3-station, etc.)
         for n_coincidence in range(2, len(base_stations) + 1):
-            print(f"\nCalculating for {n_coincidence}-fold coincidences...")
+            ic(f"\nCalculating for {n_coincidence}-fold coincidences...")
+
+            # For n=2, we can use the predefined combinations first
+            if n_coincidence == 2:
+                for combo_type, combinations in n2_combinations.items():
+                    f.write(f"\n# {combo_type} Combinations:\n")
+                    f.write(f"Station combinations {combinations}\n")
+                    sum_rate = 0
+                    sum_error = []
+                    for combo in combinations:
+                        total_event_rate, total_error = getRateAndErrorForComboList(combo, HRAeventList, require_reflected=True, sigma=sigma)
+                        if total_event_rate == 0:
+                            ic(f"  Skipping {combo} with zero event rate.")
+                            continue
+                        combo_str = "-".join(map(str, combo))
+                        f.write(f"{combo_str} : {total_event_rate:.5f}, {total_error:.5f}\n")
+                        ic(f"  {combo_str:<20} | Rate: {total_event_rate:.4f}, Error: {total_error:.4f}")
+                        sum_rate += total_event_rate
+                        sum_error.append(total_error)
+                    tot_error = np.sqrt(np.sum(np.array(sum_error)**2))
+                    f.write(f"Total {combo_type} Rate: {sum_rate:.5f}, Error: {tot_error:.5f}\n")
+                    # Also average rate
+                    f.write(f"Average {combo_type} Rate: {sum_rate/len(combinations):.5f}, Error: {tot_error/len(combinations):.5f}\n\n")
+
+            if n_coincidence == 3:
+                ic(f"\nCalculating for {n_coincidence}-fold coincidences (triangular combinations)...")
+                f.write("\n# Triangular Combinations:\n")
+                f.write(f"Station combinations {triangular_combinations}\n")
+                sum_rate = 0
+                sum_error = []
+                for combo in triangular_combinations:
+                    total_event_rate, total_error = getRateAndErrorForComboList(combo, HRAeventList, require_reflected=True, sigma=sigma)
+                    if total_event_rate == 0:
+                        ic(f"  Skipping {combo} with zero event rate.")
+                        continue
+                    combo_str = "-".join(map(str, combo))
+                    f.write(f"{combo_str} : {total_event_rate:.5f}, {total_error:.5f}\n")
+                    ic(f"  {combo_str:<20} | Rate: {total_event_rate:.4f}, Error: {total_error:.4f}")
+                    sum_rate += total_event_rate
+                    sum_error.append(total_error)
+                tot_error = np.sqrt(np.sum(np.array(sum_error)**2))
+                f.write(f"Total Triangular Rate: {sum_rate:.5f}, Error: {tot_error:.5f}\n")
+                # Also average rate
+                f.write(f"Average Triangular Rate: {sum_rate/len(triangular_combinations):.5f}, Error: {tot_error/len(triangular_combinations):.5f}\n\n")
+
             # Generate all unique combinations of stations for the current n-level
             for station_combo in itertools.combinations(base_stations, n_coincidence):
                 combo_list = list(station_combo)
-                
-                # Get the trigger rate for this specific combination with the reflected requirement
-                trigger_rate = get_specific_combination_trigger_rate(HRAeventList, combo_list, 
-                                                                     require_reflected=True, sigma=sigma)
-                
-                # If there are no triggers for this combo, skip to the next one
-                if not np.any(trigger_rate > 0):
+                if combo_list in forward_combinations or combo_list in backward_combinations or combo_list in horizontal_combinations or combo_list in triangular_combinations:
+                    # Skip predefined combinations already handled
                     continue
 
-                # Calculate the total event rate for the array
-                event_rate = getEventRate(trigger_rate, e_bins, z_bins, max_distance)
-                total_event_rate = np.nansum(event_rate)
-                
-                # Calculate the error on the event rate
-                error_rate_array = getErrorEventRates(trigger_rate, HRAeventList, max_distance=max_distance)
-                total_error = np.nansum(error_rate_array)
+                if n_coincidence == 2:
+                    f.write(f"\n# Extra 2-station Combination: {combo_list}\n")
+                elif n_coincidence == 3:
+                    f.write(f"\n# Extra 3-station Combination: {combo_list}\n")
+
+                total_event_rate, total_error = getRateAndErrorForComboList(combo_list, HRAeventList, require_reflected=True, sigma=sigma)
+
+                # If the total event rate is zero, skip writing to the file
+                if total_event_rate == 0:
+                    ic(f"  Skipping {combo_list} with zero event rate.")
+                    continue
 
                 # Format the station combination as a string (e.g., "13-19-14")
                 combo_str = "-".join(map(str, combo_list))
                 
                 # Write the result to the file
-                f.write(f"{combo_str},{total_event_rate:.5e},{total_error:.5e}\n")
-                print(f"  {combo_str:<20} | Rate: {total_event_rate:.4e}, Error: {total_error:.4e}")
+                f.write(f"{combo_str} : {total_event_rate:.5f}, {total_error:.5f}\n")
+                ic(f"  {combo_str:<20} | Rate: {total_event_rate:.4f}, Error: {total_error:.4f}")
                 
-    print("\nCalculation complete!")
+    ic("\nCalculation complete!")
 
 
 
@@ -823,6 +901,23 @@ if __name__ == "__main__":
     if not os.path.exists(save_folder+'error_rate/'):
         os.makedirs(save_folder+'error_rate/')
 
+
+    # Calcing station combos first
+    ic("\n" + "="*50)
+    ic("Starting calculation of station combination rates with reflected requirement...")
+    
+    # Define the output filename
+    combination_output_file = os.path.join(save_folder, 'station_combination_rates_with_refl.txt')
+    
+    # Call the new function
+    calculate_all_station_combination_rates(HRAeventList, 
+                                            combination_output_file, 
+                                            max_distance=max_distance, 
+                                            sigma=plot_sigma)
+    
+    ic("="*50)
+    quit()
+
     for station_id in direct_event_rate:
         imshowRate(direct_trigger_rate_dict[station_id], f'Direct Trigger Rate for Station {station_id}', f'{save_folder}direct_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
         imshowRate(direct_event_rate[station_id], f'Direct Event Rate for Station {station_id}', f'{save_folder}direct_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(direct_event_rate[station_id]):.3f}')
@@ -983,20 +1078,6 @@ if __name__ == "__main__":
     histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for Combined Reflected Stations', f'{angle_save_folder}recon_angles_combined_reflected.png')
 
 
-    ic("\n" + "="*50)
-    ic("Starting calculation of station combination rates with reflected requirement...")
-    
-    # Define the output filename
-    combination_output_file = os.path.join(save_folder, 'station_combination_rates_with_refl.txt')
-    
-    # Call the new function
-    calculate_all_station_combination_rates(HRAeventList, 
-                                            combination_output_file, 
-                                            max_distance=max_distance, 
-                                            sigma=plot_sigma)
-    
-    ic("="*50)
-    # --- END OF NEW SECTION ---
 
 
 
