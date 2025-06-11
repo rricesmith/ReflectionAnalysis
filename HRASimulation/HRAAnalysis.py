@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import configparser
 from HRASimulation.HRAEventObject import HRAevent
 from HRASimulation.HRANurToNpy import loadHRAfromH5
-
+import itertools
 
 def getEnergyZenithBins():
     # Define the bins that are constant
@@ -275,6 +275,121 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False,
         trigger_rate_coincidence[i] /= n_throws
 
     return trigger_rate_coincidence
+
+def get_specific_combination_trigger_rate(HRAeventList, station_combo, require_reflected, sigma=4.5):
+    """
+    Calculates the trigger rate for a specific combination of stations.
+
+    Args:
+        HRAeventList (list): The list of HRA event objects.
+        station_combo (list): A list of direct station IDs that must trigger (e.g., [19, 13]).
+        require_reflected (bool): If True, requires at least one reflected station to have triggered.
+        sigma (float): The significance threshold for a station trigger.
+
+    Returns:
+        np.ndarray: A 2D numpy array of the trigger rate, binned by energy and zenith.
+    """
+    e_bins, z_bins = getEnergyZenithBins()
+    n_throws = getnThrows(HRAeventList)
+    trigger_rate_array = getEnergyZenithArray()
+
+    # Define the list of all standard reflected stations
+    # all_reflected_stations = [113, 114, 115, 117, 118, 119, 130]
+    all_reflected_stations = []
+    for station_id in station_combo:
+        if station_id < 100:
+            # Direct station, add reflected counterpart
+            all_reflected_stations.append(station_id + 100)
+
+    # Use sets for efficient checking
+    combo_set = set(station_combo)
+
+    for event in HRAeventList:
+        # Get all stations triggered for this event at the specified sigma
+        triggered_stations_all = set(event.station_triggers.get(sigma, []))
+        
+        # Condition 1: Check if all stations in the specific combo have triggered.
+        if not combo_set.issubset(triggered_stations_all):
+            continue
+            
+        # Condition 2: If required, check that at least one reflected station has also triggered.
+        if require_reflected:
+            # Check for any intersection between triggered stations and the reflected list
+            if not any(refl_st in triggered_stations_all for refl_st in all_reflected_stations):
+                continue
+        
+        # If all conditions are met, bin the event
+        energy = event.getEnergy()
+        zenith = event.getAngles()[0]
+        energy_bin = np.digitize(energy, e_bins) - 1
+        zenith_bin = np.digitize(zenith, z_bins) - 1
+        
+        if 0 <= energy_bin < len(e_bins) - 1 and 0 <= zenith_bin < len(z_bins) - 1:
+            trigger_rate_array[energy_bin][zenith_bin] += 1
+        
+    # Normalize by the number of throws to get the rate
+    with np.errstate(divide='ignore', invalid='ignore'):
+        trigger_rate_array /= n_throws
+    trigger_rate_array[np.isnan(trigger_rate_array)] = 0
+
+    return trigger_rate_array
+
+
+def calculate_all_station_combination_rates(HRAeventList, output_file, max_distance, sigma=4.5):
+    """
+    Calculates coincidence rates for all combinations of stations, requires a reflected
+    signal, and saves the results to a file.
+
+    Args:
+        HRAeventList (list): List of HRA event objects.
+        output_file (str): Path to the output text file.
+        max_distance (float): The maximum simulation distance in km for rate calculation.
+        sigma (float): The significance threshold for a station trigger.
+    """
+    # Define the primary direct stations to be used in combinations.
+    # We exclude 32 and 52 as they are often treated as special cases.
+    base_stations = [13, 14, 15, 17, 18, 19, 30]
+    
+    e_bins, z_bins = getEnergyZenithBins()
+    
+    print(f"Saving combination rates to: {output_file}")
+    with open(output_file, 'w') as f:
+        # Write the header for the output file
+        f.write("Station_Combination,Total_Event_Rate,Total_Error\n")
+
+        # Iterate through all coincidence levels (2-station, 3-station, etc.)
+        for n_coincidence in range(2, len(base_stations) + 1):
+            print(f"\nCalculating for {n_coincidence}-fold coincidences...")
+            # Generate all unique combinations of stations for the current n-level
+            for station_combo in itertools.combinations(base_stations, n_coincidence):
+                combo_list = list(station_combo)
+                
+                # Get the trigger rate for this specific combination with the reflected requirement
+                trigger_rate = get_specific_combination_trigger_rate(HRAeventList, combo_list, 
+                                                                     require_reflected=True, sigma=sigma)
+                
+                # If there are no triggers for this combo, skip to the next one
+                if not np.any(trigger_rate > 0):
+                    continue
+
+                # Calculate the total event rate for the array
+                event_rate = getEventRate(trigger_rate, e_bins, z_bins, max_distance)
+                total_event_rate = np.nansum(event_rate)
+                
+                # Calculate the error on the event rate
+                error_rate_array = getErrorEventRates(trigger_rate, HRAeventList, max_distance=max_distance)
+                total_error = np.nansum(error_rate_array)
+
+                # Format the station combination as a string (e.g., "13-19-14")
+                combo_str = "-".join(map(str, combo_list))
+                
+                # Write the result to the file
+                f.write(f"{combo_str},{total_event_rate:.5e},{total_error:.5e}\n")
+                print(f"  {combo_str:<20} | Rate: {total_event_rate:.4e}, Error: {total_error:.4e}")
+                
+    print("\nCalculation complete!")
+
+
 
 def set_bad_imshow(array, value):
     ma = np.ma.masked_where(array == value, array)
@@ -868,7 +983,20 @@ if __name__ == "__main__":
     histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for Combined Reflected Stations', f'{angle_save_folder}recon_angles_combined_reflected.png')
 
 
-
+    ic("\n" + "="*50)
+    ic("Starting calculation of station combination rates with reflected requirement...")
+    
+    # Define the output filename
+    combination_output_file = os.path.join(save_folder, 'station_combination_rates_with_refl.txt')
+    
+    # Call the new function
+    calculate_all_station_combination_rates(HRAeventList, 
+                                            combination_output_file, 
+                                            max_distance=max_distance, 
+                                            sigma=plot_sigma)
+    
+    ic("="*50)
+    # --- END OF NEW SECTION ---
 
 
 
