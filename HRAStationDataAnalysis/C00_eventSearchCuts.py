@@ -408,7 +408,7 @@ def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
 
         # --- Plot Data Points ---
         # "All Events (station data)" points and its livetime in legend
-        lt_all_s, _ = calculate_livetime(times_unix, livetime_threshold_seconds, season_start_unix, season_end_unix)
+        lt_all_s, _, _, _ = calculate_livetime(times_unix, livetime_threshold_seconds, season_start_unix, season_end_unix)
         label_all_events = f"All Events (station data) (Livetime: {format_duration_short(lt_all_s)})"
         ax.scatter(dt_times_all_events[base_seasonal_mask_for_plot], 
                    max_amps_to_plot[base_seasonal_mask_for_plot], 
@@ -444,7 +444,7 @@ def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
 
 
                 times_for_this_cut_series = times_unix[final_series_mask_global]
-                lt_s, _ = calculate_livetime(
+                lt_s, _, _, _ = calculate_livetime(
                     times_for_this_cut_series, 
                     livetime_threshold_seconds, 
                     season_start_unix, 
