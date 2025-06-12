@@ -100,113 +100,136 @@ def intersect_gti_lists(gti_list1, gti_list2):
         else: j += 1
     return merge_gti_list(intersection)
 
+def subtract_gti_lists(source_gti, subtraction_gti):
+    """
+    Subtracts a list of time intervals (subtraction_gti) from another (source_gti).
+    Handles overlaps and splits intervals correctly.
+    """
+    if not source_gti:
+        return []
+    if not subtraction_gti:
+        return source_gti
+
+    # It's crucial that both lists are pre-merged to handle their own overlaps.
+    merged_source = merge_gti_list(source_gti)
+    merged_subtraction = merge_gti_list(subtraction_gti)
+    
+    current_gti = merged_source
+    
+    # Sequentially apply each subtraction interval to the list of good intervals
+    for sub_start, sub_end in merged_subtraction:
+        next_gti = []
+        for src_start, src_end in current_gti:
+            # No overlap: source is entirely before or after the subtraction interval
+            if src_end <= sub_start or src_start >= sub_end:
+                next_gti.append([src_start, src_end])
+                continue
+
+            # At this point, an overlap is guaranteed.
+            
+            # Add the part of the source interval that is *before* the subtraction
+            if src_start < sub_start:
+                next_gti.append([src_start, sub_start])
+            
+            # Add the part of the source interval that is *after* the subtraction
+            if src_end > sub_end:
+                next_gti.append([sub_end, src_end])
+                
+        # The result of this subtraction becomes the source for the next subtraction interval
+        current_gti = next_gti 
+        
+    # The final list might have fragmented intervals that can be merged.
+    return merge_gti_list(current_gti)
 
 # --- Livetime and Overlap Calculation Functions  ---
-def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None, end_bound=None):
+def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None, end_bound=None,
+                       all_times_before_cuts=None, final_mask=None):
     """
     Calculates approximate livetime and active periods from a list of event timestamps.
-    1. Filters by start/end bounds.
-    2. Removes duplicate timestamps.
-    3. Defines raw active periods:
-        - [t_current, t_next] if (t_next - t_current) < threshold.
-        - [t_event - 0.25*thresh, t_event + 0.25*thresh] for "singular" events.
-    4. Merges these raw periods to get final GTIs and total livetime.
+    1. Defines initial active periods based on `times_survived_input`.
+    2. If `all_times_before_cuts` and `final_mask` are given, it finds periods of consecutive
+       "bad" events and subtracts them from the initial active periods.
+    3. Merges the final periods to get final GTIs and total livetime.
     """
-    ic. Kontext = f"calculate_livetime called with {len(times_survived_input) if hasattr(times_survived_input, '__len__') else 'N/A'} events"
-    
-    if not isinstance(times_survived_input, np.ndarray):
-        times_survived_input = np.array(times_survived_input)
+    ic.context(f"calculate_livetime called with {len(times_survived_input) if hasattr(times_survived_input, '__len__') else 'N/A'} survived events")
 
-    if len(times_survived_input) == 0:
-        ic("Input 'times_survived_input' is empty. Livetime: 0.0s")
+    # --- Part 1: Generate initial GTIs from the "good" (survived) events ---
+    def _generate_raw_periods(times, threshold):
+        # This helper contains the core logic for turning timestamps into intervals.
+        if not isinstance(times, np.ndarray):
+            times = np.array(times)
+        if len(times) == 0:
+            return []
+            
+        times_unique_sorted = np.unique(times)
+        n = len(times_unique_sorted)
+        raw_periods = []
+        
+        if n == 1:
+            t_event = times_unique_sorted[0]
+            duration_singular = 0.5 * threshold
+            raw_periods.append([t_event - duration_singular / 2.0, t_event + duration_singular / 2.0])
+        elif n > 1:
+            # Connected events
+            for i in range(n - 1):
+                t_current, t_next = times_unique_sorted[i], times_unique_sorted[i+1]
+                if (t_next - t_current) < threshold:
+                    raw_periods.append([t_current, t_next])
+            # Singular events
+            for i in range(n):
+                t_event = times_unique_sorted[i]
+                connected_to_prev = (i > 0) and ((t_event - times_unique_sorted[i-1]) < threshold)
+                connected_to_next = (i < n - 1) and ((times_unique_sorted[i+1] - t_event) < threshold)
+                if not connected_to_prev and not connected_to_next:
+                    duration_singular = 0.5 * threshold
+                    raw_periods.append([t_event - duration_singular / 2.0, t_event + duration_singular / 2.0])
+        return raw_periods
+
+    # Apply bounds to the survived times
+    times_survived_bounded = np.array(times_survived_input)
+    if start_bound is not None:
+        times_survived_bounded = times_survived_bounded[times_survived_bounded >= start_bound]
+    if end_bound is not None:
+        times_survived_bounded = times_survived_bounded[times_survived_bounded <= end_bound]
+
+    if len(times_survived_bounded) == 0:
+        ic("No survived events within the given bounds. Livetime: 0.0s")
         return 0.0, []
 
-    # Step 1: Remove duplicate timestamps FIRST, then sort.
-    # Sorting is implicit with np.unique for 1D arrays.
-    times_unique_sorted = np.unique(times_survived_input)
-    ic(f"Original event count: {len(times_survived_input)}, Unique timestamps: {len(times_unique_sorted)}")
+    raw_good_periods = _generate_raw_periods(times_survived_bounded, threshold_seconds)
+    good_gtis = merge_gti_list(raw_good_periods)
 
-    # Step 2: Apply overall start and end bounds
-    times_survived = times_unique_sorted
-    if start_bound is not None or end_bound is not None:
-        # ic(f"Applying bounds: Start={start_bound}, End={end_bound}") # Optional debug
-        if start_bound is not None:
-            times_survived = times_survived[times_survived >= start_bound]
-        if end_bound is not None:
-            times_survived = times_survived[times_survived <= end_bound]
-        ic(f"Event count after bounding: {len(times_survived)}")
+    # --- Part 2: Subtract "bad" periods if exclusion data is provided ---
+    final_gtis = good_gtis
+    if all_times_before_cuts is not None and final_mask is not None:
+        if len(all_times_before_cuts) == len(final_mask):
+            bad_times_mask = ~final_mask
+            times_to_exclude = all_times_before_cuts[bad_times_mask]
 
-    n = len(times_survived)
-    raw_active_periods = [] 
+            if len(times_to_exclude) > 0:
+                ic(f"Found {len(times_to_exclude)} events to be excluded from livetime.")
+                
+                # Apply the same bounds to the exclusion times
+                if start_bound is not None:
+                    times_to_exclude = times_to_exclude[times_to_exclude >= start_bound]
+                if end_bound is not None:
+                    times_to_exclude = times_to_exclude[times_to_exclude <= end_bound]
 
-    if n == 0:
-        ic("No events after unique filtering & bounding. Livetime: 0.0s")
-        return 0.0, []
+                if len(times_to_exclude) > 0:
+                    raw_bad_periods = _generate_raw_periods(times_to_exclude, threshold_seconds)
+                    bad_gtis = merge_gti_list(raw_bad_periods)
+                    
+                    if bad_gtis:
+                        ic(f"Subtracting {len(bad_gtis)} bad time interval(s) from {len(good_gtis)} good interval(s).")
+                        final_gtis = subtract_gti_lists(good_gtis, bad_gtis)
+        else:
+            ic(f"Warning: Mismatch between all_times_before_cuts ({len(all_times_before_cuts)}) and final_mask ({len(final_mask)}). Cannot perform exclusion.")
 
-    # Step 3a: Handle single unique event case
-    if n == 1:
-        t_event = times_survived[0]
-        duration_singular = 0.5 * threshold_seconds
-        period_start = t_event - duration_singular / 2.0
-        period_end = t_event + duration_singular / 2.0
-        raw_active_periods.append([period_start, period_end])
-        ic(f"Single unique event at {t_event:.2f}. Added singular period [{period_start:.2f}, {period_end:.2f}] (duration {duration_singular:.2f}s)")
+    # --- Part 3: Calculate total livetime from the final GTIs ---
+    total_livetime_seconds = sum(end - start for start, end in final_gtis)
+    ic(f"Final Livetime: {total_livetime_seconds:.2f}s ({format_duration_short(total_livetime_seconds)}). Num final periods: {len(final_gtis)}")
     
-    # Step 3b: Handle multiple unique events
-    else: # n > 1
-        # Part A: Define active periods from closely connected events [t_i, t_{i+1}]
-        # ic("Processing connected segments (n > 1):") # Optional debug
-        for i in range(n - 1): 
-            t_current = times_survived[i]
-            t_next = times_survived[i+1]
-            delta_t = t_next - t_current
-            
-            if delta_t < threshold_seconds:
-                raw_active_periods.append([t_current, t_next])
-                # ic(f"  Connected: Ev {i} ({t_current:.2f}) to Ev {i+1} ({t_next:.2f}), dt={delta_t:.2f}s. Raw period: [{t_current:.2f}, {t_next:.2f}]")
-            # else:
-                # ic(f"  NOT Connected: Ev {i} ({t_current:.2f}) to Ev {i+1} ({t_next:.2f}), dt={delta_t:.2f}s")
-
-        # Part B: Add contribution for "singular" events
-        # An event is singular if it's not "connected" (delta_t < threshold) to EITHER neighbor.
-        # ic("Processing singular event contributions (n > 1):") # Optional debug
-        for i in range(n):
-            t_event = times_survived[i]
-            
-            # Check if connected to previous (if previous exists)
-            connected_to_prev = False
-            if i > 0: # If not the first event
-                if (t_event - times_survived[i-1]) < threshold_seconds:
-                    connected_to_prev = True
-            
-            # Check if connected to next (if next exists)
-            connected_to_next = False
-            if i < n - 1: # If not the last event
-                if (times_survived[i+1] - t_event) < threshold_seconds:
-                    connected_to_next = True
-            
-            # If NOT connected to previous AND NOT connected to next, it's singular
-            if not connected_to_prev and not connected_to_next:
-                duration_singular = 0.5 * threshold_seconds
-                period_start = t_event - duration_singular / 2.0
-                period_end = t_event + duration_singular / 2.0
-                raw_active_periods.append([period_start, period_end])
-                # ic(f"  Singular contribution for event {i} ({t_event:.2f}). Raw period: [{period_start:.2f}, {period_end:.2f}] (duration {duration_singular:.2f}s)")
-
-    if not raw_active_periods:
-        ic("No raw active periods defined (e.g., n>1 but all deltas >= threshold and no singulars). Livetime: 0.0s")
-        return 0.0, []
-    
-    # ic("Raw active periods before merging:", raw_active_periods) # Potentially very long output
-
-    # Step 4: Merge raw periods and calculate total livetime
-    merged_periods = merge_gti_list(raw_active_periods) # Uses updated merge_gti_list
-    # ic("Merged active periods:", merged_periods) # Can also be long
-
-    total_livetime_seconds = sum(end - start for start, end in merged_periods)
-    ic(f"Final Livetime: {total_livetime_seconds:.2f}s ({format_duration_short(total_livetime_seconds)}). Num merged periods: {len(merged_periods)}")
-    
-    return total_livetime_seconds, merged_periods
+    return total_livetime_seconds, final_gtis
 
 
 def calculate_stations_combination_overlap(dict_station_active_periods):
@@ -377,7 +400,9 @@ def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
                 times_for_final_gti_calc,
                 livetime_threshold_seconds,
                 season_start_unix,
-                season_end_unix
+                season_end_unix,
+                all_times_before_cuts=times_unix,
+                final_mask=final_cut_mask_for_gti_fill
             )
         # This fill will be done after data points are plotted, to get y-axis range.
         # Store the periods for now.
@@ -420,7 +445,15 @@ def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
 
 
                 times_for_this_cut_series = times_unix[final_series_mask_global]
-                lt_s, _ = calculate_livetime(times_for_this_cut_series, livetime_threshold_seconds, season_start_unix, season_end_unix)
+                lt_s, _ = calculate_livetime(
+                    times_for_this_cut_series, 
+                    livetime_threshold_seconds, 
+                    season_start_unix, 
+                    season_end_unix,
+                    all_times_before_cuts=times_unix,
+                    final_mask=final_series_mask_global
+                )
+
                 plot_label_with_livetime = f"{legend_label_base} (Livetime: {format_duration_short(lt_s)})"
                 legend_handles.append(Line2D([0], [0], marker=current_marker, color='w', 
                                              markerfacecolor=points_collection.get_facecolor()[0], # Get color from actual plot
@@ -504,7 +537,9 @@ def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".",
                 times_for_final_gti_calc,
                 livetime_threshold_seconds,
                 season_start_unix,
-                season_end_unix
+                season_end_unix,
+                all_times_before_cuts=times_unix,
+                final_mask=final_cut_mask_for_gti_fill
             )
             if active_periods_to_fill_final_cut:
                 for start_p, end_p in active_periods_to_fill_final_cut:
@@ -874,7 +909,12 @@ if __name__ == "__main__":
         for stage_label in report_masks.keys():
             current_stage_mask = report_masks[stage_label]
             times_survived_stage = base_times_for_cuts[current_stage_mask]
-            lt_s, active_periods = calculate_livetime(times_survived_stage, LIVETIME_THRESHOLD_SECONDS)
+            lt_s, active_periods = calculate_livetime(
+                times_survived_stage, 
+                LIVETIME_THRESHOLD_SECONDS,
+                all_times_before_cuts=base_times_for_cuts, 
+                final_mask=current_stage_mask
+            )
             station_specific_report[stage_label] = (lt_s, active_periods)
         station_gti_file_to_save = os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl")
         _save_pickle_atomic(station_specific_report, station_gti_file_to_save) # Using your atomic save for pkl
@@ -888,7 +928,7 @@ if __name__ == "__main__":
                 f.write(f"--- {stage_label} ---\n")
                 t_delta = datetime.timedelta(seconds=lt_s)
                 d = datetime.datetime(1, 1, 1) + t_delta
-                f.write(f"Livetime: {d.month-1} months, {d.day-1} days, {d.hour} hours, {d.minute} minutes, {d.second} seconds\n")
+                f.write(f"Livetime: {d.year} years {d.month-1} months, {d.day-1} days, {d.hour} hours, {d.minute} minutes, {d.second} seconds\n")
 
             f.write("\n")
             f.close()
