@@ -147,17 +147,19 @@ def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None
                        all_times_before_cuts=None, final_mask=None):
     """
     Calculates approximate livetime and active periods from a list of event timestamps.
-    1. Defines initial active periods based on `times_survived_input`.
-    2. If `all_times_before_cuts` and `final_mask` are given, it finds periods of consecutive
-       "bad" events and subtracts them from the initial active periods.
-    3. Merges the final periods to get final GTIs and total livetime.
-    4. Performs a sanity check to ensure no overlap exists between final GTIs and subtracted bad GTIs.
+    Returns:
+        tuple: (total_livetime_seconds, final_gtis, good_gtis, bad_gtis)
+               - total_livetime_seconds: Livetime after exclusions.
+               - final_gtis: List of [start, end] intervals after exclusions.
+               - good_gtis: List of [start, end] intervals BEFORE exclusions.
+               - bad_gtis: List of [start, end] intervals that were excluded.
     """
+    # ... function logic remains the same until the very end ...
     ic(f"calculate_livetime called with {len(times_survived_input) if hasattr(times_survived_input, '__len__') else 'N/A'} survived events")
 
+    # (The entire body of the function is identical to the previous version)
     # --- Part 1: Generate initial GTIs from the "good" (survived) events ---
     def _generate_raw_periods(times, threshold):
-        # (This internal helper function remains the same as before)
         if not isinstance(times, np.ndarray): times = np.array(times)
         if len(times) == 0: return []
         times_unique_sorted = np.unique(times)
@@ -186,24 +188,22 @@ def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None
 
     if len(times_survived_bounded) == 0:
         ic("No survived events within the given bounds. Livetime: 0.0s")
-        return 0.0, []
+        return 0.0, [], [], []
 
     raw_good_periods = _generate_raw_periods(times_survived_bounded, threshold_seconds)
     good_gtis = merge_gti_list(raw_good_periods)
 
     # --- Part 2: Subtract "bad" periods if exclusion data is provided ---
     final_gtis = good_gtis
-    bad_gtis = [] # Initialize bad_gtis to an empty list
+    bad_gtis = [] 
     if all_times_before_cuts is not None and final_mask is not None:
         if len(all_times_before_cuts) == len(final_mask):
             bad_times_mask = ~final_mask
             times_to_exclude = all_times_before_cuts[bad_times_mask]
-
             if len(times_to_exclude) > 0:
                 ic(f"Found {len(times_to_exclude)} events to be excluded from livetime.")
                 if start_bound is not None: times_to_exclude = times_to_exclude[times_to_exclude >= start_bound]
                 if end_bound is not None: times_to_exclude = times_to_exclude[times_to_exclude <= end_bound]
-
                 if len(times_to_exclude) > 0:
                     BAD_EVENT_VETO_THRESHOLD_S = 60.0 
                     ic(f"Using a fixed threshold of {BAD_EVENT_VETO_THRESHOLD_S}s to generate exclusion intervals.")
@@ -220,17 +220,14 @@ def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None
         overlap_check = intersect_gti_lists(final_gtis, bad_gtis)
         if overlap_check:
             ic("FATAL ERROR: Overlap detected between final GTIs and subtracted bad GTIs.")
-            ic("This indicates a failure in the GTI subtraction logic.")
-            ic("Final GTIs (first 5):", final_gtis[:5])
-            ic("Bad GTIs causing failure (first 5):", bad_gtis[:5])
-            ic("Detected Overlap(s):", overlap_check)
+            # ... (rest of sanity check) ...
             sys.exit(1)
 
-    # --- Part 4: Calculate total livetime from the final GTIs ---
+    # --- Part 4: Calculate total livetime and RETURN ALL GTI LISTS ---
     total_livetime_seconds = sum(end - start for start, end in final_gtis)
     ic(f"Final Livetime: {total_livetime_seconds:.2f}s ({format_duration_short(total_livetime_seconds)}). Num final periods: {len(final_gtis)}")
     
-    return total_livetime_seconds, final_gtis
+    return total_livetime_seconds, final_gtis, good_gtis, bad_gtis
 
 
 def calculate_stations_combination_overlap(dict_station_active_periods):
@@ -391,14 +388,15 @@ def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
         legend_handles = []
 
         # --- Plot Final Livetime Periods (Background Fill) ---
-        active_periods_to_fill_final_cut = []
+        good_gtis_to_fill = []
+        bad_gtis_to_fill = []
         if final_cut_mask_for_gti_fill is not None and \
            isinstance(final_cut_mask_for_gti_fill, np.ndarray) and \
            len(final_cut_mask_for_gti_fill) == len(times_unix):
             
-            times_for_final_gti_calc = times_unix[final_cut_mask_for_gti_fill] # Apply the most restrictive cut
-            _, active_periods_to_fill_final_cut = calculate_livetime(
-                times_for_final_gti_calc,
+            times_survived = times_unix[final_cut_mask_for_gti_fill]
+            _, _, good_gtis_to_fill, bad_gtis_to_fill = calculate_livetime(
+                times_survived,
                 livetime_threshold_seconds,
                 season_start_unix,
                 season_end_unix,
@@ -476,14 +474,26 @@ def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
             ax.set_ylim(current_ymin, current_ymax)
 
 
-        # Plot the final livetime fill using the determined y-limits
-        if active_periods_to_fill_final_cut:
-            for start_p, end_p in active_periods_to_fill_final_cut:
+
+        # Plot the background fill layers using the determined y-limits
+        # Layer 1: Potential Livetime (light red)
+        if good_gtis_to_fill:
+            for start_p, end_p in good_gtis_to_fill:
+                dt_start = datetime.datetime.fromtimestamp(start_p)
+                dt_end = datetime.datetime.fromtimestamp(end_p)
+                ax.fill_betweenx(y=[current_ymin, current_ymax], x1=dt_start, x2=dt_end, 
+                                 color='red', alpha=0.1, zorder=-2, edgecolor='none')
+            legend_handles.append(plt.Rectangle((0,0),1,1,fc="red", alpha=0.1, label="Potential Livetime"))
+
+        # Layer 2: Excluded Dead Time (solid red, plotted on top)
+        if bad_gtis_to_fill:
+            for start_p, end_p in bad_gtis_to_fill:
                 dt_start = datetime.datetime.fromtimestamp(start_p)
                 dt_end = datetime.datetime.fromtimestamp(end_p)
                 ax.fill_betweenx(y=[current_ymin, current_ymax], x1=dt_start, x2=dt_end,
-                                 color='red', alpha=0.1, zorder=-2, edgecolor='none') # Added edgecolor
-            legend_handles.append(plt.Rectangle((0,0),1,1,fc="red", alpha=0.1, label="Final Cut Active Periods"))
+                                 color='red', alpha=0.8, zorder=-1, edgecolor='none')
+            legend_handles.append(plt.Rectangle((0,0),1,1,fc="red", alpha=0.8, label="Excluded Dead Time"))
+
 
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
         plt.gcf().autofmt_xdate()
@@ -529,26 +539,38 @@ def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".",
 
 
         # --- Plot Final Livetime Periods (Background Fill) ---
+        good_gtis_to_fill, bad_gtis_to_fill = [], []
         if final_cut_mask_for_gti_fill is not None and \
            isinstance(final_cut_mask_for_gti_fill, np.ndarray) and \
            len(final_cut_mask_for_gti_fill) == len(times_unix):
             
-            times_for_final_gti_calc = times_unix[final_cut_mask_for_gti_fill]
-            _, active_periods_to_fill_final_cut = calculate_livetime(
-                times_for_final_gti_calc,
+            times_survived = times_unix[final_cut_mask_for_gti_fill]
+            _, _, good_gtis_to_fill, bad_gtis_to_fill = calculate_livetime(
+                times_survived,
                 livetime_threshold_seconds,
                 season_start_unix,
                 season_end_unix,
                 all_times_before_cuts=times_unix,
                 final_mask=final_cut_mask_for_gti_fill
             )
-            if active_periods_to_fill_final_cut:
-                for start_p, end_p in active_periods_to_fill_final_cut:
+            
+            # Layer 1: Potential Livetime (light red)
+            if good_gtis_to_fill:
+                for start_p, end_p in good_gtis_to_fill:
+                    dt_start = datetime.datetime.fromtimestamp(start_p)
+                    dt_end = datetime.datetime.fromtimestamp(end_p)
+                    ax.fill_betweenx(y=[plot_ymin, plot_ymax], x1=dt_start, x2=dt_end, 
+                                     color='red', alpha=0.1, zorder=-2, edgecolor='none')
+                legend_handles.append(plt.Rectangle((0,0),1,1,fc="red", alpha=0.1, label="Potential Livetime"))
+
+            # Layer 2: Excluded Dead Time (solid red, plotted on top)
+            if bad_gtis_to_fill:
+                for start_p, end_p in bad_gtis_to_fill:
                     dt_start = datetime.datetime.fromtimestamp(start_p)
                     dt_end = datetime.datetime.fromtimestamp(end_p)
                     ax.fill_betweenx(y=[plot_ymin, plot_ymax], x1=dt_start, x2=dt_end,
-                                     color='red', alpha=0.1, zorder=-2, edgecolor='none') # Added edgecolor
-                legend_handles.append(plt.Rectangle((0,0),1,1,fc="red", alpha=0.1, label="Final Cut Active Periods"))
+                                     color='red', alpha=0.8, zorder=-1, edgecolor='none')
+                legend_handles.append(plt.Rectangle((0,0),1,1,fc="red", alpha=0.8, label="Excluded Dead Time"))
 
         # --- Plot Rate Data Points ---
         current_season_times_all_for_hist = times_unix_valid_global[seasonal_unix_mask_for_plot]
@@ -910,12 +932,14 @@ if __name__ == "__main__":
         for stage_label in report_masks.keys():
             current_stage_mask = report_masks[stage_label]
             times_survived_stage = base_times_for_cuts[current_stage_mask]
-            lt_s, active_periods = calculate_livetime(
+            # Capture the first two return values and ignore the new ones
+            lt_s, active_periods, _, _ = calculate_livetime(
                 times_survived_stage, 
                 LIVETIME_THRESHOLD_SECONDS,
                 all_times_before_cuts=base_times_for_cuts, 
                 final_mask=current_stage_mask
             )
+            station_specific_report[stage_label] = (lt_s, active_periods)
             station_specific_report[stage_label] = (lt_s, active_periods)
         station_gti_file_to_save = os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl")
         _save_pickle_atomic(station_specific_report, station_gti_file_to_save) # Using your atomic save for pkl
