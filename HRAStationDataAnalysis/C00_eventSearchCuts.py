@@ -151,7 +151,7 @@ def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None
        "bad" events and subtracts them from the initial active periods.
     3. Merges the final periods to get final GTIs and total livetime.
     """
-    ic(f"calculate_livetime called with {len(times_survived_input) if hasattr(times_survived_input, '__len__') else 'N/A'} survived events")
+    ic.context(f"calculate_livetime called with {len(times_survived_input) if hasattr(times_survived_input, '__len__') else 'N/A'} survived events")
 
     # --- Part 1: Generate initial GTIs from the "good" (survived) events ---
     def _generate_raw_periods(times, threshold):
@@ -216,7 +216,13 @@ def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None
                     times_to_exclude = times_to_exclude[times_to_exclude <= end_bound]
 
                 if len(times_to_exclude) > 0:
-                    raw_bad_periods = _generate_raw_periods(times_to_exclude, threshold_seconds)
+                    # FIX: Use a small, fixed threshold to define veto periods around bad events,
+                    # instead of the large livetime-linking threshold. This prevents incorrectly
+                    # removing large good-time periods between sparse bad events.
+                    BAD_EVENT_VETO_THRESHOLD_S = 300.0 # 5 minutes to string bad events together 
+                    ic(f"Using a fixed threshold of {BAD_EVENT_VETO_THRESHOLD_S}s to generate exclusion intervals.")
+                    
+                    raw_bad_periods = _generate_raw_periods(times_to_exclude, BAD_EVENT_VETO_THRESHOLD_S)
                     bad_gtis = merge_gti_list(raw_bad_periods)
                     
                     if bad_gtis:
