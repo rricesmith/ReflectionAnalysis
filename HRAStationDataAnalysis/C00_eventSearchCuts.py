@@ -13,6 +13,7 @@ import collections # For OrderedDict and defaultdict
 import pickle
 import tempfile
 from matplotlib.lines import Line2D
+import sys
 
 # --- Pickle Load/Save Helpers (from previous response, ensure these are defined) ---
 def _load_pickle(filepath):
@@ -150,32 +151,26 @@ def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None
     2. If `all_times_before_cuts` and `final_mask` are given, it finds periods of consecutive
        "bad" events and subtracts them from the initial active periods.
     3. Merges the final periods to get final GTIs and total livetime.
+    4. Performs a sanity check to ensure no overlap exists between final GTIs and subtracted bad GTIs.
     """
-    ic(f"calculate_livetime called with {len(times_survived_input) if hasattr(times_survived_input, '__len__') else 'N/A'} survived events")
+    ic.context(f"calculate_livetime called with {len(times_survived_input) if hasattr(times_survived_input, '__len__') else 'N/A'} survived events")
 
     # --- Part 1: Generate initial GTIs from the "good" (survived) events ---
     def _generate_raw_periods(times, threshold):
-        # This helper contains the core logic for turning timestamps into intervals.
-        if not isinstance(times, np.ndarray):
-            times = np.array(times)
-        if len(times) == 0:
-            return []
-            
+        # (This internal helper function remains the same as before)
+        if not isinstance(times, np.ndarray): times = np.array(times)
+        if len(times) == 0: return []
         times_unique_sorted = np.unique(times)
         n = len(times_unique_sorted)
         raw_periods = []
-        
         if n == 1:
             t_event = times_unique_sorted[0]
             duration_singular = 0.5 * threshold
             raw_periods.append([t_event - duration_singular / 2.0, t_event + duration_singular / 2.0])
         elif n > 1:
-            # Connected events
             for i in range(n - 1):
                 t_current, t_next = times_unique_sorted[i], times_unique_sorted[i+1]
-                if (t_next - t_current) < threshold:
-                    raw_periods.append([t_current, t_next])
-            # Singular events
+                if (t_next - t_current) < threshold: raw_periods.append([t_current, t_next])
             for i in range(n):
                 t_event = times_unique_sorted[i]
                 connected_to_prev = (i > 0) and ((t_event - times_unique_sorted[i-1]) < threshold)
@@ -185,12 +180,9 @@ def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None
                     raw_periods.append([t_event - duration_singular / 2.0, t_event + duration_singular / 2.0])
         return raw_periods
 
-    # Apply bounds to the survived times
     times_survived_bounded = np.array(times_survived_input)
-    if start_bound is not None:
-        times_survived_bounded = times_survived_bounded[times_survived_bounded >= start_bound]
-    if end_bound is not None:
-        times_survived_bounded = times_survived_bounded[times_survived_bounded <= end_bound]
+    if start_bound is not None: times_survived_bounded = times_survived_bounded[times_survived_bounded >= start_bound]
+    if end_bound is not None: times_survived_bounded = times_survived_bounded[times_survived_bounded <= end_bound]
 
     if len(times_survived_bounded) == 0:
         ic("No survived events within the given bounds. Livetime: 0.0s")
@@ -201,6 +193,7 @@ def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None
 
     # --- Part 2: Subtract "bad" periods if exclusion data is provided ---
     final_gtis = good_gtis
+    bad_gtis = [] # Initialize bad_gtis to an empty list
     if all_times_before_cuts is not None and final_mask is not None:
         if len(all_times_before_cuts) == len(final_mask):
             bad_times_mask = ~final_mask
@@ -208,30 +201,32 @@ def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None
 
             if len(times_to_exclude) > 0:
                 ic(f"Found {len(times_to_exclude)} events to be excluded from livetime.")
-                
-                # Apply the same bounds to the exclusion times
-                if start_bound is not None:
-                    times_to_exclude = times_to_exclude[times_to_exclude >= start_bound]
-                if end_bound is not None:
-                    times_to_exclude = times_to_exclude[times_to_exclude <= end_bound]
+                if start_bound is not None: times_to_exclude = times_to_exclude[times_to_exclude >= start_bound]
+                if end_bound is not None: times_to_exclude = times_to_exclude[times_to_exclude <= end_bound]
 
                 if len(times_to_exclude) > 0:
-                    # FIX: Use a small, fixed threshold to define veto periods around bad events,
-                    # instead of the large livetime-linking threshold. This prevents incorrectly
-                    # removing large good-time periods between sparse bad events.
-                    BAD_EVENT_VETO_THRESHOLD_S = 300.0 # 5 minutes to string bad events together 
+                    BAD_EVENT_VETO_THRESHOLD_S = 60.0 
                     ic(f"Using a fixed threshold of {BAD_EVENT_VETO_THRESHOLD_S}s to generate exclusion intervals.")
-                    
                     raw_bad_periods = _generate_raw_periods(times_to_exclude, BAD_EVENT_VETO_THRESHOLD_S)
                     bad_gtis = merge_gti_list(raw_bad_periods)
-                    
                     if bad_gtis:
                         ic(f"Subtracting {len(bad_gtis)} bad time interval(s) from {len(good_gtis)} good interval(s).")
                         final_gtis = subtract_gti_lists(good_gtis, bad_gtis)
         else:
             ic(f"Warning: Mismatch between all_times_before_cuts ({len(all_times_before_cuts)}) and final_mask ({len(final_mask)}). Cannot perform exclusion.")
 
-    # --- Part 3: Calculate total livetime from the final GTIs ---
+    # --- Part 3: Sanity Check for Overlaps ---
+    if bad_gtis:
+        overlap_check = intersect_gti_lists(final_gtis, bad_gtis)
+        if overlap_check:
+            ic("FATAL ERROR: Overlap detected between final GTIs and subtracted bad GTIs.")
+            ic("This indicates a failure in the GTI subtraction logic.")
+            ic("Final GTIs (first 5):", final_gtis[:5])
+            ic("Bad GTIs causing failure (first 5):", bad_gtis[:5])
+            ic("Detected Overlap(s):", overlap_check)
+            sys.exit(1)
+
+    # --- Part 4: Calculate total livetime from the final GTIs ---
     total_livetime_seconds = sum(end - start for start, end in final_gtis)
     ic(f"Final Livetime: {total_livetime_seconds:.2f}s ({format_duration_short(total_livetime_seconds)}). Num final periods: {len(final_gtis)}")
     
