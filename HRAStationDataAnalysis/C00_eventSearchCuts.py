@@ -486,8 +486,8 @@ def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
             for start_p, end_p in active_periods_to_fill_final_cut:
                 dt_start = datetime.datetime.fromtimestamp(start_p)
                 dt_end = datetime.datetime.fromtimestamp(end_p)
-                ax.fill_betweenx(y=[current_ymin, current_ymax], x1=dt_start, x2=dt_end, 
-                                 color='red', alpha=0.1, zorder=-2) # Low zorder
+                ax.fill_betweenx(y=[current_ymin, current_ymax], x1=dt_start, x2=dt_end,
+                                 color='red', alpha=0.1, zorder=-2, edgecolor='none') # Added edgecolor
             legend_handles.append(plt.Rectangle((0,0),1,1,fc="red", alpha=0.1, label="Final Cut Active Periods"))
 
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d/%y'))
@@ -551,8 +551,8 @@ def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".",
                 for start_p, end_p in active_periods_to_fill_final_cut:
                     dt_start = datetime.datetime.fromtimestamp(start_p)
                     dt_end = datetime.datetime.fromtimestamp(end_p)
-                    ax.fill_betweenx(y=[plot_ymin, plot_ymax], x1=dt_start, x2=dt_end, 
-                                     color='red', alpha=0.1, zorder=-2) 
+                    ax.fill_betweenx(y=[plot_ymin, plot_ymax], x1=dt_start, x2=dt_end,
+                                     color='red', alpha=0.1, zorder=-2, edgecolor='none') # Added edgecolor
                 legend_handles.append(plt.Rectangle((0,0),1,1,fc="red", alpha=0.1, label="Final Cut Active Periods"))
 
         # --- Plot Rate Data Points ---
