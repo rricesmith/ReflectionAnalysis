@@ -153,7 +153,7 @@ def calculate_livetime(times_survived_input, threshold_seconds, start_bound=None
     3. Merges the final periods to get final GTIs and total livetime.
     4. Performs a sanity check to ensure no overlap exists between final GTIs and subtracted bad GTIs.
     """
-    ic.context(f"calculate_livetime called with {len(times_survived_input) if hasattr(times_survived_input, '__len__') else 'N/A'} survived events")
+    ic(f"calculate_livetime called with {len(times_survived_input) if hasattr(times_survived_input, '__len__') else 'N/A'} survived events")
 
     # --- Part 1: Generate initial GTIs from the "good" (survived) events ---
     def _generate_raw_periods(times, threshold):
