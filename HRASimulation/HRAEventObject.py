@@ -11,7 +11,11 @@ import matplotlib.colors
 import matplotlib.pyplot as plt
 import configparser
 
-
+stns_100s = [13, 15, 18, 113, 115, 118]
+stns_100s_noise = 20 * units.mV
+stns_200s = [14, 17, 19, 30, 114, 117, 119, 130]
+stns_200s_noise = 23 * units.mV
+stns_300s_noise = 11 * units.mV
 
 class HRAevent:
     def __init__(self, event, DEBUG=False):
@@ -27,6 +31,8 @@ class HRAevent:
         self.energy = sim_shower[shp.energy]
         self.zenith = sim_shower[shp.zenith]
         self.azimuth = sim_shower[shp.azimuth]
+
+        self.SNR = {} # Dictionary of SNR values for each station
 
         self.recon_zenith = {}
         self.recon_azimuth = {}
@@ -48,6 +54,7 @@ class HRAevent:
             self.secondary_station_triggers[sigma] = []
         # Only doing the 3.5sigma triggers to begin with
 
+        from HRAStationDataAnalysis.HRADataConvertToNpy import calcSNR
         for station in event.get_stations():
             for sigma in self.trigger_sigmas:
                 self.weight[sigma][station.get_id()] = [np.nan, np.nan]
@@ -62,6 +69,22 @@ class HRAevent:
                         if station.has_triggered(trigger_name=f'secondary_LPDA_2of4_{sigma}sigma'):
                             self.addSecondaryTrigger(station.get_id(), sigma)
 
+            if station.get_id() == 52:
+                LPDA_channels = [4, 5, 6, 7]
+            else:
+                LPDA_channels = [0, 1, 2, 3]
+            if station.get_id() in stns_100s:
+                Vrms = stns_100s_noise
+            elif station.get_id() in stns_200s:
+                Vrms = stns_200s_noise
+            else:
+                Vrms = stns_300s_noise
+            traces = []
+            for chId, channel in enumerate(station.iter_channels(use_channels=LPDA_channels)):
+                traces.append(channel.get_trace())
+            self.SNR[station.get_id()] = calcSNR(traces, Vrms)
+            
+            
 
 
         self.direct_triggers = {}
@@ -89,6 +112,12 @@ class HRAevent:
 
     def getEventID(self):
         return self.event_id
+    
+    def getSNR(self, station_id):
+        if station_id in self.SNR:
+            return self.SNR[station_id]
+        else:
+            return None
 
     def primaryTriggers(self):
         return self.station_triggers
