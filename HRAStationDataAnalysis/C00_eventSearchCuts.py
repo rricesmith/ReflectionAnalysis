@@ -879,8 +879,8 @@ if __name__ == "__main__":
             for stage_label, (lt_s, active_periods) in station_specific_report.items():
                 f.write(f"--- {stage_label} ---\n")
                 t_delta = datetime.timedelta(seconds=lt_s)
-                d = datetime.datetime(0, 1, 1) + t_delta
-                f.write(f"Livetime: {d.year} years {d.month-1} months, {d.day-1} days, {d.hour} hours, {d.minute} minutes, {d.second} seconds\n")
+                d = datetime.datetime(1, 1, 1) + t_delta
+                f.write(f"Livetime: {d.year-1} years {d.month-1} months, {d.day-1} days, {d.hour} hours, {d.minute} minutes, {d.second} seconds\n")
 
             f.write("\n")
             f.close()
