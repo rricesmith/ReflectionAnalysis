@@ -141,7 +141,7 @@ if __name__ == "__main__":
 
     # Coincidence with reflection and station 52 upwards LPDA
     bad_stations = [32, 132, 152]
-    trigger_rate_coincidence = HRAA.getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=52)
+    trigger_rate_coincidence = HRAA.getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_stations=52)
     event_rate_coincidence = {}
     for i in trigger_rate_coincidence:
         if not np.any(trigger_rate_coincidence[i] > 0):
@@ -153,7 +153,7 @@ if __name__ == "__main__":
 
     # Coincidence without reflection and station 52 upwards LPDA
     bad_stations = [32, 113, 114, 115, 117, 118, 119, 130, 132, 152]
-    trigger_rate_coincidence = HRAA.getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_station=52)
+    trigger_rate_coincidence = HRAA.getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False, force_stations=52)
     event_rate_coincidence = {}
     for i in trigger_rate_coincidence:
         if not np.any(trigger_rate_coincidence[i] > 0):
