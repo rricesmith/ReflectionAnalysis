@@ -35,7 +35,8 @@ def get_snr_and_weights(HRAeventList, weight_name, direct_stations, reflected_st
     """
     direct_snrs_list = []
     reflected_snrs_list = []
-    weights_list = []
+    direct_weights_list = []
+    reflected_weights_list = []
 
     for event in HRAeventList:
         event_weight = event.getWeight(weight_name, sigma=sigma)
@@ -51,15 +52,27 @@ def get_snr_and_weights(HRAeventList, weight_name, direct_stations, reflected_st
             ]
 
             # If there's at least one of each, create all combinations
-            if event_direct_snrs and event_reflected_snrs:
-                for d_snr, r_snr in itertools.product(event_direct_snrs, event_reflected_snrs):
-                    direct_snrs_list.append(d_snr)
-                    reflected_snrs_list.append(r_snr)
-                    weights_list.append(event_weight)
+            # if event_direct_snrs and event_reflected_snrs:
+            #     for d_snr, r_snr in itertools.product(event_direct_snrs, event_reflected_snrs):
+            #         direct_snrs_list.append(d_snr)
+            #         reflected_snrs_list.append(r_snr)
+            #         weights_list.append(event_weight)
 
-    return np.array(direct_snrs_list), np.array(reflected_snrs_list), np.array(weights_list)
+            for snr in event_direct_snrs:
+                direct_snrs_list.append(snr)
+                reflected_snrs_list.append(0)
+                direct_weights_list.append(event_weight)
+                reflected_weights_list.append(0)
+            for snr in event_reflected_snrs:
+                direct_snrs_list.append(0)
+                reflected_snrs_list.append(snr)
+                direct_weights_list.append(0)
+                reflected_weights_list.append(event_weight)
 
-def plot_snr_distribution(direct_snrs, reflected_snrs, weights, main_title, savename, bins):
+
+    return np.array(direct_snrs_list), np.array(reflected_snrs_list), np.array(direct_weights_list), np.array(reflected_weights_list)
+
+def plot_snr_distribution(direct_snrs, reflected_snrs, direct_weights, reflected_weights, main_title, savename, bins):
     """
     Plots weighted 1D histograms of SNR distributions.
 
@@ -74,14 +87,14 @@ def plot_snr_distribution(direct_snrs, reflected_snrs, weights, main_title, save
     fig, axs = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
 
     # The input arrays are already pre-filtered by get_snr_and_weights, so no mask is needed.
-    axs[0].hist(direct_snrs, bins=bins, weights=weights, histtype='step', linewidth=2)
+    axs[0].hist(direct_snrs, bins=bins, weights=direct_weights, histtype='step', linewidth=2)
     axs[0].set_xlabel('SNR')
     axs[0].set_ylabel('Weighted Counts (Evts/Yr)')
     axs[0].set_title('Direct Triggers')
     axs[0].set_xscale('log')
     axs[0].set_yscale('log')
 
-    axs[1].hist(reflected_snrs, bins=bins, weights=weights, histtype='step', linewidth=2, color='C1')
+    axs[1].hist(reflected_snrs, bins=bins, weights=reflected_weights, histtype='step', linewidth=2, color='C1')
     axs[1].set_xlabel('SNR')
     axs[1].set_title('Reflected Triggers')
     axs[1].set_xscale('log')
@@ -93,7 +106,7 @@ def plot_snr_distribution(direct_snrs, reflected_snrs, weights, main_title, save
     plt.savefig(savename)
     plt.close(fig)
 
-def plot_2d_snr_histogram(direct_snrs, reflected_snrs, weights, main_title, savename, bins):
+def plot_2d_snr_histogram(direct_snrs, reflected_snrs, direct_weights, reflected_, main_title, savename, bins):
     """
     Plots a weighted 2D histogram using plt.hist2d.
 
@@ -106,6 +119,13 @@ def plot_2d_snr_histogram(direct_snrs, reflected_snrs, weights, main_title, save
         bins (np.ndarray): The bins to use for the histogram.
     """
     fig, ax = plt.subplots(figsize=(8, 7))
+
+    # We are already requiring that all events have a reflected SNR, so we just remove events without a direct SNR.
+    mask = (direct_snrs > 0) & (reflected_snrs > 0)
+    direct_snrs = direct_snrs[mask]
+    reflected_snrs = reflected_snrs[mask]
+    weights = reflected_weights[mask]
+
 
     # The input arrays are already the exact pairs we want to plot.
     h, xedges, yedges, im = ax.hist2d(
@@ -172,21 +192,21 @@ if __name__ == "__main__":
 
         ic(f"Processing coincidence level {i}...")
 
-        direct_snrs, reflected_snrs, weights = get_snr_and_weights(
+        direct_snrs, reflected_snrs, direct_weights, reflected_weights = get_snr_and_weights(
             HRAeventList, weight_name, direct_stations, reflected_stations, sigma=plot_sigma
         )
         
-        if len(weights) == 0:
+        if len(direct_weights) + len(reflected_weights) == 0:
             ic(f"No events with valid trigger pairs found for weight '{weight_name}'. Skipping plots for this level.")
             continue
 
         main_plot_title_1d = f'SNR Distribution for {i}-Fold Coincidence (Reflected Required)'
         save_path_1d = os.path.join(snr_plot_folder, f'snr_dist_{i}coinc_reflReq_1d.png')
-        plot_snr_distribution(direct_snrs, reflected_snrs, weights, main_plot_title_1d, save_path_1d, bins=log_bins)
+        plot_snr_distribution(direct_snrs, reflected_snrs, direct_weights, reflected_weights, main_plot_title_1d, save_path_1d, bins=log_bins)
 
         main_plot_title_2d = f'2D SNR Histogram for {i}-Fold Coincidence (Reflected Required)'
         save_path_2d = os.path.join(snr_plot_folder, f'snr_hist_{i}coinc_reflReq_2d.png')
-        plot_2d_snr_histogram(direct_snrs, reflected_snrs, weights, main_plot_title_2d, save_path_2d, bins=log_bins)
+        plot_2d_snr_histogram(direct_snrs, reflected_snrs, direct_weights, reflected_weights, main_plot_title_2d, save_path_2d, bins=log_bins)
 
     if weights_were_added:
         ic("New weights were added, resaving HRAeventList to H5 file...")
