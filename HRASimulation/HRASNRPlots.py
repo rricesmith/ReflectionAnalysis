@@ -90,6 +90,12 @@ def plot_2d_snr_histogram(snrs1, weights1, snrs2, weights2, title1, title2, main
     """
     fig, ax = plt.subplots(figsize=(8, 6))
 
+    # Ensure the SNRs and weights are numpy arrays for consistency
+    snrs1 = np.array(snrs1)
+    snrs2 = np.array(snrs2)
+    weights1 = np.array(weights1)
+    weights2 = np.array(weights2)
+
     # Define bins for the histogram
     bins = np.logspace(np.log10(3), np.log10(100), 21)
 
