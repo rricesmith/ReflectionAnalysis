@@ -4,11 +4,15 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import configparser
 from icecream import ic
+import h5py
+import pickle
 
 # Import your existing modules
 from HRASimulation.HRAEventObject import HRAevent
 from HRASimulation.HRANurToNpy import loadHRAfromH5
 import HRASimulation.HRAAnalysis as HRAAnalysis
+from NuRadioReco.utilities import units
+
 
 def get_snr_and_weights(HRAeventList, weight_name, station_ids, sigma=4.5):
     """
@@ -86,11 +90,6 @@ def plot_2d_snr_histogram(snrs1, weights1, snrs2, weights2, title1, title2, main
     """
     fig, ax = plt.subplots(figsize=(8, 6))
 
-    # Combine the data for the 2D histogram
-    all_snrs_x = snrs1 + snrs2
-    all_snrs_y = snrs1 + snrs2
-    all_weights = weights1 + weights2
-
     # Define bins for the histogram
     bins = [np.linspace(0, 50, 51), np.linspace(0, 50, 51)]
 
@@ -116,6 +115,8 @@ if __name__ == "__main__":
     config.read('HRASimulation/config.ini')
     numpy_folder = config['FOLDERS']['numpy_folder']
     save_folder = config['FOLDERS']['save_folder']
+    diameter = config['SIMPARAMETERS']['diameter']
+    max_distance = float(diameter) / 2 * units.km
     plot_sigma = float(config['PLOTPARAMETERS']['trigger_sigma'])
 
     # Create a dedicated folder for these new SNR plots
@@ -123,7 +124,11 @@ if __name__ == "__main__":
     os.makedirs(snr_plot_folder, exist_ok=True)
 
     ic("Loading HRA event list...")
-    HRAeventList = loadHRAfromH5(f'{numpy_folder}HRAeventList.h5')
+    HRAeventList_path = f'{numpy_folder}HRAeventList.h5'
+    HRAeventList = loadHRAfromH5(HRAeventList_path)
+
+    # Flag to check if we need to resave the event list
+    weights_were_added = False
 
     # Define the station lists for direct and reflected triggers (excluding special stations)
     direct_stations = [13, 14, 15, 17, 18, 19, 30]
@@ -131,39 +136,69 @@ if __name__ == "__main__":
     
     # Loop through each coincidence level you are interested in
     for i in range(2, 8):
-        # This weight name corresponds to the coincidence with reflected signal required
-        weight_name = f'{i}_coincidence_refl'
+        weight_name = f'{i}_coincidence_reflReq'
 
-        # Check if the first event has this weight to avoid errors
+        # Check if weights exist, if not, calculate them
         if not HRAeventList[0].hasWeight(weight_name, sigma=plot_sigma):
-            ic(f"Weight '{weight_name}' not found for sigma={plot_sigma}. Skipping coincidence level {i}.")
-            continue
-        
+            ic(f"Weight '{weight_name}' not found. Calculating now...")
+            weights_were_added = True
+
+            # Define stations to exclude and stations to force for reflection requirement
+            bad_stations = [32, 52, 132, 152]
+            force_stations = reflected_stations
+
+            # Get the trigger rate for this specific coincidence requirement
+            trigger_rate_coincidence = HRAAnalysis.getCoincidencesTriggerRates(
+                HRAeventList, bad_stations, force_stations=force_stations, sigma=plot_sigma
+            )
+
+            if i in trigger_rate_coincidence and np.any(trigger_rate_coincidence[i] > 0):
+                # Set a new trigger name for events that meet the criteria
+                HRAAnalysis.setNewTrigger(HRAeventList, weight_name, bad_stations=bad_stations, sigma=plot_sigma)
+                
+                # Calculate and set the weight for each event based on the trigger rate
+                HRAAnalysis.setHRAeventListRateWeight(
+                    HRAeventList, trigger_rate_coincidence[i], weight_name=weight_name, 
+                    max_distance=max_distance, sigma=plot_sigma
+                )
+                ic(f"Successfully calculated and added weights for '{weight_name}'.")
+            else:
+                ic(f"No events found for {i}-fold coincidence with reflection required. Skipping.")
+                continue
+
         ic(f"Processing coincidence level {i}...")
 
         # --- 1. Generate 1D SNR Distribution Plot ---
-        
-        # Get SNRs and weights for both direct and reflected triggers
         direct_snrs, direct_weights = get_snr_and_weights(HRAeventList, weight_name, direct_stations, sigma=plot_sigma)
         reflected_snrs, reflected_weights = get_snr_and_weights(HRAeventList, weight_name, reflected_stations, sigma=plot_sigma)
 
-        # Define parameters for the 1D plot
         snrs_to_plot = [direct_snrs, reflected_snrs]
         weights_to_plot = [direct_weights, reflected_weights]
         subplot_titles = ['Direct Triggers', 'Reflected Triggers']
         main_plot_title = f'SNR Distribution for {i}-Fold Coincidence (Reflected Required)'
-        save_path_1d = os.path.join(snr_plot_folder, f'snr_dist_{i}coinc_refl_1d.png')
+        save_path_1d = os.path.join(snr_plot_folder, f'snr_dist_{i}coinc_reflReq_1d.png')
         
-        # Create and save the plot
         plot_snr_distribution(snrs_to_plot, weights_to_plot, subplot_titles, main_plot_title, save_path_1d)
 
         # --- 2. Generate 2D SNR Histogram ---
-
         main_plot_title_2d = f'2D SNR Histogram for {i}-Fold Coincidence (Reflected Required)'
-        save_path_2d = os.path.join(snr_plot_folder, f'snr_hist_{i}coinc_refl_2d.png')
+        save_path_2d = os.path.join(snr_plot_folder, f'snr_hist_{i}coinc_reflReq_2d.png')
         
-        # Create and save the 2D plot
         plot_2d_snr_histogram(direct_snrs, direct_weights, reflected_snrs, reflected_weights, 
                                 'Direct', 'Reflected', main_plot_title_2d, save_path_2d)
+
+    # If new weights were added, resave the HRAeventList
+    if weights_were_added:
+        ic("New weights were added, resaving HRAeventList to H5 file...")
+        with h5py.File(HRAeventList_path, 'w') as hf:
+            for i, obj in enumerate(HRAeventList):
+                if not isinstance(obj, (np.ndarray, str, int, float)):
+                    obj_bytes = pickle.dumps(obj)
+                    dt = h5py.special_dtype(vlen=np.dtype('uint8'))
+                    dset = hf.create_dataset(f'object_{i}', (1,), dtype=dt)
+                    dset[0] = np.frombuffer(obj_bytes, dtype='uint8')
+                else:
+                    hf.create_dataset(f'object_{i}', data=obj)
+        ic("HRAeventList successfully updated and saved.")
 
     ic("\nAll SNR plots have been generated!")
