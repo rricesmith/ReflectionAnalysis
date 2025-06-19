@@ -91,7 +91,7 @@ def plot_2d_snr_histogram(snrs1, weights1, snrs2, weights2, title1, title2, main
     fig, ax = plt.subplots(figsize=(8, 6))
 
     # Define bins for the histogram
-    bins = [np.logspace(np.log10(3), np.log10(100), 21), np.linspace(np.log10(3), np.log10(100), 21)]
+    bins = np.logspace(np.log10(3), np.log10(100), 21)
 
     # Create the 2D histogram
     hist, xedges, yedges = np.histogram2d(snrs1, snrs2, bins=bins, weights=weights1)
