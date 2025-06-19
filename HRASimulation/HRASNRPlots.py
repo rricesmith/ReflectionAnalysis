@@ -94,6 +94,10 @@ def plot_2d_snr_histogram(snrs1, weights1, snrs2, weights2, title1, title2, main
     bins = np.logspace(np.log10(3), np.log10(100), 21)
 
     # Create the 2D histogram
+    ic(snrs1, snrs2, weights1, weights2)
+    ic(bins)
+    ic(snrs1.shape, snrs2.shape, weights1.shape, weights2.shape)
+    ic(bins.shape)
     hist, xedges, yedges = np.histogram2d(snrs1, snrs2, bins=bins, weights=weights1)
 
     # Use LogNorm for better visualization of a wide range of values
