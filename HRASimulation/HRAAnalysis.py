@@ -278,12 +278,13 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False,
 
 def get_specific_combination_trigger_rate(HRAeventList, station_combo, reflected_mode, sigma=4.5):
     """
-    Calculates the trigger rate for a specific combination of stations.
+    Calculates the trigger rate for a specific station geometry, allowing for either
+    direct or reflected signals to satisfy the primary trigger condition.
 
     Args:
         HRAeventList (list): The list of HRA event objects.
-        station_combo (list): A list of direct station IDs that must trigger (e.g., [19, 13]).
-        require_reflected (bool): If True, requires at least one reflected station to have triggered.
+        station_combo (list): A list of direct station IDs that define the geometry (e.g., [19, 13]).
+        reflected_mode (str): The mode for filtering, which now defines the relationship between direct and reflected signals: 'included', 'required', or 'excluded'.
         sigma (float): The significance threshold for a station trigger.
 
     Returns:
@@ -293,43 +294,46 @@ def get_specific_combination_trigger_rate(HRAeventList, station_combo, reflected
     n_throws = getnThrows(HRAeventList)
     trigger_rate_array = getEnergyZenithArray()
 
-    # Define the list of all standard reflected stations
-    # all_reflected_stations = [113, 114, 115, 117, 118, 119, 130]
-    all_reflected_stations = []
-    for station_id in station_combo:
-        if station_id < 100:
-            # Direct station, add reflected counterpart
-            all_reflected_stations.append(station_id + 100)
-    if reflected_mode == 'excluded':
-        # If reflected mode is 'excluded', we do not require any reflected stations to trigger
-        all_reflected_stations = []
-
-    # Use sets for efficient checking
-    combo_set = set(station_combo)
+    # Define both the direct and reflected station combinations as sets
+    direct_combo_set = set(station_combo)
+    reflected_combo_set = {st_id + 100 for st_id in direct_combo_set}
 
     for event in HRAeventList:
-        # Get all stations triggered for this event at the specified sigma
         triggered_stations_all = set(event.station_triggers.get(sigma, []))
+
+        # Check if the direct combo and/or the reflected combo have triggered
+        direct_triggered = direct_combo_set.issubset(triggered_stations_all)
+        reflected_triggered = reflected_combo_set.issubset(triggered_stations_all)
+
+        # This flag will determine if the event should be binned based on the mode
+        count_event = False
+
+        if reflected_mode == 'included':
+            # Count if EITHER the direct combo OR the reflected combo has triggered.
+            if direct_triggered or reflected_triggered:
+                count_event = True
         
-        # Condition 1: Check if all stations in the specific combo have triggered.
-        if not combo_set.issubset(triggered_stations_all):
-            continue
+        elif reflected_mode == 'required':
+            # Count only if BOTH the direct combo AND the reflected combo have triggered.
+            if direct_triggered and reflected_triggered:
+                count_event = True
+        
+        elif reflected_mode == 'excluded':
+            # Count only if the direct combo has triggered AND the reflected combo has NOT.
+            # This is now a "direct signal only" mode.
+            if direct_triggered and not reflected_triggered:
+                count_event = True
+
+        # If the event met the criteria for the given mode, add it to the bin.
+        if count_event:
+            energy = event.getEnergy()
+            zenith = event.getAngles()[0]
+            energy_bin = np.digitize(energy, e_bins) - 1
+            zenith_bin = np.digitize(zenith, z_bins) - 1
             
-        # Condition 2: If required, check that at least one reflected station has also triggered.
-        if reflected_mode == 'required':
-            # Check for any intersection between triggered stations and the reflected list
-            if not any(refl_st in triggered_stations_all for refl_st in all_reflected_stations):
-                continue
-        
-        # If all conditions are met, bin the event
-        energy = event.getEnergy()
-        zenith = event.getAngles()[0]
-        energy_bin = np.digitize(energy, e_bins) - 1
-        zenith_bin = np.digitize(zenith, z_bins) - 1
-        
-        if 0 <= energy_bin < len(e_bins) - 1 and 0 <= zenith_bin < len(z_bins) - 1:
-            trigger_rate_array[energy_bin][zenith_bin] += 1
-        
+            if 0 <= energy_bin < len(e_bins) - 1 and 0 <= zenith_bin < len(z_bins) - 1:
+                trigger_rate_array[energy_bin][zenith_bin] += 1
+    
     # Normalize by the number of throws to get the rate
     with np.errstate(divide='ignore', invalid='ignore'):
         trigger_rate_array /= n_throws
@@ -408,7 +412,7 @@ def calculate_all_station_combination_rates(HRAeventList, output_file, max_dista
                     sum_rate = 0
                     sum_error = []
                     for combo in combinations:
-                        total_event_rate, total_error = getRateAndErrorForComboList(combo, HRAeventList, reflected_mode='required', sigma=sigma)
+                        total_event_rate, total_error = getRateAndErrorForComboList(combo, HRAeventList, reflected_mode=reflected_mode, sigma=sigma)
                         if total_event_rate == 0:
                             ic(f"  Skipping {combo} with zero event rate.")
                             continue
