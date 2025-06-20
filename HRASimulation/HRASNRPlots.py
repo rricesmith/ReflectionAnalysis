@@ -17,8 +17,9 @@ from NuRadioReco.utilities import units
 
 def get_snr_and_weights_for_1d_plot(HRAeventList, weight_name, direct_stations, reflected_stations, sigma=4.5):
     """
-    Extracts SNRs and weights for 1D histograms.
-    Each direct or reflected trigger is a separate entry.
+    Extracts SNRs and weights for 1D histograms. An event's weight is
+    equally distributed among all of its contributing triggers to ensure
+    the total summed weight is the correct event rate.
     """
     direct_snrs_list = []
     reflected_snrs_list = []
@@ -38,24 +39,32 @@ def get_snr_and_weights_for_1d_plot(HRAeventList, weight_name, direct_stations, 
                 if event.hasTriggered(st_id, sigma) and event.getSNR(st_id) is not None
             ]
 
-            # Create separate entries for 1D histograms
-            for snr in event_direct_snrs:
-                direct_snrs_list.append(snr)
-                reflected_snrs_list.append(0) # Placeholder
-                direct_weights_list.append(event_weight)
-                reflected_weights_list.append(0) # Placeholder
-            for snr in event_reflected_snrs:
-                direct_snrs_list.append(0) # Placeholder
-                reflected_snrs_list.append(snr)
-                direct_weights_list.append(0) # Placeholder
-                reflected_weights_list.append(event_weight)
+            # Determine the total number of triggers this event will contribute
+            total_triggers = len(event_direct_snrs) + len(event_reflected_snrs)
+
+            if total_triggers > 0:
+                # Divide the event's weight by the number of triggers it has
+                split_weight = event_weight / total_triggers
+
+                # Append each trigger to the list with its fraction of the weight
+                for snr in event_direct_snrs:
+                    direct_snrs_list.append(snr)
+                    reflected_snrs_list.append(0)
+                    direct_weights_list.append(split_weight)
+                    reflected_weights_list.append(0)
+                for snr in event_reflected_snrs:
+                    direct_snrs_list.append(0)
+                    reflected_snrs_list.append(snr)
+                    direct_weights_list.append(0)
+                    reflected_weights_list.append(split_weight)
+
 
     return np.array(direct_snrs_list), np.array(reflected_snrs_list), np.array(direct_weights_list), np.array(reflected_weights_list)
 
 def get_snr_pairs_for_2d_plot(HRAeventList, weight_name, direct_stations, reflected_stations, sigma=4.5):
     """
-    Extracts paired (direct, reflected) SNR values and a single weight for each pair.
-    Only creates data points for events that have BOTH a direct and a reflected trigger.
+    Extracts paired (direct, reflected) SNR values. The event weight is
+    split equally among all generated pairs to preserve the total rate.
     """
     direct_snrs_list = []
     reflected_snrs_list = []
@@ -64,7 +73,6 @@ def get_snr_pairs_for_2d_plot(HRAeventList, weight_name, direct_stations, reflec
     for event in HRAeventList:
         event_weight = event.getWeight(weight_name, sigma=sigma)
         if event_weight > 0:
-            # Find all triggered SNRs for this event
             event_direct_snrs = [
                 event.getSNR(st_id) for st_id in direct_stations
                 if event.hasTriggered(st_id, sigma) and event.getSNR(st_id) is not None
@@ -74,12 +82,14 @@ def get_snr_pairs_for_2d_plot(HRAeventList, weight_name, direct_stations, reflec
                 if event.hasTriggered(st_id, sigma) and event.getSNR(st_id) is not None
             ]
 
-            # If there's at least one of each, create all combination pairs
             if event_direct_snrs and event_reflected_snrs:
+                # For 2D plot, split the weight among the generated pairs
+                num_pairs = len(event_direct_snrs) * len(event_reflected_snrs)
+                split_weight_2d = event_weight / num_pairs
                 for d_snr, r_snr in itertools.product(event_direct_snrs, event_reflected_snrs):
                     direct_snrs_list.append(d_snr)
                     reflected_snrs_list.append(r_snr)
-                    weights_list.append(event_weight)
+                    weights_list.append(split_weight_2d)
 
     return np.array(direct_snrs_list), np.array(reflected_snrs_list), np.array(weights_list)
 
@@ -87,11 +97,9 @@ def get_snr_pairs_for_2d_plot(HRAeventList, weight_name, direct_stations, reflec
 def plot_snr_distribution(direct_snrs, reflected_snrs, direct_weights, reflected_weights, main_title, savename, bins):
     """
     Plots weighted 1D histograms of SNR distributions.
-    This function remains unchanged.
     """
     fig, axs = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
 
-    # Use a mask to plot only the relevant data for each subplot
     direct_mask = direct_weights > 0
     axs[0].hist(direct_snrs[direct_mask], bins=bins, weights=direct_weights[direct_mask], histtype='step', linewidth=2)
     axs[0].set_xlabel('SNR')
@@ -105,7 +113,6 @@ def plot_snr_distribution(direct_snrs, reflected_snrs, direct_weights, reflected
     axs[1].set_xlabel('SNR')
     axs[1].set_title('Reflected Triggers')
     axs[1].set_xscale('log')
-    # y-scale is shared
 
     plt.suptitle(main_title)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
@@ -116,19 +123,16 @@ def plot_snr_distribution(direct_snrs, reflected_snrs, direct_weights, reflected
 def plot_2d_snr_histogram(direct_snrs, reflected_snrs, weights, main_title, savename, bins):
     """
     Plots a weighted 2D histogram of paired SNR data.
-    Signature and logic are now simplified.
     """
     fig, ax = plt.subplots(figsize=(8, 7))
 
-    # Data is already correctly paired, no complex masking needed.
-    # The cmin parameter handles bins with zero counts to prevent the LogNorm error.
     h, xedges, yedges, im = ax.hist2d(
         direct_snrs,
         reflected_snrs,
         bins=bins,
         weights=weights,
         norm=colors.LogNorm(),
-        cmin=1e-5  # Prevents ValueError for empty bins on a log scale
+        cmin=1e-5
     )
 
     ax.set_xlabel('SNR (Direct)')
@@ -192,7 +196,7 @@ if __name__ == "__main__":
             HRAeventList, weight_name, direct_stations, reflected_stations, sigma=plot_sigma
         )
         
-        if len(direct_weights_1d) > 0 or len(reflected_weights_1d) > 0:
+        if np.any(direct_weights_1d > 0) or np.any(reflected_weights_1d > 0):
             main_plot_title_1d = f'SNR Distribution for {i}-Fold Coincidence (Reflected Required)'
             save_path_1d = os.path.join(snr_plot_folder, f'snr_dist_{i}coinc_reflReq_1d.png')
             plot_snr_distribution(direct_snrs_1d, reflected_snrs_1d, direct_weights_1d, reflected_weights_1d, main_plot_title_1d, save_path_1d, bins=log_bins)
@@ -200,17 +204,18 @@ if __name__ == "__main__":
             ic(f"No events with valid triggers found for 1D plots for weight '{weight_name}'. Skipping.")
 
 
-        # --- 2D Plot Data Generation and Plotting ---
-        direct_snrs_2d, reflected_snrs_2d, weights_2d = get_snr_pairs_for_2d_plot(
-            HRAeventList, weight_name, direct_stations, reflected_stations, sigma=plot_sigma
-        )
-        
-        if len(weights_2d) > 0:
-            main_plot_title_2d = f'2D SNR Histogram for {i}-Fold Coincidence (Reflected Required)'
-            save_path_2d = os.path.join(snr_plot_folder, f'snr_hist_{i}coinc_reflReq_2d.png')
-            plot_2d_snr_histogram(direct_snrs_2d, reflected_snrs_2d, weights_2d, main_plot_title_2d, save_path_2d, bins=log_bins)
-        else:
-            ic(f"No events with both direct and reflected triggers found for 2D plot for weight '{weight_name}'. Skipping.")
+        # --- 2D Plot Data Generation and Plotting (Only for n=2) ---
+        if i == 2:
+            direct_snrs_2d, reflected_snrs_2d, weights_2d = get_snr_pairs_for_2d_plot(
+                HRAeventList, weight_name, direct_stations, reflected_stations, sigma=plot_sigma
+            )
+            
+            if len(weights_2d) > 0:
+                main_plot_title_2d = f'2D SNR Histogram for 2-Fold Coincidence (Reflected Required)'
+                save_path_2d = os.path.join(snr_plot_folder, f'snr_hist_2coinc_reflReq_2d.png')
+                plot_2d_snr_histogram(direct_snrs_2d, reflected_snrs_2d, weights_2d, main_plot_title_2d, save_path_2d, bins=log_bins)
+            else:
+                ic(f"No events with both direct and reflected triggers found for 2D plot for weight '{weight_name}'. Skipping.")
 
 
     if weights_were_added:
