@@ -278,13 +278,13 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False,
 
 def get_specific_combination_trigger_rate(HRAeventList, station_combo, reflected_mode, sigma=4.5):
     """
-    Calculates the trigger rate for a specific station geometry, allowing for either
-    direct or reflected signals to satisfy the primary trigger condition.
+    Calculates the trigger rate for a specific station geometry, checking all
+    possible combinations of direct and reflected signals.
 
     Args:
         HRAeventList (list): The list of HRA event objects.
         station_combo (list): A list of direct station IDs that define the geometry (e.g., [19, 13]).
-        reflected_mode (str): The mode for filtering, which now defines the relationship between direct and reflected signals: 'included', 'required', or 'excluded'.
+        reflected_mode (str): The mode for filtering, which defines the required relationship between direct and reflected signals.
         sigma (float): The significance threshold for a station trigger.
 
     Returns:
@@ -294,34 +294,47 @@ def get_specific_combination_trigger_rate(HRAeventList, station_combo, reflected
     n_throws = getnThrows(HRAeventList)
     trigger_rate_array = getEnergyZenithArray()
 
-    # Define both the direct and reflected station combinations as sets
-    direct_combo_set = set(station_combo)
-    reflected_combo_set = {st_id + 100 for st_id in direct_combo_set}
+    # --- Combination Generation ---
+    # Create pairs of (direct, reflected) for each base station
+    station_pairs = [(st_id, st_id + 100) for st_id in station_combo]
+    
+    # Generate all 2^N possible combinations of the geometry as sets.
+    # For [18, 19], this yields [{18, 19}, {18, 119}, {118, 19}, {118, 119}]
+    all_possible_combos = [set(c) for c in itertools.product(*station_pairs)]
+    
+    # --- Sets for mode logic ---
+    direct_stations_in_combo = set(station_combo)
+    reflected_stations_in_combo = {st_id + 100 for st_id in station_combo}
 
     for event in HRAeventList:
         triggered_stations_all = set(event.station_triggers.get(sigma, []))
-
-        # Check if the direct combo and/or the reflected combo have triggered
-        direct_triggered = direct_combo_set.issubset(triggered_stations_all)
-        reflected_triggered = reflected_combo_set.issubset(triggered_stations_all)
-
-        # This flag will determine if the event should be binned based on the mode
+        
         count_event = False
 
+        # --- Primary Trigger Condition ---
+        # Check if ANY of the valid geometric combinations have triggered.
+        geometry_triggered = any(c.issubset(triggered_stations_all) for c in all_possible_combos)
+
+        if not geometry_triggered:
+            continue
+
+        # --- Apply Mode-Specific Logic ---
         if reflected_mode == 'included':
-            # Count if EITHER the direct combo OR the reflected combo has triggered.
-            if direct_triggered or reflected_triggered:
-                count_event = True
+            # If any valid geometry combination triggers, we count the event.
+            count_event = True
         
         elif reflected_mode == 'required':
-            # Count only if BOTH the direct combo AND the reflected combo have triggered.
-            if direct_triggered and reflected_triggered:
+            # We require the event's triggers to contain AT LEAST ONE direct station
+            # AND AT LEAST ONE reflected station from the specified geometry.
+            has_direct_trigger = not direct_stations_in_combo.isdisjoint(triggered_stations_all)
+            has_reflected_trigger = not reflected_stations_in_combo.isdisjoint(triggered_stations_all)
+            if has_direct_trigger and has_reflected_trigger:
                 count_event = True
         
         elif reflected_mode == 'excluded':
-            # Count only if the direct combo has triggered AND the reflected combo has NOT.
-            # This is now a "direct signal only" mode.
-            if direct_triggered and not reflected_triggered:
+            # We require the PURELY direct combination to trigger and NO reflected counterparts
+            # from the geometry to be present in the event's triggers.
+            if direct_stations_in_combo.issubset(triggered_stations_all) and reflected_stations_in_combo.isdisjoint(triggered_stations_all):
                 count_event = True
 
         # If the event met the criteria for the given mode, add it to the bin.
