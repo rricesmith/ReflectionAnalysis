@@ -321,20 +321,26 @@ def get_specific_combination_trigger_rate(HRAeventList, station_combo, reflected
         # --- Apply Mode-Specific Logic ---
         if reflected_mode == 'included':
             # If any valid geometry combination triggers, we count the event.
+            # So BL-BL, BL-RCR, or RCR-RCR will all count.
             count_event = True
         
         elif reflected_mode == 'required':
-            # We require the event's triggers to contain AT LEAST ONE direct station
             # AND AT LEAST ONE reflected station from the specified geometry.
-            has_direct_trigger = not direct_stations_in_combo.isdisjoint(triggered_stations_all)
-            has_reflected_trigger = not reflected_stations_in_combo.isdisjoint(triggered_stations_all)
-            if has_direct_trigger and has_reflected_trigger:
+            # So BL-RCR or RCR-RCR will count, but BL-BL will not.
+            if reflected_stations_in_combo.issubset(triggered_stations_all):
                 count_event = True
         
         elif reflected_mode == 'excluded':
             # We require the PURELY direct combination to trigger and NO reflected counterparts
             # from the geometry to be present in the event's triggers.
-            if direct_stations_in_combo.issubset(triggered_stations_all) and reflected_stations_in_combo.isdisjoint(triggered_stations_all):
+            # So BL-BL will count, but BL-RCR or RCR-RCR will not.
+            if direct_stations_in_combo.issubset(triggered_stations_all):
+                count_event = True
+
+        elif reflected_mode == 'only':
+            # We require the event to trigger on the reflected stations only, with no direct stations.
+            # So RCR-RCR will count, but BL-BL or BL-RCR will not.
+            if reflected_stations_in_combo.issubset(triggered_stations_all):
                 count_event = True
 
         # If the event met the criteria for the given mode, add it to the bin.
@@ -948,6 +954,13 @@ if __name__ == "__main__":
                                             max_distance=max_distance, 
                                             sigma=plot_sigma,
                                             reflected_mode='excluded')
+    combination_output_file = os.path.join(save_folder, 'station_combination_rates_refl_only.txt')
+    calculate_all_station_combination_rates(HRAeventList, 
+                                            combination_output_file, 
+                                            max_distance=max_distance, 
+                                            sigma=plot_sigma,
+                                            reflected_mode='only')
+    
     
     ic("="*50)
     quit()
