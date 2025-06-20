@@ -106,7 +106,7 @@ def plot_snr_distribution(direct_snrs, reflected_snrs, direct_weights, reflected
     plt.savefig(savename)
     plt.close(fig)
 
-def plot_2d_snr_histogram(direct_snrs, reflected_snrs, direct_weights, reflected_, main_title, savename, bins):
+def plot_2d_snr_histogram(direct_snrs, reflected_snrs, direct_weights, reflected_weights, main_title, savename, bins):
     """
     Plots a weighted 2D histogram using plt.hist2d.
 
@@ -121,7 +121,7 @@ def plot_2d_snr_histogram(direct_snrs, reflected_snrs, direct_weights, reflected
     fig, ax = plt.subplots(figsize=(8, 7))
 
     # We are already requiring that all events have a reflected SNR, so we just remove events without a direct SNR.
-    mask = (direct_snrs > 0) & (reflected_snrs > 0)
+    mask = (reflected_weights > 0) & (direct_weights > 0)
     direct_snrs = direct_snrs[mask]
     reflected_snrs = reflected_snrs[mask]
     weights = reflected_weights[mask]
