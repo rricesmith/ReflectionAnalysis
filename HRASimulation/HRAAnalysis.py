@@ -327,7 +327,7 @@ def get_specific_combination_trigger_rate(HRAeventList, station_combo, reflected
         elif reflected_mode == 'required':
             # AND AT LEAST ONE reflected station from the specified geometry.
             # So BL-RCR or RCR-RCR will count, but BL-BL will not.
-            if reflected_stations_in_combo.issubset(triggered_stations_all):
+            if not reflected_stations_in_combo.isdisjoint(triggered_stations_all):
                 count_event = True
         
         elif reflected_mode == 'excluded':
