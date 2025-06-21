@@ -281,22 +281,11 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False,
 def categorize_events_by_coincidence(HRAeventList, stations_of_interest, sigma=4.5):
     """
     Analyzes and categorizes each event by its effective n-coincidence for each reflected_mode,
-    considering only a specific list of stations.
-
-    Args:
-        HRAeventList (list): The list of all HRA event objects.
-        stations_of_interest (list): A list of the direct station IDs to consider for analysis.
-        sigma (float): The significance threshold.
-
-    Returns:
-        dict: A structured dictionary: categorized_events[mode][n] = [(combo, [events...]), ...]
+    considering only a specific list of stations. Now includes n=1 categorization.
     """
-    # Create a set for faster lookups
     stations_of_interest_set = set(stations_of_interest)
     reflected_stations_of_interest = {s + 100 for s in stations_of_interest}
     
-    # The output dictionary, structured as {mode: {n: {combo: [events]}}}
-    # Using defaultdict for convenience
     categorized_events = {
         'included': collections.defaultdict(lambda: collections.defaultdict(list)),
         'required': collections.defaultdict(lambda: collections.defaultdict(list)),
@@ -305,51 +294,60 @@ def categorize_events_by_coincidence(HRAeventList, stations_of_interest, sigma=4
     }
 
     for event in HRAeventList:
-        # Get all stations triggered for the event at the specified sigma
         triggered_stations_all = set(event.station_triggers.get(sigma, []))
-
-        # Filter triggers to only include stations (and their reflections) that we care about
         triggered_direct = {s for s in triggered_stations_all if s in stations_of_interest_set}
         triggered_reflected = {s for s in triggered_stations_all if s in reflected_stations_of_interest}
         
-        # Determine the set of unique "base stations" involved in the trigger
         reflected_bases = {s - 100 for s in triggered_reflected}
         union_bases = triggered_direct.union(reflected_bases)
+        
+        n_effective = len(union_bases)
 
-        # --- Categorize for each mode based on the filtered triggers ---
+        # --- n > 1 Coincidence Categorization (Unchanged) ---
+        if n_effective > 1:
+            combo = tuple(sorted(list(union_bases)))
+            # 'included'
+            categorized_events['included'][n_effective][combo].append(event)
+            # 'required'
+            if len(triggered_direct) > 0 and len(triggered_reflected) > 0:
+                categorized_events['required'][n_effective][combo].append(event)
+            # 'excluded'
+            if len(triggered_direct) > 0 and len(triggered_reflected) == 0:
+                # For n>1, the combo is the union_bases, which equals triggered_direct here
+                categorized_events['excluded'][n_effective][combo].append(event)
+            # 'only'
+            if len(triggered_reflected) > 0 and len(triggered_direct) == 0:
+                # For n>1, the combo is the union_bases, which equals reflected_bases here
+                categorized_events['only'][n_effective][combo].append(event)
 
-        # 1. 'included' mode: n = number of unique base stations
-        if len(union_bases) > 0:
-            n_included = len(union_bases)
-            combo_included = tuple(sorted(list(union_bases)))
-            categorized_events['included'][n_included][combo_included].append(event)
-
-        # 2. 'required' mode: n = number of unique bases, IF both direct and reflected signals are present
-        if len(triggered_direct) > 0 and len(triggered_reflected) > 0:
-            n_required = len(union_bases)
-            combo_required = tuple(sorted(list(union_bases)))
-            categorized_events['required'][n_required][combo_required].append(event)
+        # --- New n=1 (Single Station) Categorization ---
+        elif n_effective == 1:
+            station_id = list(union_bases)[0]
+            combo = (station_id,)
+            has_direct = station_id in triggered_direct
+            has_reflected = (station_id + 100) in triggered_reflected
             
-        # 3. 'excluded' mode: n = number of direct triggers, IF NO reflected signals are present
-        if len(triggered_direct) > 0 and len(triggered_reflected) == 0:
-            n_excluded = len(triggered_direct)
-            combo_excluded = tuple(sorted(list(triggered_direct)))
-            categorized_events['excluded'][n_excluded][combo_excluded].append(event)
-
-        # 4. 'only' mode: n = number of reflected bases, IF NO direct signals are present
-        if len(triggered_reflected) > 0 and len(triggered_direct) == 0:
-            n_only = len(reflected_bases)
-            combo_only = tuple(sorted(list(reflected_bases)))
-            categorized_events['only'][n_only][combo_only].append(event)
+            # 'included': direct=True or reflected=True or both
+            if has_direct or has_reflected:
+                categorized_events['included'][1][combo].append(event)
+            # 'required': reflected=True, direct can be any
+            if has_reflected:
+                categorized_events['required'][1][combo].append(event)
+            # 'excluded': direct=True and reflected=False
+            if has_direct and not has_reflected:
+                categorized_events['excluded'][1][combo].append(event)
+            # 'only': direct=False and reflected=True
+            if not has_direct and has_reflected:
+                categorized_events['only'][1][combo].append(event)
 
     return categorized_events
 
 
 def calculate_all_station_combination_rates(HRAeventList, output_file, max_distance, sigma=4.5, reflected_mode='required'):
     """
-    Calculates coincidence rates for unique station combinations, ensuring each event is counted
-    only once for its specific n-fold coincidence. This version outputs all possible combinations,
-    even those with zero rate, to serve as input for rate propagation.
+    Calculates initial "true" rates for n=1 to n=max, ensuring each event is counted
+    only once for its specific n-fold coincidence. This version outputs all possible 
+    combinations, even those with zero rate, to serve as input for rate propagation.
     """
     base_stations = [13, 14, 15, 17, 18, 19, 30]
     e_bins, z_bins = getEnergyZenithBins()
@@ -380,14 +378,13 @@ def calculate_all_station_combination_rates(HRAeventList, output_file, max_dista
         f.write(f"# Initial analysis for Mode: {reflected_mode}\n")
         f.write("Station Combination, Total_Event_Rate, Total_Error (both in Evts/Yr)\n")
 
-        for n_coincidence in range(len(base_stations), 1, -1):
+        # Modified loop to run from n=max down to n=1
+        for n_coincidence in range(len(base_stations), 0, -1):
             f.write(f"\n# {n_coincidence}-Fold Coincidences:\n")
             
-            # Generate all possible combinations for this n-level
             all_possible_combos = itertools.combinations(base_stations, n_coincidence)
             
             for combo_tuple in all_possible_combos:
-                # Look up the event list for this combo, default to empty list if not found
                 event_list = categorized_events[reflected_mode].get(n_coincidence, {}).get(combo_tuple, [])
                 
                 trigger_rate = calculate_rate_for_event_list(event_list, n_throws)
@@ -397,7 +394,6 @@ def calculate_all_station_combination_rates(HRAeventList, output_file, max_dista
                 total_event_rate = np.nansum(event_rate_array)
                 total_error = np.nansum(error_rate_array)
                 
-                # Store for propagation step
                 initial_rates[combo_tuple] = (total_event_rate, total_error)
 
                 combo_str = "-".join(map(str, combo_tuple))
@@ -409,29 +405,16 @@ def calculate_all_station_combination_rates(HRAeventList, output_file, max_dista
 
 def propagate_downtime_rates(initial_rates, base_stations, downtime_prob=0.25):
     """
-    Takes a dictionary of initial "true" rates and propagates them down to account for
-    station downtime, returning a dictionary of adjusted final rates.
-
-    Args:
-        initial_rates (dict): Dictionary mapping combo_tuple -> (rate, error).
-        base_stations (list): The list of stations used in the analysis.
-        downtime_prob (float): The probability of a single station being offline.
-
-    Returns:
-        tuple: (adjusted_rates, n1_rates)
-               adjusted_rates is a dict mapping combo_tuple -> (final_rate, final_error)
-               n1_rates is a dict mapping station_id -> (final_rate, final_error)
+    Takes a dictionary of initial "true" rates (from n=1 to n=max) and propagates them 
+    down to account for station downtime.
     """
     online_prob = 1 - downtime_prob
     
-    # Initialize adjusted_rates with combo keys, but with a list to store squared errors
-    # Format: {combo_tuple: [rate, [error_sq_1, error_sq_2, ...]]}
+    # Initialize adjusted_rates for n=1 through n=max combinations
     adjusted_rates = {combo: [0, []] for combo in itertools.chain.from_iterable(
-        itertools.combinations(base_stations, i) for i in range(2, len(base_stations) + 1)
+        itertools.combinations(base_stations, i) for i in range(1, len(base_stations) + 1)
     )}
-    n1_rates = {station: [0, []] for station in base_stations}
 
-    # Iterate through all initial combinations from highest n to lowest
     sorted_initial_combos = sorted(initial_rates.keys(), key=len, reverse=True)
 
     for n_combo in sorted_initial_combos:
@@ -441,44 +424,34 @@ def propagate_downtime_rates(initial_rates, base_stations, downtime_prob=0.25):
 
         n = len(n_combo)
         
-        # Iterate from n (the original size) down to 1 (the observed size)
+        # Iterate from k=n (observed size) down to k=1
         for k in range(n, 0, -1):
-            # Binomial probability of a true n-fold event being observed as a k-fold event
-            # P(k | n) = (n choose k) * (P_online)^k * (P_offline)^(n-k)
             prob_n_to_k = nCr(n, k) * (online_prob**k) * (downtime_prob**(n - k))
             
             rate_contribution = initial_rate * prob_n_to_k
+            # Propagate the squared error, scaled by the probability squared
             error_sq_contribution = (initial_error * prob_n_to_k)**2
 
-            # Find all sub-combinations of size k
             sub_combos = itertools.combinations(n_combo, k)
             num_sub_combos = nCr(n, k)
-            
-            # Distribute the contributed rate and error equally among all sub-combos
             rate_per_sub = rate_contribution / num_sub_combos
             
+            # The squared error is for the total rate contribution, so the error^2 for each
+            # sub-combo's share is divided by num_sub_combos^2
+            error_sq_per_sub = error_sq_contribution / (num_sub_combos**2)
+            
             for sub_combo_tuple in sub_combos:
-                if k > 1:
-                    adjusted_rates[sub_combo_tuple][0] += rate_per_sub
-                    adjusted_rates[sub_combo_tuple][1].append(error_sq_contribution / (num_sub_combos**2))
-                else: # k == 1
-                    station_id = sub_combo_tuple[0]
-                    n1_rates[station_id][0] += rate_per_sub
-                    n1_rates[station_id][1].append(error_sq_contribution / (num_sub_combos**2))
+                adjusted_rates[sub_combo_tuple][0] += rate_per_sub
+                adjusted_rates[sub_combo_tuple][1].append(error_sq_per_sub)
 
-    # Finalize the error calculation by taking the sqrt of the sum of squares
+    # Finalize the error calculation
     final_adjusted_rates = {}
     for combo, (rate, errors_sq_list) in adjusted_rates.items():
         final_error = np.sqrt(np.sum(errors_sq_list))
         final_adjusted_rates[combo] = (rate, final_error)
         
-    final_n1_rates = {}
-    for station, (rate, errors_sq_list) in n1_rates.items():
-        final_error = np.sqrt(np.sum(errors_sq_list))
-        final_n1_rates[station] = (rate, final_error)
-
     ic("Rate propagation complete.")
-    return final_adjusted_rates, final_n1_rates
+    return final_adjusted_rates
 
 def set_bad_imshow(array, value):
     ma = np.ma.masked_where(array == value, array)
@@ -917,6 +890,7 @@ if __name__ == "__main__":
     # Define all modes to be processed
     base_stations = [13, 14, 15, 17, 18, 19, 30]
     analysis_modes = ['required', 'included', 'excluded', 'only']
+    downtime_prob = 0.25  # Probability of a single station being down
 
     for mode in analysis_modes:
         ic(f"\n{'='*20} Starting Analysis for Mode: '{mode}' {'='*20}")
@@ -938,7 +912,7 @@ if __name__ == "__main__":
         adjusted_rates, n1_rates = propagate_downtime_rates(
             initial_rates,
             base_stations=base_stations,
-            downtime_prob=0.25
+            downtime_prob=downtime_prob
         )
 
         # --- Step 3: Save Propagated Rates to a New File ---
@@ -947,7 +921,7 @@ if __name__ == "__main__":
 
         with open(propagated_rates_file, 'w') as f:
             f.write(f"# Propagated rates for Analysis Mode: {mode}\n")
-            f.write("# Accounts for a 25% single-station downtime probability.\n")
+            f.write(f"# Accounts for a {downtime_prob*100}% single-station downtime probability.\n")
             f.write("Station Combination, Adjusted_Event_Rate, Adjusted_Error (both in Evts/Yr)\n")
 
             # Write rates from n=7 down to n=2
