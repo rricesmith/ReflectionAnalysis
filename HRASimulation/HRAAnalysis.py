@@ -14,6 +14,7 @@ from HRASimulation.HRAEventObject import HRAevent
 from HRASimulation.HRANurToNpy import loadHRAfromH5
 import itertools
 import collections
+from scipy.special import comb as nCr 
 
 def getEnergyZenithBins():
     # Define the bins that are constant
@@ -347,40 +348,19 @@ def categorize_events_by_coincidence(HRAeventList, stations_of_interest, sigma=4
 def calculate_all_station_combination_rates(HRAeventList, output_file, max_distance, sigma=4.5, reflected_mode='required'):
     """
     Calculates coincidence rates for unique station combinations, ensuring each event is counted
-    only once for its specific n-fold coincidence. This version separates out predefined
-    geometric combinations for n=2 and n=3.
-
-    Args:
-        HRAeventList (list): List of HRA event objects.
-        output_file (str): Path to the output text file.
-        max_distance (float): The maximum simulation distance in km for rate calculation.
-        sigma (float): The significance threshold for a station trigger.
-        reflected_mode (str): The mode for reflected station requirement.
+    only once for its specific n-fold coincidence. This version outputs all possible combinations,
+    even those with zero rate, to serve as input for rate propagation.
     """
-    # Define the stations to be used in the analysis. This will filter out triggers from other stations.
     base_stations = [13, 14, 15, 17, 18, 19, 30]
     e_bins, z_bins = getEnergyZenithBins()
     n_throws = getnThrows(HRAeventList)
-
-    # --- Hard-coded geometric combinations ---
-    # n=2 combinations
-    forward_combinations = [[19, 30], [14, 18], [15, 18], [13, 17]]
-    backward_combinations = [[18, 19], [13, 14], [15, 30], [17, 18]]
-    horizontal_combinations = [[14, 19], [18, 30], [13, 18], [15, 17]]
-    n2_combinations = {
-        "Forward-slash": forward_combinations,
-        "Backslash": backward_combinations,
-        "Horizontal": horizontal_combinations
-    }
-    # n=3 combinations
-    triangular_combinations = [[18, 19, 30], [13, 14, 18], [14, 18, 19], [15, 18, 30], [15, 17, 18], [13, 17, 18]]
 
     ic("Pre-categorizing all events by effective n-coincidence...")
     categorized_events = categorize_events_by_coincidence(HRAeventList, base_stations, sigma=sigma)
     ic("Categorization complete.")
 
     def calculate_rate_for_event_list(events, n_throws_binned):
-        """Helper to calculate binned trigger rate for a list of pre-filtered events."""
+        # ... (This helper function is unchanged)
         trigger_rate_array = getEnergyZenithArray()
         for event in events:
             energy = event.getEnergy()
@@ -389,89 +369,116 @@ def calculate_all_station_combination_rates(HRAeventList, output_file, max_dista
             zenith_bin = np.digitize(zenith, z_bins) - 1
             if 0 <= energy_bin < len(e_bins) - 1 and 0 <= zenith_bin < len(z_bins) - 1:
                 trigger_rate_array[energy_bin][zenith_bin] += 1
-        
         with np.errstate(divide='ignore', invalid='ignore'):
             trigger_rate_array /= n_throws_binned
         trigger_rate_array[np.isnan(trigger_rate_array)] = 0
         return trigger_rate_array
 
-    def process_and_write_combo(f, combo, event_list):
-        """Helper function to calculate and write rates to avoid code duplication."""
-        trigger_rate = calculate_rate_for_event_list(event_list, n_throws)
-        event_rate = getEventRate(trigger_rate, e_bins, z_bins, max_distance)
-        error_rate_array = getErrorEventRates(trigger_rate, HRAeventList, max_distance=max_distance)
-        
-        total_event_rate = np.nansum(event_rate)
-        total_error = np.nansum(error_rate_array)
+    initial_rates = {}  # Store results in a dictionary for the next phase
 
-        combo_str = "-".join(map(str, combo))
-        f.write(f"{combo_str} : {total_event_rate:.5f}, {total_error:.5f}\n")
-        ic(f"  {combo_str:<20} | Rate: {total_event_rate:.4f}, Error: {total_error:.4f}, Events: {len(event_list)}")
-
-    ic(f"Saving combination rates for mode '{reflected_mode}' to: {output_file}")
     with open(output_file, 'w') as f:
-        f.write(f"# Analysis Mode: {reflected_mode}\n")
+        f.write(f"# Initial analysis for Mode: {reflected_mode}\n")
         f.write("Station Combination, Total_Event_Rate, Total_Error (both in Evts/Yr)\n")
 
-        for n_coincidence in range(2, len(base_stations) + 1):
-            ic(f"\nCalculating for {n_coincidence}-fold coincidences...")
-
-            combos_for_this_n = categorized_events[reflected_mode].get(n_coincidence, {}).copy()
-
-            if not combos_for_this_n:
-                f.write(f"\n# {n_coincidence}-Fold Coincidences:\n")
-                ic(f"  No combinations found for n={n_coincidence}.")
-                f.write("None\n")
-                continue
-
-            # --- Special Handling for n=2 ---
-            if n_coincidence == 2:
-                for combo_type, combinations_list in n2_combinations.items():
-                    f.write(f"\n# {combo_type} Combinations:\n")
-                    found_any_in_group = False
-                    for combo in combinations_list:
-                        combo_tuple = tuple(sorted(combo))
-                        if combo_tuple in combos_for_this_n:
-                            found_any_in_group = True
-                            event_list = combos_for_this_n[combo_tuple]
-                            process_and_write_combo(f, combo_tuple, event_list)
-                            del combos_for_this_n[combo_tuple]
-                    if not found_any_in_group:
-                        f.write("None Found\n")
-
-                if combos_for_this_n:
-                    f.write("\n# Other 2-Fold Combinations:\n")
-                    for combo in sorted(combos_for_this_n.keys()):
-                        process_and_write_combo(f, combo, combos_for_this_n[combo])
+        for n_coincidence in range(len(base_stations), 1, -1):
+            f.write(f"\n# {n_coincidence}-Fold Coincidences:\n")
             
-            # --- Special Handling for n=3 ---
-            elif n_coincidence == 3:
-                f.write(f"\n# Triangular Combinations:\n")
-                found_any_in_group = False
-                for combo in triangular_combinations:
-                    combo_tuple = tuple(sorted(combo))
-                    if combo_tuple in combos_for_this_n:
-                        found_any_in_group = True
-                        event_list = combos_for_this_n[combo_tuple]
-                        process_and_write_combo(f, combo_tuple, event_list)
-                        del combos_for_this_n[combo_tuple]
-                if not found_any_in_group:
-                    f.write("None Found\n")
+            # Generate all possible combinations for this n-level
+            all_possible_combos = itertools.combinations(base_stations, n_coincidence)
+            
+            for combo_tuple in all_possible_combos:
+                # Look up the event list for this combo, default to empty list if not found
+                event_list = categorized_events[reflected_mode].get(n_coincidence, {}).get(combo_tuple, [])
+                
+                trigger_rate = calculate_rate_for_event_list(event_list, n_throws)
+                event_rate_array = getEventRate(trigger_rate, e_bins, z_bins, max_distance)
+                error_rate_array = getErrorEventRates(trigger_rate, HRAeventList, max_distance=max_distance)
+                
+                total_event_rate = np.nansum(event_rate_array)
+                total_error = np.nansum(error_rate_array)
+                
+                # Store for propagation step
+                initial_rates[combo_tuple] = (total_event_rate, total_error)
 
-                if combos_for_this_n:
-                    f.write("\n# Other 3-Fold Combinations:\n")
-                    for combo in sorted(combos_for_this_n.keys()):
-                        process_and_write_combo(f, combo, combos_for_this_n[combo])
+                combo_str = "-".join(map(str, combo_tuple))
+                f.write(f"{combo_str} : {total_event_rate:.5e}, {total_error:.5e}\n")
 
-            # --- Standard Handling for n > 3 ---
-            else:
-                f.write(f"\n# {n_coincidence}-Fold Coincidences:\n")
-                for combo in sorted(combos_for_this_n.keys()):
-                    process_and_write_combo(f, combo, combos_for_this_n[combo])
-
-    ic("\nCalculation complete!")
+    ic(f"Initial rate calculation complete. Data saved to {output_file}")
+    return initial_rates
 
 
+def propagate_downtime_rates(initial_rates, base_stations, downtime_prob=0.25):
+    """
+    Takes a dictionary of initial "true" rates and propagates them down to account for
+    station downtime, returning a dictionary of adjusted final rates.
+
+    Args:
+        initial_rates (dict): Dictionary mapping combo_tuple -> (rate, error).
+        base_stations (list): The list of stations used in the analysis.
+        downtime_prob (float): The probability of a single station being offline.
+
+    Returns:
+        tuple: (adjusted_rates, n1_rates)
+               adjusted_rates is a dict mapping combo_tuple -> (final_rate, final_error)
+               n1_rates is a dict mapping station_id -> (final_rate, final_error)
+    """
+    online_prob = 1 - downtime_prob
+    
+    # Initialize adjusted_rates with combo keys, but with a list to store squared errors
+    # Format: {combo_tuple: [rate, [error_sq_1, error_sq_2, ...]]}
+    adjusted_rates = {combo: [0, []] for combo in itertools.chain.from_iterable(
+        itertools.combinations(base_stations, i) for i in range(2, len(base_stations) + 1)
+    )}
+    n1_rates = {station: [0, []] for station in base_stations}
+
+    # Iterate through all initial combinations from highest n to lowest
+    sorted_initial_combos = sorted(initial_rates.keys(), key=len, reverse=True)
+
+    for n_combo in sorted_initial_combos:
+        initial_rate, initial_error = initial_rates[n_combo]
+        if initial_rate == 0:
+            continue
+
+        n = len(n_combo)
+        
+        # Iterate from n (the original size) down to 1 (the observed size)
+        for k in range(n, 0, -1):
+            # Binomial probability of a true n-fold event being observed as a k-fold event
+            # P(k | n) = (n choose k) * (P_online)^k * (P_offline)^(n-k)
+            prob_n_to_k = nCr(n, k) * (online_prob**k) * (downtime_prob**(n - k))
+            
+            rate_contribution = initial_rate * prob_n_to_k
+            error_sq_contribution = (initial_error * prob_n_to_k)**2
+
+            # Find all sub-combinations of size k
+            sub_combos = itertools.combinations(n_combo, k)
+            num_sub_combos = nCr(n, k)
+            
+            # Distribute the contributed rate and error equally among all sub-combos
+            rate_per_sub = rate_contribution / num_sub_combos
+            
+            for sub_combo_tuple in sub_combos:
+                if k > 1:
+                    adjusted_rates[sub_combo_tuple][0] += rate_per_sub
+                    adjusted_rates[sub_combo_tuple][1].append(error_sq_contribution / (num_sub_combos**2))
+                else: # k == 1
+                    station_id = sub_combo_tuple[0]
+                    n1_rates[station_id][0] += rate_per_sub
+                    n1_rates[station_id][1].append(error_sq_contribution / (num_sub_combos**2))
+
+    # Finalize the error calculation by taking the sqrt of the sum of squares
+    final_adjusted_rates = {}
+    for combo, (rate, errors_sq_list) in adjusted_rates.items():
+        final_error = np.sqrt(np.sum(errors_sq_list))
+        final_adjusted_rates[combo] = (rate, final_error)
+        
+    final_n1_rates = {}
+    for station, (rate, errors_sq_list) in n1_rates.items():
+        final_error = np.sqrt(np.sum(errors_sq_list))
+        final_n1_rates[station] = (rate, final_error)
+
+    ic("Rate propagation complete.")
+    return final_adjusted_rates, final_n1_rates
 
 def set_bad_imshow(array, value):
     ma = np.ma.masked_where(array == value, array)
@@ -907,39 +914,61 @@ if __name__ == "__main__":
 
 
     # Calcing station combos first
-    ic("\n" + "="*50)
-    ic("Starting calculation of station combination rates with reflected requirement...")
-    
-    # Define the output filename
-    
-    # Call the new function
-    combination_output_file = os.path.join(save_folder, 'station_combination_rates_refl_required.txt')
-    calculate_all_station_combination_rates(HRAeventList, 
-                                            combination_output_file, 
-                                            max_distance=max_distance, 
-                                            sigma=plot_sigma,
-                                            reflected_mode='required')
-    combination_output_file = os.path.join(save_folder, 'station_combination_rates_refl_included.txt')
-    calculate_all_station_combination_rates(HRAeventList, 
-                                            combination_output_file, 
-                                            max_distance=max_distance, 
-                                            sigma=plot_sigma,
-                                            reflected_mode='included')
-    combination_output_file = os.path.join(save_folder, 'station_combination_rates_refl_excluded.txt')
-    calculate_all_station_combination_rates(HRAeventList, 
-                                            combination_output_file, 
-                                            max_distance=max_distance, 
-                                            sigma=plot_sigma,
-                                            reflected_mode='excluded')
-    combination_output_file = os.path.join(save_folder, 'station_combination_rates_refl_only.txt')
-    calculate_all_station_combination_rates(HRAeventList, 
-                                            combination_output_file, 
-                                            max_distance=max_distance, 
-                                            sigma=plot_sigma,
-                                            reflected_mode='only')
-    
-    
-    ic("="*50)
+    # Define all modes to be processed
+    base_stations = [13, 14, 15, 17, 18, 19, 30]
+    analysis_modes = ['required', 'included', 'excluded', 'only']
+
+    for mode in analysis_modes:
+        ic(f"\n{'='*20} Starting Analysis for Mode: '{mode}' {'='*20}")
+
+        # --- Step 1: Calculate Initial "True" Rates ---
+        initial_rates_file = os.path.join(save_folder, f'initial_station_combination_rates_{mode}.txt')
+        
+        initial_rates = calculate_all_station_combination_rates(
+            HRAeventList,
+            initial_rates_file,
+            max_distance=max_distance,
+            sigma=plot_sigma,
+            reflected_mode=mode
+        )
+
+        # --- Step 2: Propagate Rates for Station Downtime ---
+        ic(f"Propagating rates for '{mode}' mode with 25% downtime...")
+        
+        adjusted_rates, n1_rates = propagate_downtime_rates(
+            initial_rates,
+            base_stations=base_stations,
+            downtime_prob=0.25
+        )
+
+        # --- Step 3: Save Propagated Rates to a New File ---
+        propagated_rates_file = os.path.join(save_folder, f'propagated_station_combination_rates_{mode}.txt')
+        ic(f"Saving propagated rates to: {propagated_rates_file}")
+
+        with open(propagated_rates_file, 'w') as f:
+            f.write(f"# Propagated rates for Analysis Mode: {mode}\n")
+            f.write("# Accounts for a 25% single-station downtime probability.\n")
+            f.write("Station Combination, Adjusted_Event_Rate, Adjusted_Error (both in Evts/Yr)\n")
+
+            # Write rates from n=7 down to n=2
+            for n_coincidence in range(len(base_stations), 1, -1):
+                f.write(f"\n# {n_coincidence}-Fold Coincidences (Adjusted):\n")
+                
+                # Get all combinations for this n-level and sort them
+                all_possible_combos = sorted(list(itertools.combinations(base_stations, n_coincidence)))
+                
+                for combo_tuple in all_possible_combos:
+                    rate, error = adjusted_rates.get(combo_tuple, (0, 0))
+                    combo_str = "-".join(map(str, combo_tuple))
+                    f.write(f"{combo_str} : {rate:.5e}, {error:.5e}\n")
+
+            # Write the final n=1 rates
+            f.write("\n# 1-Fold (Single Station) Rates (Adjusted):\n")
+            for station_id in sorted(n1_rates.keys()):
+                rate, error = n1_rates[station_id]
+                f.write(f"{station_id} : {rate:.5e}, {error:.5e}\n")
+
+    ic(f"\n{'='*20} All Analyses Complete {'='*20}")
     quit()
 
     for station_id in direct_event_rate:
