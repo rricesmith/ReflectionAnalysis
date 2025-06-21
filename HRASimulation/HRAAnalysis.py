@@ -864,6 +864,7 @@ if __name__ == "__main__":
     sim_folder = config['FOLDERS']['sim_folder']
     numpy_folder = config['FOLDERS']['numpy_folder']
     save_folder = config['FOLDERS']['save_folder']
+    downtime_prob = float(config['SIMPARAMETERS']['downtime_prob'])
     diameter = config['SIMPARAMETERS']['diameter']
     max_distance = float(diameter)/2*units.km
     plot_sigma = float(config['PLOTPARAMETERS']['trigger_sigma'])
@@ -890,7 +891,6 @@ if __name__ == "__main__":
     # Define all modes to be processed
     base_stations = [13, 14, 15, 17, 18, 19, 30]
     analysis_modes = ['required', 'included', 'excluded', 'only']
-    downtime_prob = 0.25  # Probability of a single station being down
 
     for mode in analysis_modes:
         ic(f"\n{'='*20} Starting Analysis for Mode: '{mode}' {'='*20}")
@@ -898,6 +898,7 @@ if __name__ == "__main__":
         # --- Step 1: Calculate Initial "True" Rates ---
         initial_rates_file = os.path.join(save_folder, f'initial_station_combination_rates_{mode}.txt')
         
+        # This function now returns the initial rates dictionary, which we capture.
         initial_rates = calculate_all_station_combination_rates(
             HRAeventList,
             initial_rates_file,
@@ -909,7 +910,8 @@ if __name__ == "__main__":
         # --- Step 2: Propagate Rates for Station Downtime ---
         ic(f"Propagating rates for '{mode}' mode with 25% downtime...")
         
-        adjusted_rates, n1_rates = propagate_downtime_rates(
+        # This function now returns a single dictionary containing all adjusted rates from n=1 to n=max.
+        final_adjusted_rates = propagate_downtime_rates(
             initial_rates,
             base_stations=base_stations,
             downtime_prob=downtime_prob
@@ -921,26 +923,24 @@ if __name__ == "__main__":
 
         with open(propagated_rates_file, 'w') as f:
             f.write(f"# Propagated rates for Analysis Mode: {mode}\n")
-            f.write(f"# Accounts for a {downtime_prob*100}% single-station downtime probability.\n")
+            f.write(f"# Accounts for a {downtime_prob*100:.0f}% single-station downtime probability.\n")
             f.write("Station Combination, Adjusted_Event_Rate, Adjusted_Error (both in Evts/Yr)\n")
 
-            # Write rates from n=7 down to n=2
-            for n_coincidence in range(len(base_stations), 1, -1):
-                f.write(f"\n# {n_coincidence}-Fold Coincidences (Adjusted):\n")
+            # Loop from n=max down to n=1 to write all results.
+            for n_coincidence in range(len(base_stations), 0, -1):
+                if n_coincidence > 1:
+                    f.write(f"\n# {n_coincidence}-Fold Coincidences (Adjusted):\n")
+                else:
+                    f.write(f"\n# 1-Fold (Single Station) Rates (Adjusted):\n")
                 
-                # Get all combinations for this n-level and sort them
+                # Get all possible combinations for this n-level and sort them
                 all_possible_combos = sorted(list(itertools.combinations(base_stations, n_coincidence)))
                 
                 for combo_tuple in all_possible_combos:
-                    rate, error = adjusted_rates.get(combo_tuple, (0, 0))
+                    # Look up the final rate in the unified dictionary
+                    rate, error = final_adjusted_rates.get(combo_tuple, (0, 0))
                     combo_str = "-".join(map(str, combo_tuple))
                     f.write(f"{combo_str} : {rate:.5e}, {error:.5e}\n")
-
-            # Write the final n=1 rates
-            f.write("\n# 1-Fold (Single Station) Rates (Adjusted):\n")
-            for station_id in sorted(n1_rates.keys()):
-                rate, error = n1_rates[station_id]
-                f.write(f"{station_id} : {rate:.5e}, {error:.5e}\n")
 
     ic(f"\n{'='*20} All Analyses Complete {'='*20}")
     quit()
