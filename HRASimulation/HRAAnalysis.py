@@ -378,9 +378,9 @@ def calculate_all_station_combination_rates(HRAeventList, output_file, max_dista
     base_stations = [13, 14, 15, 17, 18, 19, 30]
     
     # Station combos that are in a \ line like a forward slash
-    forward_combinations = [[18, 19], [13, 14], [15, 30], [17, 18]]
+    forward_combinations = [[19, 30], [14, 18], [15, 18], [13, 17]]
     # Station combos that are in a / line like a backslash
-    backward_combinations = [[19, 30], [14, 18], [15, 18], [13, 17]]
+    backward_combinations = [[18, 19], [13, 14], [15, 30], [17, 18]]
     # Station combos that are in a - line like a horizontal line
     horizontal_combinations = [[14, 19], [18, 30], [13, 18], [15, 17]] 
 
