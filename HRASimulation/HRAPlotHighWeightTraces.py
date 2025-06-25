@@ -212,14 +212,14 @@ if __name__ == "__main__":
     # --- Define Weights to Process ---
     # Add all the weight names you want to generate plots for
     weights_to_process = [
-        '1_coincidence_wrefl',
-        '2_coincidence_wrefl',
+        # '1_coincidence_wrefl',
+        # '2_coincidence_wrefl',
         'combined_direct',
         'combined_reflected',
-        '100s_direct',
-        '100s_reflected',
-        '200s_direct',
-        '200s_reflected'
+        # '100s_direct',
+        # '100s_reflected',
+        # '200s_direct',
+        # '200s_reflected'
         # Add any other weight names you defined in HRANurToNpy.py
     ]
 
