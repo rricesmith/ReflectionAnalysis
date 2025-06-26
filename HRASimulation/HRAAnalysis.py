@@ -301,7 +301,7 @@ def categorize_events_by_coincidence(HRAeventList, stations_of_interest, sigma=4
         if snr_threshold is not None:
             snr_passed_stations = set()
             for station_id in triggered_stations_all:
-                if event.getSNR is None:
+                if event.getSNR(station_id) is None:
                     ic(f"Warning: Event {event.getEventID()} does not have SNR data for station {station_id}. Skipping SNR check.")
                     continue
                 # Assumes event object has a getSNR method returning a float.
