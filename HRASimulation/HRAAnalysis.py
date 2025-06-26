@@ -278,10 +278,11 @@ def getCoincidencesTriggerRates(HRAeventList, bad_stations, use_secondary=False,
 
     return trigger_rate_coincidence
 
-def categorize_events_by_coincidence(HRAeventList, stations_of_interest, sigma=4.5):
+def categorize_events_by_coincidence(HRAeventList, stations_of_interest, sigma=4.5, snr_threshold=None):
     """
     Analyzes and categorizes each event by its effective n-coincidence for each reflected_mode,
     considering only a specific list of stations. Now includes n=1 categorization.
+    If an snr_threshold is provided, only triggers meeting that threshold are considered.
     """
     stations_of_interest_set = set(stations_of_interest)
     reflected_stations_of_interest = {s + 100 for s in stations_of_interest}
@@ -295,6 +296,17 @@ def categorize_events_by_coincidence(HRAeventList, stations_of_interest, sigma=4
 
     for event in HRAeventList:
         triggered_stations_all = set(event.station_triggers.get(sigma, []))
+
+        # --- New: Filter stations by SNR threshold if provided ---
+        if snr_threshold is not None:
+            snr_passed_stations = set()
+            for station_id in triggered_stations_all:
+                # Assumes event object has a getSNR method returning a float.
+                if event.getSNR(station_id) >= snr_threshold:
+                    snr_passed_stations.add(station_id)
+            triggered_stations_all = snr_passed_stations
+        # --- End of new code ---
+
         triggered_direct = {s for s in triggered_stations_all if s in stations_of_interest_set}
         triggered_reflected = {s for s in triggered_stations_all if s in reflected_stations_of_interest}
         
@@ -320,7 +332,7 @@ def categorize_events_by_coincidence(HRAeventList, stations_of_interest, sigma=4
                 # For n>1, the combo is the union_bases, which equals reflected_bases here
                 categorized_events['only'][n_effective][combo].append(event)
 
-        # --- New n=1 (Single Station) Categorization ---
+        # --- New n=1 (Single Station) Categorization (Unchanged) ---
         elif n_effective == 1:
             station_id = list(union_bases)[0]
             combo = (station_id,)
@@ -343,7 +355,7 @@ def categorize_events_by_coincidence(HRAeventList, stations_of_interest, sigma=4
     return categorized_events
 
 
-def calculate_all_station_combination_rates(HRAeventList, output_file, max_distance, sigma=4.5, reflected_mode='required'):
+def calculate_all_station_combination_rates(HRAeventList, output_file, max_distance, sigma=4.5, reflected_mode='required', snr_threshold=None):
     """
     Calculates initial "true" rates for n=1 to n=max, ensuring each event is counted
     only once for its specific n-fold coincidence. This version outputs all possible 
@@ -354,7 +366,10 @@ def calculate_all_station_combination_rates(HRAeventList, output_file, max_dista
     n_throws = getnThrows(HRAeventList)
 
     ic("Pre-categorizing all events by effective n-coincidence...")
-    categorized_events = categorize_events_by_coincidence(HRAeventList, base_stations, sigma=sigma)
+    # --- Modified call to pass the new parameter ---
+    categorized_events = categorize_events_by_coincidence(
+        HRAeventList, base_stations, sigma=sigma, snr_threshold=snr_threshold
+    )
     ic("Categorization complete.")
 
     def calculate_rate_for_event_list(events, n_throws_binned):
@@ -891,53 +906,55 @@ if __name__ == "__main__":
     # Define all modes to be processed
     base_stations = [13, 14, 15, 17, 18, 19, 30]
     analysis_modes = ['required', 'included', 'excluded', 'only']
+    snr_threshold = 7.0
 
     for mode in analysis_modes:
         ic(f"\n{'='*20} Starting Analysis for Mode: '{mode}' {'='*20}")
 
-        # --- Step 1: Calculate Initial "True" Rates ---
-        initial_rates_file = os.path.join(save_folder, f'initial_station_combination_rates_{mode}.txt')
+        # --- New: Add a suffix to filenames if SNR is used ---
+        snr_suffix = f'_snr{snr_threshold}' if snr_threshold is not None else ''
+        initial_rates_file = os.path.join(save_folder, f'initial_station_combination_rates_{mode}{snr_suffix}.txt')
         
-        # This function now returns the initial rates dictionary, which we capture.
+        # --- Modified call to pass the SNR threshold ---
         initial_rates = calculate_all_station_combination_rates(
             HRAeventList,
             initial_rates_file,
             max_distance=max_distance,
             sigma=plot_sigma,
-            reflected_mode=mode
+            reflected_mode=mode,
+            snr_threshold=snr_threshold  # Pass the value here
         )
 
-        # --- Step 2: Propagate Rates for Station Downtime ---
-        ic(f"Propagating rates for '{mode}' mode with 25% downtime...")
+        # --- Step 2: Propagate Rates (Unchanged Logic) ---
+        ic(f"Propagating rates for '{mode}' mode with {downtime_prob*100:.0f}% downtime...")
         
-        # This function now returns a single dictionary containing all adjusted rates from n=1 to n=max.
         final_adjusted_rates = propagate_downtime_rates(
             initial_rates,
             base_stations=base_stations,
             downtime_prob=downtime_prob
         )
 
-        # --- Step 3: Save Propagated Rates to a New File ---
-        propagated_rates_file = os.path.join(save_folder, f'propagated_station_combination_rates_{mode}.txt')
+        # --- New: Use the same suffix for the propagated rates file ---
+        propagated_rates_file = os.path.join(save_folder, f'propagated_station_combination_rates_{mode}{snr_suffix}.txt')
         ic(f"Saving propagated rates to: {propagated_rates_file}")
 
         with open(propagated_rates_file, 'w') as f:
+            # ... (writing to file is unchanged) ...
             f.write(f"# Propagated rates for Analysis Mode: {mode}\n")
             f.write(f"# Accounts for a {downtime_prob*100:.0f}% single-station downtime probability.\n")
+            if snr_threshold is not None:
+                f.write(f"# Event triggers are filtered with SNR >= {snr_threshold}\n")
             f.write("Station Combination, Adjusted_Event_Rate, Adjusted_Error (both in Evts/Yr)\n")
 
-            # Loop from n=max down to n=1 to write all results.
             for n_coincidence in range(len(base_stations), 0, -1):
                 if n_coincidence > 1:
                     f.write(f"\n# {n_coincidence}-Fold Coincidences (Adjusted):\n")
                 else:
                     f.write(f"\n# 1-Fold (Single Station) Rates (Adjusted):\n")
                 
-                # Get all possible combinations for this n-level and sort them
                 all_possible_combos = sorted(list(itertools.combinations(base_stations, n_coincidence)))
                 
                 for combo_tuple in all_possible_combos:
-                    # Look up the final rate in the unified dictionary
                     rate, error = final_adjusted_rates.get(combo_tuple, (0, 0))
                     combo_str = "-".join(map(str, combo_tuple))
                     f.write(f"{combo_str} : {rate:.5e}, {error:.5e}\n")
