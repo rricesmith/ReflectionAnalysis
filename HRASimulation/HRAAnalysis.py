@@ -302,6 +302,7 @@ def categorize_events_by_coincidence(HRAeventList, stations_of_interest, sigma=4
             snr_passed_stations = set()
             for station_id in triggered_stations_all:
                 # Assumes event object has a getSNR method returning a float.
+                ic(station_id, event.getSNR(station_id), snr_threshold)
                 if event.getSNR(station_id) >= snr_threshold:
                     snr_passed_stations.add(station_id)
             triggered_stations_all = snr_passed_stations
