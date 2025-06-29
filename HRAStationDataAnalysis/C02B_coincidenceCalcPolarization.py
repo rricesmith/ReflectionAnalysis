@@ -18,6 +18,7 @@ from NuRadioReco.utilities import units
 
 # Import the new module for polarization calculation
 from NuRadioReco.modules.voltageToAnalyticEfieldConverter import voltageToAnalyticEfieldConverter
+import NuRadioReco.modules.eventTypeIdentifier
 
 from icecream import ic
 
@@ -99,6 +100,7 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
     eFieldConverter = voltageToAnalyticEfieldConverter()
     eFieldConverter.begin() # Call the begin method to set up the module
     ic("voltageToAnalyticEfieldConverter initialized.")
+    eventTypeIdentifier = NuRadioReco.modules.eventTypeIdentifier.eventTypeIdentifier()
 
     if station_ids_to_process is None:
         all_station_ids_in_dict = set()
@@ -212,6 +214,9 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
                             targets_for_station.pop(i)
                             processed_targets_count += 1
                             continue # Move to the next target
+
+                        eventTypeIdentifier.run(raw_evt, raw_station_obj, mode='forced', forced_event_type='cosmic_ray')
+
 
                         # Set the parameters on the raw station object
                         raw_station_obj.set_parameter(stnp.zenith, recalculated_zenith)
