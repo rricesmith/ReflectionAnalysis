@@ -194,7 +194,8 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
 
                     ic(f"St {station_id}, CoincEvent {target['original_event_id_key']}, RawEvID {current_raw_event_id}: Match found. Calculating polarization...")
 
-                    try:
+                    # try:
+                    if True:
                         # Update detector to the event time
                         det.update(raw_station_obj.get_station_time())
                         
@@ -220,8 +221,8 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
                             
                             ic(f"  Success! CoincEvent {target['original_event_id_key']}, ListPos {list_pos}: PolAngle={pol_angle/units.deg:.2f} deg")
 
-                        else:
-                            ic(f"  Warning: eFieldConverter ran but no electric field object was added to station {station_id}.")
+                        # else:
+                        #     ic(f"  Warning: eFieldConverter ran but no electric field object was added to station {station_id}.")
 
                     except Exception as e:
                         ic(f"  ERROR calculating polarization for St {station_id}, RawEvID {current_raw_event_id}: {e}")
