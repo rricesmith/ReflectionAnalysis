@@ -17,7 +17,7 @@ from NuRadioReco.detector import detector
 from NuRadioReco.utilities import units
 
 # Import the new module for polarization calculation
-from voltageToAnalyticEfieldConverter import voltageToAnalyticEfieldConverter
+from NuRadioReco.modules.voltageToAnalyticEfieldConverter import voltageToAnalyticEfieldConverter
 
 from icecream import ic
 
