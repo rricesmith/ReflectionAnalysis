@@ -120,8 +120,15 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
         # Find all triggers for the current station that need processing
         targets_for_station = []
         for event_id, event_data_ref in events_dict.items():
-            station_key_in_event = str(station_id) if str(station_id) in event_data_ref.get("stations", {}) else None
-            if not station_key_in_event: continue
+            station_key_in_event = None
+            if station_id in event_data_ref.get("stations", {}):
+                station_key_in_event = station_id
+            elif str(station_id) in event_data_ref.get("stations", {}):
+                station_key_in_event = str(station_id)
+
+            if not station_key_in_event:
+                continue
+
 
             station_event_data = event_data_ref["stations"][station_key_in_event]
             num_indices = len(station_event_data.get("indices", []))
