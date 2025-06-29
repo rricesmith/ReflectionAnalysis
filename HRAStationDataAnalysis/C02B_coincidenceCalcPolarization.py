@@ -10,16 +10,18 @@ import json # For blackout times
 import configparser
 
 from NuRadioReco.modules.io import NuRadioRecoio
-import NuRadioReco.modules.correlationDirectionFitter 
+import NuRadioReco.modules.correlationDirectionFitter # Although not directly used for fitting, good to have for context
 from NuRadioReco.framework.parameters import stationParameters as stnp
 from NuRadioReco.framework.parameters import electricFieldParameters as efp
 from NuRadioReco.detector import detector
 from NuRadioReco.utilities import units
 
+# Import the new module for polarization calculation
 from NuRadioReco.modules.voltageToAnalyticEfieldConverter import voltageToAnalyticEfieldConverter
 
 from icecream import ic
 
+# Attempt to import the user's function for loading .nur files
 try:
     from HRAStationDataAnalysis.batchHRADataConversion import loadStationNurFiles
     HAS_USER_NUR_LOADER = True
@@ -30,7 +32,7 @@ except ImportError:
     ic("Please ensure HRAStationDataAnalysis is in your PYTHONPATH or the script is in the correct directory.")
 
 
-# --- Helper for Caching ---
+# --- Helper for Caching (from previous scripts) ---
 def _load_pickle(filepath):
     """Loads data from a pickle file."""
     if os.path.exists(filepath):
@@ -85,6 +87,7 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
         return events_dict
 
     try:
+        # Initialize the detector from the layout file specified in the config
         det = detector.Detector(f"HRASimulation/HRAStationLayoutForCoREAS.json")
         # det = detector.Detector(detector_file_path=detector_file, antenna_by_depth=False, create_new=True)
         ic(f"Detector initialized from: {detector_file}")
@@ -92,8 +95,9 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
         ic(f"CRITICAL: Failed to initialize detector from {detector_file}: {e}")
         return events_dict
 
+    # Initialize the E-field converter module
     eFieldConverter = voltageToAnalyticEfieldConverter()
-    eFieldConverter.begin() 
+    eFieldConverter.begin() # Call the begin method to set up the module
     ic("voltageToAnalyticEfieldConverter initialized.")
 
     if station_ids_to_process is None:
@@ -113,15 +117,24 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
     for station_id in stations_to_iterate:
         ic(f"\n--- Processing Station {station_id} for Polarization ---")
 
+        # Find all triggers for the current station that need processing
         targets_for_station = []
         for event_id, event_data_ref in events_dict.items():
-            station_key_in_event = str(station_id) if str(station_id) in event_data_ref.get("stations", {}) else None
-            if not station_key_in_event: continue
+            station_key_in_event = None
+            if station_id in event_data_ref.get("stations", {}):
+                station_key_in_event = station_id
+            elif str(station_id) in event_data_ref.get("stations", {}):
+                station_key_in_event = str(station_id)
+
+            if not station_key_in_event:
+                continue
+
 
             station_event_data = event_data_ref["stations"][station_key_in_event]
             num_indices = len(station_event_data.get("indices", []))
             if num_indices == 0: continue
             
+            # Initialize new lists for polarization data, filling with NaNs
             station_event_data["PolAngle"] = [np.nan] * num_indices
             station_event_data["PolAngleErr"] = [np.nan] * num_indices
             station_event_data["ExpectedPolAngle"] = [np.nan] * num_indices
@@ -142,9 +155,10 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
 
         ic(f"Station {station_id}: Found {len(targets_for_station)} triggers to process.")
 
+        # Load the .nur files for the station
         current_station_nur_files = loadStationNurFiles(station_id)
         if not current_station_nur_files:
-            ic(f"Station {station_id}: No .nur files found. Skipping.")
+            ic(f"Station {station_id}: No .nur files found. Skipping polarization calculation for this station.")
             continue
         
         ic(f"Station {station_id}: Retrieved {len(current_station_nur_files)} .nur files.")
@@ -158,6 +172,7 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
         processed_targets_count = 0
         targets_for_station.sort(key=lambda t: t["station_time_tag"])
 
+        # Iterate through raw events in the .nur files
         for raw_evt in nur_reader.get_events():
             if not targets_for_station:
                 ic(f"Station {station_id}: All targets processed. Breaking from .nur file scan.")
@@ -170,6 +185,7 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
 
             current_raw_station_time = raw_station_obj.get_station_time().unix
 
+            # Find a matching trigger in our target list
             for i in range(len(targets_for_station) - 1, -1, -1):
                 target = targets_for_station[i]
 
@@ -178,56 +194,68 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
 
                     ic(f"St {station_id}, CoincEvent {target['original_event_id_key']}, RawEvID {current_raw_event_id}: Match found. Calculating polarization...")
 
-                    try:
+                    # try:
+                    if True:
+                        # Update detector to the event time
                         det.update(raw_station_obj.get_station_time())
-                        
-                        # NEW: Get the previously calculated zenith and azimuth from our events dictionary
+
+                        # Get the previously calculated zenith and azimuth from our events dictionary
                         station_data_from_dict = target["event_dict_ref"]["stations"][target["station_key"]]
                         list_pos = target['list_pos']
                         recalculated_zenith = station_data_from_dict["Zen"][list_pos]
                         recalculated_azimuth = station_data_from_dict["Azi"][list_pos]
 
-                        # NEW: Check for valid angles and set them on the raw station object before running the calculation
-                        if recalculated_zenith is not None and not np.isnan(recalculated_zenith) and \
-                           recalculated_azimuth is not None and not np.isnan(recalculated_azimuth):
-                            
-                            # Set the parameters on the raw station object
-                            raw_station_obj.set_parameter(stnp.zenith, recalculated_zenith)
-                            raw_station_obj.set_parameter(stnp.azimuth, recalculated_azimuth)
-                            ic(f"  Injecting Zen/Azi into raw_station_obj: {np.degrees(recalculated_zenith):.2f}° / {np.degrees(recalculated_azimuth):.2f}°")
-                            
-                            # Run the E-field conversion. It will now use the zenith/azimuth we just set.
-                            eFieldConverter.run(raw_evt, raw_station_obj, det, use_channels=[0,1,2,3])
-                            
-                            efields = raw_station_obj.get_electric_fields()
-                            if efields:
-                                latest_efield = efields[-1] 
-                                
-                                pol_angle = latest_efield.get_parameter(efp.polarization_angle)
-                                pol_angle_err = latest_efield.get_parameter(efp.polarization_angle_error)
-                                expected_pol = latest_efield.get_parameter(efp.polarization_angle_expectation)
+                        # Check if the values are valid before setting them
+                        if recalculated_zenith is None or np.isnan(recalculated_zenith) or \
+                           recalculated_azimuth is None or np.isnan(recalculated_azimuth):
+                            ic(f"  Skipping trigger: Invalid Zen/Azi in input file ({recalculated_zenith}, {recalculated_azimuth}).")
+                            targets_for_station.pop(i)
+                            processed_targets_count += 1
+                            continue # Move to the next target
 
-                                station_data_from_dict["PolAngle"][list_pos] = pol_angle
-                                station_data_from_dict["PolAngleErr"][list_pos] = pol_angle_err
-                                station_data_from_dict["ExpectedPolAngle"][list_pos] = expected_pol
-                                
-                                ic(f"  Success! PolAngle={np.degrees(pol_angle):.2f} ± {np.degrees(pol_angle_err):.2f}°")
-                            else:
-                                ic(f"  Warning: eFieldConverter ran but no electric field object was added to station {station_id}.")
+                        # Set the parameters on the raw station object
+                        raw_station_obj.set_parameter(stnp.zenith, recalculated_zenith)
+                        raw_station_obj.set_parameter(stnp.azimuth, recalculated_azimuth)
+                        ic(f"  Injecting Zen/Azi into raw_station_obj: {np.degrees(recalculated_zenith):.2f}° / {np.degrees(recalculated_azimuth):.2f}°")
+
+                        # Run the E-field conversion. This modifies raw_station_obj in place.
+                        # The Zenith and Azimuth are taken from the station object, which were calculated in the previous step.
+                        eFieldConverter.run(raw_evt, raw_station_obj, det, use_channels=[0,1,2,3]) # Assuming channels 0-3
+                        
+                        # The `run` method adds an electric_field object to the station. We retrieve it here.
+                        efields = raw_station_obj.get_electric_fields()
+                        if efields:
+                            latest_efield = efields[-1] # Get the most recently added E-field
+                            
+                            # Extract polarization parameters
+                            pol_angle = latest_efield.get_parameter(efp.polarization_angle)
+                            pol_angle_err = latest_efield.get_parameter_error(efp.polarization_angle)
+                            expected_pol = latest_efield.get_parameter(efp.polarization_angle_expectation)
+
+                            # Store the results in our main dictionary
+                            list_pos = target['list_pos']
+                            target["event_dict_ref"]["stations"][target["station_key"]]["PolAngle"][list_pos] = pol_angle
+                            target["event_dict_ref"]["stations"][target["station_key"]]["PolAngleErr"][list_pos] = pol_angle_err
+                            target["event_dict_ref"]["stations"][target["station_key"]]["ExpectedPolAngle"][list_pos] = expected_pol
+                            
+                            ic(f"  Success! CoincEvent {target['original_event_id_key']}, ListPos {list_pos}: PolAngle={pol_angle/units.deg:.2f} deg")
+
                         else:
-                            ic(f"  Skipping polarization calculation for trigger due to invalid Zen/Azi in input file.")
+                            ic(f"  Warning: eFieldConverter ran but no electric field object was added to station {station_id}.")
 
-                    except Exception as e:
-                        ic(f"  ERROR calculating polarization for St {station_id}, RawEvID {current_raw_event_id}: {e}")
+                    # except Exception as e:
+                    #     ic(f"  ERROR calculating polarization for St {station_id}, RawEvID {current_raw_event_id}: {e}")
+                        # NaN values will remain in the list if an error occurs
 
+                    # Remove the processed target from the list
                     targets_for_station.pop(i)
                     processed_targets_count += 1
 
         ic(f"Station {station_id}: Finished scanning .nur files. Processed {processed_targets_count} targets for polarization.")
         if targets_for_station:
-            ic(f"Station {station_id}: Warning! {len(targets_for_station)} targets remain unprocessed.")
+            ic(f"Station {station_id}: Warning! {len(targets_for_station)} targets remain unprocessed and will have NaN for polarization.")
 
-    eFieldConverter.end()
+    eFieldConverter.end() # Cleanly finish the module
     ic("Finished polarization calculation for all specified stations.")
     return events_dict
 
@@ -250,7 +278,9 @@ if __name__ == '__main__':
     date_processing = main_config_parser['PARAMETERS']['date_processing']
     ic(f"Running polarization calculation for date {date} with processing date {date_processing}")
 
+    # Input file is the output of the C02A script
     input_events_file = f"HRAStationDataAnalysis/StationData/processedNumpyData/{date}/{date_processing}_CoincidenceDatetimes_with_all_params_recalcZenAzi.pkl"
+    # Output file for this script's results
     output_events_file = f"HRAStationDataAnalysis/StationData/processedNumpyData/{date}/{date_processing}_CoincidenceDatetimes_with_all_params_recalcZenAzi_calcPol.pkl"
 
     args = parser.parse_args()
@@ -278,6 +308,7 @@ if __name__ == '__main__':
 
     ic(f"Successfully loaded {len(events_dictionary)} events.")
 
+    # Run the main calculation function
     updated_events_dictionary = calculate_polarization_for_events(
         events_dictionary,
         main_config_parser,
