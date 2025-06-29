@@ -16,7 +16,7 @@ from NuRadioReco.framework.parameters import electricFieldParameters as efp
 from NuRadioReco.detector import detector
 from NuRadioReco.utilities import units
 
-from voltageToAnalyticEfieldConverter import voltageToAnalyticEfieldConverter
+from NuRadioReco.modules.voltageToAnalyticEfieldConverter import voltageToAnalyticEfieldConverter
 
 from icecream import ic
 
