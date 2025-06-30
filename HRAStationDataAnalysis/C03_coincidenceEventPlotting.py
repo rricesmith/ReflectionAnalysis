@@ -396,8 +396,34 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
                 # CHANGED: Added Pol(arization) angle with error to the text line
                 text_info_lines.append(f"  St{station_id_int} T{trigger_idx+1}: ID={ev_id_fstr}, SNR={snr_fstr}, Zen={zen_d_text}, Azi={azi_d_text}, Pol={pol_angle_full_text}")
 
-        ax_scatter.set_xlabel("SNR"); ax_scatter.set_ylabel("Chi value"); ax_scatter.set_title("SNR vs $\chi$ (Filled: $\chi_{2016}$, Outline: $\chi_{RCR}$)")
-        ax_scatter.set_xscale('log'); ax_scatter.set_xlim(3, 100); ax_scatter.set_ylim(0, 1); ax_scatter.grid(True, linestyle='--', alpha=0.6)
+        # === START: MODIFIED SNR vs CHI PLOT SETUP ===
+        ax_scatter.set_xlabel("SNR")
+        ax_scatter.set_ylabel(r"$\chi$") # Use Chi symbol for y-axis
+        # ax_scatter.set_title(r"SNR vs. $\chi$") # Simplified title
+        ax_scatter.set_xscale('log')
+        ax_scatter.set_xlim(3, 100)
+        ax_scatter.set_ylim(0, 1)
+        ax_scatter.grid(True, linestyle='--', alpha=0.6)
+
+        # Create handles for the two legends
+        # Legend 1: Chi Type (filled vs outline)
+        chi_2016_handle = Line2D([0], [0], marker='o', color='k', label=r'$\chi_{2016}$ (Filled)',
+                                 linestyle='None', markersize=8, markerfacecolor='k')
+        chi_RCR_handle = Line2D([0], [0], marker='o', color='k', label=r'$\chi_{RCR}$ (Outline)',
+                              linestyle='None', markersize=8, markerfacecolor='none', markeredgecolor='k')
+        
+        # Legend 2: Station Colors (handles are already in legend_handles_for_fig)
+        station_handles = list(legend_handles_for_fig.values())
+        
+        # Add the legends to the ax_scatter plot
+        # Create the first legend (for stations) and add it manually
+        if station_handles:
+            leg1 = ax_scatter.legend(handles=station_handles, loc='upper right', title="Stations")
+            ax_scatter.add_artist(leg1)
+        
+        # Create the second legend (for chi types). This will be placed automatically.
+        ax_scatter.legend(handles=[chi_2016_handle, chi_RCR_handle], loc='lower left', title=r"$\chi$ Type")
+        # === END: MODIFIED SNR vs CHI PLOT SETUP ===
         
         ax_text_box.axis('off') 
         ax_text_box.text(0.01, 0.95, "\n".join(text_info_lines), ha='left', va='top', fontsize=9, 
@@ -414,10 +440,11 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
             if i < num_trace_channels -1 : trace_axs[i].set_xticklabels([]); spectrum_axs[i].set_xticklabels([])
             else: trace_axs[i].set_xlabel("Time (ns)", fontsize=8); spectrum_axs[i].set_xlabel("Freq (MHz)", fontsize=8)
         
-        if legend_handles_for_fig: 
-            ax_legend = fig.add_subplot(gs[8, :])
-            ax_legend.axis('off')
-            ax_legend.legend(handles=list(legend_handles_for_fig.values()), loc='center', ncol=min(len(legend_handles_for_fig), 8), title="Stations", fontsize='medium')
+        # REMOVED: The old figure-wide legend is no longer needed as the info is in the scatter plot's legends.
+        # if legend_handles_for_fig: 
+        #     ax_legend = fig.add_subplot(gs[8, :])
+        #     ax_legend.axis('off')
+        #     ax_legend.legend(handles=list(legend_handles_for_fig.values()), loc='center', ncol=min(len(legend_handles_for_fig), 8), title="Stations", fontsize='medium')
 
         master_filename = os.path.join(current_event_plot_dir, f'master_event_{event_id}.png')
         try: 
