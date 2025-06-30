@@ -123,14 +123,14 @@ def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder
                 f.write(f"    Recon Zenith: {np.rad2deg(event.recon_zenith.get(st1, np.nan)):.2f} deg\n")
                 f.write(f"    Recon Azimuth: {np.rad2deg(event.recon_azimuth.get(st1, np.nan)):.2f} deg\n")
                 f.write(f"    SNR: {event.getSNR(st1):.2f}\n")
-                f.write(f"    Chi2: {event.chi2.get(st1, 'N/A')}\n") # .get() handles cases where chi2 might be missing
+                # f.write(f"    Chi2: {event.chi2.get(st1, 'N/A')}\n") # .get() handles cases where chi2 might be missing
 
                 # Station 2 details
                 f.write(f"  Station {st2}:\n")
                 f.write(f"    Recon Zenith: {np.rad2deg(event.recon_zenith.get(st2, np.nan)):.2f} deg\n")
                 f.write(f"    Recon Azimuth: {np.rad2deg(event.recon_azimuth.get(st2, np.nan)):.2f} deg\n")
                 f.write(f"    SNR: {event.getSNR(st2):.2f}\n")
-                f.write(f"    Chi2: {event.chi2.get(st2, 'N/A')}\n")
+                # f.write(f"    Chi2: {event.chi2.get(st2, 'N/A')}\n")
                 
                 f.write("-" * 80 + "\n")
         
