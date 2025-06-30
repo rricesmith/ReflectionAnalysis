@@ -294,13 +294,16 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
         passes_overall_analysis = event_details.get('passes_analysis_cuts', False)
         current_event_plot_dir = pass_cuts_folder if passes_overall_analysis else fail_cuts_folder
         
-        fig = plt.figure(figsize=(18, 22)); 
-        gs = gridspec.GridSpec(9, 2, figure=fig, hspace=1.0, wspace=0.3, height_ratios=[4, 4, 1, 1, 1, 1, 1, 1, 2])
-        ax_scatter = fig.add_subplot(gs[0:2, 0]); 
-        ax_polar = fig.add_subplot(gs[0:2, 1], polar=True)
-        trace_axs = [fig.add_subplot(gs[2+i, 0]) for i in range(num_trace_channels)]
-        spectrum_axs = [fig.add_subplot(gs[2+i, 1]) for i in range(num_trace_channels)]
-        ax_text_box = fig.add_subplot(gs[7, :]) 
+        # CHANGED: Increased figure height and adjusted GridSpec for better trace/spectrum layout
+        fig = plt.figure(figsize=(18, 26))
+        gs = gridspec.GridSpec(6, 2, figure=fig, hspace=0.9, wspace=0.3,
+                               height_ratios=[4, 2, 2, 2, 2, 2.5])
+        
+        ax_scatter = fig.add_subplot(gs[0, 0])
+        ax_polar = fig.add_subplot(gs[0, 1], polar=True)
+        trace_axs = [fig.add_subplot(gs[1+i, 0]) for i in range(num_trace_channels)]
+        spectrum_axs = [fig.add_subplot(gs[1+i, 1]) for i in range(num_trace_channels)]
+        ax_text_box = fig.add_subplot(gs[5, :])
         
         event_time_str = "Unknown Time"
         if "datetime" in event_details and event_details["datetime"] is not None:
@@ -314,6 +317,9 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
         text_info_lines.append("--- Station Triggers ---")
         
         legend_handles_for_fig = {}; global_trace_min = float('inf'); global_trace_max = float('-inf')
+        # NEW: List to collect points for the connecting line in the SNR-Chi plot
+        points_for_line_plot = []
+
         for station_id_str_calc, station_data_calc in event_details.get("stations", {}).items():
             all_traces_for_st = station_data_calc.get("Traces", [])
             for traces_for_one_trig in all_traces_for_st:
@@ -340,7 +346,7 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
             zen_values_rad = (station_data.get("Zen", []) + [np.nan] * num_triggers)[:num_triggers]
             azi_values_rad = (station_data.get("Azi", []) + [np.nan] * num_triggers)[:num_triggers]
             pol_angle_values_rad = (station_data.get("PolAngle", []) + [np.nan] * num_triggers)[:num_triggers]
-            pol_angle_err_values_rad = (station_data.get("PolAngleErr", []) + [np.nan] * num_triggers)[:num_triggers] # NEW: Get Polarization Angle Error
+            pol_angle_err_values_rad = (station_data.get("PolAngleErr", []) + [np.nan] * num_triggers)[:num_triggers]
             
             chi_rcr_values = (station_data.get("ChiRCR", []) + [np.nan] * num_triggers)[:num_triggers]
             chi_2016_values = (station_data.get("Chi2016", []) + [np.nan] * num_triggers)[:num_triggers]
@@ -352,14 +358,18 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
                 snr_val, chi_rcr_val, chi_2016_val = snr_values[trigger_idx], chi_rcr_values[trigger_idx], chi_2016_values[trigger_idx]
                 zen_rad, azi_rad = zen_values_rad[trigger_idx], azi_values_rad[trigger_idx]
                 pol_rad = pol_angle_values_rad[trigger_idx] 
-                pol_err_rad = pol_angle_err_values_rad[trigger_idx] # NEW: Get PolAngle Error for this trigger
+                pol_err_rad = pol_angle_err_values_rad[trigger_idx]
                 current_event_id_val = event_ids_for_station[trigger_idx]
                 traces_this_trigger = (all_traces_for_station[trigger_idx] if trigger_idx < len(all_traces_for_station) else [])
                 padded_traces_this_trigger = (list(traces_this_trigger) + [None]*num_trace_channels)[:num_trace_channels]
 
                 if snr_val is not None and not np.isnan(snr_val):
-                    if chi_2016_val is not None and not np.isnan(chi_2016_val): ax_scatter.scatter(snr_val, chi_2016_val, c=color, marker=marker, s=60, alpha=0.9, zorder=3)
-                    if chi_rcr_val is not None and not np.isnan(chi_rcr_val): ax_scatter.scatter(snr_val, chi_rcr_val, marker=marker, s=60, alpha=0.9, facecolors='none', edgecolors=color, linewidths=1.5, zorder=3)
+                    if chi_2016_val is not None and not np.isnan(chi_2016_val):
+                        ax_scatter.scatter(snr_val, chi_2016_val, c=color, marker=marker, s=60, alpha=0.9, zorder=3)
+                        points_for_line_plot.append((snr_val, chi_2016_val)) # Add point for line
+                    if chi_rcr_val is not None and not np.isnan(chi_rcr_val):
+                        ax_scatter.scatter(snr_val, chi_rcr_val, marker=marker, s=60, alpha=0.9, facecolors='none', edgecolors=color, linewidths=1.5, zorder=3)
+                        points_for_line_plot.append((snr_val, chi_rcr_val)) # Add point for line
                 
                 if zen_rad is not None and not np.isnan(zen_rad) and azi_rad is not None and not np.isnan(azi_rad): 
                     ax_polar.scatter(azi_rad, np.degrees(zen_rad), c=color, marker=marker, s=60, alpha=0.9)
@@ -374,17 +384,19 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
                         if len(trace_ch_data_arr) > 1: 
                             freq_ax_mhz = np.fft.rfftfreq(len(trace_ch_data_arr), d=1/sampling_rate_hz) / 1e6 
                             spectrum = np.abs(fft.time2freq(trace_ch_data_arr, sampling_rate_hz))
-                            if len(spectrum)>0: spectrum[0]=0 
-                            spectrum_axs[ch_idx].plot(freq_ax_mhz, spectrum, c=color, ls=':' if trigger_idx % 2 == 0 else '-.', alpha=0.5)
+                            if len(spectrum)>0: spectrum[0]=0
+                            # CHANGED: Spectrum line is now solid with slightly higher alpha
+                            spectrum_axs[ch_idx].plot(freq_ax_mhz, spectrum, c=color, ls='-', alpha=0.6)
                 
-                if station_id_int not in legend_handles_for_fig: legend_handles_for_fig[station_id_int] = Line2D([0], [0], marker='o', c=color, ls='None', markersize=8, label=f"St {station_id_int}")
+                if station_id_int not in legend_handles_for_fig:
+                    # CHANGED: Station legend now uses a line instead of a marker to avoid confusion
+                    legend_handles_for_fig[station_id_int] = Line2D([0], [0], color=color, linestyle='-', linewidth=4, label=f"St {station_id_int}")
                 
                 zen_d_text = f"{np.degrees(zen_rad):.1f}°" if zen_rad is not None and not np.isnan(zen_rad) else "N/A"
                 azi_d_text = f"{(np.degrees(azi_rad) % 360):.1f}°" if azi_rad is not None and not np.isnan(azi_rad) else "N/A"
                 snr_fstr = f"{snr_val:.1f}" if snr_val is not None and not np.isnan(snr_val) else "N/A"
                 ev_id_fstr = f"{int(current_event_id_val)}" if current_event_id_val not in ["N/A", np.nan, None] else "N/A"
                 
-                # NEW: Format polarization angle with its error
                 pol_angle_full_text = "N/A"
                 if pol_rad is not None and not np.isnan(pol_rad):
                     pol_angle_full_text = f"{np.degrees(pol_rad):.1f}"
@@ -393,37 +405,36 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
                     else:
                          pol_angle_full_text += "°"
 
-                # CHANGED: Added Pol(arization) angle with error to the text line
                 text_info_lines.append(f"  St{station_id_int} T{trigger_idx+1}: ID={ev_id_fstr}, SNR={snr_fstr}, Zen={zen_d_text}, Azi={azi_d_text}, Pol={pol_angle_full_text}")
 
-        # === START: MODIFIED SNR vs CHI PLOT SETUP ===
+        # === START: SNR vs CHI PLOT SETUP ===
+        # NEW: Add connecting line ("arrow") between points
+        if len(points_for_line_plot) > 1:
+            points_for_line_plot.sort() # Sort by SNR
+            snrs, chis = zip(*points_for_line_plot)
+            ax_scatter.plot(snrs, chis, color='gray', linestyle='--', marker=None, alpha=0.8, zorder=2)
+
         ax_scatter.set_xlabel("SNR")
-        ax_scatter.set_ylabel(r"$\chi$") # Use Chi symbol for y-axis
-        # ax_scatter.set_title(r"SNR vs. $\chi$") # Simplified title
+        ax_scatter.set_ylabel(r"$\chi$")
+        ax_scatter.set_title(r"SNR vs. $\chi$")
         ax_scatter.set_xscale('log')
         ax_scatter.set_xlim(3, 100)
         ax_scatter.set_ylim(0, 1)
         ax_scatter.grid(True, linestyle='--', alpha=0.6)
 
         # Create handles for the two legends
-        # Legend 1: Chi Type (filled vs outline)
         chi_2016_handle = Line2D([0], [0], marker='o', color='k', label=r'$\chi_{2016}$ (Filled)',
                                  linestyle='None', markersize=8, markerfacecolor='k')
         chi_RCR_handle = Line2D([0], [0], marker='o', color='k', label=r'$\chi_{RCR}$ (Outline)',
                               linestyle='None', markersize=8, markerfacecolor='none', markeredgecolor='k')
-        
-        # Legend 2: Station Colors (handles are already in legend_handles_for_fig)
         station_handles = list(legend_handles_for_fig.values())
         
         # Add the legends to the ax_scatter plot
-        # Create the first legend (for stations) and add it manually
         if station_handles:
             leg1 = ax_scatter.legend(handles=station_handles, loc='upper right', title="Stations")
             ax_scatter.add_artist(leg1)
-        
-        # Create the second legend (for chi types). This will be placed automatically.
         ax_scatter.legend(handles=[chi_2016_handle, chi_RCR_handle], loc='lower left', title=r"$\chi$ Type")
-        # === END: MODIFIED SNR vs CHI PLOT SETUP ===
+        # === END: SNR vs CHI PLOT SETUP ===
         
         ax_text_box.axis('off') 
         ax_text_box.text(0.01, 0.95, "\n".join(text_info_lines), ha='left', va='top', fontsize=9, 
@@ -439,12 +450,6 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
             spectrum_axs[i].set_title(f"Spectrum - Ch {i+1}",fontsize=10); spectrum_axs[i].set_ylabel("Mag",fontsize=8); spectrum_axs[i].grid(True,ls=':',alpha=0.5); spectrum_axs[i].set_xlim(0,1000)
             if i < num_trace_channels -1 : trace_axs[i].set_xticklabels([]); spectrum_axs[i].set_xticklabels([])
             else: trace_axs[i].set_xlabel("Time (ns)", fontsize=8); spectrum_axs[i].set_xlabel("Freq (MHz)", fontsize=8)
-        
-        # REMOVED: The old figure-wide legend is no longer needed as the info is in the scatter plot's legends.
-        # if legend_handles_for_fig: 
-        #     ax_legend = fig.add_subplot(gs[8, :])
-        #     ax_legend.axis('off')
-        #     ax_legend.legend(handles=list(legend_handles_for_fig.values()), loc='center', ncol=min(len(legend_handles_for_fig), 8), title="Stations", fontsize='medium')
 
         master_filename = os.path.join(current_event_plot_dir, f'master_event_{event_id}.png')
         try: 
