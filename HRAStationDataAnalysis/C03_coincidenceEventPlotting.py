@@ -500,9 +500,9 @@ if __name__ == '__main__':
 
         ic(f"Analysis cuts applied to '{dataset_name_label}': {num_passing_overall} events passed, {num_failing_overall} events failed overall.")
 
-        plot_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
-        plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
-        plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+        # plot_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+        # plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+        # plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
         plot_master_event_updated(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
 
         ic(f"--- Finished plots for: {dataset_name_label} ---")
