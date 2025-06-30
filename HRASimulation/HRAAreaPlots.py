@@ -58,6 +58,7 @@ if __name__ == "__main__":
     relf_trig = np.array(refl_trig) - 100 # Subtract 100 to get the station number for plot numbers
     ic(dir_trig, refl_trig)
 
+
     bad_stations = [32, 52, 132, 152]
     savename = f'{save_folder}AreaReflected.png'
     x, y, weight = HRAAnalysis.getXYWeights(HRAeventList, weight_name='combined_reflected')
