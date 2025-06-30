@@ -78,6 +78,10 @@ def process_group(file_paths, group_name, output_file):
         # The user specified updating the single trace to [[256,]] to work with the method
         # We will pass it as a list containing one trace.
         chi_result = getMaxAllChi([current_trace], templates)
+
+        if chi_result < 0.6:
+            ic(f"Warning: Chi value {chi_result:.6f} for trace {i} in group {group_name} is below threshold (0.6). Skipping")
+            continue
         
         chi_values.append(chi_result)
         
