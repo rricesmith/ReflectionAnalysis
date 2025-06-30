@@ -160,7 +160,7 @@ if __name__ == "__main__":
 
     # --- Set Analysis Parameters ---
     # The station pair to analyze
-    station_pair_to_analyze = [17, 113]
+    station_pair_to_analyze = [17, 13]
     
     # The weight key to use for histograms
     # This should be pre-calculated and stored in the HRAevent objects
