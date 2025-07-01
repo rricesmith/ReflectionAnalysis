@@ -44,7 +44,7 @@ def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder
             if st1 in event.recon_zenith and st2 in event.recon_zenith:
                 
                 # Check if the event has SNR above the threshold for at least one stations
-                if not (event.getSNR(st1) >= SNR_threshold or event.getSNR(st2) >= SNR_threshold):
+                if not (event.getSNR(st1) >= SNR_threshold and event.getSNR(st2) >= SNR_threshold):
                     continue  # Skip this event if SNR is below the threshold
 
                 if type == 'Recon':
