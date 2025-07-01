@@ -29,13 +29,15 @@ def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder
 
     st1, st2 = station_pair
     
-    # Lists to store data for coincident events
-    recon_zen1, recon_zen2 = [], []
-    recon_azi1, recon_azi2 = [], []
-    weights = []
-    events_in_angle_range = []
-
     for type in ['Recon', 'True']:
+        # MODIFICATION: Lists are now defined inside the loop.
+        # This is a bug fix to ensure that data from the 'Recon' analysis
+        # is cleared before starting the 'True' analysis.
+        recon_zen1, recon_zen2 = [], []
+        recon_azi1, recon_azi2 = [], []
+        weights = []
+        events_in_angle_range = []
+
         # Loop through all events to find coincidences
         for event in HRAeventList:
             # Check for coincidence by seeing if both stations have reconstruction data
@@ -60,7 +62,6 @@ def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder
                 recon_azi2.append(azi2_deg)
 
                 # Append weight for the event
-                # The user wants to use a single weight key for the pair.
                 event_weight = event.getWeight(weight_name, sigma=sigma)
                 weights.append(event_weight if event_weight is not None and not np.isnan(event_weight) else 0)
 
@@ -76,16 +77,23 @@ def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder
                         events_in_angle_range.append(event)
 
         if not recon_zen1:
-            ic(f"No coincident events found for station pair {station_pair}. Exiting.")
-            return
+            ic(f"No coincident events found for station pair {station_pair} for type '{type}'. Skipping plots.")
+            continue # Skip to the next type if no events were found
 
-        # --- Plotting 2D Histograms ---
+        # --- MODIFICATION: Colormap setup for better visibility ---
+        # We create a new colormap where values below a threshold are white.
+        # This makes bins with zero counts appear white.
+        cmap = plt.get_cmap('viridis').copy()
+        cmap.set_under('white')
+        vmin_val = 1e-9  # A very small positive number
+
+        # --- Plotting 2D Histograms (Angle Correlation) ---
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-        fig.suptitle(f'Reconstructed Angle Correlation for Stations {st1} & {st2}', fontsize=16)
+        fig.suptitle(f'{type} Angle Correlation for Stations {st1} & {st2}', fontsize=16)
 
         # Zenith vs Zenith
         bins_zen = np.linspace(0, 90, 46)
-        ax1.hist2d(recon_zen1, recon_zen2, bins=bins_zen, weights=weights, cmap='viridis')
+        ax1.hist2d(recon_zen1, recon_zen2, bins=bins_zen, weights=weights, cmap=cmap, vmin=vmin_val)
         ax1.plot([0, 90], [0, 90], 'r--', label='y=x')
         ax1.set_xlabel(f'Station {st1} {type} Zenith [deg]')
         ax1.set_ylabel(f'Station {st2} {type} Zenith [deg]')
@@ -96,7 +104,7 @@ def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder
 
         # Azimuth vs Azimuth
         bins_azi = np.linspace(0, 360, 73)
-        ax2.hist2d(recon_azi1, recon_azi2, bins=bins_azi, weights=weights, cmap='viridis')
+        ax2.hist2d(recon_azi1, recon_azi2, bins=bins_azi, weights=weights, cmap=cmap, vmin=vmin_val)
         ax2.plot([0, 360], [0, 360], 'r--', label='y=x')
         ax2.set_xlabel(f'Station {st1} {type} Azimuth [deg]')
         ax2.set_ylabel(f'Station {st2} {type} Azimuth [deg]')
@@ -111,11 +119,39 @@ def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder
         ic(f"Saved histogram plot to {plot_filename}")
         plt.close(fig)
 
+        # --- NEW PLOT: Individual Station Azimuth vs Zenith ---
+        fig_indiv, (ax_st1, ax_st2) = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
+        fig_indiv.suptitle(f'{type} Azimuth vs Zenith for Stations {st1} & {st2}', fontsize=16)
+
+        bins_azi_indiv = np.linspace(0, 360, 73)
+        bins_zen_indiv = np.linspace(0, 90, 46)
+
+        # Plot for Station 1
+        ax_st1.hist2d(recon_azi1, recon_zen1, bins=[bins_azi_indiv, bins_zen_indiv], weights=weights, cmap=cmap, vmin=vmin_val)
+        ax_st1.set_xlabel(f'Azimuth [deg]')
+        ax_st1.set_ylabel(f'Zenith [deg]')
+        ax_st1.set_title(f'Station {st1}')
+        ax_st1.grid(True)
+
+        # Plot for Station 2
+        ax_st2.hist2d(recon_azi2, recon_zen2, bins=[bins_azi_indiv, bins_zen_indiv], weights=weights, cmap=cmap, vmin=vmin_val)
+        ax_st2.set_xlabel(f'Azimuth [deg]')
+        ax_st2.set_title(f'Station {st2}')
+        ax_st2.grid(True)
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        plot_filename_indiv = os.path.join(save_folder, f'{type}_azivzen_individual_{st1}_{st2}.png')
+        plt.savefig(plot_filename_indiv)
+        ic(f"Saved individual station plot to {plot_filename_indiv}")
+        plt.close(fig_indiv)
+
+
         # --- Writing Event Details to File ---
         if ZenLim and AziLim and events_in_angle_range:
-            output_filename = os.path.join(save_folder, f'event_details_{st1}_{st2}_zen{ZenLim[0]}-{ZenLim[1]}_azi{AziLim[0]}-{AziLim[1]}.txt')
+            # BUG FIX: Added '{type}_' to filename to prevent overwriting
+            output_filename = os.path.join(save_folder, f'{type}_event_details_{st1}_{st2}_zen{ZenLim[0]}-{ZenLim[1]}_azi{AziLim[0]}-{AziLim[1]}.txt')
             with open(output_filename, 'w') as f:
-                f.write(f"# Event details for coincident triggers between stations {st1} and {st2}\n")
+                f.write(f"# Event details for coincident triggers between stations {st1} and {st2} ({type} values)\n")
                 f.write(f"# Zenith Range: {ZenLim} deg, Azimuth Range: {AziLim} deg\n")
                 f.write("-" * 80 + "\n")
                 
@@ -131,20 +167,18 @@ def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder
                     f.write(f"    Recon Zenith: {np.rad2deg(event.recon_zenith.get(st1, np.nan)):.2f} deg\n")
                     f.write(f"    Recon Azimuth: {np.rad2deg(event.recon_azimuth.get(st1, np.nan)):.2f} deg\n")
                     f.write(f"    SNR: {event.getSNR(st1):.2f}\n")
-                    # f.write(f"    Chi2: {event.chi2.get(st1, 'N/A')}\n") # .get() handles cases where chi2 might be missing
 
                     # Station 2 details
                     f.write(f"  Station {st2}:\n")
                     f.write(f"    Recon Zenith: {np.rad2deg(event.recon_zenith.get(st2, np.nan)):.2f} deg\n")
                     f.write(f"    Recon Azimuth: {np.rad2deg(event.recon_azimuth.get(st2, np.nan)):.2f} deg\n")
                     f.write(f"    SNR: {event.getSNR(st2):.2f}\n")
-                    # f.write(f"    Chi2: {event.chi2.get(st2, 'N/A')}\n")
                     
                     f.write("-" * 80 + "\n")
             
             ic(f"Saved event details to {output_filename}")
         elif ZenLim and AziLim:
-            ic("No events found within the specified angle limits.")
+            ic(f"No events found within the specified angle limits for type '{type}'.")
 
 
 if __name__ == "__main__":
