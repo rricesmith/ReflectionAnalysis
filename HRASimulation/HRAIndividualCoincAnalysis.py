@@ -10,7 +10,7 @@ from HRASimulation.HRAEventObject import HRAevent
 from HRASimulation.HRANurToNpy import loadHRAfromH5
 from NuRadioReco.utilities import units
 
-def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder, ZenLim=None, AziLim=None, sigma=4.5):
+def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder, ZenLim=None, AziLim=None, sigma=4.5, SNR_threshold=0):
     """
     Analyzes events in coincidence between two stations, plots reconstructed
     angle correlations, and prints details for events within specific angle ranges.
@@ -43,6 +43,10 @@ def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder
             # Check for coincidence by seeing if both stations have reconstruction data
             if st1 in event.recon_zenith and st2 in event.recon_zenith:
                 
+                # Check if the event has SNR above the threshold for at least one stations
+                if not (event.getSNR(st1) >= SNR_threshold or event.getSNR(st2) >= SNR_threshold):
+                    continue  # Skip this event if SNR is below the threshold
+
                 if type == 'Recon':
                     # Append reconstructed angles (converted to degrees)
                     zen1_deg = np.rad2deg(event.recon_zenith[st1])
@@ -212,7 +216,7 @@ if __name__ == "__main__":
     
     # Define the angle limits for detailed event printing
     zenith_limits = [42.0, 46.0]  # degrees
-    azimuth_limits = [230.0, 250.0]  # degrees
+    azimuth_limits = [300.0, 325.0]  # degrees
 
     # --- Run Analysis ---
     for station_pair_to_analyze in station_pairs_to_analyze:
