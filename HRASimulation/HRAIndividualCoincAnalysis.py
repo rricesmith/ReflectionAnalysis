@@ -198,7 +198,8 @@ if __name__ == "__main__":
 
     # --- MODIFICATION: Define list of pairs to be analyzed together ---
     # Example: Analyze events that are coincident in EITHER [17, 113] OR [15, 118]
-    station_pairs_to_analyze = [[17, 113], [15, 118], [30, 119], [18, 114]] 
+    # station_pairs_to_analyze = [[17, 113], [15, 118], [30, 119], [18, 114]] 
+    station_pairs_to_analyze = [[17, 13], [15, 18], [30, 19], [18, 14]] 
     
     weight_key = '2_coincidence_wrefl'
     
