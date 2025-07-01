@@ -41,7 +41,7 @@ def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder
             # Check for coincidence by seeing if both stations have reconstruction data
             if st1 in event.recon_zenith and st2 in event.recon_zenith:
                 
-                if type == 'Recon.':
+                if type == 'Recon':
                     # Append reconstructed angles (converted to degrees)
                     zen1_deg = np.rad2deg(event.recon_zenith[st1])
                     zen2_deg = np.rad2deg(event.recon_zenith[st2])
