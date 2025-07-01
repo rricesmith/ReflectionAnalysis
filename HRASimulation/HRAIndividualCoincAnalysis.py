@@ -83,7 +83,9 @@ def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder
         # --- MODIFICATION: Colormap setup for better visibility ---
         # We create a new colormap where values below a threshold are white.
         # This makes bins with zero counts appear white.
-        cmap = plt.get_cmap('viridis').copy()
+        import matplotlib.cm as cm
+        cmap = cm.viridis
+        # cmap = plt.get_cmap('viridis').copy()
         cmap.set_under('white')
         vmin_val = 1e-9  # A very small positive number
 
