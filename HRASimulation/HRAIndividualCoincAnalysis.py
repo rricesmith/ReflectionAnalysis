@@ -215,7 +215,7 @@ if __name__ == "__main__":
     weight_key = '2_coincidence_wrefl'
     
     # Define the angle limits for detailed event printing
-    zenith_limits = [42.0, 46.0]  # degrees
+    zenith_limits = [42.0, 48.0]  # degrees
     azimuth_limits = [300.0, 325.0]  # degrees
 
     # --- Run Analysis ---
@@ -227,7 +227,8 @@ if __name__ == "__main__":
             weight_name=weight_key,
             save_folder=coincidence_save_folder,
             ZenLim=zenith_limits,
-            AziLim=azimuth_limits
+            AziLim=azimuth_limits,
+            SNR_threshold=7.0,  # SNR threshold for filtering events
         )
 
     ic("Analysis complete.")
