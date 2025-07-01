@@ -199,23 +199,26 @@ if __name__ == "__main__":
     # --- MODIFICATION: Define list of pairs to be analyzed together ---
     # Example: Analyze events that are coincident in EITHER [17, 113] OR [15, 118]
     # station_pairs_to_analyze = [[17, 113], [15, 118], [30, 119], [18, 114]] 
-    station_pairs_to_analyze = [[17, 13], [15, 18], [30, 19], [18, 14]] 
-    
+    # station_pairs_to_analyze = [[17, 13], [15, 18], [30, 19], [18, 14]] 
+
+    all_pairs = [[[17, 13], [15, 18], [30, 19], [18, 14]] , [[17, 113], [15, 118], [30, 119], [18, 114]]]
+
     weight_key = '2_coincidence_wrefl'
     
     zenith_limits = [42.0, 48.0]
     azimuth_limits = [300.0, 325.0]
 
     # --- MODIFICATION: Single call to the new function with the list of pairs ---
-    ic(f"Analyzing station group: {station_pairs_to_analyze}")
-    analyze_coincident_pairs( # Note the function name change
-        HRAeventList=HRAeventList,
-        station_pairs=station_pairs_to_analyze, # Pass the list of pairs
-        weight_name=weight_key,
-        save_folder=coincidence_save_folder,
-        ZenLim=zenith_limits,
-        AziLim=azimuth_limits,
-        SNR_threshold=7.0,
-    )
+    for station_pairs_to_analyze in all_pairs:
+        ic(f"Analyzing station group: {station_pairs_to_analyze}")
+        analyze_coincident_pairs( # Note the function name change
+            HRAeventList=HRAeventList,
+            station_pairs=station_pairs_to_analyze, # Pass the list of pairs
+            weight_name=weight_key,
+            save_folder=coincidence_save_folder,
+            ZenLim=zenith_limits,
+            AziLim=azimuth_limits,
+            SNR_threshold=0.0,
+        )
 
     ic("Analysis complete.")
