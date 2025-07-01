@@ -35,108 +35,116 @@ def analyze_coincident_pair(HRAeventList, station_pair, weight_name, save_folder
     weights = []
     events_in_angle_range = []
 
-    # Loop through all events to find coincidences
-    for event in HRAeventList:
-        # Check for coincidence by seeing if both stations have reconstruction data
-        if st1 in event.recon_zenith and st2 in event.recon_zenith:
-            
-            # Append reconstructed angles (converted to degrees)
-            zen1_deg = np.rad2deg(event.recon_zenith[st1])
-            zen2_deg = np.rad2deg(event.recon_zenith[st2])
-            azi1_deg = np.rad2deg(event.recon_azimuth[st1])
-            azi2_deg = np.rad2deg(event.recon_azimuth[st2])
-
-            recon_zen1.append(zen1_deg)
-            recon_zen2.append(zen2_deg)
-            recon_azi1.append(azi1_deg)
-            recon_azi2.append(azi2_deg)
-
-            # Append weight for the event
-            # The user wants to use a single weight key for the pair.
-            event_weight = event.getWeight(weight_name, sigma=sigma)
-            weights.append(event_weight if event_weight is not None and not np.isnan(event_weight) else 0)
-
-            # Check if the event falls within the specified angle limits
-            if ZenLim is not None and AziLim is not None:
-                zen_in_range = (ZenLim[0] <= zen1_deg <= ZenLim[1]) and \
-                               (ZenLim[0] <= zen2_deg <= ZenLim[1])
+    for type in ['Recon', 'True']:
+        # Loop through all events to find coincidences
+        for event in HRAeventList:
+            # Check for coincidence by seeing if both stations have reconstruction data
+            if st1 in event.recon_zenith and st2 in event.recon_zenith:
                 
-                azi_in_range = (AziLim[0] <= azi1_deg <= AziLim[1]) and \
-                               (AziLim[0] <= azi2_deg <= AziLim[1])
+                if type == 'Recon.':
+                    # Append reconstructed angles (converted to degrees)
+                    zen1_deg = np.rad2deg(event.recon_zenith[st1])
+                    zen2_deg = np.rad2deg(event.recon_zenith[st2])
+                    azi1_deg = np.rad2deg(event.recon_azimuth[st1])
+                    azi2_deg = np.rad2deg(event.recon_azimuth[st2])
+                elif type == 'True':
+                    # Append true angles (converted to degrees)
+                    zen1_deg = np.rad2deg(event.zenith)
+                    zen2_deg = np.rad2deg(event.zenith)
+                    azi1_deg = np.rad2deg(event.azimuth)
+                    azi2_deg = np.rad2deg(event.azimuth)
 
-                if zen_in_range and azi_in_range:
-                    events_in_angle_range.append(event)
+                recon_zen1.append(zen1_deg)
+                recon_zen2.append(zen2_deg)
+                recon_azi1.append(azi1_deg)
+                recon_azi2.append(azi2_deg)
 
-    if not recon_zen1:
-        ic(f"No coincident events found for station pair {station_pair}. Exiting.")
-        return
+                # Append weight for the event
+                # The user wants to use a single weight key for the pair.
+                event_weight = event.getWeight(weight_name, sigma=sigma)
+                weights.append(event_weight if event_weight is not None and not np.isnan(event_weight) else 0)
 
-    # --- Plotting 2D Histograms ---
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-    fig.suptitle(f'Reconstructed Angle Correlation for Stations {st1} & {st2}', fontsize=16)
+                # Check if the event falls within the specified angle limits
+                if ZenLim is not None and AziLim is not None:
+                    zen_in_range = (ZenLim[0] <= zen1_deg <= ZenLim[1]) and \
+                                (ZenLim[0] <= zen2_deg <= ZenLim[1])
+                    
+                    azi_in_range = (AziLim[0] <= azi1_deg <= AziLim[1]) and \
+                                (AziLim[0] <= azi2_deg <= AziLim[1])
 
-    # Zenith vs Zenith
-    bins_zen = np.linspace(0, 90, 46)
-    ax1.hist2d(recon_zen1, recon_zen2, bins=bins_zen, weights=weights, cmap='viridis')
-    ax1.plot([0, 90], [0, 90], 'r--', label='y=x')
-    ax1.set_xlabel(f'Station {st1} Recon. Zenith [deg]')
-    ax1.set_ylabel(f'Station {st2} Recon. Zenith [deg]')
-    ax1.set_title('Zenith Correlation')
-    ax1.set_aspect('equal')
-    ax1.grid(True)
-    ax1.legend()
+                    if zen_in_range and azi_in_range:
+                        events_in_angle_range.append(event)
 
-    # Azimuth vs Azimuth
-    bins_azi = np.linspace(0, 360, 73)
-    ax2.hist2d(recon_azi1, recon_azi2, bins=bins_azi, weights=weights, cmap='viridis')
-    ax2.plot([0, 360], [0, 360], 'r--', label='y=x')
-    ax2.set_xlabel(f'Station {st1} Recon. Azimuth [deg]')
-    ax2.set_ylabel(f'Station {st2} Recon. Azimuth [deg]')
-    ax2.set_title('Azimuth Correlation')
-    ax2.set_aspect('equal')
-    ax2.grid(True)
-    ax2.legend()
-    
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plot_filename = os.path.join(save_folder, f'recon_angle_correlation_{st1}_{st2}.png')
-    plt.savefig(plot_filename)
-    ic(f"Saved histogram plot to {plot_filename}")
-    plt.close(fig)
+        if not recon_zen1:
+            ic(f"No coincident events found for station pair {station_pair}. Exiting.")
+            return
 
-    # --- Writing Event Details to File ---
-    if ZenLim and AziLim and events_in_angle_range:
-        output_filename = os.path.join(save_folder, f'event_details_{st1}_{st2}_zen{ZenLim[0]}-{ZenLim[1]}_azi{AziLim[0]}-{AziLim[1]}.txt')
-        with open(output_filename, 'w') as f:
-            f.write(f"# Event details for coincident triggers between stations {st1} and {st2}\n")
-            f.write(f"# Zenith Range: {ZenLim} deg, Azimuth Range: {AziLim} deg\n")
-            f.write("-" * 80 + "\n")
-            
-            for event in events_in_angle_range:
-                f.write(f"Event ID: {event.getEventID()}\n")
-                f.write(f"  Core Position (x, y): ({event.coreas_x/units.m:.2f} m, {event.coreas_y/units.m:.2f} m)\n")
-                f.write(f"  True Energy: {event.energy/units.EeV:.4f} EeV\n")
-                f.write(f"  True Zenith: {np.rad2deg(event.zenith):.2f} deg\n")
-                f.write(f"  True Azimuth: {np.rad2deg(event.azimuth):.2f} deg\n")
-                
-                # Station 1 details
-                f.write(f"  Station {st1}:\n")
-                f.write(f"    Recon Zenith: {np.rad2deg(event.recon_zenith.get(st1, np.nan)):.2f} deg\n")
-                f.write(f"    Recon Azimuth: {np.rad2deg(event.recon_azimuth.get(st1, np.nan)):.2f} deg\n")
-                f.write(f"    SNR: {event.getSNR(st1):.2f}\n")
-                # f.write(f"    Chi2: {event.chi2.get(st1, 'N/A')}\n") # .get() handles cases where chi2 might be missing
+        # --- Plotting 2D Histograms ---
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        fig.suptitle(f'Reconstructed Angle Correlation for Stations {st1} & {st2}', fontsize=16)
 
-                # Station 2 details
-                f.write(f"  Station {st2}:\n")
-                f.write(f"    Recon Zenith: {np.rad2deg(event.recon_zenith.get(st2, np.nan)):.2f} deg\n")
-                f.write(f"    Recon Azimuth: {np.rad2deg(event.recon_azimuth.get(st2, np.nan)):.2f} deg\n")
-                f.write(f"    SNR: {event.getSNR(st2):.2f}\n")
-                # f.write(f"    Chi2: {event.chi2.get(st2, 'N/A')}\n")
-                
-                f.write("-" * 80 + "\n")
+        # Zenith vs Zenith
+        bins_zen = np.linspace(0, 90, 46)
+        ax1.hist2d(recon_zen1, recon_zen2, bins=bins_zen, weights=weights, cmap='viridis')
+        ax1.plot([0, 90], [0, 90], 'r--', label='y=x')
+        ax1.set_xlabel(f'Station {st1} {type} Zenith [deg]')
+        ax1.set_ylabel(f'Station {st2} {type} Zenith [deg]')
+        ax1.set_title('Zenith Correlation')
+        ax1.set_aspect('equal')
+        ax1.grid(True)
+        ax1.legend()
+
+        # Azimuth vs Azimuth
+        bins_azi = np.linspace(0, 360, 73)
+        ax2.hist2d(recon_azi1, recon_azi2, bins=bins_azi, weights=weights, cmap='viridis')
+        ax2.plot([0, 360], [0, 360], 'r--', label='y=x')
+        ax2.set_xlabel(f'Station {st1} {type} Azimuth [deg]')
+        ax2.set_ylabel(f'Station {st2} {type} Azimuth [deg]')
+        ax2.set_title('Azimuth Correlation')
+        ax2.set_aspect('equal')
+        ax2.grid(True)
+        ax2.legend()
         
-        ic(f"Saved event details to {output_filename}")
-    elif ZenLim and AziLim:
-        ic("No events found within the specified angle limits.")
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        plot_filename = os.path.join(save_folder, f'{type}_angle_correlation_{st1}_{st2}.png')
+        plt.savefig(plot_filename)
+        ic(f"Saved histogram plot to {plot_filename}")
+        plt.close(fig)
+
+        # --- Writing Event Details to File ---
+        if ZenLim and AziLim and events_in_angle_range:
+            output_filename = os.path.join(save_folder, f'event_details_{st1}_{st2}_zen{ZenLim[0]}-{ZenLim[1]}_azi{AziLim[0]}-{AziLim[1]}.txt')
+            with open(output_filename, 'w') as f:
+                f.write(f"# Event details for coincident triggers between stations {st1} and {st2}\n")
+                f.write(f"# Zenith Range: {ZenLim} deg, Azimuth Range: {AziLim} deg\n")
+                f.write("-" * 80 + "\n")
+                
+                for event in events_in_angle_range:
+                    f.write(f"Event ID: {event.getEventID()}\n")
+                    f.write(f"  Core Position (x, y): ({event.coreas_x/units.m:.2f} m, {event.coreas_y/units.m:.2f} m)\n")
+                    f.write(f"  True Energy: {event.energy/units.EeV:.4f} EeV\n")
+                    f.write(f"  True Zenith: {np.rad2deg(event.zenith):.2f} deg\n")
+                    f.write(f"  True Azimuth: {np.rad2deg(event.azimuth):.2f} deg\n")
+                    
+                    # Station 1 details
+                    f.write(f"  Station {st1}:\n")
+                    f.write(f"    Recon Zenith: {np.rad2deg(event.recon_zenith.get(st1, np.nan)):.2f} deg\n")
+                    f.write(f"    Recon Azimuth: {np.rad2deg(event.recon_azimuth.get(st1, np.nan)):.2f} deg\n")
+                    f.write(f"    SNR: {event.getSNR(st1):.2f}\n")
+                    # f.write(f"    Chi2: {event.chi2.get(st1, 'N/A')}\n") # .get() handles cases where chi2 might be missing
+
+                    # Station 2 details
+                    f.write(f"  Station {st2}:\n")
+                    f.write(f"    Recon Zenith: {np.rad2deg(event.recon_zenith.get(st2, np.nan)):.2f} deg\n")
+                    f.write(f"    Recon Azimuth: {np.rad2deg(event.recon_azimuth.get(st2, np.nan)):.2f} deg\n")
+                    f.write(f"    SNR: {event.getSNR(st2):.2f}\n")
+                    # f.write(f"    Chi2: {event.chi2.get(st2, 'N/A')}\n")
+                    
+                    f.write("-" * 80 + "\n")
+            
+            ic(f"Saved event details to {output_filename}")
+        elif ZenLim and AziLim:
+            ic("No events found within the specified angle limits.")
 
 
 if __name__ == "__main__":
@@ -160,7 +168,7 @@ if __name__ == "__main__":
 
     # --- Set Analysis Parameters ---
     # The station pair to analyze
-    station_pair_to_analyze = [17, 13]
+    station_pairs_to_analyze = [[17, 13], [17, 113]]
     
     # The weight key to use for histograms
     # This should be pre-calculated and stored in the HRAevent objects
@@ -171,13 +179,15 @@ if __name__ == "__main__":
     azimuth_limits = [230.0, 250.0]  # degrees
 
     # --- Run Analysis ---
-    analyze_coincident_pair(
-        HRAeventList=HRAeventList,
-        station_pair=station_pair_to_analyze,
-        weight_name=weight_key,
-        save_folder=coincidence_save_folder,
-        ZenLim=zenith_limits,
-        AziLim=azimuth_limits
-    )
+    for station_pair_to_analyze in station_pairs_to_analyze:
+        ic(f"Analyzing station pair: {station_pair_to_analyze}")
+        analyze_coincident_pair(
+            HRAeventList=HRAeventList,
+            station_pair=station_pair_to_analyze,
+            weight_name=weight_key,
+            save_folder=coincidence_save_folder,
+            ZenLim=zenith_limits,
+            AziLim=azimuth_limits
+        )
 
     ic("Analysis complete.")
