@@ -58,7 +58,7 @@ def process_folders(input_dirs, base_output_dir):
     for input_dir, subfolder_out in input_dirs:
         output_dir = os.path.join(base_output_dir, subfolder_out)
         # Ensure the input directory exists
-        os.makedirs(input_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
 
         # Create a corresponding subfolder in the output directory
 
