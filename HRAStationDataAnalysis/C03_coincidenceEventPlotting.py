@@ -392,11 +392,13 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
                     # CHANGED: Station legend now uses a line instead of a marker to avoid confusion
                     legend_handles_for_fig[station_id_int] = Line2D([0], [0], color=color, linestyle='-', linewidth=4, label=f"St {station_id_int}")
                 
+                chi_rcr_text = f"{chi_rcr_val:.2f}" if chi_rcr_val is not None and not np.isnan(chi_rcr_val) else "N/A"
+                chi_2016_text = f"{chi_2016_val:.2f}" if chi_2016_val is not None and not np.isnan(chi_2016_val) else "N/A"
                 zen_d_text = f"{np.degrees(zen_rad):.1f}°" if zen_rad is not None and not np.isnan(zen_rad) else "N/A"
                 azi_d_text = f"{(np.degrees(azi_rad) % 360):.1f}°" if azi_rad is not None and not np.isnan(azi_rad) else "N/A"
                 snr_fstr = f"{snr_val:.1f}" if snr_val is not None and not np.isnan(snr_val) else "N/A"
                 ev_id_fstr = f"{int(current_event_id_val)}" if current_event_id_val not in ["N/A", np.nan, None] else "N/A"
-                
+
                 pol_angle_full_text = "N/A"
                 if pol_rad is not None and not np.isnan(pol_rad):
                     pol_angle_full_text = f"{np.degrees(pol_rad):.1f}"
@@ -405,7 +407,7 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
                     else:
                          pol_angle_full_text += "°"
 
-                text_info_lines.append(f"  St{station_id_int} T{trigger_idx+1}: ID={ev_id_fstr}, SNR={snr_fstr}, Zen={zen_d_text}, Azi={azi_d_text}, Pol={pol_angle_full_text}")
+                text_info_lines.append(f"  St{station_id_int} T{trigger_idx+1}: ID={ev_id_fstr}, SNR={snr_fstr}, ChiRCR={chi_rcr_val}, Chi2016={chi_2016_val}, Zen={zen_d_text}, Azi={azi_d_text}, Pol={pol_angle_full_text}")
 
         # === START: SNR vs CHI PLOT SETUP ===
         # NEW: Add connecting line ("arrow") between points
