@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from NuRadioReco.utilities import fft, units
 
 def plot_trace_and_spectrum(trace, output_path):
     """
@@ -24,8 +25,10 @@ def plot_trace_and_spectrum(trace, output_path):
     # Ensure there's data to process
     if trace.size > 1:
         # Calculate the real FFT and the corresponding frequency axis
-        spectrum = np.abs(np.fft.rfft(trace))
-        freqs = np.fft.rfftfreq(trace.size) # Frequency in cycles/sample
+        sampling_rate_hz = 2e9 
+        freqs = np.fft.rfftfreq(len(trace), d=1/sampling_rate_hz) / 1e6 
+        spectrum = np.abs(fft.time2freq(trace, sampling_rate_hz))
+
 
         # Plot the spectrum, skipping the DC component (index 0) for better scaling
         ax2.plot(freqs[1:], spectrum[1:])
