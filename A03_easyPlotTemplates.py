@@ -17,7 +17,7 @@ def plot_trace_and_spectrum(trace, output_path):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
 
     # --- 2. Plot the Trace (Time Domain) ---
-    times = np.arange(0, len(trace), 0.5)
+    times = np.arange(0, len(trace)/2, 0.5)
     ax1.plot(times, trace)
     ax1.set_xlabel("Time (ns)")
     ax1.set_ylabel("Amplitude (mV)")
