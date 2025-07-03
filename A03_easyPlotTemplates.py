@@ -81,11 +81,18 @@ def process_folders(input_dirs, base_output_dir):
 
                 # Define the output filename and full path
                 plot_filename_base = os.path.splitext(filename)[0]
-                plot_output_path = os.path.join(output_dir, f"{plot_filename_base}.png")
+                if len(trace_data) == 4:
+                    # All 4 traces, so run 4 times
+                    for i in range(4):
+                        plot_output_path = os.path.join(output_dir, f"{plot_filename_base}_trace{i}.png")
+                        ic(trace_data[i].shape)
+                        plot_trace_and_spectrum(trace_data[i], plot_output_path)
+                else:
+                    plot_output_path = os.path.join(output_dir, f"{plot_filename_base}.png")
 
-                # Generate and save the plot
-                ic(trace_data, trace_data.shape)
-                plot_trace_and_spectrum(trace_data, plot_output_path)
+                    # Generate and save the plot
+                    ic(trace_data, trace_data.shape)
+                    plot_trace_and_spectrum(trace_data, plot_output_path)
         
         if found_files == 0:
             print("  - No .npy files found in this directory.")
