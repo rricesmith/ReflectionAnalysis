@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from NuRadioReco.utilities import fft, units
+from icecream import ic
 
 def plot_trace_and_spectrum(trace, output_path):
     """
@@ -29,6 +30,8 @@ def plot_trace_and_spectrum(trace, output_path):
         freqs = np.fft.rfftfreq(len(trace), d=1/sampling_rate_hz) / 1e6 
         spectrum = np.abs(fft.time2freq(trace, sampling_rate_hz))
 
+        ic(freqs.shape, spectrum.shape)
+        ic(freqs, spectrum)
 
         # Plot the spectrum, skipping the DC component (index 0) for better scaling
         ax2.plot(freqs[1:], spectrum[1:])
@@ -81,6 +84,7 @@ def process_folders(input_dirs, base_output_dir):
                 plot_output_path = os.path.join(output_dir, f"{plot_filename_base}.png")
 
                 # Generate and save the plot
+                ic(trace_data, trace_data.shape)
                 plot_trace_and_spectrum(trace_data, plot_output_path)
         
         if found_files == 0:
