@@ -17,9 +17,10 @@ def plot_trace_and_spectrum(trace, output_path):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
 
     # --- 2. Plot the Trace (Time Domain) ---
-    ax1.plot(trace)
-    ax1.set_xlabel("Sample Index")
-    ax1.set_ylabel("Amplitude")
+    times = np.arange(0, len(trace), 0.5)
+    ax1.plot(times, trace)
+    ax1.set_xlabel("Time (ns)")
+    ax1.set_ylabel("Amplitude (mV)")
     ax1.grid(True, linestyle='--', alpha=0.6)
 
     # --- 3. Calculate and Plot the FFT (Frequency Domain) ---
@@ -35,8 +36,8 @@ def plot_trace_and_spectrum(trace, output_path):
 
         # Plot the spectrum, skipping the DC component (index 0) for better scaling
         ax2.plot(freqs[1:], spectrum[1:])
-        ax2.set_xlabel("Normalized Frequency [cycles/sample]")
-        ax2.set_ylabel("Spectral Amplitude")
+        ax2.set_xlabel("Frequency (MHz)")
+        ax2.set_ylabel("Amplitude")
         ax2.grid(True, linestyle='--', alpha=0.6)
 
     # --- 4. Finalize and Save the Plot ---
