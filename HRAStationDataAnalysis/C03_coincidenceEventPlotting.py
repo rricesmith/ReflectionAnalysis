@@ -348,6 +348,7 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
             pol_angle_values_rad = (station_data.get("PolAngle", []) + [np.nan] * num_triggers)[:num_triggers]
             pol_angle_err_values_rad = (station_data.get("PolAngleErr", []) + [np.nan] * num_triggers)[:num_triggers]
             
+            time_values = station_data.get("Time", [])
             chi_rcr_values = (station_data.get("ChiRCR", []) + [np.nan] * num_triggers)[:num_triggers]
             chi_2016_values = (station_data.get("Chi2016", []) + [np.nan] * num_triggers)[:num_triggers]
             event_ids_for_station = (station_data.get("event_ids", []) + ["N/A"] * num_triggers)[:num_triggers]
@@ -359,7 +360,7 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
                 zen_rad, azi_rad = zen_values_rad[trigger_idx], azi_values_rad[trigger_idx]
                 pol_rad = pol_angle_values_rad[trigger_idx] 
                 pol_err_rad = pol_angle_err_values_rad[trigger_idx]
-                current_event_id_val = event_ids_for_station[trigger_idx]
+                current_event_id_val = event_ids_for_station[trigger_idx]                
                 traces_this_trigger = (all_traces_for_station[trigger_idx] if trigger_idx < len(all_traces_for_station) else [])
                 padded_traces_this_trigger = (list(traces_this_trigger) + [None]*num_trace_channels)[:num_trace_channels]
 
@@ -392,6 +393,7 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
                     # CHANGED: Station legend now uses a line instead of a marker to avoid confusion
                     legend_handles_for_fig[station_id_int] = Line2D([0], [0], color=color, linestyle='-', linewidth=4, label=f"St {station_id_int}")
                 
+                time_text = f"{time_values}"
                 chi_rcr_text = f"{chi_rcr_val:.2f}" if chi_rcr_val is not None and not np.isnan(chi_rcr_val) else "N/A"
                 chi_2016_text = f"{chi_2016_val:.2f}" if chi_2016_val is not None and not np.isnan(chi_2016_val) else "N/A"
                 zen_d_text = f"{np.degrees(zen_rad):.1f}°" if zen_rad is not None and not np.isnan(zen_rad) else "N/A"
@@ -407,7 +409,7 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
                     else:
                          pol_angle_full_text += "°"
 
-                text_info_lines.append(f"  St{station_id_int} T{trigger_idx+1}: ID={ev_id_fstr}, SNR={snr_fstr}, ChiRCR={chi_rcr_val}, Chi2016={chi_2016_val}, Zen={zen_d_text}, Azi={azi_d_text}, Pol={pol_angle_full_text}")
+                text_info_lines.append(f"  St{station_id_int} T{trigger_idx+1} Unix={time_text}: ID={ev_id_fstr}, SNR={snr_fstr}, ChiRCR={chi_rcr_text}, Chi2016={chi_2016_text}, Zen={zen_d_text}, Azi={azi_d_text}, Pol={pol_angle_full_text}")
 
         # === START: SNR vs CHI PLOT SETUP ===
         # NEW: Add connecting line ("arrow") between points
@@ -538,6 +540,16 @@ if __name__ == '__main__':
         # plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
         # plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
         plot_master_event_updated(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+
+        # Printing all keys for structure of dictionary for convenience
+        # And all subkeys
+        ic(f"Dataset '{dataset_name_label}' structure:")
+        for event_id, event_details in events_data_dict.items():
+            ic(f"Event ID: {event_id}, Keys: {list(event_details.keys())}")
+            if 'stations' in event_details:
+                for station_id, station_data in event_details['stations'].items():
+                    ic(f"  Station ID: {station_id}, Keys: {list(station_data.keys())}")
+            break
 
         ic(f"--- Finished plots for: {dataset_name_label} ---")
     ic("\nAll plotting complete.")
