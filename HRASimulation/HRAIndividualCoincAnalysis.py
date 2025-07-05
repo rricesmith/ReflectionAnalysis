@@ -211,7 +211,8 @@ if __name__ == "__main__":
     HRAeventList = loadHRAfromH5(os.path.join(numpy_folder, 'HRAeventList.h5'))
     ic(f"Loaded {len(HRAeventList)} events.")
 
-    all_pairs = [[17, 13], [15, 18], [30, 19], [18, 14]], [[17, 113], [15, 118], [30, 119], [18, 114]]
+    # all_pairs = [[17, 13], [15, 18], [30, 19], [18, 14]], [[17, 113], [15, 118], [30, 119], [18, 114]]
+    all_pairs = [ [17, 113], [17, 13] ]
 
 
     weight_key = '2_coincidence_wrefl'
