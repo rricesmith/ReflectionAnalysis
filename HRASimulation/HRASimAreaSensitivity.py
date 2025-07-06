@@ -28,7 +28,7 @@ from scipy import constants
 from NuRadioReco.framework.parameters import stationParameters as stnp
 from NuRadioReco.framework.parameters import eventParameters as evtp
 from NuRadioReco.framework.parameters import showerParameters as shp
-from HRASimulation.HRAAnalysis import HRAevent
+from HRASimulation.HRAAnalysis import HRAeventForAreaSensitivity as HRAevent
 
 from NuRadioReco.detector import detector
 from NuRadioReco.detector import generic_detector

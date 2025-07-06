@@ -49,7 +49,7 @@ class HRAevent:
         if DEBUG:
             ic(self.event_id, self.energy, self.zenith, self.azimuth)
 
-        self.trigger_sigmas = [3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]
+        self.trigger_sigmas = [50, 30, 25, 20, 15, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
         for sigma in self.trigger_sigmas:
             self.weight[sigma] = {}
         self.station_triggers = {}
