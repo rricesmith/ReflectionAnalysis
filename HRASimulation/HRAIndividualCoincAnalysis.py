@@ -132,7 +132,7 @@ def analyze_coincident_pairs(HRAeventList, station_pairs, weight_name, save_fold
 
         bins_zen = np.linspace(0, 90, 46)
         ax1.hist2d(recon_zen1, recon_zen2, bins=bins_zen, weights=weights, cmap=cmap, vmin=vmin_val)
-        ax1.plot([0, 90], [0, 90], 'r--', label='y=x')
+        # ax1.plot([0, 90], [0, 90], 'r--', label='y=x')
         ax1.set_xlabel(f'Station 1 of Pair {type} Zenith [deg]')
         ax1.set_ylabel(f'Station 2 of Pair {type} Zenith [deg]')
         ax1.set_title('Zenith Correlation')
@@ -142,7 +142,7 @@ def analyze_coincident_pairs(HRAeventList, station_pairs, weight_name, save_fold
 
         bins_azi = np.linspace(0, 360, 73)
         ax2.hist2d(recon_azi1, recon_azi2, bins=bins_azi, weights=weights, cmap=cmap, vmin=vmin_val)
-        ax2.plot([0, 360], [0, 360], 'r--', label='y=x')
+        # ax2.plot([0, 360], [0, 360], 'r--', label='y=x')
         ax2.set_xlabel(f'Station 1 of Pair {type} Azimuth [deg]')
         ax2.set_ylabel(f'Station 2 of Pair {type} Azimuth [deg]')
         ax2.set_title('Azimuth Correlation')
