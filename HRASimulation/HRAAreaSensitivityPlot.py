@@ -9,7 +9,6 @@ from scipy.stats import binned_statistic_2d
 # Import the HRAevent class from the provided file
 from HRAEventObjectForAreaSensitivity import HRAevent
 
-# --- MODIFICATION: Expanded station locations to be more general ---
 # Base station locations are used, and IDs > 100 (e.g., 113) map to their base (e.g., 13)
 BASE_STATION_LOCATIONS = {
     13: [1044.4451, -91.337], 14: [610.4495, 867.118], 15: [-530.8272, -749.382],
@@ -26,18 +25,17 @@ def load_hra_events_from_npy(filepath):
 def get_max_trigger_sigma_for_event(event):
     """
     Finds the highest sigma value that triggered for any station in the event.
-    NOTE: This logic is correct. The 'event.trigger_sigmas' list is sorted in
-    descending order, so the first match found is guaranteed to be the maximum.
     """
     for sigma in event.trigger_sigmas:
         if event.station_triggers.get(sigma):
             return sigma
-    return 0 # Return 0 if no triggers were found
+    return 0
 
-def plot_sigma_sensitivity(event_list, station_ids, savename):
+# --- MODIFICATION: Updated function signature and plotting logic ---
+def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=4):
     """
     Generates and saves a 2D histogram showing the highest trigger sigma
-    for each x-y core position.
+    for each x-y core position, with a configurable minimum plotting value.
     """
     if not event_list.any():
         ic(f"Event list for {savename} is empty. Skipping.")
@@ -45,7 +43,6 @@ def plot_sigma_sensitivity(event_list, station_ids, savename):
 
     # 1. Extract data from event list
     x_coords, y_coords, sigmas = [], [], []
-
     for event in event_list:
         x, y = event.getCoreasPosition()
         max_sigma = get_max_trigger_sigma_for_event(event)
@@ -63,34 +60,38 @@ def plot_sigma_sensitivity(event_list, station_ids, savename):
     stat, x_edge, y_edge, _ = binned_statistic_2d(
         x_coords, y_coords, values=sigmas, statistic='max', bins=bins
     )
-    stat = np.nan_to_num(stat.T)
+    # Prepare data for plotting: Use a float copy
+    stat_plot = np.nan_to_num(stat.T).astype(float)
+    # Set 0 values to NaN, so they can be colored white with `set_bad`
+    stat_plot[stat_plot == 0] = np.nan
 
     # 3. Plotting
     fig, ax = plt.subplots(figsize=(10, 8))
 
-    # --- MODIFICATION: Set cmap, vmin/vmax, and color for zero values ---
-    cmap = plt.get_cmap('gist_rainbow')
-    cmap.set_under('white') # Sets values below vmin (i.e., 0) to white
+    # --- MODIFICATION: Revert to default cmap and set new color rules ---
+    cmap = plt.get_cmap('viridis')  # Revert to default cmap
+    cmap.set_bad('white')           # Colors NaN values (originally 0) to white
+    cmap.set_under('black')         # Colors values below vmin to black
 
-    im = ax.pcolormesh(x_edge, y_edge, stat, shading='auto', cmap=cmap, vmin=1, vmax=50)
-    cbar = fig.colorbar(im, ax=ax)
+    im = ax.pcolormesh(x_edge, y_edge, stat_plot, shading='auto', cmap=cmap, vmin=vmin_plot, vmax=50)
+    cbar = fig.colorbar(im, ax=ax, extend='min') # Use extend to show 'under' color
     cbar.set_label('Highest Triggering Sigma', fontsize=12)
 
     ax.set_aspect('equal')
     ax.set_xlabel('Core Position X [m]', fontsize=12)
     ax.set_ylabel('Core Position Y [m]', fontsize=12)
-    ax.set_title(f'Trigger Sensitivity Map\nFile: {os.path.basename(savename)}', fontsize=14)
+    ax.set_title(f'Trigger Sensitivity Map (Min Sigma: {vmin_plot})\nFile: {os.path.basename(savename)}', fontsize=14)
     ax.grid(True, linestyle='--', alpha=0.6)
 
-    # --- MODIFICATION: Dynamic station plotting with unique colors ---
-    station_colors = ['blue', 'green', 'purple', 'orange'] # Add more colors if needed
+    # Dynamic station plotting with unique colors
+    station_colors = ['blue', 'green', 'purple', 'orange']
     for i, st_id in enumerate(station_ids):
-        base_id = st_id % 100  # Gets the base ID (e.g., 113 -> 13)
+        base_id = st_id % 100
         pos = BASE_STATION_LOCATIONS.get(base_id)
         if pos:
             ax.plot(pos[0], pos[1], marker='^', markersize=12,
                     color=station_colors[i % len(station_colors)],
-                    markeredgecolor='k', # Black edge for visibility
+                    markeredgecolor='k',
                     label=f'Station {st_id}')
 
     # 4. Add text and arrow overlays
@@ -103,7 +104,6 @@ def plot_sigma_sensitivity(event_list, station_ids, savename):
     azi_rad = np.deg2rad(azimuth_deg)
     arrow_dx = np.sin(azi_rad)
     arrow_dy = np.cos(azi_rad)
-
     ax.arrow(0.95, 0.95, -0.08 * arrow_dx, -0.08 * arrow_dy,
              transform=ax.transAxes,
              width=0.01, head_width=0.03, head_length=0.04,
