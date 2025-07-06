@@ -5,6 +5,7 @@ import configparser
 from icecream import ic
 import glob
 from scipy.stats import binned_statistic_2d
+from HRASimulation.HRAEventObjectForAreaSensitivity import HRAevent
 
 # Assuming HRAEventObject is available, which was used to create the .npy files.
 # We'll re-define a minimal version here for clarity on what attributes are used.
