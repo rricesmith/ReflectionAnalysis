@@ -5,6 +5,10 @@ import configparser
 from icecream import ic
 import glob
 from scipy.stats import binned_statistic_2d
+# --- MODIFICATION: Import LogNorm for color scaling and Rectangle for plotting ---
+from matplotlib.colors import LogNorm
+from matplotlib.patches import Rectangle
+
 
 # Import the HRAevent class from the provided file
 from HRAEventObjectForAreaSensitivity import HRAevent
@@ -31,8 +35,7 @@ def get_max_trigger_sigma_for_event(event):
             return sigma
     return 0
 
-# --- MODIFICATION: Updated function signature and plotting logic ---
-def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=4):
+def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=1):
     """
     Generates and saves a 2D histogram showing the highest trigger sigma
     for each x-y core position, with a configurable minimum plotting value.
@@ -60,22 +63,34 @@ def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=4):
     stat, x_edge, y_edge, _ = binned_statistic_2d(
         x_coords, y_coords, values=sigmas, statistic='max', bins=bins
     )
-    # Prepare data for plotting: Use a float copy
     stat_plot = np.nan_to_num(stat.T).astype(float)
-    # Set 0 values to NaN, so they can be colored white with `set_bad`
-    stat_plot[stat_plot == 0] = np.nan
 
     # 3. Plotting
     fig, ax = plt.subplots(figsize=(10, 8))
 
-    # --- MODIFICATION: Revert to default cmap and set new color rules ---
-    cmap = plt.get_cmap('viridis')  # Revert to default cmap
-    cmap.set_bad('white')           # Colors NaN values (originally 0) to white
-    cmap.set_under('black')         # Colors values below vmin to black
+    # --- MODIFICATION: Setup for log scale and custom 'under' value display ---
+    cmap = plt.get_cmap('viridis')
+    cmap.set_bad('white')      # Sets color for NaN values (where sigma was 0)
+    cmap.set_under('none')     # Makes cells with sigma < vmin_plot transparent
 
-    im = ax.pcolormesh(x_edge, y_edge, stat_plot, shading='auto', cmap=cmap, vmin=vmin_plot, vmax=50)
-    cbar = fig.colorbar(im, ax=ax, extend='min') # Use extend to show 'under' color
-    cbar.set_label('Highest Triggering Sigma', fontsize=12)
+    # Set data with sigma=0 to NaN to be colored white by set_bad()
+    plot_data = stat_plot.copy()
+    plot_data[plot_data == 0] = np.nan
+
+    # Create the logarithmic color normalization
+    norm = LogNorm(vmin=vmin_plot, vmax=50)
+
+    im = ax.pcolormesh(x_edge, y_edge, plot_data, shading='auto', cmap=cmap, norm=norm)
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label('Highest Triggering Sigma (Log Scale)', fontsize=12)
+
+    # --- MODIFICATION: Add hollow rectangles for values below vmin_plot ---
+    below_vmin_mask = (stat_plot > 0) & (stat_plot < vmin_plot)
+    if np.any(below_vmin_mask):
+        for i, j in zip(*np.where(below_vmin_mask)):
+            y, x = y_edge[i], x_edge[j]
+            height, width = y_edge[i+1] - y, x_edge[j+1] - x
+            ax.add_patch(Rectangle((x, y), width, height, fill=False, edgecolor='gray', lw=0.5))
 
     ax.set_aspect('equal')
     ax.set_xlabel('Core Position X [m]', fontsize=12)
@@ -83,16 +98,14 @@ def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=4):
     ax.set_title(f'Trigger Sensitivity Map (Min Sigma: {vmin_plot})\nFile: {os.path.basename(savename)}', fontsize=14)
     ax.grid(True, linestyle='--', alpha=0.6)
 
-    # Dynamic station plotting with unique colors
+    # Dynamic station plotting
     station_colors = ['blue', 'green', 'purple', 'orange']
     for i, st_id in enumerate(station_ids):
-        base_id = st_id % 100
-        pos = BASE_STATION_LOCATIONS.get(base_id)
+        pos = BASE_STATION_LOCATIONS.get(st_id % 100)
         if pos:
             ax.plot(pos[0], pos[1], marker='^', markersize=12,
                     color=station_colors[i % len(station_colors)],
-                    markeredgecolor='k',
-                    label=f'Station {st_id}')
+                    markeredgecolor='k', label=f'Station {st_id}')
 
     # 4. Add text and arrow overlays
     info_text = (f'Energy: {energy_eV:.2e} eV\n'
@@ -102,8 +115,7 @@ def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=4):
             verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', fc='wheat', alpha=0.8))
 
     azi_rad = np.deg2rad(azimuth_deg)
-    arrow_dx = np.sin(azi_rad)
-    arrow_dy = np.cos(azi_rad)
+    arrow_dx, arrow_dy = np.sin(azi_rad), np.cos(azi_rad)
     ax.arrow(0.95, 0.95, -0.08 * arrow_dx, -0.08 * arrow_dy,
              transform=ax.transAxes,
              width=0.01, head_width=0.03, head_length=0.04,
@@ -111,7 +123,6 @@ def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=4):
 
     ax.legend(loc='lower right')
     plt.tight_layout()
-
     plt.savefig(savename)
     ic(f"Saved sensitivity map to {savename}")
     plt.close(fig)
