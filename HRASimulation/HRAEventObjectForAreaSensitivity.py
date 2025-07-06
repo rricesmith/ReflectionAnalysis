@@ -87,7 +87,7 @@ class HRAevent:
             traces = []
             for chId, channel in enumerate(station.iter_channels(use_channels=LPDA_channels)):
                 traces.append(channel.get_trace())
-            self.SNR[station.get_id()] = calcSNR(traces, Vrms)
+            # self.SNR[station.get_id()] = calcSNR(traces, Vrms)
             
             
 
