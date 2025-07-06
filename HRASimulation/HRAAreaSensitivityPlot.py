@@ -109,7 +109,7 @@ if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read('HRASimulation/config.ini') 
     
-    sim_folder = config['FOLDERS']['numpy_folder']
+    sim_folder = config['FOLDERS']['area_sim_folder']
     save_folder = config['FOLDERS']['save_folder']
     
     sensitivity_save_folder = os.path.join(save_folder, 'SensitivityAnalysis/')
