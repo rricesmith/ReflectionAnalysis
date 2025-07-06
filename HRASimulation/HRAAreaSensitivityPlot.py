@@ -150,4 +150,12 @@ if __name__ == "__main__":
         savename_2 = os.path.join(sensitivity_save_folder, f'SensitivityMap_{basename}_stns17_113.png')
         plot_sigma_sensitivity(HRAeventList, BL_RCR_stations, savename_2)
 
+        savename_3 = os.path.join(sensitivity_save_folder, f'SensitivityMap_{basename}_stns13.png')
+        plot_sigma_sensitivity(HRAeventList, [13], savename_3)
+        savename_4 = os.path.join(sensitivity_save_folder, f'SensitivityMap_{basename}_stns17.png')
+        plot_sigma_sensitivity(HRAeventList, [17], savename_4)
+        savename_5 = os.path.join(sensitivity_save_folder, f'SensitivityMap_{basename}_stns113.png')
+        plot_sigma_sensitivity(HRAeventList, [113], savename_5)
+
+
     ic("All files processed.")
