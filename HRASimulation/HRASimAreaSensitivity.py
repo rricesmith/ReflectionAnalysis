@@ -191,8 +191,8 @@ def run_stations(stations_list, mode='by_depth'):
                 # --- END OF NEW TRIGGER LOGIC ---
 
             ic(f'{station_id} Triggered {station.has_triggered()}')
-            if station.has_triggered():
-                ic(f'{station_id} highest sigma was {station.get_parameter("highest_trigger_sigma")}')
+            # if station.has_triggered():
+            #     ic(f'{station_id} highest sigma was {station.get_parameter("highest_trigger_sigma")}')
 
         # Save every event for rate calculation
         eventWriter.run(evt)
