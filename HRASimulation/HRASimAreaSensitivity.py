@@ -182,7 +182,7 @@ def run_stations(stations_list, mode='by_depth'):
                     if station.get_trigger(trigger_name).has_triggered():
 
                         # Run post-trigger analysis modules
-                        triggerTimeAdjuster.run(evt, station, det, trigger_name=trigger_name)
+                        triggerTimeAdjuster.run(evt, station, det)
                         channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
                         # correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0 * units.deg, 180 * units.deg], channel_pairs=((primary_LPDA_channels[0], primary_LPDA_channels[2]), (primary_LPDA_channels[1], primary_LPDA_channels[3])))
 

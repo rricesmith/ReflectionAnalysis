@@ -25,6 +25,7 @@ max_file = 1000     #For MB up to 4000, 1000 is reduced/broad for MB
 num_sims = int(n_cores/2)   # How many simulations to break up into
 if num_sims < 50:
     num_sims = 50
+num_sims = 50 # Override for testing
 
 file_range = np.linspace(min_file, max_file, num_sims)
 
