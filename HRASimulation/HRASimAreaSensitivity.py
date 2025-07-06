@@ -179,15 +179,15 @@ def run_stations(stations_list, mode='by_depth'):
                                          trigger_name=trigger_name)
 
                     # If it triggered, this is the highest sigma. Record it and stop trying lower values.
-                    if station.get_trigger(trigger_name).has_triggered():
+                if station.has_triggered():
 
-                        # Run post-trigger analysis modules
-                        triggerTimeAdjuster.run(evt, station, det)
-                        channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
+                    # Run post-trigger analysis modules
+                    triggerTimeAdjuster.run(evt, station, det)
+                    channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
                         # correlationDirectionFitter.run(evt, station, det, n_index=1.35, ZenLim=[0 * units.deg, 180 * units.deg], channel_pairs=((primary_LPDA_channels[0], primary_LPDA_channels[2]), (primary_LPDA_channels[1], primary_LPDA_channels[3])))
 
                         # Break the loop since we found the highest sigma that triggered
-                        break
+                        # break
                 # --- END OF NEW TRIGGER LOGIC ---
 
             ic(f'{station_id} Triggered {station.has_triggered()}')
