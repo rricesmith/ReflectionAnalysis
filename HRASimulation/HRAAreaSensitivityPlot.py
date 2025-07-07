@@ -35,7 +35,7 @@ def get_max_trigger_sigma_for_event(event):
             return sigma
     return 0
 
-def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=1):
+def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=4):
     """
     Generates and saves a 2D histogram showing the highest trigger sigma
     for each x-y core position, with a configurable minimum plotting value.
