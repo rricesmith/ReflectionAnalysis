@@ -46,7 +46,7 @@ def get_sigma_for_event(event, station_ids):
 
     # Return the average of the collected max sigmas
     station_max_sigmas = np.array(station_max_sigmas)
-    if np.any(station_max_sigmas = 0):
+    if np.any(station_max_sigmas == 0):
         # If one of the stations of multiple doesn't trigger, don't plot
         return 0
     elif station_max_sigmas:
