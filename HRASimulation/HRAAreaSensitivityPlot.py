@@ -125,7 +125,7 @@ def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=4):
             verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', fc='wheat', alpha=0.8))
 
     azi_rad = np.deg2rad(azimuth_deg)
-    arrow_dx, arrow_dy = np.cos(azi_rad), np.sin(azi_rad)
+    arrow_dx, arrow_dy = -np.cos(azi_rad), -np.sin(azi_rad)
     ax.arrow(0.85, 0.85, -0.08 * arrow_dx, -0.08 * arrow_dy,
              transform=ax.transAxes,
              width=0.01, head_width=0.03, head_length=0.04,
