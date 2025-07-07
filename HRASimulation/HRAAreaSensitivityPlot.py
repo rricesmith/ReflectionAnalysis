@@ -44,13 +44,15 @@ def get_sigma_for_event(event, station_ids):
                 break  # Stop once the highest sigma for this station is found
         station_max_sigmas.append(max_sigma_for_station)
 
+    # If at least one station didn't trigger, it will have a max sigma of 0
+    for sig in station_max_sigmas:
+        if sig == 0:
+            return 0
     # Return the average of the collected max sigmas
-    station_max_sigmas = np.array(station_max_sigmas)
-    if np.any(station_max_sigmas == 0):
-        # If one of the stations of multiple doesn't trigger, don't plot
-        return 0
-    else:
+    if station_max_sigmas:
         return np.mean(station_max_sigmas)
+    else:
+        return 0
 
 def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=3):
     """
