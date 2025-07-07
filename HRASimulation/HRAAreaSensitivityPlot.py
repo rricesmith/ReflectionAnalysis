@@ -25,30 +25,40 @@ def load_hra_events_from_npy(filepath):
     return np.load(filepath, allow_pickle=True)
 
 # --- MODIFICATION: This function now calculates the value based on specified stations ---
-def get_sigma_for_event(event, station_ids):
-    """
-    For each station in station_ids, find its highest trigger sigma.
-    Then, return the average of these highest sigmas.
-    """
-    if not station_ids:
-        return 0
+# def get_sigma_for_event(event, station_ids):
+#     """
+#     For each station in station_ids, find its highest trigger sigma.
+#     Then, return the average of these highest sigmas.
+#     """
+#     if not station_ids:
+#         return 0
 
-    station_max_sigmas = []
-    for stn_id in station_ids:
-        max_sigma_for_station = 0
-        # event.trigger_sigmas is sorted descending, so the first match is the highest
-        for sigma in event.trigger_sigmas:
-            # Check if the station ID is in the list of triggers for that sigma
-            if stn_id in event.station_triggers.get(sigma, []):
-                max_sigma_for_station = sigma
-                break  # Stop once the highest sigma for this station is found
-        station_max_sigmas.append(max_sigma_for_station)
+#     station_max_sigmas = []
+#     for stn_id in station_ids:
+#         max_sigma_for_station = 0
+#         # event.trigger_sigmas is sorted descending, so the first match is the highest
+#         for sigma in event.trigger_sigmas:
+#             # Check if the station ID is in the list of triggers for that sigma
+#             if stn_id in event.station_triggers.get(sigma, []):
+#                 max_sigma_for_station = sigma
+#                 break  # Stop once the highest sigma for this station is found
+#         station_max_sigmas.append(max_sigma_for_station)
 
-    # Return the average of the collected max sigmas
-    if station_max_sigmas:
-        return np.mean(station_max_sigmas)
-    else:
-        return 0
+#     # Return the average of the collected max sigmas
+#     if station_max_sigmas:
+#         return np.mean(station_max_sigmas)
+#     else:
+#         return 0
+
+# TESTING BELOW
+def get_sigma_for_event(event):
+    """
+    Finds the highest sigma value that triggered for any station in the event.
+    """
+    for sigma in event.trigger_sigmas:
+        if event.station_triggers.get(sigma):
+            return sigma
+    return 0
 
 
 def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=3):
