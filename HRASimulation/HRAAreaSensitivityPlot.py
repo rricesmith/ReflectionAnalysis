@@ -51,7 +51,7 @@ def load_hra_events_from_npy(filepath):
 #         return 0
 
 # TESTING BELOW
-def get_sigma_for_event(event):
+def get_sigma_for_event(event, station_ids):
     """
     Finds the highest sigma value that triggered for any station in the event.
     """
