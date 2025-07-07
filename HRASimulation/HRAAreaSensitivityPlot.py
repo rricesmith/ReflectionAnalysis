@@ -49,10 +49,8 @@ def get_sigma_for_event(event, station_ids):
     if np.any(station_max_sigmas == 0):
         # If one of the stations of multiple doesn't trigger, don't plot
         return 0
-    elif station_max_sigmas:
-        return np.mean(station_max_sigmas)
     else:
-        return 0
+        return np.mean(station_max_sigmas)
 
 def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=3):
     """
