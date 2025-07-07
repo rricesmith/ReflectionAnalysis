@@ -45,12 +45,16 @@ def get_sigma_for_event(event, station_ids):
         station_max_sigmas.append(max_sigma_for_station)
 
     # Return the average of the collected max sigmas
-    if station_max_sigmas:
+    max_station_sigmas = np.array(station_max_sigmas)
+    if np.any(max_station_sigmas = 0):
+        # If one of the stations of multiple doesn't trigger, don't plot
+        return 0
+    elif station_max_sigmas:
         return np.mean(station_max_sigmas)
     else:
         return 0
 
-def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=4):
+def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=3):
     """
     Generates and saves a 2D histogram showing the calculated sigma value
     for each x-y core position, with a configurable minimum plotting value.
