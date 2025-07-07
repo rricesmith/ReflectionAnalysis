@@ -50,7 +50,7 @@ def get_sigma_for_event(event, station_ids):
     else:
         return 0
 
-def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=1):
+def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=4):
     """
     Generates and saves a 2D histogram showing the calculated sigma value
     for each x-y core position, with a configurable minimum plotting value.
