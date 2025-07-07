@@ -44,15 +44,14 @@ def get_sigma_for_event(event, station_ids):
                 break  # Stop once the highest sigma for this station is found
         station_max_sigmas.append(max_sigma_for_station)
 
-    # If at least one station didn't trigger, it will have a max sigma of 0
-    for sig in station_max_sigmas:
-        if sig == 0:
-            return 0
-    # Return the average of the collected max sigmas
-    if station_max_sigmas:
-        return np.mean(station_max_sigmas)
-    else:
+    # For multi-station analysis, require all stations to trigger
+    if len(station_ids) > 1 and 0 in station_max_sigmas:
         return 0
+    
+    # For a single station, or pairs where all stations triggered, return the mean.
+    # Note: for a single station, the mean of a single value is the value itself.
+    return np.mean(station_max_sigmas) if station_max_sigmas else 0
+
 
 def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=3):
     """
