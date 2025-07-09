@@ -10,7 +10,8 @@ config.read('HRASimulation/config.ini')
 sim_folder = config['FOLDERS']['area_sim_folder']
 
 
-n_cores = 1000   #Decenty sensitivity to RCRs, so don't overdo
+# n_cores = 1000   #Decenty sensitivity to RCRs, so don't overdo
+n_cores = 10000   #Doing for area sensitivity, so can do more cores b/c only 1 footprint each
 distance = 12 #km, diameter of throws. 5km has triggers at edges still, so can go farther out
 add_noise = False
 # date_sim = '2.25.25'
@@ -26,7 +27,7 @@ max_file = 1000     #For MB up to 4000, 1000 is reduced/broad for MB
 num_sims = int(n_cores/2)   # How many simulations to break up into
 if num_sims < 50:
     num_sims = 50
-num_sims = 50 # Override for testing
+num_sims = 100 # Override for testing
 
 file_range = np.linspace(min_file, max_file, num_sims)
 
