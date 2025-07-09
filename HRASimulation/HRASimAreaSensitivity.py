@@ -63,6 +63,9 @@ ic(f'Simulation parameters are: {output_filename}, {n_cores}, {min_file}, {max_f
 # Get files for simulation
 input_files = pullFilesForSimulation('MB', min_file, max_file)
 # Select a single file for simple testing
+if len(input_files) == 0:
+    ic('No input files found, exiting')
+    exit(1)
 input_files = [input_files[0]]  # For testing, use only the first file
 
 # Setup detector
