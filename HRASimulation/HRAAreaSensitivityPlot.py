@@ -26,13 +26,16 @@ def load_hra_events_from_npy(filepath):
     """
     return np.load(filepath, allow_pickle=True)
 
-def get_max_trigger_sigma_for_event(event):
+def get_max_trigger_sigma_for_event(event, station_ids):
     """
     Finds the highest sigma value that triggered for any station in the event.
     """
+    station_set = set(station_ids)
     for sigma in event.trigger_sigmas:
-        if event.station_triggers.get(sigma):
-            return sigma
+        sigma_set = set(event.station_triggers[sigma])
+        if station_set.issubset(sigma_set):
+            return sigma  # Return the first sigma that includes all stations
+    # If one of the stations never triggered, return 0
     return 0
 
 def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=4):
@@ -48,7 +51,7 @@ def plot_sigma_sensitivity(event_list, station_ids, savename, vmin_plot=4):
     x_coords, y_coords, sigmas = [], [], []
     for event in event_list:
         x, y = event.getCoreasPosition()
-        max_sigma = get_max_trigger_sigma_for_event(event)
+        max_sigma = get_max_trigger_sigma_for_event(event, station_ids)
         x_coords.append(x)
         y_coords.append(y)
         sigmas.append(max_sigma)
