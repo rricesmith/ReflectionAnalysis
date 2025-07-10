@@ -1,5 +1,6 @@
 from NuRadioReco.utilities import units
-import NuRadioReco.modules.io.coreas.readCoREAS
+# import NuRadioReco.modules.io.coreas.readCoREAS
+import readCoREASStationGrid
 import NuRadioReco.modules.io.coreas.simulationSelector
 import NuRadioReco.modules.efieldToVoltageConverter
 import NuRadioReco.modules.channelGenericNoiseAdder
@@ -147,8 +148,9 @@ direct_LPDA_channels = [4, 5, 6]
 
 # initialize all modules that are needed for processing
 # provide input parameters that are to remain constant during processung
-readCoREAS = NuRadioReco.modules.io.coreas.readCoREAS.readCoREAS()
-readCoREAS.begin(input_files, station_id, n_cores=n_cores, max_distance=2*units.km)
+readCoREAS = readCoREASStationGrid.readCoREAS()
+distance = 2 * units.km
+readCoREAS.begin(input_files, -(distance)/2, (distance)/2, -(distance)/2, (distance)/2, n_cores=n_cores, shape='radial', seed=None, log_level=logging.WARNING)
 
 simulationSelector = NuRadioReco.modules.io.coreas.simulationSelector.simulationSelector()
 simulationSelector.begin()
