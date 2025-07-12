@@ -196,6 +196,7 @@ if __name__ == '__main__':
     #    Times should be in UTC. Use datetime(year, month, day, hour, minute, second, microsecond)
     SEARCH_TIMES_UTC = [
         datetime(2015, 12, 21, 21, 46, 11),
+        datetime(2017, 2, 16, 19, 9, 51)
     ]
 
     # 3. Set the coincidence window in seconds.
