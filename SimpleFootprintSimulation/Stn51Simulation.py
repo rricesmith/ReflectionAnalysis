@@ -27,6 +27,9 @@ from scipy import constants
 from NuRadioReco.detector import detector
 from NuRadioReco.detector import generic_detector
 
+from SimpleFootprintSimulation.modifyEfieldForSurfaceReflection import modifyEfieldForSurfaceReflection
+from NuRadioReco.framework.parameters import showerParameters as shp
+
 import logging
 logger=logging.getLogger("module")
 logger.setLevel(logging.WARNING)
@@ -196,6 +199,18 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
 
     eventTypeIdentifier.run(evt, station, mode='forced', forced_event_type='cosmic_ray')
     # channelAddCableDelay.run(evt, station, det, mode='add')   # Not sure if necessary
+
+    sim_shower = evt.get_sim_shower(0)
+    zenith = sim_shower[shp.zenith]/units.rad
+
+    new_efields = []
+    for efield in station.get_electric_fields_for_channels(direct_LPDA_channels):
+        # modify the Efield for surface reflection
+        new_efields.append(modifyEfieldForSurfaceReflection(efield, incoming_zenith=zenith, antenna_height=1*units.m, n_index=1.35))
+
+    for iC, ch in enumerate(direct_LPDA_channels):
+        station.set_electric_field(new_efields[iC], ch)
+
     efieldToVoltageConverter.run(evt, station, det)
     channelResampler.run(evt, station, det, 1*units.GHz)
 

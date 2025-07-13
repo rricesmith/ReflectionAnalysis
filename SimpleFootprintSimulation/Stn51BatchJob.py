@@ -7,7 +7,7 @@ n_cores = 1000
 num_icetop = 30
 amp = True
 add_noise = True
-output_folder = 'SimpleFootprintSimulation/output/1.23.25/'
+output_folder = 'SimpleFootprintSimulation/output/7.13.25/'
 output_filename = 'Stn51_IceTop'
 
 # Make directory if it doesn't exist
