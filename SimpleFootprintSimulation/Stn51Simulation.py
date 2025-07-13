@@ -204,12 +204,13 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
     zenith = sim_shower[shp.zenith]/units.rad
 
     new_efields = []
-    for efield in station.get_electric_fields_for_channels(direct_LPDA_channels):
+    efields = station.get_electric_fields()
+    for efield in efields:
         # modify the Efield for surface reflection
+        # Doing this for backlobe antennas to. Needs to be removed in the future if backlobe signals wish to be looked at
         new_efields.append(modifyEfieldForSurfaceReflection(efield, incoming_zenith=zenith, antenna_height=1*units.m, n_index=1.35))
 
-    for iC, ch in enumerate(direct_LPDA_channels):
-        station.set_electric_field(new_efields[iC], ch)
+    station.set_electric_fields(new_efields)
 
     efieldToVoltageConverter.run(evt, station, det)
     channelResampler.run(evt, station, det, 1*units.GHz)
