@@ -3,8 +3,8 @@ import numpy as np
 from pathlib import Path
 
 
-n_cores = 1000
-num_icetop = 30
+n_cores = 10 #1000
+num_icetop = 10 #30
 amp = True
 add_noise = True
 output_folder = 'SimpleFootprintSimulation/output/7.13.25/'
