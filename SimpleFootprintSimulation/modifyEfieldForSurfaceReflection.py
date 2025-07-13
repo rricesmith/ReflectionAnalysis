@@ -1,10 +1,9 @@
 from NuRadioReco.utilities import units
 from NuRadioReco.utilities.geometryUtilities import get_fresnel_r_p, get_fresnel_r_s
 import numpy as np
-from NuRadioReco.utilities.constants import c
 
-
-
+from scipy import constants as scipy_constants
+c = scipy_constants.c * units.m / units.s
 
 
 def modifyEfieldForSurfaceReflection(Efield, incoming_zenith, antenna_height=1*units.m, n_index=1.35):
