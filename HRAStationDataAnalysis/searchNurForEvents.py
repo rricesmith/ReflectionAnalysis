@@ -54,10 +54,7 @@ def find_nur_file_for_run(station_id, run_number):
 
     for file_path in all_nur_files:
         # Check for patterns like /101/, _101_, run101, R101
-        if (f"/{search_pattern}/" in file_path or
-            f"_{search_pattern}_" in file_path or
-            f"run{search_pattern}" in os.path.basename(file_path) or
-            f"R{search_pattern}" in os.path.basename(file_path)):
+        if f"{search_pattern}" in file_path:
             ic(f"Found matching file for run {search_pattern}: {file_path}")
             return file_path
             
