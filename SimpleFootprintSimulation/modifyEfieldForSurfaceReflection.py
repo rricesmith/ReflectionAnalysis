@@ -45,7 +45,7 @@ def modifyEfieldForSurfaceReflection(Efield, incoming_zenith, antenna_height=1*u
     modified_traces = np.array([ef_trace_0, ef_trace_p, ef_trace_s])
 
     # Update the Efield object by adding modified traces to base traces
-    Efield.set_trace(Efield.get_traces() + modified_traces, Efield.get_sampling_rate())
+    Efield.set_trace(Efield.get_trace() + modified_traces, Efield.get_sampling_rate())
 
     return Efield
 
