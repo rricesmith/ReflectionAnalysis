@@ -200,7 +200,7 @@ if __name__ == "__main__":
     }
 
     # 2. Set the name for the output log file and the time search window in seconds.
-    output_log_file = "HRADataAnalysis/specific_event_details.txt"
+    output_log_file = "HRAStationDataAnalysis/specific_event_details.txt"
     time_search_window_seconds = 4.0
 
     # 3. Run the search function.
