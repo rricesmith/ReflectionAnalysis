@@ -37,6 +37,8 @@ saveTrace = np.zeros((max, len(save_channels), 256))
 n=0
 for i, evt in enumerate(template.get_events()):
     station = evt.get_station(station_id)
+    if not station.has_triggered():
+        continue
     if not station.has_triggered(trigger_name):
         continue
     channelLengthAdjuster.run(evt, station)
