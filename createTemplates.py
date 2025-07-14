@@ -70,7 +70,7 @@ if True:
         # Plot the noise
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(len(save_channels), 1, figsize=(20, 10), sharex=True, sharey=True)
-        for ch in range(save_channels):
+        for ch in range(len(save_channels)):
             ax[ch].plot(saveTrace[n][ch])
             ax[ch].set_title(f'Channel {ch}')
             ax[ch].set_ylabel('Amplitude (V)')
