@@ -19,7 +19,7 @@ import numpy as np
 
 # Modified this file to create and make plots of templates for use
 # Just modify the lines below to change the file and save name
-file = 'SimpleFootprintSimulation/output/7.13.25/Stn51_IceTop_18.0-18.1eV_0.2sin2_10cores.nur'
+file = 'SimpleFootprintSimulation/output/7.13.25/Stn51_IceTop_18.1-18.2eV_0.9sin2_10cores.nur'
 savename = 'Tingwei_Stn51'
 trigger_name = 'direct_LPDA_3of3_3.5sigma'
 save_channels = [4, 5, 6]
