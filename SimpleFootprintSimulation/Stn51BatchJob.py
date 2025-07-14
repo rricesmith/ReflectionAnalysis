@@ -6,7 +6,7 @@ from pathlib import Path
 n_cores = 10 #1000
 num_icetop = 10 #30
 amp = True
-add_noise = True
+add_noise = False
 output_folder = 'SimpleFootprintSimulation/output/7.13.25/'
 output_filename = 'Stn51_IceTop'
 
