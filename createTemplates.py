@@ -2,6 +2,8 @@ from NuRadioReco.modules.io import NuRadioRecoio
 from icecream import ic
 from NuRadioReco.modules.channelLengthAdjuster import channelLengthAdjuster
 import numpy as np
+from NuRadioReco.framework.parameters import showerParameters as shp
+from NuRadioReco.utilities import units
 
 # file = 'NeutrinoAnalysis/output/MJob/400/SP/MJob_SP_Allsigma_1e+20_n10000.0.nur'
 # savename = 'data/AndrewFPGA_Neutrino.npy'
@@ -33,9 +35,14 @@ channelLengthAdjuster.begin()
 
 max = 100
 saveTrace = np.zeros((max, len(save_channels), 256))
+saveEng = np.zeros((max, ))
+saveAzi = np.zeros((max, ))
+saveZen = np.zeros((max, ))
 
 n=0
 for i, evt in enumerate(template.get_events()):
+    sim_shower = evt.get_sim_shower(0)
+    ic(f'Event parameters are: Eng {sim_shower[shp.energy]/units.eV}eV, Zen {sim_shower[shp.zenith]/units.deg}deg, Azi {sim_shower[shp.azimuth]/units.deg}deg')
     station = evt.get_station(station_id)
     if not station.has_triggered():
         continue
