@@ -37,10 +37,13 @@ if __name__ == '__main__':
                 noise = channelGenericNoiseAdder.bandlimited_noise(min_freq=min_freq, max_freq=max_freq, n_samples=n_samples, sampling_rate=sampling_rate, amplitude=amplitude, type=noise_type, bandwidth=bandwidth)
                 event[i] = noise
 
+
+                # Quick and easy high-low trigger threshold
+
                 # Slide the window across the row
                 # The loop stops when the window would go past the end of the array
-                for j in range(256 - window + 1):
-                    current_window = noise[j : j + window]
+                for k in range(256 - window + 1):
+                    current_window = noise[k : k + window]
 
                     # Check if any value in the window exceeds the positive threshold
                     exceeds_positive = np.any(current_window > thresh)
