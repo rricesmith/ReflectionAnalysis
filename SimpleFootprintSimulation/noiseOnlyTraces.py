@@ -20,7 +20,7 @@ if __name__ == '__main__':
     bandwidth = None
 
     window = 80 # 40 ns
-    thresh = 5 * amplitude
+    thresh = 3.5 * amplitude
 
     n_noise = 5000
     noise_array = np.zeros((n_noise, 4, n_samples))
