@@ -26,7 +26,8 @@ if __name__ == '__main__':
     noise_array = np.zeros((n_noise, 4, n_samples))
 
     for i in range(n_noise):
-        
+        print(f'Starting {i}')
+
         pass_trigger = np.array([False, False, False, False])
         while np.sum(pass_trigger) < 2: 
             event = np.zeros((4, n_samples))
@@ -55,10 +56,11 @@ if __name__ == '__main__':
                     # and break to the next row, as the condition is met.
                     if exceeds_positive and exceeds_negative:
                         pass_trigger[j] = True
+                        break
 
         if i % 100 == 0:
             ic(f'Generated {i} noise traces')
-
+        print(f'Finished {i}')
 
     # Save the noise array
     np.save(f'SimpleFootprintSimulation/output/noise_array_{n_noise}.npy', noise_array)
