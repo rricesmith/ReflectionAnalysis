@@ -12,34 +12,48 @@ if __name__ == '__main__':
     sampling_rate = 2*units.GHz
     n_samples = 256
 
-    min_freq = 50*units.MHz
+    min_freq = 30*units.MHz
     max_freq = 2000*units.MHz
 
     noise_type = 'rayleigh'
-    amplitude = 10*units.mV
+    amplitude = 20*units.mV
     bandwidth = None
 
+    window = 80 # 40 ns
+    thresh = 5 * amplitude
 
-    n_noise = 10
-    noise_array = np.zeros((n_noise, n_samples))
+    n_noise = 5000
+    noise_array = np.zeros((n_noise, 4, n_samples))
 
     for i in range(n_noise):
-        noise = channelGenericNoiseAdder.bandlimited_noise(min_freq=min_freq, max_freq=max_freq, n_samples=n_samples, sampling_rate=sampling_rate, amplitude=amplitude, type=noise_type, bandwidth=bandwidth)
-        ic(noise.shape, noise.dtype, noise[0].shape, noise[0].dtype)
-        ic(noise_array.shape, noise_array.dtype, noise_array[0].shape, noise_array[0].dtype)
-        noise_array[i] = noise
-
-        if True:
-            # Plot the noise
-            import matplotlib.pyplot as plt
-            plt.plot(noise_array[i])
-            plt.title('Noise Trace')
-            plt.xlabel('Sample Number')
-            plt.ylabel('Amplitude (V)')
-            plt.grid()
-            plt.savefig(f'SimpleFootprintSimulation/plots/noise_trace_{i}.png')
-            plt.close()
         
+        pass_trigger = np.array([False, False, False, False])
+        while np.sum(pass_trigger) < 2: 
+            event = np.zeros((4, n_samples))
+            pass_trigger = np.array([False, False, False, False])
+
+
+            for j in range(4):
+                noise = channelGenericNoiseAdder.bandlimited_noise(min_freq=min_freq, max_freq=max_freq, n_samples=n_samples, sampling_rate=sampling_rate, amplitude=amplitude, type=noise_type, bandwidth=bandwidth)
+                event[i] = noise
+
+                # Slide the window across the row
+                # The loop stops when the window would go past the end of the array
+                for j in range(256 - window + 1):
+                    current_window = noise[j : j + window]
+
+                    # Check if any value in the window exceeds the positive threshold
+                    exceeds_positive = np.any(current_window > thresh)
+
+                    # Check if any value in the window is below the negative threshold
+                    exceeds_negative = np.any(current_window < -thresh)
+
+                    # If both conditions are true for this window, mark the row as True
+                    # and break to the next row, as the condition is met.
+                    if exceeds_positive and exceeds_negative:
+                        pass_trigger[i] = True
+
+
 
     # Save the noise array
-    np.save('SimpleFootprintSimulation/output/noise_array.npy', noise_array)
+    np.save(f'SimpleFootprintSimulation/output/noise_array_{n_noise}.npy', noise_array)
