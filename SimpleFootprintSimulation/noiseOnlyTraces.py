@@ -56,6 +56,8 @@ if __name__ == '__main__':
                     if exceeds_positive and exceeds_negative:
                         pass_trigger[i] = True
 
+        if i % 100 == 0:
+            ic(f'Generated {i} noise traces')
 
 
     # Save the noise array
