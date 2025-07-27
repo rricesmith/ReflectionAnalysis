@@ -54,7 +54,7 @@ if __name__ == '__main__':
                     # If both conditions are true for this window, mark the row as True
                     # and break to the next row, as the condition is met.
                     if exceeds_positive and exceeds_negative:
-                        pass_trigger[i] = True
+                        pass_trigger[j] = True
 
         if i % 100 == 0:
             ic(f'Generated {i} noise traces')
