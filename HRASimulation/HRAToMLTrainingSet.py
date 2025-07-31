@@ -32,7 +32,7 @@ def save_trace_batch(trace_list, output_folder, file_prefix, part_number, amp):
     
     return part_number + 1
 
-def multi_station_converter(input_folder, output_folder):
+def multi_station_converter(input_folder, output_folder_BL, output_folder_RCR):
     """
     Loads .nur files, extracts traces from multiple stations, separates them
     into two groups, and saves them in batches to an output folder.
@@ -41,17 +41,28 @@ def multi_station_converter(input_folder, output_folder):
     MAX_EVENTS_PER_FILE = 50000  # Max events per output .npy file
     STATIONS_100S = {13, 15, 18}
     STATIONS_200S = {14, 17, 19, 30}
+    STATION_100s_RCR = {113, 115, 118}
+    STATION_200s_RCR = {114, 117, 119, 130}
     SAVE_CHANNELS = [0, 1, 2, 3]
 
     trigger_name = 'primary_LPDA_2of4_4.5sigma'
 
     # --- Initialization ---
-    os.makedirs(output_folder, exist_ok=True)
-    
+    os.makedirs(output_folder_BL, exist_ok=True)
+    os.makedirs(output_folder_RCR, exist_ok=True)
+    os.makedirs(output_folder_BL + "100s/", exist_ok=True)
+    os.makedirs(output_folder_BL + "200s/", exist_ok=True)
+    os.makedirs(output_folder_RCR + "100s/", exist_ok=True)
+    os.makedirs(output_folder_RCR + "200s/", exist_ok=True)
+
     traces_100s = []
     traces_200s = []
+    traces_100s_RCR = []
+    traces_200s_RCR = []
     part_100s = 0
     part_200s = 0
+    part_100s_RCR = 0
+    part_200s_RCR = 0
 
     channel_length_adjuster = cLA.channelLengthAdjuster()
     channel_length_adjuster.begin()
@@ -76,7 +87,7 @@ def multi_station_converter(input_folder, output_folder):
                 station_id = station.get_id()
                 
                 # Check if the station is one we care about
-                if station_id not in STATIONS_100S and station_id not in STATIONS_200S:
+                if station_id not in STATIONS_100S and station_id not in STATIONS_200S and station_id not in STATION_100s_RCR and station_id not in STATION_200s_RCR:
                     continue
 
                 if station.has_trigger(trigger_name): 
@@ -94,23 +105,38 @@ def multi_station_converter(input_folder, output_folder):
                     if station_id in STATIONS_100S:
                         traces_100s.append(event_traces)
                         if len(traces_100s) >= MAX_EVENTS_PER_FILE:
-                            part_100s = save_trace_batch(traces_100s, output_folder, "all_traces_100s", part_100s, "100s")
+                            part_100s = save_trace_batch(traces_100s, output_folder_BL, "all_traces_100s", part_100s, "100s")
                             traces_100s = []  # Reset for the next batch
                             
                     elif station_id in STATIONS_200S:
                         traces_200s.append(event_traces)
                         if len(traces_200s) >= MAX_EVENTS_PER_FILE:
-                            part_200s = save_trace_batch(traces_200s, output_folder, "all_traces_200s", part_200s, "200s")
+                            part_200s = save_trace_batch(traces_200s, output_folder_BL, "all_traces_200s", part_200s, "200s")
                             traces_200s = []  # Reset for the next batch
+
+                    elif station_id in STATION_100s_RCR:
+                        traces_100s_RCR.append(event_traces)
+                        if len(traces_100s_RCR) >= MAX_EVENTS_PER_FILE:
+                            part_100s_RCR = save_trace_batch(traces_100s_RCR, output_folder_RCR, "all_traces_100s_RCR", part_100s_RCR, "100s")
+                            traces_100s_RCR = []
+
+                    elif station_id in STATION_200s_RCR:
+                        traces_200s_RCR.append(event_traces)
+                        if len(traces_200s_RCR) >= MAX_EVENTS_PER_FILE:
+                            part_200s_RCR = save_trace_batch(traces_200s_RCR, output_folder_RCR, "all_traces_200s_RCR", part_200s_RCR, "200s")
+                            traces_200s_RCR = []
 
     # --- Final Save ---
     ic("\nProcessing complete. Saving any remaining traces...")
-    save_trace_batch(traces_100s, output_folder, "all_traces_100s", part_100s)
-    save_trace_batch(traces_200s, output_folder, "all_traces_200s", part_200s)
+    save_trace_batch(traces_100s, output_folder_BL, "all_traces_100s", part_100s, "100s")
+    save_trace_batch(traces_200s, output_folder_BL, "all_traces_200s", part_200s, "200s")
+    save_trace_batch(traces_100s_RCR, output_folder_RCR, "all_traces_100s_RCR", part_100s_RCR, "100s")
+    save_trace_batch(traces_200s_RCR, output_folder_RCR, "all_traces_200s_RCR", part_200s_RCR, "200s")
     ic("✨ All done.")
 
 if __name__ == "__main__":
     input_folder = "/dfs8/sbarwick_lab/ariannaproject/rricesmi/HRASimulations/3.17.25/"
-    output_folder = "/dfs8/sbarwick_lab/ariannaproject/rricesmi/simulatedRCRs/7.30.25/"
+    output_folder_RCR = "/dfs8/sbarwick_lab/ariannaproject/rricesmi/simulatedRCRs/7.30.25/"
+    output_folder_BL = "/dfs8/sbarwick_lab/ariannaproject/rricesmi/simulatedBacklobe/7.30.25/"
 
-    multi_station_converter(input_folder, output_folder)
+    multi_station_converter(input_folder, output_folder_BL, output_folder_RCR)
