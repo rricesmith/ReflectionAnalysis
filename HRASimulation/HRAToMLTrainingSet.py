@@ -83,8 +83,7 @@ def multi_station_converter(input_folder, output_folder):
                     continue
 
                 event_traces = []
-                channel_length_adjuster.run(evt, station, channel_ids=SAVE_CHANNELS)
-
+                
                 for channel in station.iter_channels(use_channels=SAVE_CHANNELS):
                     trace = channel.get_trace()
                     event_traces.append(trace)
