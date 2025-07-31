@@ -43,6 +43,8 @@ def multi_station_converter(input_folder, output_folder):
     STATIONS_200S = {14, 17, 19, 30}
     SAVE_CHANNELS = [0, 1, 2, 3]
 
+    trigger_name = 'primary_LPDA_2of4_4.5sigma'
+
     # --- Initialization ---
     os.makedirs(output_folder, exist_ok=True)
     
@@ -75,6 +77,9 @@ def multi_station_converter(input_folder, output_folder):
                 
                 # Check if the station is one we care about
                 if station_id not in STATIONS_100S and station_id not in STATIONS_200S:
+                    continue
+
+                if not station.has_triggered(trigger_name=trigger_name):
                     continue
 
                 event_traces = []
