@@ -70,7 +70,7 @@ def multi_station_converter(input_folder, output_folder):
 
         for evt in template.get_events():
             # Iterate through all stations that are present in the current event
-            for station in evt.iter_stations():
+            for station in evt.get_stations():
                 station_id = station.get_id()
                 
                 # Check if the station is one we care about
