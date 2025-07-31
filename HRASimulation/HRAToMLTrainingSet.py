@@ -79,11 +79,12 @@ def multi_station_converter(input_folder, output_folder):
                 if station_id not in STATIONS_100S and station_id not in STATIONS_200S:
                     continue
 
-                if not station.has_triggered(trigger_name=trigger_name):
-                    continue
+                if station.has_trigger(trigger_name): 
+                    if not station.has_triggered(trigger_name=trigger_name):
+                        continue
 
                 event_traces = []
-                
+
                 for channel in station.iter_channels(use_channels=SAVE_CHANNELS):
                     trace = channel.get_trace()
                     event_traces.append(trace)
