@@ -5,7 +5,7 @@ from scipy import signal
 
 # Input and output directories
 input_dir = "/dfs8/sbarwick_lab/ariannaproject/rricesmi/numpy_arrays/station_data/5.20.25/"
-output_dir = "testFiltering/"
+output_dir = os.path.join(input_dir, "testFiltering/")
 
 # Create the output directory if it doesn't exist
 if not os.path.exists(output_dir):
