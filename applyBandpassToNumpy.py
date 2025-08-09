@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from NuRadioReco.utilities import fft, units
+from NuRadioReco.utilities import fft, units, signal_processing
 from scipy import signal
 
 # Input and output directories
@@ -33,24 +33,14 @@ for filename in file_list:
         filtered_event = []
         # Iterate over each channel in the event
         for trace_ch_data_arr in event_data:
-            # Get the frequency spectrum
-            freqs = np.fft.rfftfreq(len(trace_ch_data_arr), d=1/sampling_rate_hz)
-            spectrum = fft.time2freq(trace_ch_data_arr, sampling_rate_hz)
-            
             # Define the butterworth filter parameters
             passband = [50 * units.MHz, 1000 * units.MHz] 
             order = 2
             
-            # Create the butterworth filter
-            b, a = signal.butter(order, passband, btype='band', fs=sampling_rate_hz)
+            # Apply the butterworth filter
+            filtered_trace = signal_processing.butterworth_filter_trace(trace_ch_data_arr, sampling_rate_hz, passband, order)
             
-            # Apply the filter to the frequency spectrum
-            w, h = signal.freqs(b, a, worN=freqs)
-            filtered_spectrum = spectrum * h
-            
-            # Convert the filtered spectrum back to the time domain
-            filtered_trace = fft.freq2time(filtered_spectrum, sampling_rate_hz)
-            filtered_event.append(filtered_trace.real)
+            filtered_event.append(filtered_trace)
             
         filtered_traces.append(filtered_event)
         
