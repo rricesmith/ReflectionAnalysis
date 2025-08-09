@@ -1,7 +1,71 @@
 import os
 import numpy as np
-from NuRadioReco.utilities import fft, units, signal_processing
+from NuRadioReco.utilities import fft, units, 
 from scipy import signal
+
+def apply_butterworth(spectrum, frequencies, passband, order=8):
+    """
+    Calculates the response from a Butterworth filter and applies it to the
+    input spectrum
+
+    Parameters
+    ----------
+    spectrum: array of complex
+        Fourier spectrum to be filtere
+    frequencies: array of floats
+        Frequencies of the input spectrum
+    passband: (float, float) tuple
+        Tuple indicating the cutoff frequencies
+    order: integer
+        Filter order
+
+    Returns
+    -------
+    filtered_spectrum: array of complex
+        The filtered spectrum
+    """
+
+    f = np.zeros_like(frequencies, dtype=complex)
+    mask = frequencies > 0
+    b, a = signal.butter(order, passband, "bandpass", analog=True)
+    w, h = signal.freqs(b, a, frequencies[mask])
+    f[mask] = h
+
+    filtered_spectrum = f * spectrum
+
+    return filtered_spectrum
+
+def butterworth_filter_trace(trace, sampling_frequency, passband, order=8):
+    """
+    Filters a trace using a Butterworth filter.
+
+    Parameters
+    ----------
+    trace: array of floats
+        Trace to be filtered
+    sampling_frequency: float
+        Sampling frequency
+    passband: (float, float) tuple
+        Tuple indicating the cutoff frequencies
+    order: integer
+        Filter order
+
+    Returns
+    -------
+
+    filtered_trace: array of floats
+        The filtered trace
+    """
+
+    n_samples = len(trace)
+
+    spectrum = fft.time2freq(trace, sampling_frequency)
+    frequencies = fft.freqs(n_samples, sampling_frequency)
+
+    filtered_spectrum = apply_butterworth(spectrum, frequencies, passband, order)
+    filtered_trace = fft.freq2time(filtered_spectrum, sampling_frequency)
+
+    return filtered_trace
 
 # Input and output directories
 input_dir = "/dfs8/sbarwick_lab/ariannaproject/rricesmi/numpy_arrays/station_data/5.20.25/"
@@ -38,7 +102,7 @@ for filename in file_list:
             order = 2
             
             # Apply the butterworth filter
-            filtered_trace = signal_processing.butterworth_filter_trace(trace_ch_data_arr, sampling_rate_hz, passband, order)
+            filtered_trace = butterworth_filter_trace(trace_ch_data_arr, sampling_rate_hz, passband, order)
             
             filtered_event.append(filtered_trace)
             
