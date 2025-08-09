@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from NuRadioReco.utilities import fft, units, 
+from NuRadioReco.utilities import fft, units
 from scipy import signal
 
 def apply_butterworth(spectrum, frequencies, passband, order=8):
