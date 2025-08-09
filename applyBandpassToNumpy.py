@@ -61,7 +61,6 @@ def butterworth_filter_trace(trace, sampling_frequency, passband, order=8):
 
     spectrum = fft.time2freq(trace, sampling_frequency)
     frequencies = np.fft.rfftfreq(n_samples, d = 1 / sampling_frequency)
-    frequencies = fft.freqs(n_samples, sampling_frequency)
 
     filtered_spectrum = apply_butterworth(spectrum, frequencies, passband, order)
     filtered_trace = fft.freq2time(filtered_spectrum, sampling_frequency)
