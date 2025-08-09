@@ -15,7 +15,7 @@ if not os.path.exists(output_dir):
 sampling_rate_hz = 2 * units.MHz
 
 # Get a list of all files in the input directory that contain "traces"
-file_list = [f for f in os.listdir(input_dir) if "traces" in f and f.endswith('.npy')]
+file_list = [f for f in os.listdir(input_dir) if "Traces" in f and f.endswith('.npy')]
 
 # Iterate over each file
 for filename in file_list:
