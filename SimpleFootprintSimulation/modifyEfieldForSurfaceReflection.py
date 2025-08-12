@@ -1,6 +1,7 @@
 from NuRadioReco.utilities import units
 from NuRadioReco.utilities.geometryUtilities import get_fresnel_r_p, get_fresnel_r_s
 import numpy as np
+from NuRadioReco.detector import antennapattern
 
 from scipy import constants as scipy_constants
 c = scipy_constants.c * units.m / units.s
@@ -49,3 +50,24 @@ def modifyEfieldForSurfaceReflection(Efield, incoming_zenith, antenna_height=1*u
 
     return Efield
 
+def getVoltageFFTFromEfield(Efield, zenith_antenna, azimuth, det, sim_station, channel_id):
+    
+    antenna_model = det.get_antenna_model(sim_station.get_id(), channel_id, zenith_antenna)
+    antenna_pattern = antennapattern.AntennaPatternProvider().load_antenna_pattern(antenna_model)
+    antenna_orientation = det.get_antenna_orientation(sim_station.get_id(), channel_id)
+
+    ff = Efield.get_frequencies()                                                  
+    Efield_fft = Efield.get_frequency_spectrum()
+    vel = antenna_pattern.get_antenna_response_vectorized(ff, zenith_antenna, azimuth, *antenna_orientation)
+
+    # These values supposedly have to be calced from fresnel coeffs, but I think they just repeat the work done in the other function
+    # For now, we will just assume they are 1
+    t_theta = 1
+    t_phi = 1
+
+    vel = np.array([vel['theta'] * t_theta, vel['phi'] * t_phi])
+    voltage_fft = np.sum(vel  *np.array([Efield_fft[1], Efield_fft[2]]), axis=0)
+
+    voltage_fft[np.where(ff < 5 * units.MHz)] = 0  # Set frequencies below 5 MHz to zero
+
+    return voltage_fft

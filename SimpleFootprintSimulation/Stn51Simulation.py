@@ -27,7 +27,7 @@ from scipy import constants
 from NuRadioReco.detector import detector
 from NuRadioReco.detector import generic_detector
 
-from SimpleFootprintSimulation.modifyEfieldForSurfaceReflection import modifyEfieldForSurfaceReflection
+from SimpleFootprintSimulation.modifyEfieldForSurfaceReflection import modifyEfieldForSurfaceReflection, getVoltageFFTFromEfield
 from NuRadioReco.framework.parameters import showerParameters as shp
 
 import logging
@@ -204,15 +204,29 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
     zenith = sim_shower[shp.zenith]/units.rad
 
     new_efields = []
+    reflected_voltage_fft = []
     efields = station.get_electric_fields()
-    for efield in efields:
+    for iE, efield in enumerate(efields):
         # modify the Efield for surface reflection
         # Doing this for backlobe antennas to. Needs to be removed in the future if backlobe signals wish to be looked at
         new_efields.append(modifyEfieldForSurfaceReflection(efield, incoming_zenith=zenith, antenna_height=1*units.m, n_index=1.35))
 
-    station.set_electric_fields(new_efields)
+        # Get voltage FFT from reflected Efield
+        reflected_voltage_fft.append(getVoltageFFTFromEfield(new_efields[-1], zenith_antenna=zenith, azimuth=sim_shower[shp.azimuth]/units.rad, det=det, sim_station=station, channel_id=0))
 
+
+    # Now we convert the original Efields to voltage FFTs
     efieldToVoltageConverter.run(evt, station, det)
+
+
+    # Add the reflected voltage FFT to the station
+    for iCh in range(len(reflected_voltage_fft)):
+        channel = station.get_channel(iCh)
+
+        channel_fft = channel.get_frequency_spectrum()
+        channel_fft += reflected_voltage_fft[iCh]
+        channel.set_frequency_spectrum(channel_fft, channel.get_sampling_rate())
+
     channelResampler.run(evt, station, det, 1*units.GHz)
 
 
