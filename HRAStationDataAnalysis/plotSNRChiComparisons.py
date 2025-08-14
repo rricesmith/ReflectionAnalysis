@@ -151,7 +151,7 @@ if __name__ == "__main__":
     chi_2016_max_cut = 0.7
     chi_rcr_min_cut = 0.7
     snr_max_cut = 35
-    chi_diff_min_cut = 0.9 # This is ChiRCR - Chi2016
+    chi_diff_min_cut = 0.09 # This is ChiRCR - Chi2016
 
     # Create a boolean mask for events passing all cuts
     cut_mask = (
