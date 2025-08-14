@@ -47,13 +47,16 @@ def plot_chi_vs_chi(ax, chi1, chi2, name1, name2, color1, color2, markersize=2):
     ax.scatter(chi1, chi2, s=markersize, alpha=0.7)
     ax.plot([0, 1], [0, 1], linestyle='--', color='red', linewidth=1) # Identity line
     set_plot_labels(ax, f'{name1} Chi', f'{name2} Chi', f'{name1} Chi vs {name2} Chi', xlim=(0, 1), ylim=(0, 1))
+    ax.get_xlabel().set_color(color1)
+    ax.get_ylabel().set_color(color2)
+
 
 def plot_snr_vs_chi_diff(ax, snr, chi1, chi2, name1, name2, color1, color2, markersize=2):
     """Helper function to create a SNR vs. Chi difference plot."""
     ax.scatter(snr, chi1 - chi2, s=markersize, alpha=0.7)
-    set_plot_labels(ax, 'SNR', f'({name1} - {name2}) Chi', f'SNR vs ({name1} - {name2}) Chi', xlim=(3, 100), ylim=(-0.5, 0.5), xscale='log')
-    ax.text(40, 0.45, f'More {name1}', fontsize=10, color=color1, ha='center', va='center')
-    ax.text(40, -0.45, f'More {name2}', fontsize=10, color=color2, ha='center', va='center')
+    set_plot_labels(ax, 'SNR', f'({name1} - {name2}) Chi', f'SNR vs ({name1} - {name2}) Chi', xlim=(3, 100), ylim=(-1, 1), xscale='log')
+    ax.text(40, 0.8, f'More {name1}', fontsize=10, color=color1, ha='center', va='center')
+    ax.text(40, -0.8, f'More {name2}', fontsize=10, color=color2, ha='center', va='center')
 
 
 if __name__ == "__main__":
@@ -149,54 +152,69 @@ if __name__ == "__main__":
     chi_2016_min_cut = 0.5
     chi_2016_max_cut = 0.7
     chi_rcr_min_cut = 0.7
+    snr_max_cut = 35
+    chi_diff_min_cut = 0.9 # This is ChiRCR - Chi2016
 
     # Create a boolean mask for events passing all cuts
     cut_mask = (
         (chi_2016_array > chi_2016_min_cut) &
         (chi_2016_array < chi_2016_max_cut) &
-        (chi_rcr_array > chi_rcr_min_cut)
+        (chi_rcr_array > chi_rcr_min_cut) &
+        (snr_array < snr_max_cut) &
+        ((chi_rcr_array - chi_2016_array) > chi_diff_min_cut)
     )
     num_passing_events = np.sum(cut_mask)
     total_events = len(chi_2016_array)
-    ic(f"Events passing cuts (0.5 < Chi2016 < 0.7 AND ChiRCR > 0.7): {num_passing_events}/{total_events}")
+    
+    cut_string = (f"Cuts: {chi_2016_min_cut}<Chi16<{chi_2016_max_cut}, ChiRCR>{chi_rcr_min_cut}, "
+                  f"SNR<{snr_max_cut}, ChiRCR-Chi16>{chi_diff_min_cut}")
+    ic(f"Events passing cuts: {num_passing_events}/{total_events}")
+
 
     # Plot 2: New 2x2 Plot with Cuts Visualized
-    fig2, axs2 = plt.subplots(2, 2, figsize=(12, 12))
+    fig2, axs2 = plt.subplots(2, 2, figsize=(14, 14))
     title = (f'Chi2016 vs ChiRCR for Station {station_id} on {date}\n'
+             f'{cut_string}\n'
              f'Events Passing Cuts: {num_passing_events} ({num_passing_events/total_events:.2%})')
-    fig2.suptitle(title, fontsize=16)
-    fig2.subplots_adjust(hspace=0.3, wspace=0.3)
+    fig2.suptitle(title, fontsize=14)
+    fig2.subplots_adjust(top=0.9, hspace=0.3, wspace=0.3)
 
     # Top-left: SNR vs Chi2016
     plot_snr_vs_chi(axs2[0, 0], snr_array, chi_2016_array, '2016', colors['2016'], markersize)
     axs2[0, 0].axhline(y=chi_2016_min_cut, color='k', linestyle='--', linewidth=1.5)
     axs2[0, 0].axhline(y=chi_2016_max_cut, color='k', linestyle='--', linewidth=1.5)
-    axs2[0, 0].fill_between(axs2[0, 0].get_xlim(), chi_2016_min_cut, chi_2016_max_cut, color='gray', alpha=0.2)
+    axs2[0, 0].fill_between(axs2[0, 0].get_xlim(), chi_2016_min_cut, chi_2016_max_cut, color='gray', alpha=0.2, label='Chi2016 Cut')
+    axs2[0, 0].axvline(x=snr_max_cut, color='m', linestyle='--', linewidth=1.5, label=f'SNR Cut (<{snr_max_cut})')
+    axs2[0, 0].fill_betweenx(axs2[0, 0].get_ylim(), snr_max_cut, axs2[0, 0].get_xlim()[1], color='m', alpha=0.1)
 
 
     # Top-right: SNR vs ChiRCR
     plot_snr_vs_chi(axs2[0, 1], snr_array, chi_rcr_array, 'RCR', colors['RCR'], markersize)
     axs2[0, 1].axhline(y=chi_rcr_min_cut, color='k', linestyle='--', linewidth=1.5)
-    axs2[0, 1].fill_between(axs2[0, 1].get_xlim(), chi_rcr_min_cut, 1, color='gray', alpha=0.2)
+    axs2[0, 1].fill_between(axs2[0, 1].get_xlim(), chi_rcr_min_cut, 1, color='gray', alpha=0.2, label='ChiRCR Cut')
+    axs2[0, 1].axvline(x=snr_max_cut, color='m', linestyle='--', linewidth=1.5, label=f'SNR Cut (<{snr_max_cut})')
+    axs2[0, 1].fill_betweenx(axs2[0, 1].get_ylim(), snr_max_cut, axs2[0, 1].get_xlim()[1], color='m', alpha=0.1)
 
     # Bottom-left: Chi2016 vs ChiRCR
     plot_chi_vs_chi(axs2[1, 0], chi_2016_array, chi_rcr_array, '2016', 'RCR', colors['2016'], colors['RCR'], markersize)
     axs2[1, 0].axhline(y=chi_rcr_min_cut, color='k', linestyle='--', linewidth=1.5)
     axs2[1, 0].axvline(x=chi_2016_min_cut, color='k', linestyle='--', linewidth=1.5)
     axs2[1, 0].axvline(x=chi_2016_max_cut, color='k', linestyle='--', linewidth=1.5)
-    # Highlight the passing region
-    axs2[1, 0].add_patch(
-        plt.Rectangle((chi_2016_min_cut, chi_rcr_min_cut), chi_2016_max_cut - chi_2016_min_cut, 1 - chi_rcr_min_cut,
-                      edgecolor='black',
-                      facecolor='gray',
-                      fill=True,
-                      alpha=0.2,
-                      lw=1)
-    )
+    # Add Chi Diff cut line (y = x + 0.9)
+    x_vals = np.array([0, 0.1])
+    axs2[1, 0].plot(x_vals, x_vals + chi_diff_min_cut, color='purple', linestyle='--', linewidth=1.5, label=f'ChiDiff Cut (>{chi_diff_min_cut})')
+    # Shade the intersection of all cuts
+    x_fill = np.linspace(chi_2016_min_cut, chi_2016_max_cut, 100)
+    y_lower_bound = np.maximum(chi_rcr_min_cut, x_fill + chi_diff_min_cut)
+    axs2[1, 0].fill_between(x_fill, y_lower_bound, 1, color='gray', alpha=0.3, interpolate=True)
 
 
     # Bottom-right: SNR vs (RCR - 2016) Chi Difference
     plot_snr_vs_chi_diff(axs2[1, 1], snr_array, chi_rcr_array, chi_2016_array, 'RCR', '2016', colors['RCR'], colors['2016'], markersize)
+    axs2[1, 1].axhline(y=chi_diff_min_cut, color='purple', linestyle='--', linewidth=1.5, label=f'ChiDiff Cut (>{chi_diff_min_cut})')
+    axs2[1, 1].fill_between(axs2[1, 1].get_xlim(), chi_diff_min_cut, axs2[1, 1].get_ylim()[1], color='purple', alpha=0.1)
+    axs2[1, 1].axvline(x=snr_max_cut, color='m', linestyle='--', linewidth=1.5, label=f'SNR Cut (<{snr_max_cut})')
+    axs2[1, 1].fill_betweenx(axs2[1, 1].get_ylim(), snr_max_cut, axs2[1, 1].get_xlim()[1], color='m', alpha=0.1)
 
     savename2 = f'{plot_folder}SNR_Chi_2x2_WithCuts_Station{station_id}_{date}.png'
     plt.savefig(savename2)
