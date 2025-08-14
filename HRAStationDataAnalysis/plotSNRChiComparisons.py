@@ -147,11 +147,11 @@ if __name__ == "__main__":
     ic("Applying cuts and generating 2x2 plot...")
     
     # Define cuts
-    chi_2016_min_cut = 0.5
-    chi_2016_max_cut = 0.7
-    chi_rcr_min_cut = 0.7
+    chi_2016_min_cut = 0.55
+    chi_2016_max_cut = 0.73
+    chi_rcr_min_cut = 0.75
     snr_max_cut = 35
-    chi_diff_min_cut = 0.09 # This is ChiRCR - Chi2016
+    chi_diff_min_cut = 0.08 # This is ChiRCR - Chi2016
 
     # Create a boolean mask for events passing all cuts
     cut_mask = (
@@ -199,7 +199,7 @@ if __name__ == "__main__":
     axs2[1, 0].axvline(x=chi_2016_min_cut, color='k', linestyle='--', linewidth=1.5)
     axs2[1, 0].axvline(x=chi_2016_max_cut, color='k', linestyle='--', linewidth=1.5)
     # Add Chi Diff cut line (y = x + 0.9)
-    x_vals = np.array([0, 0.1])
+    x_vals = np.array([0, 1.0])
     axs2[1, 0].plot(x_vals, x_vals + chi_diff_min_cut, color='purple', linestyle='--', linewidth=1.5, label=f'ChiDiff Cut (>{chi_diff_min_cut})')
     # Shade the intersection of all cuts
     x_fill = np.linspace(chi_2016_min_cut, chi_2016_max_cut, 100)
