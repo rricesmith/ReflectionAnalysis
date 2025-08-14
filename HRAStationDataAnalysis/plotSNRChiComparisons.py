@@ -47,8 +47,6 @@ def plot_chi_vs_chi(ax, chi1, chi2, name1, name2, color1, color2, markersize=2):
     ax.scatter(chi1, chi2, s=markersize, alpha=0.7)
     ax.plot([0, 1], [0, 1], linestyle='--', color='red', linewidth=1) # Identity line
     set_plot_labels(ax, f'{name1} Chi', f'{name2} Chi', f'{name1} Chi vs {name2} Chi', xlim=(0, 1), ylim=(0, 1))
-    ax.get_xlabel().set_color(color1)
-    ax.get_ylabel().set_color(color2)
 
 
 def plot_snr_vs_chi_diff(ax, snr, chi1, chi2, name1, name2, color1, color2, markersize=2):
