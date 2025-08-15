@@ -142,7 +142,11 @@ def multi_station_converter(input_folder, output_folder_BL, output_folder_RCR):
 
 if __name__ == "__main__":
     # Load the configuration
-    from HRAStationDataAnalysis.config import config
+    import configparser
+    config = configparser.ConfigParser()
+    # Assuming the script is run from the root of the project
+    config.read('HRASimulation/config.ini')
+
     date = config.get('SIMPARAMETERS', 'date')
     date_processing = config.get('SIMPARAMETERS', 'date_processing')
 
