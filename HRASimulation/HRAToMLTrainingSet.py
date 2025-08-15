@@ -93,8 +93,9 @@ def multi_station_converter(input_folder, output_folder_BL, output_folder_RCR):
                 if station.has_trigger(trigger_name): 
                     if not station.has_triggered(trigger_name=trigger_name):
                         continue
-                # else:
-                #     continue
+                else:
+                    # No trigger even attempted, skip
+                    continue
 
                 event_traces = []
 
