@@ -93,8 +93,8 @@ def multi_station_converter(input_folder, output_folder_BL, output_folder_RCR):
                 if station.has_trigger(trigger_name): 
                     if not station.has_triggered(trigger_name=trigger_name):
                         continue
-                else:
-                    continue
+                # else:
+                #     continue
 
                 event_traces = []
 
@@ -141,8 +141,13 @@ def multi_station_converter(input_folder, output_folder_BL, output_folder_RCR):
     ic("✨ All done.")
 
 if __name__ == "__main__":
-    input_folder = "/dfs8/sbarwick_lab/ariannaproject/rricesmi/HRASimulations/3.17.25/"
-    output_folder_RCR = "/dfs8/sbarwick_lab/ariannaproject/rricesmi/simulatedRCRs/7.30.25/"
-    output_folder_BL = "/dfs8/sbarwick_lab/ariannaproject/rricesmi/simulatedBacklobe/7.30.25/"
+    # Load the configuration
+    from HRAStationDataAnalysis.config import config
+    date = config.get('SIMPARAMETERS', 'date')
+    date_processing = config.get('SIMPARAMETERS', 'date_processing')
+
+    input_folder = f"/dfs8/sbarwick_lab/ariannaproject/rricesmi/HRASimulations/{date}/"
+    output_folder_RCR = f"/dfs8/sbarwick_lab/ariannaproject/rricesmi/simulatedRCRs/{date_processing}/"
+    output_folder_BL = f"/dfs8/sbarwick_lab/ariannaproject/rricesmi/simulatedBacklobe/{date_processing}/"
 
     multi_station_converter(input_folder, output_folder_BL, output_folder_RCR)
