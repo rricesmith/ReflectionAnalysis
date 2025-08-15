@@ -93,12 +93,18 @@ def multi_station_converter(input_folder, output_folder_BL, output_folder_RCR):
                 if station.has_trigger(trigger_name): 
                     if not station.has_triggered(trigger_name=trigger_name):
                         continue
+                else:
+                    continue
 
                 event_traces = []
 
                 for channel in station.iter_channels(use_channels=SAVE_CHANNELS):
                     trace = channel.get_trace()
+                    ic(trace.shape, trace)
                     event_traces.append(trace)
+
+                ic(len(event_traces), event_traces)
+                quit()
 
                 # Append to the correct list and check if it's time to save a batch
                 if len(event_traces) == len(SAVE_CHANNELS):
