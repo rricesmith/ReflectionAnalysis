@@ -95,13 +95,13 @@ class HRAevent:
             sampling_rate = station.get_channel(LPDA_channels[0]).get_sampling_rate()
             self.Chi[station.get_id()] = {}
             for key in template_dict:
-                if key.contains("100s") and station.get_id() not in stns_100s:
+                if "100s" in key and station.get_id() not in stns_100s:
                     continue
-                if key.contains("200s") and station.get_id() not in stns_200s:
+                if "200s" in key and station.get_id() not in stns_200s:
                     continue                
-                if key.contains("100s"):
+                if "100s" in key:
                     key_name = key.replace("100s", "")
-                elif key.contains("200s"):
+                elif "200s" in key:
                     key_name = key.replace("200s", "")
                 else:
                     key_name = key
