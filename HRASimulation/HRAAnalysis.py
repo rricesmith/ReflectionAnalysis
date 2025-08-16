@@ -15,6 +15,7 @@ from HRASimulation.HRANurToNpy import loadHRAfromH5
 import itertools
 import collections
 from scipy.special import comb as nCr 
+from HRAStationDataAnalysis import calculateChi
 
 def getEnergyZenithBins():
     # Define the bins that are constant

@@ -13,17 +13,28 @@ import configparser
 import h5py
 import pickle
 from HRASimulation.HRAEventObject import HRAevent
-
+import DeepLearning.D00_helperFunctions as D00_helperFunctions
 
 def getHRAevents(nur_files):
     # Input a list of nur files to get a list of HRAevent objects
 
     eventReader = NuRadioReco.modules.io.eventReader.eventReader()
     HRAeventList = []
+
+    template_dict = {}
+    templates_2016 = D00_helperFunctions.loadMultipleTemplates(100, date='2016')    # selection of 2016 events that are presumed to all be backlobes
+    template_series_100 = D00_helperFunctions.loadMultipleTemplates(100)                         # selection of 'good' RCR simulated events for templates
+    template_series_200 = D00_helperFunctions.loadMultipleTemplates(200)                         # selection of 'good' RCR simulated events for templates
+    template_dict['Chi2016'] = templates_2016
+    template_dict['ChiRCR100s'] = template_series_100
+    template_dict['ChiRCR200s'] = template_series_200
+
+
     for file in nur_files:
         eventReader.begin(file)
         for event in eventReader.run():
-            HRAeventList.append(HRAevent(event))
+            HRAeventList.append(HRAevent(event, template_dict=template_dict))
+        
         eventReader.end()
 
     return np.array(HRAeventList)

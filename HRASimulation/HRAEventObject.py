@@ -18,7 +18,7 @@ stns_200s_noise = 23 * units.mV
 stns_300s_noise = 11 * units.mV
 
 class HRAevent:
-    def __init__(self, event, DEBUG=False):
+    def __init__(self, event, template_dict={}, DEBUG=False):
         # event should be the NuRadioReco event object
         # All parameters should have NuRadioReco units attached
 
@@ -33,6 +33,7 @@ class HRAevent:
         self.azimuth = sim_shower[shp.azimuth]
 
         self.SNR = {} # Dictionary of SNR values for each station
+        self.SNR = {}
 
         self.recon_zenith = {}
         self.recon_azimuth = {}
@@ -60,6 +61,7 @@ class HRAevent:
         # Only doing the 3.5sigma triggers to begin with
 
         from HRAStationDataAnalysis.HRADataConvertToNpy import calcSNR
+        import HRAStationDataAnalysis.calculateChi as calculateChi
         for station in event.get_stations():
             for sigma in self.trigger_sigmas:
                 self.weight[sigma][station.get_id()] = [np.nan, np.nan]
@@ -88,7 +90,25 @@ class HRAevent:
             for chId, channel in enumerate(station.iter_channels(use_channels=LPDA_channels)):
                 traces.append(channel.get_trace())
             self.SNR[station.get_id()] = calcSNR(traces, Vrms)
-            
+
+            # Calculate the chi
+            sampling_rate = station.get_channel(LPDA_channels[0]).get_sampling_rate()
+            self.Chi[station.get_id()] = {}
+            for key in template_dict:
+                if key.contains("100s") and station.get_id() not in stns_100s:
+                    continue
+                if key.contains("200s") and station.get_id() not in stns_200s:
+                    continue                
+                if key.contains("100s"):
+                    key_name = key.replace("100s", "")
+                elif key.contains("200s"):
+                    key_name = key.replace("200s", "")
+                else:
+                    key_name = key
+                templates = template_dict[key]
+                chi_value = calculateChi.getMaxAllChi(traces, sampling_rate, templates, sampling_rate)
+
+                self.Chi[station.get_id()][key_name] = chi_value
             
 
 
