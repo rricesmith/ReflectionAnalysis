@@ -33,7 +33,7 @@ class HRAevent:
         self.azimuth = sim_shower[shp.azimuth]
 
         self.SNR = {} # Dictionary of SNR values for each station
-        self.SNR = {}
+        self.Chi = {}
 
         self.recon_zenith = {}
         self.recon_azimuth = {}
