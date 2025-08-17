@@ -10,7 +10,7 @@ import pickle
 from icecream import ic
 import configparser
 from C_utils import getTimeEventMasks
-from HRASimulation.HRAEventObject import HRAevent # Assuming HRAEventObject.py is in the python path
+from HRAEventObject import HRAevent # Assuming HRAEventObject.py is in the python path
 
 # --- Utility Functions ---
 
@@ -163,7 +163,7 @@ def draw_cut_visuals(ax, plot_key, cuts_dict):
         ax.axvline(x=cuts_dict['snr_max'], color='m', linestyle='--', linewidth=1.5)
         ax.fill_betweenx(ax.get_ylim(), cuts_dict['snr_max'], ax.get_xlim()[1], color='m', alpha=0.1)
 
-def plot_2x2_grid(fig, axs, data, cuts_dict, plot_type='scatter', overlay_data=None, bins=None, hist_cmin=1e-5):
+def plot_2x2_grid(fig, axs, data, cuts_dict, plot_type='scatter', overlay_data=None, bins=None):
     """
     Master function to generate a 2x2 grid of plots.
     Can create scatter plots, 2D histograms, or both overlaid.
@@ -187,8 +187,9 @@ def plot_2x2_grid(fig, axs, data, cuts_dict, plot_type='scatter', overlay_data=N
         if plot_type == 'scatter':
             ax.scatter(p['x'], p['y'], s=2, alpha=0.7, c='blue')
         
-        elif plot_type == 'hist':
-            h, xedges, yedges, im = ax.hist2d(p['x'], p['y'], bins=bins, weights=weights, norm=colors.LogNorm(), cmin=hist_cmin)
+        elif plot_type == 'hist' and is_sim and np.sum(weights) > 0:
+            # FIX: Removed cmin to prevent error when all weights are below the minimum
+            h, xedges, yedges, im = ax.hist2d(p['x'], p['y'], bins=bins, weights=weights, norm=colors.LogNorm())
 
         if overlay_data:
              ax.scatter(overlay_data[key]['x'], overlay_data[key]['y'], s=3, alpha=0.8, c='orangered', marker='.')
@@ -235,6 +236,11 @@ if __name__ == "__main__":
     chi_2016_array = load_station_data(station_data_folder, date, station_id, 'Chi2016')
     chi_rcr_array = load_station_data(station_data_folder, date, station_id, 'ChiRCR')
     
+    # FIX: Add check for empty Chi arrays
+    if chi_2016_array.size == 0 or chi_rcr_array.size == 0:
+        ic("Error: Chi2016 or ChiRCR data is missing or empty. Cannot proceed.")
+        exit()
+
     ic(f"Initial raw data events loaded: {len(times)}")
 
     # --- Masking Data ---
@@ -315,9 +321,10 @@ if __name__ == "__main__":
         
         im = plot_2x2_grid(fig_sim, axs_sim, sim_data, cuts, plot_type='hist', bins=hist_bins['snr_vs_chi2016']) # Use one bin set for all for simplicity
         
-        fig_sim.tight_layout(rect=[0, 0, 0.9, 0.95])
-        cbar_ax = fig_sim.add_axes([0.92, 0.15, 0.02, 0.7])
-        fig_sim.colorbar(im, cax=cbar_ax, label='Weighted Counts (Evts/Yr)')
+        if im: # Only add a colorbar if hist2d returned an image
+            fig_sim.tight_layout(rect=[0, 0, 0.9, 0.95])
+            cbar_ax = fig_sim.add_axes([0.92, 0.15, 0.02, 0.7])
+            fig_sim.colorbar(im, cax=cbar_ax, label='Weighted Counts (Evts/Yr)')
 
         # Add legend with passing percentages
         legend_text = f'Passing Weight: {pass_pct_w:.2f}%'
@@ -346,9 +353,10 @@ if __name__ == "__main__":
     im_overlay = plot_2x2_grid(fig_overlay, axs_overlay, sim_both, cuts, plot_type='hist', 
                                overlay_data=overlay_plot_data, bins=hist_bins['snr_vs_chi2016'])
     
-    fig_overlay.tight_layout(rect=[0, 0, 0.9, 0.95])
-    cbar_ax_overlay = fig_overlay.add_axes([0.92, 0.15, 0.02, 0.7])
-    fig_overlay.colorbar(im_overlay, cax=cbar_ax_overlay, label='Sim Weighted Counts (Evts/Yr)')
+    if im_overlay: # Only add a colorbar if hist2d returned an image
+        fig_overlay.tight_layout(rect=[0, 0, 0.9, 0.95])
+        cbar_ax_overlay = fig_overlay.add_axes([0.92, 0.15, 0.02, 0.7])
+        fig_overlay.colorbar(im_overlay, cax=cbar_ax_overlay, label='Sim Weighted Counts (Evts/Yr)')
 
     # Create custom legend for overlay plot
     legend_elements = [Line2D([0], [0], marker='o', color='w', label='Data',
