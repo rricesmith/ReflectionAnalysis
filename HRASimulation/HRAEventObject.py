@@ -146,9 +146,14 @@ class HRAevent:
         else:
             return None
         
-    def getChi(self, station_id, key):
-        if station_id in self.Chi and key in self.Chi[station_id]:
-            return self.Chi[station_id][key]
+    def getChi(self, station_id, key=None):
+        if station_id in self.Chi:
+            if key is None:
+                return self.Chi[station_id]
+            elif key in self.Chi[station_id]:
+                return self.Chi[station_id][key]
+            else:
+                return None
         else:
             return 0
 
