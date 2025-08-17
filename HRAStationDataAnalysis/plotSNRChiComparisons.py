@@ -10,7 +10,7 @@ import pickle
 from icecream import ic
 import configparser
 from C_utils import getTimeEventMasks
-from HRAEventObject import HRAevent # Assuming HRAEventObject.py is in the python path
+from HRASimulation.HRAEventObject import HRAevent # Assuming HRAEventObject.py is in the python path
 
 # --- Utility Functions ---
 
