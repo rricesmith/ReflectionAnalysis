@@ -269,8 +269,7 @@ if __name__ == "__main__":
         'chi_rcr_min': 0.75, 'snr_max': 35,
         'chi_diff_min': 0.08 # ChiRCR - Chi2016
     }
-    cut_string = (f"Cuts: {cuts['chi_2016_min']}<Chi16<{cuts['chi_2016_max']}, ChiRCR>{cuts['chi_rcread_weight_name'_min']}, "
-                  f"SNR<{cuts['snr_max']}, ChiRCR-Chi16>{cuts['chi_diff_min']}")
+    cut_string = (f"Cuts: {cuts['chi_2016_min']}<Chi16<{cuts['chi_2016_max']}, ChiRCR>{cuts['chi_rcr_min']}, SNR<{cuts['snr_max']}, ChiRCR-Chi16>{cuts['chi_diff_min']}")
     
     # --- Plotting Section ---
     
