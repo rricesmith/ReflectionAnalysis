@@ -94,22 +94,24 @@ class HRAevent:
             # Calculate the chi
             sampling_rate = station.get_channel(LPDA_channels[0]).get_sampling_rate()
             self.Chi[station.get_id()] = {}
-            for key in template_dict:
-                if "100s" in key and station.get_id() not in stns_100s:
-                    continue
-                if "200s" in key and station.get_id() not in stns_200s:
-                    continue                
-                if "100s" in key:
-                    key_name = key.replace("100s", "")
-                elif "200s" in key:
-                    key_name = key.replace("200s", "")
-                else:
-                    key_name = key
-                templates = template_dict[key]
-                chi_value = calculateChi.getMaxAllChi(traces, sampling_rate, templates, sampling_rate)
+            if station.has_triggered():
+                # Only calculate chi if the station has triggered
+                for key in template_dict:
+                    if "100s" in key and station.get_id() not in stns_100s:
+                        continue
+                    if "200s" in key and station.get_id() not in stns_200s:
+                        continue                
+                    if "100s" in key:
+                        key_name = key.replace("100s", "")
+                    elif "200s" in key:
+                        key_name = key.replace("200s", "")
+                    else:
+                        key_name = key
+                    templates = template_dict[key]
+                    chi_value = calculateChi.getMaxAllChi(traces, sampling_rate, templates, sampling_rate)
 
-                self.Chi[station.get_id()][key_name] = chi_value
-            
+                    self.Chi[station.get_id()][key_name] = chi_value
+                
 
 
         self.direct_triggers = {}
@@ -143,6 +145,12 @@ class HRAevent:
             return self.SNR[station_id]
         else:
             return None
+        
+    def getChi(self, station_id, key):
+        if station_id in self.Chi:
+            return self.Chi[station_id][key]
+        else:
+            return 0
 
     def primaryTriggers(self):
         return self.station_triggers
