@@ -324,7 +324,7 @@ if __name__ == "__main__":
         if im: # Only add a colorbar if hist2d returned an image
             fig_sim.tight_layout(rect=[0, 0, 0.9, 0.95])
             cbar_ax = fig_sim.add_axes([0.92, 0.15, 0.02, 0.7])
-            fig_sim.colorbar(im, cax=cbar_ax, label='Weighted Counts (Evts/Yr)')
+            #fig_sim.colorbar(im, cax=cbar_ax, label='Weighted Counts (Evts/Yr)')
 
         # Add legend with passing percentages
         legend_text = f'Passing Weight: {pass_pct_w:.2f}%'
@@ -356,7 +356,7 @@ if __name__ == "__main__":
     if im_overlay: # Only add a colorbar if hist2d returned an image
         fig_overlay.tight_layout(rect=[0, 0, 0.9, 0.95])
         cbar_ax_overlay = fig_overlay.add_axes([0.92, 0.15, 0.02, 0.7])
-        fig_overlay.colorbar(im_overlay, cax=cbar_ax_overlay, label='Sim Weighted Counts (Evts/Yr)')
+        #fig_overlay.colorbar(im_overlay, cax=cbar_ax_overlay, label='Sim Weighted Counts (Evts/Yr)')
 
     # Create custom legend for overlay plot
     legend_elements = [Line2D([0], [0], marker='o', color='w', label='Data',
