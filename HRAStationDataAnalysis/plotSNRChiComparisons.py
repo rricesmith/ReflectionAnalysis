@@ -174,26 +174,23 @@ def plot_2x2_grid(fig, axs, base_data, base_plot_type, cuts_dict, overlays=None,
         'snr_vs_chidiff': {'xlabel': 'SNR', 'ylabel': 'ChiRCR - Chi2016', 'xlim': (3, 100), 'ylim': (-0.4, 0.4), 'xscale': 'log'}
     }
     
-    # Map data keys to plot configs
     data_map = {
-        'snr_vs_chi2016': {'x': base_data['snr'], 'y': base_data['Chi2016']},
-        'snr_vs_chircr': {'x': base_data['snr'], 'y': base_data['ChiRCR']},
-        'chi_vs_chi': {'x': base_data['Chi2016'], 'y': base_data['ChiRCR']},
-        'snr_vs_chidiff': {'x': base_data['snr'], 'y': base_data['ChiRCR'] - base_data['Chi2016']}
+        'snr_vs_chi2016': {'x': base_data.get('snr', []), 'y': base_data.get('Chi2016', [])},
+        'snr_vs_chircr': {'x': base_data.get('snr', []), 'y': base_data.get('ChiRCR', [])},
+        'chi_vs_chi': {'x': base_data.get('Chi2016', []), 'y': base_data.get('ChiRCR', [])},
+        'snr_vs_chidiff': {'x': base_data.get('snr', []), 'y': base_data.get('ChiRCR', []) - base_data.get('Chi2016', [])}
     }
 
     for i, (key, p) in enumerate(plot_configs.items()):
         ax = axs.flatten()[i]
         set_plot_labels(ax, p['xlabel'], p['ylabel'], f"{p['ylabel']} vs {p['xlabel']}", p.get('xlim'), p.get('ylim'), p.get('xscale', 'linear'))
         
-        # Plot Base Layer
         if base_plot_type == 'scatter':
             ax.scatter(data_map[key]['x'], data_map[key]['y'], s=2, alpha=0.7, c='blue')
         elif base_plot_type == 'hist' and np.sum(base_data.get('weights', 0)) > 0:
             h, xedges, yedges, im_temp = ax.hist2d(data_map[key]['x'], data_map[key]['y'], bins=hist_bins_dict[key], weights=base_data['weights'], norm=colors.LogNorm())
-            if im is None: im = im_temp # Capture the first mappable for the colorbar
+            if im is None: im = im_temp
 
-        # Plot Overlay Layers
         if overlays:
             for overlay in overlays:
                 overlay_map = {
@@ -216,8 +213,111 @@ def plot_2x2_grid(fig, axs, base_data, base_plot_type, cuts_dict, overlays=None,
             draw_cut_visuals(ax, key, cuts_dict)
         if key == 'chi_vs_chi':
             ax.plot([0, 1], [0, 1], linestyle='--', color='red', linewidth=1)
+            
+            # Add Legend
+            legend_elements = []
+            if base_plot_type == 'hist':
+                legend_elements.append(plt.Rectangle((0,0),1,1,fc="lightblue", label='Direct Sim (Hist)'))
+            elif base_plot_type == 'scatter':
+                 legend_elements.append(Line2D([0], [0], marker='o', color='w', label='Data', markerfacecolor='blue', markersize=8))
+
+            if overlays:
+                for overlay in overlays:
+                    if overlay['label'] == 'Reflected Sim':
+                         legend_elements.append(Line2D([0], [0], marker='o', color='w', label=overlay['label'], markerfacecolor='orange', markersize=8, alpha=0.5))
+                    else:
+                        legend_elements.append(Line2D([0], [0], marker='o', color='w', label=overlay['label'], markerfacecolor=overlay['style']['c'], markersize=8))
+            ax.legend(handles=legend_elements, loc='upper left')
 
     return im
+
+def run_analysis_for_station(station_id, station_data, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date):
+    """
+    Runs the full plotting pipeline for a given station ID and its data.
+    """
+    ic(f"--- Running analysis for Station {station_id} ---")
+
+    data_overlay_config = {
+        'data': station_data,
+        'label': 'Data',
+        'style': {'marker': '.', 's': 5, 'alpha': 0.8, 'c': 'orangered'}
+    }
+    
+    # Plot 1: Data Only
+    ic("Generating 2x2 scatter plot for data...")
+    fig1, axs1 = plt.subplots(2, 2, figsize=(12, 13))
+    fig1.suptitle(f'Data: Chi Comparison for Station {station_id} on {date}\n{cut_string}', fontsize=14)
+    plot_2x2_grid(fig1, axs1, station_data, 'scatter', cuts)
+    stats_str = calculate_cut_stats_table(station_data, cuts, is_sim=False, title="Data Stats")
+    fig1.text(0.5, 0.01, stats_str, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+    fig1.tight_layout(rect=[0, 0.1, 1, 0.95])
+    plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_Station{station_id}_{date}.png')
+    plt.close(fig1)
+
+    # Plot 2 & 3: Sim Histograms with Data Overlay
+    sim_datasets_for_hist = {'Reflected': sim_reflected, 'Direct': sim_direct}
+    for name, sim_data in sim_datasets_for_hist.items():
+        ic(f"Generating 2x2 histogram for Sim {name} with Data overlay...")
+        if len(sim_data['snr']) == 0: continue
+        
+        fig_sim, axs_sim = plt.subplots(2, 2, figsize=(13, 14))
+        fig_sim.suptitle(f'Data vs Simulation ({name} Triggers) - Station {station_id}\n{cut_string}', fontsize=14)
+        im = plot_2x2_grid(fig_sim, axs_sim, sim_data, 'hist', cuts, overlays=[data_overlay_config], hist_bins_dict=hist_bins)
+        
+        stats_str = calculate_cut_stats_table(sim_data, cuts, is_sim=True, title=f"Sim ({name}) Stats")
+        fig_sim.text(0.5, 0.01, stats_str, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+        
+        if im:
+            fig_sim.tight_layout(rect=[0, 0.1, 0.9, 0.95])
+            cbar_ax = fig_sim.add_axes([0.91, 0.15, 0.02, 0.7])
+            fig_sim.colorbar(im, cax=cbar_ax, label='Weighted Counts (Evts/Yr)')
+        else:
+            fig_sim.tight_layout(rect=[0, 0.1, 1, 0.95])
+
+        plt.savefig(f'{plot_folder}Data_over_Sim_{name}_SNR_Chi_2x2_Station{station_id}_{date}.png')
+        plt.close(fig_sim)
+
+    # Plot 4: Composite Sim Plot (Direct Hist + Reflected Scatter)
+    ic("Generating composite simulation plot...")
+    fig_both, axs_both = plt.subplots(2, 2, figsize=(13, 14))
+    fig_both.suptitle(f'Simulation: Direct (Hist) vs Reflected (Scatter) - Station {station_id}\n{cut_string}', fontsize=14)
+    reflected_overlay_config = {
+        'data': sim_reflected,
+        'label': 'Reflected Sim',
+        'style': {'s': 8, 'alpha': 0.3, 'color_by_weight': True}
+    }
+    im_both = plot_2x2_grid(fig_both, axs_both, sim_direct, 'hist', cuts, overlays=[reflected_overlay_config], hist_bins_dict=hist_bins)
+    
+    direct_stats = calculate_cut_stats_table(sim_direct, cuts, True, "Direct Sim")
+    reflected_stats = calculate_cut_stats_table(sim_reflected, cuts, True, "Reflected Sim")
+    fig_both.text(0.5, 0.01, f"{direct_stats}\n\n{reflected_stats}", ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+    
+    if im_both:
+        fig_both.tight_layout(rect=[0, 0.15, 0.9, 0.95])
+        cbar_ax = fig_both.add_axes([0.91, 0.2, 0.02, 0.7])
+        fig_both.colorbar(im_both, cax=cbar_ax, label='Direct Weighted Counts (Evts/Yr)')
+    else:
+        fig_both.tight_layout(rect=[0, 0.15, 1, 0.95])
+    plt.savefig(f'{plot_folder}Sim_Composite_SNR_Chi_2x2_Station{station_id}_{date}.png')
+    plt.close(fig_both)
+
+    # Plot 5: Data over Composite Sim Plot
+    ic("Generating data over composite simulation plot...")
+    fig_all, axs_all = plt.subplots(2, 2, figsize=(13, 14))
+    fig_all.suptitle(f'Data vs Composite Simulation - Station {station_id}\n{cut_string}', fontsize=14)
+    im_all = plot_2x2_grid(fig_all, axs_all, sim_direct, 'hist', cuts, overlays=[reflected_overlay_config, data_overlay_config], hist_bins_dict=hist_bins)
+    
+    fig_all.text(0.5, 0.01, f"{direct_stats}\n\n{reflected_stats}", ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+    
+    if im_all:
+        fig_all.tight_layout(rect=[0, 0.15, 0.9, 0.95])
+        cbar_ax = fig_all.add_axes([0.91, 0.2, 0.02, 0.7])
+        fig_all.colorbar(im_all, cax=cbar_ax, label='Direct Weighted Counts (Evts/Yr)')
+    else:
+        fig_all.tight_layout(rect=[0, 0.15, 1, 0.95])
+    plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_Station{station_id}_{date}.png')
+    plt.close(fig_all)
+
 
 if __name__ == "__main__":
     # --- Configuration and Setup ---
@@ -225,8 +325,7 @@ if __name__ == "__main__":
     config.read('HRAStationDataAnalysis/config.ini')
     date = config['PARAMETERS']['date']
     date_processing = config['PARAMETERS']['date_processing']
-    station_id = 13
-
+    
     sim_file = config['SIMULATION']['sim_file']
     direct_weight_name = config['SIMULATION']['direct_weight_name']
     reflected_weight_name = config['SIMULATION']['reflected_weight_name']
@@ -236,42 +335,14 @@ if __name__ == "__main__":
     plot_folder = f'HRAStationDataAnalysis/plots/{date_processing}/'
     os.makedirs(plot_folder, exist_ok=True)
     
-    ic.configureOutput(prefix=f'Stn{station_id} | ')
-    ic(f"Processing date: {date}")
-
-    # --- Data Loading ---
-    ic("Loading station data...")
-    times = load_station_data(station_data_folder, date, station_id, 'Times')
-    event_ids = load_station_data(station_data_folder, date, station_id, 'EventID')
+    ic.configureOutput(prefix='Chi-SNR Analysis | ')
     
-    if times.size == 0: exit("Error: Times or EventID data is missing.")
-
-    snr_array = load_station_data(station_data_folder, date, station_id, 'SNR')
-    Chi2016_array = load_station_data(station_data_folder, date, station_id, 'Chi2016')
-    ChiRCR_array = load_station_data(station_data_folder, date, station_id, 'ChiRCR')
-    
-    if Chi2016_array.size == 0 or ChiRCR_array.size == 0:
-        exit("Error: Chi2016 or ChiRCR data is missing or empty.")
-
-    # --- Masking Data ---
-    ic("Applying time and event masks to data...")
-    initial_mask, unique_indices = getTimeEventMasks(times, event_ids)
-    
-    data_dict = {
-        'snr': snr_array[initial_mask][unique_indices],
-        'Chi2016': Chi2016_array[initial_mask][unique_indices],
-        'ChiRCR': ChiRCR_array[initial_mask][unique_indices]
-    }
-    ic(f"Data events after masking: {len(data_dict['snr'])}")
-    gc.collect()
-
-    # --- Simulation Data Loading ---
+    # --- Define Stations and Load Sim Data ---
+    station_ids_to_process = [13, 14, 15, 17, 18, 19, 30]
     HRAeventList = loadHRAfromH5(sim_file)
     direct_stations = [13, 14, 15, 17, 18, 19, 30]
     reflected_stations = [113, 114, 115, 117, 118, 119, 130]
-    
     sim_direct, sim_reflected = get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct_stations, reflected_stations, sigma=sim_sigma)
-    ic(f"Processed {len(sim_direct['snr'])} direct and {len(sim_reflected['snr'])} reflected simulation triggers.")
 
     # --- Define Cuts & Bins ---
     cuts = {
@@ -289,84 +360,48 @@ if __name__ == "__main__":
         'chi_vs_chi': [linear_bins, linear_bins], 'snr_vs_chidiff': [log_bins, diff_bins]
     }
     
-    # --- Plotting Section ---
-    data_overlay_config = {
-        'data': data_dict,
-        'style': {'marker': '.', 's': 5, 'alpha': 0.8, 'c': 'orangered'}
-    }
+    # --- Main Loop for Individual and Summed Stations ---
+    all_stations_data = {key: [] for key in ['snr', 'Chi2016', 'ChiRCR']}
 
-    # Plot 1: Data Only
-    ic("Generating 2x2 scatter plot for data...")
-    fig1, axs1 = plt.subplots(2, 2, figsize=(12, 13))
-    fig1.suptitle(f'Data: Chi Comparison for Station {station_id} on {date}\n{cut_string}', fontsize=14)
-    plot_2x2_grid(fig1, axs1, data_dict, 'scatter', cuts)
-    stats_str = calculate_cut_stats_table(data_dict, cuts, is_sim=False, title="Data Stats")
-    fig1.text(0.5, 0.01, stats_str, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
-    fig1.tight_layout(rect=[0, 0.1, 1, 0.95])
-    plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_Station{station_id}_{date}.png')
-    plt.close(fig1)
-
-    # Plot 2 & 3: Sim Histograms with Data Overlay
-    sim_datasets_for_hist = {'Reflected': sim_reflected, 'Direct': sim_direct}
-    for name, sim_data in sim_datasets_for_hist.items():
-        ic(f"Generating 2x2 histogram for Sim {name} with Data overlay...")
-        if len(sim_data['snr']) == 0: continue
+    for station_id in station_ids_to_process:
+        ic(f"Loading data for Station {station_id}...")
+        times = load_station_data(station_data_folder, date, station_id, 'Times')
+        event_ids = load_station_data(station_data_folder, date, station_id, 'EventID')
         
-        fig_sim, axs_sim = plt.subplots(2, 2, figsize=(13, 14))
-        fig_sim.suptitle(f'Data vs Simulation ({name} Triggers)\n{cut_string}', fontsize=14)
-        im = plot_2x2_grid(fig_sim, axs_sim, sim_data, 'hist', cuts, overlays=[data_overlay_config], hist_bins_dict=hist_bins)
-        
-        stats_str = calculate_cut_stats_table(sim_data, cuts, is_sim=True, title=f"Sim ({name}) Stats")
-        fig_sim.text(0.5, 0.01, stats_str, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
-        
-        if im:
-            fig_sim.tight_layout(rect=[0, 0.1, 0.9, 0.95])
-            cbar_ax = fig_sim.add_axes([0.91, 0.15, 0.02, 0.7])
-            fig_sim.colorbar(im, cax=cbar_ax, label='Weighted Counts (Evts/Yr)')
-        else:
-            fig_sim.tight_layout(rect=[0, 0.1, 1, 0.95])
+        if times.size == 0: 
+            ic(f"Skipping Station {station_id} due to missing Times/EventID data.")
+            continue
 
-        plt.savefig(f'{plot_folder}Data_over_Sim_{name}_SNR_Chi_2x2_{date}.png')
-        plt.close(fig_sim)
+        snr_array = load_station_data(station_data_folder, date, station_id, 'SNR')
+        Chi2016_array = load_station_data(station_data_folder, date, station_id, 'Chi2016')
+        ChiRCR_array = load_station_data(station_data_folder, date, station_id, 'ChiRCR')
+        
+        if Chi2016_array.size == 0 or ChiRCR_array.size == 0:
+            ic(f"Skipping Station {station_id} due to missing Chi data.")
+            continue
 
-    # Plot 4: Composite Sim Plot (Direct Hist + Reflected Scatter)
-    ic("Generating composite simulation plot...")
-    fig_both, axs_both = plt.subplots(2, 2, figsize=(13, 14))
-    fig_both.suptitle(f'Simulation: Direct (Hist) vs Reflected (Scatter)\n{cut_string}', fontsize=14)
-    reflected_overlay_config = {
-        'data': sim_reflected,
-        'style': {'s': 8, 'alpha': 0.3, 'color_by_weight': True}
-    }
-    im_both = plot_2x2_grid(fig_both, axs_both, sim_direct, 'hist', cuts, overlays=[reflected_overlay_config], hist_bins_dict=hist_bins)
-    
-    direct_stats = calculate_cut_stats_table(sim_direct, cuts, True, "Direct Sim")
-    reflected_stats = calculate_cut_stats_table(sim_reflected, cuts, True, "Reflected Sim")
-    fig_both.text(0.5, 0.01, f"{direct_stats}\n\n{reflected_stats}", ha='center', va='bottom', fontsize=10, fontfamily='monospace')
-    
-    if im_both:
-        fig_both.tight_layout(rect=[0, 0.15, 0.9, 0.95])
-        cbar_ax = fig_both.add_axes([0.91, 0.2, 0.02, 0.7])
-        fig_both.colorbar(im_both, cax=cbar_ax, label='Direct Weighted Counts (Evts/Yr)')
+        initial_mask, unique_indices = getTimeEventMasks(times, event_ids)
+        
+        station_data = {
+            'snr': snr_array[initial_mask][unique_indices],
+            'Chi2016': Chi2016_array[initial_mask][unique_indices],
+            'ChiRCR': ChiRCR_array[initial_mask][unique_indices]
+        }
+        ic(f"Station {station_id} has {len(station_data['snr'])} events after masking.")
+        
+        # Append data for summed analysis
+        for key in all_stations_data:
+            all_stations_data[key].append(station_data[key])
+        
+        # Run analysis for the individual station
+        run_analysis_for_station(station_id, station_data, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date)
+
+    # --- Run Analysis for Summed Stations ---
+    if len(all_stations_data['snr']) > 0:
+        summed_station_data = {key: np.concatenate(all_stations_data[key]) for key in all_stations_data}
+        summed_station_id = '+'.join(map(str, station_ids_to_process))
+        run_analysis_for_station(summed_station_id, summed_station_data, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date)
     else:
-        fig_both.tight_layout(rect=[0, 0.15, 1, 0.95])
-    plt.savefig(f'{plot_folder}Sim_Composite_SNR_Chi_2x2_{date}.png')
-    plt.close(fig_both)
-
-    # Plot 5: Data over Composite Sim Plot
-    ic("Generating data over composite simulation plot...")
-    fig_all, axs_all = plt.subplots(2, 2, figsize=(13, 14))
-    fig_all.suptitle(f'Data vs Composite Simulation\n{cut_string}', fontsize=14)
-    im_all = plot_2x2_grid(fig_all, axs_all, sim_direct, 'hist', cuts, overlays=[reflected_overlay_config, data_overlay_config], hist_bins_dict=hist_bins)
-    
-    fig_all.text(0.5, 0.01, f"{direct_stats}\n\n{reflected_stats}", ha='center', va='bottom', fontsize=10, fontfamily='monospace')
-    
-    if im_all:
-        fig_all.tight_layout(rect=[0, 0.15, 0.9, 0.95])
-        cbar_ax = fig_all.add_axes([0.91, 0.2, 0.02, 0.7])
-        fig_all.colorbar(im_all, cax=cbar_ax, label='Direct Weighted Counts (Evts/Yr)')
-    else:
-        fig_all.tight_layout(rect=[0, 0.15, 1, 0.95])
-    plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_{date}.png')
-    plt.close(fig_all)
+        ic("No data loaded for any station, skipping summed analysis.")
 
     ic("Processing complete.")
