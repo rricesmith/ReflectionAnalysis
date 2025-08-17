@@ -59,7 +59,7 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct
     for event in HRAeventList:
         # Process for the 'direct' dataset using the direct weight name
         direct_weight = event.getWeight(direct_weight_name, primary=True, sigma=sigma)
-        ic(f'Processing event {event.get_id()} with direct weight: {direct_weight}')
+        ic(f'Processing event {event.getEventID()} with direct weight: {direct_weight}')
         if not np.isnan(direct_weight) and direct_weight > 0:
             triggered_direct = [st_id for st_id in direct_stations if event.hasTriggered(st_id, sigma)]
             ic(f'Triggered direct stations: {triggered_direct}')
