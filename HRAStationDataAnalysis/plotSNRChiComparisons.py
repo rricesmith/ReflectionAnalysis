@@ -17,7 +17,6 @@ from HRASimulation.HRAEventObject import HRAevent # Assuming HRAEventObject.py i
 def loadHRAfromH5(filename):
     """
     Loads a list of HRAevent objects from an HDF5 file.
-    This is based on the method used in HRASNRPlots.py.
     """
     ic(f"Loading HRA event list from: {filename}")
     eventList = []
@@ -49,83 +48,76 @@ def load_station_data(folder, date, station_id, data_name):
 def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct_stations, reflected_stations, sigma=4.5):
     """
     Extracts SNR, Chi, and weights from the HRAevent list, separating them
-    into direct and reflected triggers. It uses separate weight names for each dataset.
-    An event's 'direct' weight is split among its direct triggers, and its
-    'reflected' weight is split among its reflected triggers.
+    into direct and reflected triggers using separate weight names.
     """
     direct_data = {'snr': [], 'Chi2016': [], 'ChiRCR': [], 'weights': []}
     reflected_data = {'snr': [], 'Chi2016': [], 'ChiRCR': [], 'weights': []}
 
     for event in HRAeventList:
-        # Process for the 'direct' dataset using the direct weight name
         direct_weight = event.getWeight(direct_weight_name, primary=True, sigma=sigma)
-        ic(f'Processing event {event.getEventID()} with direct weight: {direct_weight}')
         if not np.isnan(direct_weight) and direct_weight > 0:
             triggered_direct = [st_id for st_id in direct_stations if event.hasTriggered(st_id, sigma)]
-            ic(f'Triggered direct stations: {triggered_direct}')
             if triggered_direct:
                 split_weight = direct_weight / len(triggered_direct)
-                ic(f'Split weight for direct: {split_weight}')
                 for st_id in triggered_direct:
-                    snr = event.getSNR(st_id)
-                    chi_dict = event.getChi(st_id)
-                    ic(f'Processing station {st_id} with SNR: {snr} and Chi: {chi_dict}')
+                    snr, chi_dict = event.getSNR(st_id), event.getChi(st_id)
                     if snr is not None and chi_dict:
                         direct_data['snr'].append(snr)
                         direct_data['Chi2016'].append(chi_dict.get('Chi2016', np.nan))
                         direct_data['ChiRCR'].append(chi_dict.get('ChiRCR', np.nan))
                         direct_data['weights'].append(split_weight)
-                        ic(f'Added direct data for station {st_id}: SNR={snr}, Chi2016={chi_dict.get("2016", np.nan)}, ChiRCR={chi_dict.get("RCR", np.nan)}, Weight={split_weight}')
-#                        quit()
-        # Process for the 'reflected' dataset using the reflected weight name
+
         reflected_weight = event.getWeight(reflected_weight_name, primary=True, sigma=sigma)
         if not np.isnan(reflected_weight) and reflected_weight > 0:
             triggered_reflected = [st_id for st_id in reflected_stations if event.hasTriggered(st_id, sigma)]
             if triggered_reflected:
                 split_weight = reflected_weight / len(triggered_reflected)
                 for st_id in triggered_reflected:
-                    snr = event.getSNR(st_id)
-                    chi_dict = event.getChi(st_id)
+                    snr, chi_dict = event.getSNR(st_id), event.getChi(st_id)
                     if snr is not None and chi_dict:
                         reflected_data['snr'].append(snr)
                         reflected_data['Chi2016'].append(chi_dict.get('Chi2016', np.nan))
                         reflected_data['ChiRCR'].append(chi_dict.get('ChiRCR', np.nan))
                         reflected_data['weights'].append(split_weight)
 
-    # Convert lists to numpy arrays for easier handling
     for data_dict in [direct_data, reflected_data]:
         for key in data_dict:
             data_dict[key] = np.array(data_dict[key])
             
     return direct_data, reflected_data
 
-def apply_cuts_and_get_stats(data, cuts_dict, is_sim=False):
-    """
-    Applies a set of cuts to the data and returns the mask and passing statistics.
-    """
-    snr = data['snr']
-    Chi2016 = data['Chi2016']
-    ChiRCR = data['ChiRCR']
-    
-    cut_mask = (
-        (Chi2016 > cuts_dict['Chi2016_min']) &
-        (Chi2016 < cuts_dict['Chi2016_max']) &
-        (ChiRCR > cuts_dict['ChiRCR_min']) &
-        (snr < cuts_dict['snr_max']) &
-        ((ChiRCR - Chi2016) > cuts_dict['chi_diff_min'])
-    )
-    
+def calculate_cut_stats_table(data_dict, cuts, is_sim, title):
+    """Calculates the percentage of events/weight passing each cut individually and all together."""
     if is_sim:
-        weights = data['weights']
-        total_val = np.sum(weights)
-        passing_val = np.sum(weights[cut_mask])
+        total_val = np.sum(data_dict['weights'])
+        if total_val == 0: return f"{title}\nNo weight in dataset."
     else:
-        total_val = len(snr)
-        passing_val = np.sum(cut_mask)
-
-    pass_percentage = (passing_val / total_val * 100) if total_val > 0 else 0
+        total_val = len(data_dict['snr'])
+        if total_val == 0: return f"{title}\nNo events in dataset."
     
-    return passing_val, total_val, pass_percentage
+    snr, chi2016, chircr = data_dict['snr'], data_dict['Chi2016'], data_dict['ChiRCR']
+    weights = data_dict.get('weights', np.ones_like(snr))
+
+    masks = {
+        f"Chi16 > {cuts['Chi2016_min']}": chi2016 > cuts['Chi2016_min'],
+        f"Chi16 < {cuts['Chi2016_max']}": chi2016 < cuts['Chi2016_max'],
+        f"ChiRCR > {cuts['ChiRCR_min']}": chircr > cuts['ChiRCR_min'],
+        f"SNR < {cuts['snr_max']}": snr < cuts['snr_max'],
+        f"ChiDiff > {cuts['chi_diff_min']}": (chircr - chi2016) > cuts['chi_diff_min']
+    }
+    
+    full_mask = np.ones_like(snr, dtype=bool)
+    
+    lines = [f"{title}:"]
+    for name, mask in masks.items():
+        passing_val = np.sum(weights[mask])
+        lines.append(f"- {name:<15}: {passing_val/total_val:>7.2%}")
+        full_mask &= mask
+        
+    passing_all = np.sum(weights[full_mask])
+    lines.append(f"- {'All Cuts':<15}: {passing_all/total_val:>7.2%}")
+    return "\n".join(lines)
+
 
 # --- Plotting Functions ---
 
@@ -168,44 +160,64 @@ def draw_cut_visuals(ax, plot_key, cuts_dict):
         ax.axvline(x=cuts_dict['snr_max'], color='m', linestyle='--', linewidth=1.5)
         ax.fill_betweenx(ax.get_ylim(), cuts_dict['snr_max'], ax.get_xlim()[1], color='m', alpha=0.1)
 
-def plot_2x2_grid(fig, axs, data, cuts_dict, plot_type='scatter', overlay_data=None, bins=None):
+def plot_2x2_grid(fig, axs, base_data, base_plot_type, cuts_dict, overlays=None, hist_bins_dict=None):
     """
-    Master function to generate a 2x2 grid of plots.
-    Can create scatter plots, 2D histograms, or both overlaid.
+    Master function to generate a 2x2 grid. Plots a base layer (scatter or hist)
+    and then adds any number of overlay layers on top.
     """
-    snr, chi2016, chircr = data['snr'], data['Chi2016'], data['ChiRCR']
-    weights = data.get('weights', None) # Use .get for safety with data dict
-    is_sim = weights is not None
+    im = None
     
     plot_configs = {
-        'snr_vs_chi2016': {'ax': axs[0, 0], 'x': snr, 'y': chi2016, 'xlabel': 'SNR', 'ylabel': 'Chi2016', 'xlim': (3, 100), 'ylim': (0, 1), 'xscale': 'log'},
-        'snr_vs_chircr': {'ax': axs[0, 1], 'x': snr, 'y': chircr, 'xlabel': 'SNR', 'ylabel': 'ChiRCR', 'xlim': (3, 100), 'ylim': (0, 1), 'xscale': 'log'},
-        'chi_vs_chi': {'ax': axs[1, 0], 'x': chi2016, 'y': chircr, 'xlabel': 'Chi2016', 'ylabel': 'ChiRCR', 'xlim': (0, 1), 'ylim': (0, 1)},
-        'snr_vs_chidiff': {'ax': axs[1, 1], 'x': snr, 'y': chircr - chi2016, 'xlabel': 'SNR', 'ylabel': 'ChiRCR - Chi2016', 'xlim': (3, 100), 'ylim': (-1, 1), 'xscale': 'log'}
+        'snr_vs_chi2016': {'xlabel': 'SNR', 'ylabel': 'Chi2016', 'xlim': (3, 100), 'ylim': (0, 1), 'xscale': 'log'},
+        'snr_vs_chircr': {'xlabel': 'SNR', 'ylabel': 'ChiRCR', 'xlim': (3, 100), 'ylim': (0, 1), 'xscale': 'log'},
+        'chi_vs_chi': {'xlabel': 'Chi2016', 'ylabel': 'ChiRCR', 'xlim': (0, 1), 'ylim': (0, 1)},
+        'snr_vs_chidiff': {'xlabel': 'SNR', 'ylabel': 'ChiRCR - Chi2016', 'xlim': (3, 100), 'ylim': (-0.4, 0.4), 'xscale': 'log'}
+    }
+    
+    # Map data keys to plot configs
+    data_map = {
+        'snr_vs_chi2016': {'x': base_data['snr'], 'y': base_data['Chi2016']},
+        'snr_vs_chircr': {'x': base_data['snr'], 'y': base_data['ChiRCR']},
+        'chi_vs_chi': {'x': base_data['Chi2016'], 'y': base_data['ChiRCR']},
+        'snr_vs_chidiff': {'x': base_data['snr'], 'y': base_data['ChiRCR'] - base_data['Chi2016']}
     }
 
-    im = None
-    for key, p in plot_configs.items():
-        ax = p['ax']
-        set_plot_labels(ax, p['xlabel'], p['ylabel'], f"{p['ylabel']} vs {p['xlabel']}", p.get('xlim'), p.get('ylim'), p.get('xscale', 'linear'), p.get('yscale', 'linear'))
+    for i, (key, p) in enumerate(plot_configs.items()):
+        ax = axs.flatten()[i]
+        set_plot_labels(ax, p['xlabel'], p['ylabel'], f"{p['ylabel']} vs {p['xlabel']}", p.get('xlim'), p.get('ylim'), p.get('xscale', 'linear'))
         
-        if plot_type == 'scatter':
-            ax.scatter(p['x'], p['y'], s=2, alpha=0.7, c='blue')
-        
-        elif plot_type == 'hist' and is_sim and np.sum(weights) > 0:
-            # FIX: Removed cmin to prevent error when all weights are below the minimum
-            h, xedges, yedges, im = ax.hist2d(p['x'], p['y'], bins=bins, weights=weights, norm=colors.LogNorm())
+        # Plot Base Layer
+        if base_plot_type == 'scatter':
+            ax.scatter(data_map[key]['x'], data_map[key]['y'], s=2, alpha=0.7, c='blue')
+        elif base_plot_type == 'hist' and np.sum(base_data.get('weights', 0)) > 0:
+            h, xedges, yedges, im_temp = ax.hist2d(data_map[key]['x'], data_map[key]['y'], bins=hist_bins_dict[key], weights=base_data['weights'], norm=colors.LogNorm())
+            if im is None: im = im_temp # Capture the first mappable for the colorbar
 
-        if overlay_data:
-             ax.scatter(overlay_data[key]['x'], overlay_data[key]['y'], s=3, alpha=0.8, c='orangered', marker='.')
+        # Plot Overlay Layers
+        if overlays:
+            for overlay in overlays:
+                overlay_map = {
+                    'snr_vs_chi2016': {'x': overlay['data']['snr'], 'y': overlay['data']['Chi2016']},
+                    'snr_vs_chircr': {'x': overlay['data']['snr'], 'y': overlay['data']['ChiRCR']},
+                    'chi_vs_chi': {'x': overlay['data']['Chi2016'], 'y': overlay['data']['ChiRCR']},
+                    'snr_vs_chidiff': {'x': overlay['data']['snr'], 'y': overlay['data']['ChiRCR'] - overlay['data']['Chi2016']}
+                }
+                x_data, y_data = overlay_map[key]['x'], overlay_map[key]['y']
+                
+                if overlay['style'].get('color_by_weight'):
+                    weights = overlay['data']['weights']
+                    sort_indices = np.argsort(weights)
+                    x_data, y_data, weights = x_data[sort_indices], y_data[sort_indices], weights[sort_indices]
+                    ax.scatter(x_data, y_data, c=weights, cmap='hot', alpha=overlay['style']['alpha'], s=overlay['style']['s'])
+                else:
+                    ax.scatter(x_data, y_data, **overlay['style'])
 
         if cuts_dict:
             draw_cut_visuals(ax, key, cuts_dict)
-        
-        if key == 'chi_vs_chi': # Add identity line
+        if key == 'chi_vs_chi':
             ax.plot([0, 1], [0, 1], linestyle='--', color='red', linewidth=1)
 
-    return im # Return image from hist2d for colorbar
+    return im
 
 if __name__ == "__main__":
     # --- Configuration and Setup ---
@@ -213,9 +225,8 @@ if __name__ == "__main__":
     config.read('HRAStationDataAnalysis/config.ini')
     date = config['PARAMETERS']['date']
     date_processing = config['PARAMETERS']['date_processing']
-    station_id = 13 # Hardcoded
+    station_id = 13
 
-    # New config parameters for simulation
     sim_file = config['SIMULATION']['sim_file']
     direct_weight_name = config['SIMULATION']['direct_weight_name']
     reflected_weight_name = config['SIMULATION']['reflected_weight_name']
@@ -233,145 +244,129 @@ if __name__ == "__main__":
     times = load_station_data(station_data_folder, date, station_id, 'Times')
     event_ids = load_station_data(station_data_folder, date, station_id, 'EventID')
     
-    if times.size == 0 or event_ids.size == 0:
-        ic("Error: Times or EventID data is missing. Cannot proceed.")
-        exit()
+    if times.size == 0: exit("Error: Times or EventID data is missing.")
 
     snr_array = load_station_data(station_data_folder, date, station_id, 'SNR')
     Chi2016_array = load_station_data(station_data_folder, date, station_id, 'Chi2016')
     ChiRCR_array = load_station_data(station_data_folder, date, station_id, 'ChiRCR')
     
-    # FIX: Add check for empty Chi arrays
     if Chi2016_array.size == 0 or ChiRCR_array.size == 0:
-        ic("Error: Chi2016 or ChiRCR data is missing or empty. Cannot proceed.")
-        exit()
-
-    ic(f"Initial raw data events loaded: {len(times)}")
+        exit("Error: Chi2016 or ChiRCR data is missing or empty.")
 
     # --- Masking Data ---
     ic("Applying time and event masks to data...")
     initial_mask, unique_indices = getTimeEventMasks(times, event_ids)
     
-    snr_array = snr_array[initial_mask][unique_indices]
-    Chi2016_array = Chi2016_array[initial_mask][unique_indices]
-    ChiRCR_array = ChiRCR_array[initial_mask][unique_indices]
-    
-    data_dict = {'snr': snr_array, 'Chi2016': Chi2016_array, 'ChiRCR': ChiRCR_array}
+    data_dict = {
+        'snr': snr_array[initial_mask][unique_indices],
+        'Chi2016': Chi2016_array[initial_mask][unique_indices],
+        'ChiRCR': ChiRCR_array[initial_mask][unique_indices]
+    }
     ic(f"Data events after masking: {len(data_dict['snr'])}")
     gc.collect()
 
-    # --- Simulation Data Loading and Processing ---
+    # --- Simulation Data Loading ---
     HRAeventList = loadHRAfromH5(sim_file)
     direct_stations = [13, 14, 15, 17, 18, 19, 30]
     reflected_stations = [113, 114, 115, 117, 118, 119, 130]
     
-    sim_direct, sim_reflected = get_sim_data(
-        HRAeventList, direct_weight_name, reflected_weight_name, 
-        direct_stations, reflected_stations, sigma=sim_sigma
-    )
-
-    # Combine direct and reflected for a total simulation dataset
-    sim_both = {key: np.concatenate((sim_direct[key], sim_reflected[key])) for key in sim_direct}
+    sim_direct, sim_reflected = get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct_stations, reflected_stations, sigma=sim_sigma)
     ic(f"Processed {len(sim_direct['snr'])} direct and {len(sim_reflected['snr'])} reflected simulation triggers.")
 
-    # --- Define Cuts ---
+    # --- Define Cuts & Bins ---
     cuts = {
         'Chi2016_min': 0.55, 'Chi2016_max': 0.73,
         'ChiRCR_min': 0.75, 'snr_max': 35,
-        'chi_diff_min': 0.08 # ChiRCR - Chi2016
+        'chi_diff_min': 0.08
     }
     cut_string = (f"Cuts: {cuts['Chi2016_min']}<Chi16<{cuts['Chi2016_max']}, ChiRCR>{cuts['ChiRCR_min']}, SNR<{cuts['snr_max']}, ChiRCR-Chi16>{cuts['chi_diff_min']}")
     
-    # --- Plotting Section ---
-    
-    # Plot 1: Original 2x2 Plot for Data
-    ic("Generating 2x2 scatter plot for data with cuts...")
-    pass_count, total_count, pass_pct = apply_cuts_and_get_stats(data_dict, cuts, is_sim=False)
-    fig1, axs1 = plt.subplots(2, 2, figsize=(14, 14))
-    title1 = (f'Data: Chi Comparison for Station {station_id} on {date}\n'
-              f'{cut_string}\n'
-              f'Events Passing: {pass_count}/{total_count} ({pass_pct:.2f}%)')
-    fig1.suptitle(title1, fontsize=14)
-    plot_2x2_grid(fig1, axs1, data_dict, cuts, plot_type='scatter')
-    fig1.tight_layout(rect=[0, 0, 1, 0.95])
-    savename1 = f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_Station{station_id}_{date}.png'
-    plt.savefig(savename1)
-    ic(f'Saved data 2x2 plot to {savename1}')
-    plt.close(fig1)
-
-    # --- New Simulation Plots ---
     log_bins = np.logspace(np.log10(3), np.log10(100), 31)
     linear_bins = np.linspace(0, 1, 31)
-    diff_bins = np.linspace(-1, 1, 31)
+    diff_bins = np.linspace(-0.4, 0.4, 31)
     hist_bins = {
         'snr_vs_chi2016': [log_bins, linear_bins], 'snr_vs_chircr': [log_bins, linear_bins],
         'chi_vs_chi': [linear_bins, linear_bins], 'snr_vs_chidiff': [log_bins, diff_bins]
     }
-
-    sim_datasets = {'Reflected': sim_reflected, 'Direct': sim_direct, 'Both': sim_both}
-
-    for name, sim_data in sim_datasets.items():
-        ic(f"Generating 2x2 histogram for {name} simulation data...")
-        if len(sim_data['snr']) == 0:
-            ic(f"Skipping {name} plot, no data.")
-            continue
-        
-        pass_w, total_w, pass_pct_w = apply_cuts_and_get_stats(sim_data, cuts, is_sim=True)
-        
-        fig_sim, axs_sim = plt.subplots(2, 2, figsize=(15, 14))
-        title_sim = (f'Simulation ({name} Triggers): Chi Comparison\n'
-                     f'{cut_string}\n'
-                     f'Weight Passing: {pass_pct_w:.2f}%')
-        fig_sim.suptitle(title_sim, fontsize=14)
-        
-        im = plot_2x2_grid(fig_sim, axs_sim, sim_data, cuts, plot_type='hist', bins=hist_bins['snr_vs_chi2016']) # Use one bin set for all for simplicity
-        
-        if im: # Only add a colorbar if hist2d returned an image
-            fig_sim.tight_layout(rect=[0, 0, 0.9, 0.95])
-            cbar_ax = fig_sim.add_axes([0.92, 0.15, 0.02, 0.7])
-            #fig_sim.colorbar(im, cax=cbar_ax, label='Weighted Counts (Evts/Yr)')
-
-        # Add legend with passing percentages
-        legend_text = f'Passing Weight: {pass_pct_w:.2f}%'
-        axs_sim[1,0].text(0.05, 0.95, legend_text, transform=axs_sim[1,0].transAxes, fontsize=12,
-                          verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-
-        savename_sim = f'{plot_folder}Sim_{name}_SNR_Chi_2x2_Hist_{date}.png'
-        plt.savefig(savename_sim)
-        ic(f'Saved {name} sim 2x2 plot to {savename_sim}')
-        plt.close(fig_sim)
-
-    # --- New Data over Sim Plot ---
-    ic("Generating data over simulation histogram plot...")
-    fig_overlay, axs_overlay = plt.subplots(2, 2, figsize=(15, 14))
-    title_overlay = (f'Data vs Simulation (Both Triggers) for Station {station_id} on {date}\n'
-                     f'{cut_string}')
-    fig_overlay.suptitle(title_overlay, fontsize=14)
     
-    overlay_plot_data = {
-        'snr_vs_chi2016': {'x': data_dict['snr'], 'y': data_dict['Chi2016']},
-        'snr_vs_chircr': {'x': data_dict['snr'], 'y': data_dict['ChiRCR']},
-        'chi_vs_chi': {'x': data_dict['Chi2016'], 'y': data_dict['ChiRCR']},
-        'snr_vs_chidiff': {'x': data_dict['snr'], 'y': data_dict['ChiRCR'] - data_dict['Chi2016']}
+    # --- Plotting Section ---
+    data_overlay_config = {
+        'data': data_dict,
+        'style': {'marker': '.', 's': 5, 'alpha': 0.8, 'c': 'orangered'}
     }
 
-    im_overlay = plot_2x2_grid(fig_overlay, axs_overlay, sim_both, cuts, plot_type='hist', 
-                               overlay_data=overlay_plot_data, bins=hist_bins['snr_vs_chi2016'])
+    # Plot 1: Data Only
+    ic("Generating 2x2 scatter plot for data...")
+    fig1, axs1 = plt.subplots(2, 2, figsize=(12, 13))
+    fig1.suptitle(f'Data: Chi Comparison for Station {station_id} on {date}\n{cut_string}', fontsize=14)
+    plot_2x2_grid(fig1, axs1, data_dict, 'scatter', cuts)
+    stats_str = calculate_cut_stats_table(data_dict, cuts, is_sim=False, title="Data Stats")
+    fig1.text(0.5, 0.01, stats_str, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+    fig1.tight_layout(rect=[0, 0.1, 1, 0.95])
+    plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_Station{station_id}_{date}.png')
+    plt.close(fig1)
+
+    # Plot 2 & 3: Sim Histograms with Data Overlay
+    sim_datasets_for_hist = {'Reflected': sim_reflected, 'Direct': sim_direct}
+    for name, sim_data in sim_datasets_for_hist.items():
+        ic(f"Generating 2x2 histogram for Sim {name} with Data overlay...")
+        if len(sim_data['snr']) == 0: continue
+        
+        fig_sim, axs_sim = plt.subplots(2, 2, figsize=(13, 14))
+        fig_sim.suptitle(f'Data vs Simulation ({name} Triggers)\n{cut_string}', fontsize=14)
+        im = plot_2x2_grid(fig_sim, axs_sim, sim_data, 'hist', cuts, overlays=[data_overlay_config], hist_bins_dict=hist_bins)
+        
+        stats_str = calculate_cut_stats_table(sim_data, cuts, is_sim=True, title=f"Sim ({name}) Stats")
+        fig_sim.text(0.5, 0.01, stats_str, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+        
+        if im:
+            fig_sim.tight_layout(rect=[0, 0.1, 0.9, 0.95])
+            cbar_ax = fig_sim.add_axes([0.91, 0.15, 0.02, 0.7])
+            fig_sim.colorbar(im, cax=cbar_ax, label='Weighted Counts (Evts/Yr)')
+        else:
+            fig_sim.tight_layout(rect=[0, 0.1, 1, 0.95])
+
+        plt.savefig(f'{plot_folder}Data_over_Sim_{name}_SNR_Chi_2x2_{date}.png')
+        plt.close(fig_sim)
+
+    # Plot 4: Composite Sim Plot (Direct Hist + Reflected Scatter)
+    ic("Generating composite simulation plot...")
+    fig_both, axs_both = plt.subplots(2, 2, figsize=(13, 14))
+    fig_both.suptitle(f'Simulation: Direct (Hist) vs Reflected (Scatter)\n{cut_string}', fontsize=14)
+    reflected_overlay_config = {
+        'data': sim_reflected,
+        'style': {'s': 8, 'alpha': 0.3, 'color_by_weight': True}
+    }
+    im_both = plot_2x2_grid(fig_both, axs_both, sim_direct, 'hist', cuts, overlays=[reflected_overlay_config], hist_bins_dict=hist_bins)
     
-    if im_overlay: # Only add a colorbar if hist2d returned an image
-        fig_overlay.tight_layout(rect=[0, 0, 0.9, 0.95])
-        cbar_ax_overlay = fig_overlay.add_axes([0.92, 0.15, 0.02, 0.7])
-        #fig_overlay.colorbar(im_overlay, cax=cbar_ax_overlay, label='Sim Weighted Counts (Evts/Yr)')
+    direct_stats = calculate_cut_stats_table(sim_direct, cuts, True, "Direct Sim")
+    reflected_stats = calculate_cut_stats_table(sim_reflected, cuts, True, "Reflected Sim")
+    fig_both.text(0.5, 0.01, f"{direct_stats}\n\n{reflected_stats}", ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+    
+    if im_both:
+        fig_both.tight_layout(rect=[0, 0.15, 0.9, 0.95])
+        cbar_ax = fig_both.add_axes([0.91, 0.2, 0.02, 0.7])
+        fig_both.colorbar(im_both, cax=cbar_ax, label='Direct Weighted Counts (Evts/Yr)')
+    else:
+        fig_both.tight_layout(rect=[0, 0.15, 1, 0.95])
+    plt.savefig(f'{plot_folder}Sim_Composite_SNR_Chi_2x2_{date}.png')
+    plt.close(fig_both)
 
-    # Create custom legend for overlay plot
-    legend_elements = [Line2D([0], [0], marker='o', color='w', label='Data',
-                          markerfacecolor='orangered', markersize=10),
-                       plt.Rectangle((0,0),1,1,fc="lightblue", label='Sim Hist')]
-    axs_overlay[1,0].legend(handles=legend_elements, loc='upper left')
-
-    savename_overlay = f'{plot_folder}Data_over_Sim_SNR_Chi_2x2_{date}.png'
-    plt.savefig(savename_overlay)
-    ic(f'Saved data over sim plot to {savename_overlay}')
-    plt.close(fig_overlay)
+    # Plot 5: Data over Composite Sim Plot
+    ic("Generating data over composite simulation plot...")
+    fig_all, axs_all = plt.subplots(2, 2, figsize=(13, 14))
+    fig_all.suptitle(f'Data vs Composite Simulation\n{cut_string}', fontsize=14)
+    im_all = plot_2x2_grid(fig_all, axs_all, sim_direct, 'hist', cuts, overlays=[reflected_overlay_config, data_overlay_config], hist_bins_dict=hist_bins)
+    
+    fig_all.text(0.5, 0.01, f"{direct_stats}\n\n{reflected_stats}", ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+    
+    if im_all:
+        fig_all.tight_layout(rect=[0, 0.15, 0.9, 0.95])
+        cbar_ax = fig_all.add_axes([0.91, 0.2, 0.02, 0.7])
+        fig_all.colorbar(im_all, cax=cbar_ax, label='Direct Weighted Counts (Evts/Yr)')
+    else:
+        fig_all.tight_layout(rect=[0, 0.15, 1, 0.95])
+    plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_{date}.png')
+    plt.close(fig_all)
 
     ic("Processing complete.")
