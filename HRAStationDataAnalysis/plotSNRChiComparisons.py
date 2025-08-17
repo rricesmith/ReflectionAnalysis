@@ -53,8 +53,8 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct
     An event's 'direct' weight is split among its direct triggers, and its
     'reflected' weight is split among its reflected triggers.
     """
-    direct_data = {'snr': [], 'chi_2016': [], 'chi_rcr': [], 'weights': []}
-    reflected_data = {'snr': [], 'chi_2016': [], 'chi_rcr': [], 'weights': []}
+    direct_data = {'snr': [], 'Chi2016': [], 'ChiRCR': [], 'weights': []}
+    reflected_data = {'snr': [], 'Chi2016': [], 'ChiRCR': [], 'weights': []}
 
     for event in HRAeventList:
         # Process for the 'direct' dataset using the direct weight name
@@ -72,11 +72,11 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct
                     ic(f'Processing station {st_id} with SNR: {snr} and Chi: {chi_dict}')
                     if snr is not None and chi_dict:
                         direct_data['snr'].append(snr)
-                        direct_data['chi_2016'].append(chi_dict.get('2016', np.nan))
-                        direct_data['chi_rcr'].append(chi_dict.get('RCR', np.nan))
+                        direct_data['Chi2016'].append(chi_dict.get('Chi2016', np.nan))
+                        direct_data['ChiRCR'].append(chi_dict.get('ChiRCR', np.nan))
                         direct_data['weights'].append(split_weight)
                         ic(f'Added direct data for station {st_id}: SNR={snr}, Chi2016={chi_dict.get("2016", np.nan)}, ChiRCR={chi_dict.get("RCR", np.nan)}, Weight={split_weight}')
-                        quit()
+#                        quit()
         # Process for the 'reflected' dataset using the reflected weight name
         reflected_weight = event.getWeight(reflected_weight_name, primary=True, sigma=sigma)
         if not np.isnan(reflected_weight) and reflected_weight > 0:
@@ -88,8 +88,8 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct
                     chi_dict = event.getChi(st_id)
                     if snr is not None and chi_dict:
                         reflected_data['snr'].append(snr)
-                        reflected_data['chi_2016'].append(chi_dict.get('2016', np.nan))
-                        reflected_data['chi_rcr'].append(chi_dict.get('RCR', np.nan))
+                        reflected_data['Chi2016'].append(chi_dict.get('Chi2016', np.nan))
+                        reflected_data['ChiRCR'].append(chi_dict.get('ChiRCR', np.nan))
                         reflected_data['weights'].append(split_weight)
 
     # Convert lists to numpy arrays for easier handling
@@ -104,15 +104,15 @@ def apply_cuts_and_get_stats(data, cuts_dict, is_sim=False):
     Applies a set of cuts to the data and returns the mask and passing statistics.
     """
     snr = data['snr']
-    chi_2016 = data['chi_2016']
-    chi_rcr = data['chi_rcr']
+    Chi2016 = data['Chi2016']
+    ChiRCR = data['ChiRCR']
     
     cut_mask = (
-        (chi_2016 > cuts_dict['chi_2016_min']) &
-        (chi_2016 < cuts_dict['chi_2016_max']) &
-        (chi_rcr > cuts_dict['chi_rcr_min']) &
+        (Chi2016 > cuts_dict['Chi2016_min']) &
+        (Chi2016 < cuts_dict['Chi2016_max']) &
+        (ChiRCR > cuts_dict['ChiRCR_min']) &
         (snr < cuts_dict['snr_max']) &
-        ((chi_rcr - chi_2016) > cuts_dict['chi_diff_min'])
+        ((ChiRCR - Chi2016) > cuts_dict['chi_diff_min'])
     )
     
     if is_sim:
@@ -143,24 +143,24 @@ def set_plot_labels(ax, xlabel, ylabel, title, xlim, ylim, xscale='linear', ysca
 def draw_cut_visuals(ax, plot_key, cuts_dict):
     """Draws lines and shaded regions for cuts on a given subplot."""
     if plot_key == 'snr_vs_chi2016':
-        ax.axhline(y=cuts_dict['chi_2016_min'], color='k', linestyle='--', linewidth=1.5)
-        ax.axhline(y=cuts_dict['chi_2016_max'], color='k', linestyle='--', linewidth=1.5)
-        ax.fill_between(ax.get_xlim(), cuts_dict['chi_2016_min'], cuts_dict['chi_2016_max'], color='gray', alpha=0.2)
+        ax.axhline(y=cuts_dict['Chi2016_min'], color='k', linestyle='--', linewidth=1.5)
+        ax.axhline(y=cuts_dict['Chi2016_max'], color='k', linestyle='--', linewidth=1.5)
+        ax.fill_between(ax.get_xlim(), cuts_dict['Chi2016_min'], cuts_dict['Chi2016_max'], color='gray', alpha=0.2)
         ax.axvline(x=cuts_dict['snr_max'], color='m', linestyle='--', linewidth=1.5)
         ax.fill_betweenx(ax.get_ylim(), cuts_dict['snr_max'], ax.get_xlim()[1], color='m', alpha=0.1)
     elif plot_key == 'snr_vs_chircr':
-        ax.axhline(y=cuts_dict['chi_rcr_min'], color='k', linestyle='--', linewidth=1.5)
-        ax.fill_between(ax.get_xlim(), cuts_dict['chi_rcr_min'], 1, color='gray', alpha=0.2)
+        ax.axhline(y=cuts_dict['ChiRCR_min'], color='k', linestyle='--', linewidth=1.5)
+        ax.fill_between(ax.get_xlim(), cuts_dict['ChiRCR_min'], 1, color='gray', alpha=0.2)
         ax.axvline(x=cuts_dict['snr_max'], color='m', linestyle='--', linewidth=1.5)
         ax.fill_betweenx(ax.get_ylim(), cuts_dict['snr_max'], ax.get_xlim()[1], color='m', alpha=0.1)
     elif plot_key == 'chi_vs_chi':
-        ax.axhline(y=cuts_dict['chi_rcr_min'], color='k', linestyle='--', linewidth=1.5)
-        ax.axvline(x=cuts_dict['chi_2016_min'], color='k', linestyle='--', linewidth=1.5)
-        ax.axvline(x=cuts_dict['chi_2016_max'], color='k', linestyle='--', linewidth=1.5)
+        ax.axhline(y=cuts_dict['ChiRCR_min'], color='k', linestyle='--', linewidth=1.5)
+        ax.axvline(x=cuts_dict['Chi2016_min'], color='k', linestyle='--', linewidth=1.5)
+        ax.axvline(x=cuts_dict['Chi2016_max'], color='k', linestyle='--', linewidth=1.5)
         x_vals = np.array([0, 1.0])
         ax.plot(x_vals, x_vals + cuts_dict['chi_diff_min'], color='purple', linestyle='--', linewidth=1.5)
-        x_fill = np.linspace(cuts_dict['chi_2016_min'], cuts_dict['chi_2016_max'], 100)
-        y_lower = np.maximum(cuts_dict['chi_rcr_min'], x_fill + cuts_dict['chi_diff_min'])
+        x_fill = np.linspace(cuts_dict['Chi2016_min'], cuts_dict['Chi2016_max'], 100)
+        y_lower = np.maximum(cuts_dict['ChiRCR_min'], x_fill + cuts_dict['chi_diff_min'])
         ax.fill_between(x_fill, y_lower, 1, color='gray', alpha=0.3, interpolate=True)
     elif plot_key == 'snr_vs_chidiff':
         ax.axhline(y=cuts_dict['chi_diff_min'], color='purple', linestyle='--', linewidth=1.5)
@@ -173,7 +173,7 @@ def plot_2x2_grid(fig, axs, data, cuts_dict, plot_type='scatter', overlay_data=N
     Master function to generate a 2x2 grid of plots.
     Can create scatter plots, 2D histograms, or both overlaid.
     """
-    snr, chi2016, chircr = data['snr'], data['chi_2016'], data['chi_rcr']
+    snr, chi2016, chircr = data['snr'], data['Chi2016'], data['ChiRCR']
     weights = data.get('weights', None) # Use .get for safety with data dict
     is_sim = weights is not None
     
@@ -238,11 +238,11 @@ if __name__ == "__main__":
         exit()
 
     snr_array = load_station_data(station_data_folder, date, station_id, 'SNR')
-    chi_2016_array = load_station_data(station_data_folder, date, station_id, 'Chi2016')
-    chi_rcr_array = load_station_data(station_data_folder, date, station_id, 'ChiRCR')
+    Chi2016_array = load_station_data(station_data_folder, date, station_id, 'Chi2016')
+    ChiRCR_array = load_station_data(station_data_folder, date, station_id, 'ChiRCR')
     
     # FIX: Add check for empty Chi arrays
-    if chi_2016_array.size == 0 or chi_rcr_array.size == 0:
+    if Chi2016_array.size == 0 or ChiRCR_array.size == 0:
         ic("Error: Chi2016 or ChiRCR data is missing or empty. Cannot proceed.")
         exit()
 
@@ -253,10 +253,10 @@ if __name__ == "__main__":
     initial_mask, unique_indices = getTimeEventMasks(times, event_ids)
     
     snr_array = snr_array[initial_mask][unique_indices]
-    chi_2016_array = chi_2016_array[initial_mask][unique_indices]
-    chi_rcr_array = chi_rcr_array[initial_mask][unique_indices]
+    Chi2016_array = Chi2016_array[initial_mask][unique_indices]
+    ChiRCR_array = ChiRCR_array[initial_mask][unique_indices]
     
-    data_dict = {'snr': snr_array, 'chi_2016': chi_2016_array, 'chi_rcr': chi_rcr_array}
+    data_dict = {'snr': snr_array, 'Chi2016': Chi2016_array, 'ChiRCR': ChiRCR_array}
     ic(f"Data events after masking: {len(data_dict['snr'])}")
     gc.collect()
 
@@ -276,11 +276,11 @@ if __name__ == "__main__":
 
     # --- Define Cuts ---
     cuts = {
-        'chi_2016_min': 0.55, 'chi_2016_max': 0.73,
-        'chi_rcr_min': 0.75, 'snr_max': 35,
+        'Chi2016_min': 0.55, 'Chi2016_max': 0.73,
+        'ChiRCR_min': 0.75, 'snr_max': 35,
         'chi_diff_min': 0.08 # ChiRCR - Chi2016
     }
-    cut_string = (f"Cuts: {cuts['chi_2016_min']}<Chi16<{cuts['chi_2016_max']}, ChiRCR>{cuts['chi_rcr_min']}, SNR<{cuts['snr_max']}, ChiRCR-Chi16>{cuts['chi_diff_min']}")
+    cut_string = (f"Cuts: {cuts['Chi2016_min']}<Chi16<{cuts['Chi2016_max']}, ChiRCR>{cuts['ChiRCR_min']}, SNR<{cuts['snr_max']}, ChiRCR-Chi16>{cuts['chi_diff_min']}")
     
     # --- Plotting Section ---
     
@@ -349,10 +349,10 @@ if __name__ == "__main__":
     fig_overlay.suptitle(title_overlay, fontsize=14)
     
     overlay_plot_data = {
-        'snr_vs_chi2016': {'x': data_dict['snr'], 'y': data_dict['chi_2016']},
-        'snr_vs_chircr': {'x': data_dict['snr'], 'y': data_dict['chi_rcr']},
-        'chi_vs_chi': {'x': data_dict['chi_2016'], 'y': data_dict['chi_rcr']},
-        'snr_vs_chidiff': {'x': data_dict['snr'], 'y': data_dict['chi_rcr'] - data_dict['chi_2016']}
+        'snr_vs_chi2016': {'x': data_dict['snr'], 'y': data_dict['Chi2016']},
+        'snr_vs_chircr': {'x': data_dict['snr'], 'y': data_dict['ChiRCR']},
+        'chi_vs_chi': {'x': data_dict['Chi2016'], 'y': data_dict['ChiRCR']},
+        'snr_vs_chidiff': {'x': data_dict['snr'], 'y': data_dict['ChiRCR'] - data_dict['Chi2016']}
     }
 
     im_overlay = plot_2x2_grid(fig_overlay, axs_overlay, sim_both, cuts, plot_type='hist', 
