@@ -59,19 +59,24 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct
     for event in HRAeventList:
         # Process for the 'direct' dataset using the direct weight name
         direct_weight = event.getWeight(direct_weight_name, primary=True, sigma=sigma)
+        ic(f'Processing event {event.get_id()} with direct weight: {direct_weight}')
         if not np.isnan(direct_weight) and direct_weight > 0:
             triggered_direct = [st_id for st_id in direct_stations if event.hasTriggered(st_id, sigma)]
+            ic(f'Triggered direct stations: {triggered_direct}')
             if triggered_direct:
                 split_weight = direct_weight / len(triggered_direct)
+                ic(f'Split weight for direct: {split_weight}')
                 for st_id in triggered_direct:
                     snr = event.getSNR(st_id)
                     chi_dict = event.getChi(st_id)
+                    ic(f'Processing station {st_id} with SNR: {snr} and Chi: {chi_dict}')
                     if snr is not None and chi_dict:
                         direct_data['snr'].append(snr)
                         direct_data['chi_2016'].append(chi_dict.get('2016', np.nan))
                         direct_data['chi_rcr'].append(chi_dict.get('RCR', np.nan))
                         direct_data['weights'].append(split_weight)
-
+                        ic(f'Added direct data for station {st_id}: SNR={snr}, Chi2016={chi_dict.get("2016", np.nan)}, ChiRCR={chi_dict.get("RCR", np.nan)}, Weight={split_weight}')
+                        quit()
         # Process for the 'reflected' dataset using the reflected weight name
         reflected_weight = event.getWeight(reflected_weight_name, primary=True, sigma=sigma)
         if not np.isnan(reflected_weight) and reflected_weight > 0:
