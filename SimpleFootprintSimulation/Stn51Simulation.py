@@ -187,6 +187,11 @@ eventWriter.begin(output_filename)
 
 preAmpVrms_per_channel = {}
 
+
+# custom processor
+eFieldProcessor = modifyEfieldForSurfaceReflection.EfieldProcessor()
+
+
 # Start simulation
 for iE, evt in enumerate(readCoREAS.run(detector=det)):
     logger.info("processing event {:d} with id {:d}".format(iE, evt.get_id()))
@@ -205,26 +210,26 @@ for iE, evt in enumerate(readCoREAS.run(detector=det)):
 
     new_efields = []
     reflected_voltage_fft = []
-    efields = station.get_electric_fields()
-    for iE, efield in enumerate(efields):
+    for iC in direct_LPDA_channels:
+        efield = station.get_channel(iC).get_electric_field()
         # modify the Efield for surface reflection
         # Doing this for backlobe antennas to. Needs to be removed in the future if backlobe signals wish to be looked at
-        new_efields.append(modifyEfieldForSurfaceReflection(efield, incoming_zenith=zenith, antenna_height=1*units.m, n_index=1.35))
+        new_efields.append(eFieldProcessor.modifyEfieldForSurfaceReflection(efield, incoming_zenith=zenith, antenna_height=1*units.m, n_index=1.35))
 
         # Get voltage FFT from reflected Efield
-        reflected_voltage_fft.append(getVoltageFFTFromEfield(new_efields[-1], zenith_antenna=zenith, azimuth=sim_shower[shp.azimuth]/units.rad, det=det, sim_station=station, channel_id=0))
+        reflected_voltage_fft.append(eFieldProcessor.getVoltageFFTFromEfield(new_efields[-1], zenith_antenna=zenith, azimuth=sim_shower[shp.azimuth]/units.rad, det=det, sim_station=station, channel_id=iC))
 
 
     # Now we convert the original Efields to voltage FFTs
     efieldToVoltageConverter.run(evt, station, det)
 
 
-    # Add the reflected voltage FFT to the station
-    for iCh in range(len(reflected_voltage_fft)):
+    # Add the reflected voltage FFT to the upward facing channels
+    for i, iCh in enumerate(direct_LPDA_channels):
         channel = station.get_channel(iCh)
 
         channel_fft = channel.get_frequency_spectrum()
-        channel_fft += reflected_voltage_fft[iCh]
+        channel_fft += reflected_voltage_fft[i]
         channel.set_frequency_spectrum(channel_fft, channel.get_sampling_rate())
 
     channelResampler.run(evt, station, det, 1*units.GHz)
