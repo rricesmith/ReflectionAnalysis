@@ -95,15 +95,15 @@ def calculate_cut_stats_table(data_dict, cuts, is_sim, title):
         total_val = len(data_dict['snr'])
         if total_val == 0: return f"{title}\nNo events in dataset."
     
-    snr, chi2016, chircr = data_dict['snr'], data_dict['Chi2016'], data_dict['ChiRCR']
+    snr, chircr = data_dict['snr'], data_dict['ChiRCR']
     weights = data_dict.get('weights', np.ones_like(snr))
 
+    # Interpolate the ChiRCR cut value for each event's SNR
+    chi_rcr_cut_values = np.interp(snr, cuts['chi_rcr_line_snr'], cuts['chi_rcr_line_chi'])
+
     masks = {
-        f"Chi16 > {cuts['Chi2016_min']}": chi2016 > cuts['Chi2016_min'],
-        f"Chi16 < {cuts['Chi2016_max']}": chi2016 < cuts['Chi2016_max'],
-        f"ChiRCR > {cuts['ChiRCR_min']}": chircr > cuts['ChiRCR_min'],
         f"SNR < {cuts['snr_max']}": snr < cuts['snr_max'],
-        f"ChiDiff > {cuts['chi_diff_min']}": (chircr - chi2016) > cuts['chi_diff_min']
+        "ChiRCR > Line": chircr > chi_rcr_cut_values
     }
     
     full_mask = np.ones_like(snr, dtype=bool)
@@ -134,31 +134,26 @@ def set_plot_labels(ax, xlabel, ylabel, title, xlim, ylim, xscale='linear', ysca
 
 def draw_cut_visuals(ax, plot_key, cuts_dict):
     """Draws lines and shaded regions for cuts on a given subplot."""
-    if plot_key == 'snr_vs_chi2016':
-        ax.axhline(y=cuts_dict['Chi2016_min'], color='k', linestyle='--', linewidth=1.5)
-        ax.axhline(y=cuts_dict['Chi2016_max'], color='k', linestyle='--', linewidth=1.5)
-        ax.fill_between(ax.get_xlim(), cuts_dict['Chi2016_min'], cuts_dict['Chi2016_max'], color='gray', alpha=0.2)
-        ax.axvline(x=cuts_dict['snr_max'], color='m', linestyle='--', linewidth=1.5)
-        ax.fill_betweenx(ax.get_ylim(), cuts_dict['snr_max'], ax.get_xlim()[1], color='m', alpha=0.1)
-    elif plot_key == 'snr_vs_chircr':
-        ax.axhline(y=cuts_dict['ChiRCR_min'], color='k', linestyle='--', linewidth=1.5)
-        ax.fill_between(ax.get_xlim(), cuts_dict['ChiRCR_min'], 1, color='gray', alpha=0.2)
-        ax.axvline(x=cuts_dict['snr_max'], color='m', linestyle='--', linewidth=1.5)
-        ax.fill_betweenx(ax.get_ylim(), cuts_dict['snr_max'], ax.get_xlim()[1], color='m', alpha=0.1)
+    snr_max = cuts_dict['snr_max']
+    line_snr = cuts_dict['chi_rcr_line_snr']
+    line_chi = cuts_dict['chi_rcr_line_chi']
+
+    # Draw SNR cut line where applicable
+    if 'snr' in plot_key:
+        ax.axvline(x=snr_max, color='m', linestyle='--', linewidth=1.5)
+        ax.fill_betweenx(ax.get_ylim(), snr_max, ax.get_xlim()[1], color='m', alpha=0.1)
+
+    # Draw the dynamic ChiRCR cut line and shaded region
+    if plot_key == 'snr_vs_chircr':
+        ax.plot(line_snr, line_chi, color='purple', linestyle='--', linewidth=1.5)
+        ax.fill_between(line_snr, line_chi, 1, color='purple', alpha=0.2, interpolate=True)
+    
+    # For Chi-Chi plot, we can't directly show the SNR-dependent cut.
+    # We can indicate that a cut exists but not the exact line.
     elif plot_key == 'chi_vs_chi':
-        ax.axhline(y=cuts_dict['ChiRCR_min'], color='k', linestyle='--', linewidth=1.5)
-        ax.axvline(x=cuts_dict['Chi2016_min'], color='k', linestyle='--', linewidth=1.5)
-        ax.axvline(x=cuts_dict['Chi2016_max'], color='k', linestyle='--', linewidth=1.5)
-        x_vals = np.array([0, 1.0])
-        ax.plot(x_vals, x_vals + cuts_dict['chi_diff_min'], color='purple', linestyle='--', linewidth=1.5)
-        x_fill = np.linspace(cuts_dict['Chi2016_min'], cuts_dict['Chi2016_max'], 100)
-        y_lower = np.maximum(cuts_dict['ChiRCR_min'], x_fill + cuts_dict['chi_diff_min'])
-        ax.fill_between(x_fill, y_lower, 1, color='gray', alpha=0.3, interpolate=True)
-    elif plot_key == 'snr_vs_chidiff':
-        ax.axhline(y=cuts_dict['chi_diff_min'], color='purple', linestyle='--', linewidth=1.5)
-        ax.fill_between(ax.get_xlim(), cuts_dict['chi_diff_min'], ax.get_ylim()[1], color='purple', alpha=0.1)
-        ax.axvline(x=cuts_dict['snr_max'], color='m', linestyle='--', linewidth=1.5)
-        ax.fill_betweenx(ax.get_ylim(), cuts_dict['snr_max'], ax.get_xlim()[1], color='m', alpha=0.1)
+         ax.text(0.05, 0.95, "ChiRCR cut is SNR-dependent", transform=ax.transAxes,
+                fontsize=9, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
 
 def plot_2x2_grid(fig, axs, base_data, base_plot_type, cuts_dict, overlays=None, hist_bins_dict=None):
     """
@@ -214,7 +209,6 @@ def plot_2x2_grid(fig, axs, base_data, base_plot_type, cuts_dict, overlays=None,
         if key == 'chi_vs_chi':
             ax.plot([0, 1], [0, 1], linestyle='--', color='red', linewidth=1)
             
-            # Add Legend
             legend_elements = []
             if base_plot_type == 'hist':
                 legend_elements.append(plt.Rectangle((0,0),1,1,fc="lightblue", label='Direct Sim (Hist)'))
@@ -346,11 +340,11 @@ if __name__ == "__main__":
 
     # --- Define Cuts & Bins ---
     cuts = {
-        'Chi2016_min': 0.55, 'Chi2016_max': 0.73,
-        'ChiRCR_min': 0.75, 'snr_max': 35,
-        'chi_diff_min': 0.08
+        'snr_max': 33,
+        'chi_rcr_line_snr': np.array([0, 7, 8, 15, 20, 30, 100]),
+        'chi_rcr_line_chi': np.array([0.62, 0.62, 0.7, 0.74, 0.76, 0.78, 0.8])
     }
-    cut_string = (f"Cuts: {cuts['Chi2016_min']}<Chi16<{cuts['Chi2016_max']}, ChiRCR>{cuts['ChiRCR_min']}, SNR<{cuts['snr_max']}, ChiRCR-Chi16>{cuts['chi_diff_min']}")
+    cut_string = f"Cuts: SNR < {cuts['snr_max']} & ChiRCR > Dynamic Line Cut"
     
     log_bins = np.logspace(np.log10(3), np.log10(100), 31)
     linear_bins = np.linspace(0, 1, 31)
@@ -397,11 +391,11 @@ if __name__ == "__main__":
         run_analysis_for_station(station_id, station_data, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date)
 
     # --- Run Analysis for Summed Stations ---
-    if len(all_stations_data['snr']) > 0:
+    if len(all_stations_data['snr']) > 1: # Only run sum if there is more than one station's data
         summed_station_data = {key: np.concatenate(all_stations_data[key]) for key in all_stations_data}
         summed_station_id = '+'.join(map(str, station_ids_to_process))
         run_analysis_for_station(summed_station_id, summed_station_data, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date)
     else:
-        ic("No data loaded for any station, skipping summed analysis.")
+        ic("Not enough station data to perform a summed analysis.")
 
     ic("Processing complete.")
