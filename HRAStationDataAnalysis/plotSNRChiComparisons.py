@@ -363,7 +363,7 @@ if __name__ == "__main__":
     ic.configureOutput(prefix='Chi-SNR Analysis | ')
     
     # --- Define Stations and Load Sim Data ---
-    station_ids_to_process = [13, 14]
+    station_ids_to_process = [13, 14, 15, 17, 18, 19, 30]
     HRAeventList = loadHRAfromH5(sim_file)
     direct_stations = [13, 14, 15, 17, 18, 19, 30]
     reflected_stations = [113, 114, 115, 117, 118, 119, 130]
