@@ -86,6 +86,26 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct
             
     return direct_data, reflected_data
 
+def get_cut_mask(data_dict, cuts):
+    """
+    Applies cuts and returns a boolean mask of passing events.
+    """
+    snr = data_dict['snr']
+    chircr = data_dict['ChiRCR']
+    chi2016 = data_dict['Chi2016']
+    
+    # Interpolate the ChiRCR cut value for each event's SNR
+    chi_rcr_snr_cut_values = np.interp(snr, cuts['chi_rcr_line_snr'], cuts['chi_rcr_line_chi'])
+    
+    # Interpolate the ChiRCR cut value for each event's Chi2016
+    chi_rcr_chi_cut_values = np.interp(chi2016, cuts['chi_chi_line_chi2016'], cuts['chi_chi_line_chircr'])
+
+    # Create the final mask
+    mask = (snr < cuts['snr_max']) & \
+           (chircr > chi_rcr_snr_cut_values) & \
+           (chircr > chi_rcr_chi_cut_values)
+    return mask
+
 def calculate_cut_stats_table(data_dict, cuts, is_sim, title):
     """Calculates the percentage of events/weight passing each cut individually and all together."""
     if is_sim:
@@ -95,27 +115,27 @@ def calculate_cut_stats_table(data_dict, cuts, is_sim, title):
         total_val = len(data_dict['snr'])
         if total_val == 0: return f"{title}\nNo events in dataset."
     
-    snr, chircr = data_dict['snr'], data_dict['ChiRCR']
+    snr, chircr, chi2016 = data_dict['snr'], data_dict['ChiRCR'], data_dict['Chi2016']
     weights = data_dict.get('weights', np.ones_like(snr))
 
-    # Interpolate the ChiRCR cut value for each event's SNR
-    chi_rcr_cut_values = np.interp(snr, cuts['chi_rcr_line_snr'], cuts['chi_rcr_line_chi'])
+    chi_rcr_snr_cut_values = np.interp(snr, cuts['chi_rcr_line_snr'], cuts['chi_rcr_line_chi'])
+    chi_rcr_chi_cut_values = np.interp(chi2016, cuts['chi_chi_line_chi2016'], cuts['chi_chi_line_chircr'])
 
     masks = {
         f"SNR < {cuts['snr_max']}": snr < cuts['snr_max'],
-        "ChiRCR > Line": chircr > chi_rcr_cut_values
+        "ChiRCR > SNR Line": chircr > chi_rcr_snr_cut_values,
+        "ChiRCR > Chi-Chi Line": chircr > chi_rcr_chi_cut_values
     }
     
-    full_mask = np.ones_like(snr, dtype=bool)
+    full_mask = get_cut_mask(data_dict, cuts)
     
     lines = [f"{title}:"]
     for name, mask in masks.items():
         passing_val = np.sum(weights[mask])
-        lines.append(f"- {name:<15}: {passing_val/total_val:>7.2%}")
-        full_mask &= mask
+        lines.append(f"- {name:<20}: {passing_val/total_val:>7.2%}")
         
     passing_all = np.sum(weights[full_mask])
-    lines.append(f"- {'All Cuts':<15}: {passing_all/total_val:>7.2%}")
+    lines.append(f"- {'All Cuts':<20}: {passing_all/total_val:>7.2%}")
     return "\n".join(lines)
 
 
@@ -135,24 +155,22 @@ def set_plot_labels(ax, xlabel, ylabel, title, xlim, ylim, xscale='linear', ysca
 def draw_cut_visuals(ax, plot_key, cuts_dict):
     """Draws lines and shaded regions for cuts on a given subplot."""
     snr_max = cuts_dict['snr_max']
-    line_snr = cuts_dict['chi_rcr_line_snr']
-    line_chi = cuts_dict['chi_rcr_line_chi']
+    snr_line_snr = cuts_dict['chi_rcr_line_snr']
+    snr_line_chi = cuts_dict['chi_rcr_line_chi']
+    chi_line_chi2016 = cuts_dict['chi_chi_line_chi2016']
+    chi_line_chircr = cuts_dict['chi_chi_line_chircr']
 
-    # Draw SNR cut line where applicable
     if 'snr' in plot_key:
         ax.axvline(x=snr_max, color='m', linestyle='--', linewidth=1.5)
         ax.fill_betweenx(ax.get_ylim(), snr_max, ax.get_xlim()[1], color='m', alpha=0.1)
 
-    # Draw the dynamic ChiRCR cut line and shaded region
     if plot_key == 'snr_vs_chircr':
-        ax.plot(line_snr, line_chi, color='purple', linestyle='--', linewidth=1.5)
-        ax.fill_between(line_snr, line_chi, 1, color='purple', alpha=0.2, interpolate=True)
+        ax.plot(snr_line_snr, snr_line_chi, color='purple', linestyle='--', linewidth=1.5)
+        ax.fill_between(snr_line_snr, snr_line_chi, 1, color='purple', alpha=0.2, interpolate=True)
     
-    # For Chi-Chi plot, we can't directly show the SNR-dependent cut.
-    # We can indicate that a cut exists but not the exact line.
     elif plot_key == 'chi_vs_chi':
-         ax.text(0.05, 0.95, "ChiRCR cut is SNR-dependent", transform=ax.transAxes,
-                fontsize=9, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        ax.plot(chi_line_chi2016, chi_line_chircr, color='darkgreen', linestyle='--', linewidth=1.5)
+        ax.fill_between(chi_line_chi2016, chi_line_chircr, 1, color='darkgreen', alpha=0.2, interpolate=True)
 
 
 def plot_2x2_grid(fig, axs, base_data, base_plot_type, cuts_dict, overlays=None, hist_bins_dict=None):
@@ -225,12 +243,27 @@ def plot_2x2_grid(fig, axs, base_data, base_plot_type, cuts_dict, overlays=None,
 
     return im
 
-def run_analysis_for_station(station_id, station_data, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date):
+def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date):
     """
-    Runs the full plotting pipeline for a given station ID and its data.
+    Runs the full plotting and saving pipeline for a given station ID and its data.
     """
     ic(f"--- Running analysis for Station {station_id} ---")
 
+    # --- Save Passing Events ---
+    passing_mask = get_cut_mask(station_data, cuts)
+    passing_event_ids = event_ids[passing_mask]
+    passing_indices = unique_indices[passing_mask]
+    
+    passing_events_data = np.zeros(len(passing_event_ids), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_data['event_id'] = passing_event_ids
+    passing_events_data['unique_index'] = passing_indices
+    
+    savename = f'{plot_folder}PassingEvents_Station{station_id}_{date}.npy'
+    np.save(savename, passing_events_data)
+    ic(f"Saved {len(passing_event_ids)} passing events for Station {station_id} to {savename}")
+
+
+    # --- Plotting ---
     data_overlay_config = {
         'data': station_data,
         'label': 'Data',
@@ -342,9 +375,11 @@ if __name__ == "__main__":
     cuts = {
         'snr_max': 33,
         'chi_rcr_line_snr': np.array([0, 7, 8, 15, 20, 30, 100]),
-        'chi_rcr_line_chi': np.array([0.62, 0.62, 0.7, 0.74, 0.76, 0.78, 0.8])
+        'chi_rcr_line_chi': np.array([0.62, 0.62, 0.7, 0.74, 0.76, 0.78, 0.8]),
+        'chi_chi_line_chi2016': np.array([0, 0.65, 0.75, 0.8, 1.0]),
+        'chi_chi_line_chircr': np.array([0.62, 0.62, 0.67, 0.74, 0.94])
     }
-    cut_string = f"Cuts: SNR < {cuts['snr_max']} & ChiRCR > Dynamic Line Cut"
+    cut_string = f"Cuts: SNR < {cuts['snr_max']} & Two Dynamic ChiRCR Cuts"
     
     log_bins = np.logspace(np.log10(3), np.log10(100), 31)
     linear_bins = np.linspace(0, 1, 31)
@@ -356,11 +391,13 @@ if __name__ == "__main__":
     
     # --- Main Loop for Individual and Summed Stations ---
     all_stations_data = {key: [] for key in ['snr', 'Chi2016', 'ChiRCR']}
+    all_stations_event_ids = []
+    all_stations_unique_indices = []
 
     for station_id in station_ids_to_process:
         ic(f"Loading data for Station {station_id}...")
         times = load_station_data(station_data_folder, date, station_id, 'Times')
-        event_ids = load_station_data(station_data_folder, date, station_id, 'EventID')
+        event_ids_raw = load_station_data(station_data_folder, date, station_id, 'EventID')
         
         if times.size == 0: 
             ic(f"Skipping Station {station_id} due to missing Times/EventID data.")
@@ -374,27 +411,33 @@ if __name__ == "__main__":
             ic(f"Skipping Station {station_id} due to missing Chi data.")
             continue
 
-        initial_mask, unique_indices = getTimeEventMasks(times, event_ids)
+        initial_mask, unique_indices = getTimeEventMasks(times, event_ids_raw)
         
         station_data = {
             'snr': snr_array[initial_mask][unique_indices],
             'Chi2016': Chi2016_array[initial_mask][unique_indices],
             'ChiRCR': ChiRCR_array[initial_mask][unique_indices]
         }
+        station_event_ids = event_ids_raw[initial_mask][unique_indices]
+        
         ic(f"Station {station_id} has {len(station_data['snr'])} events after masking.")
         
         # Append data for summed analysis
         for key in all_stations_data:
             all_stations_data[key].append(station_data[key])
+        all_stations_event_ids.append(station_event_ids)
+        all_stations_unique_indices.append(unique_indices)
         
         # Run analysis for the individual station
-        run_analysis_for_station(station_id, station_data, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date)
+        run_analysis_for_station(station_id, station_data, station_event_ids, unique_indices, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date)
 
     # --- Run Analysis for Summed Stations ---
-    if len(all_stations_data['snr']) > 1: # Only run sum if there is more than one station's data
+    if len(all_stations_data['snr']) > 1:
         summed_station_data = {key: np.concatenate(all_stations_data[key]) for key in all_stations_data}
+        summed_event_ids = np.concatenate(all_stations_event_ids)
+        summed_unique_indices = np.concatenate(all_stations_unique_indices)
         summed_station_id = '+'.join(map(str, station_ids_to_process))
-        run_analysis_for_station(summed_station_id, summed_station_data, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date)
+        run_analysis_for_station(summed_station_id, summed_station_data, summed_event_ids, summed_unique_indices, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date)
     else:
         ic("Not enough station data to perform a summed analysis.")
 
