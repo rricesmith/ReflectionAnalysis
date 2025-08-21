@@ -89,7 +89,7 @@ class EfieldProcessor:
 
     def getVoltageFFTFromEfield(self, Efield, original_zenith_antenna, azimuth, det, sim_station, channel_id):
         # origninal zenith antenna needs to be in radians, and the angle from above
-        zenith_antenna_after_reflection = np.pi - original_zenith_antenna
+        zenith_antenna_after_reflection = np.pi - original_zenith_antenna/units.rad
 
 
         ff = Efield.get_frequencies()
