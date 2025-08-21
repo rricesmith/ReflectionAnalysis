@@ -33,6 +33,8 @@ class EfieldProcessor:
 
         This version explicitly handles trace boundaries and warns if the reflected
         signal is truncated.
+
+        It returns only the reflected Efield signal, so the user has to manually add it to the original Efield if they wish
         """
         # Get original trace data
         original_traces = Efield.get_trace()
@@ -75,18 +77,21 @@ class EfieldProcessor:
             ef_trace_p_reflected[time_shift_samples:] = reflected_p_unshifted[:num_samples_to_copy]
             ef_trace_s_reflected[time_shift_samples:] = reflected_s_unshifted[:num_samples_to_copy]
 
-        # Create the final combined trace (direct + reflected)
+        # Create the final combined trace reflected
         final_traces = np.array([
-            original_traces[0],  # Longitudinal component remains unchanged
-            original_traces[1] + ef_trace_p_reflected,
-            original_traces[2] + ef_trace_s_reflected
+            original_traces[0],  # Longitude component remains unchanged
+            ef_trace_p_reflected,
+            ef_trace_s_reflected
         ])
 
         Efield.set_trace(final_traces, sampling_rate)
         return Efield
 
-    def getVoltageFFTFromEfield(self, Efield, zenith_antenna, azimuth, det, sim_station, channel_id):
-        # This method remains the same as in the previous response
+    def getVoltageFFTFromEfield(self, Efield, original_zenith_antenna, azimuth, det, sim_station, channel_id):
+        # origninal zenith antenna needs to be in radians, and the angle from above
+        zenith_antenna_after_reflection = np.pi - original_zenith_antenna
+
+
         ff = Efield.get_frequencies()
         if self.__caching:
             if self.__freqs is None:
@@ -96,14 +101,14 @@ class EfieldProcessor:
                 self._get_cached_antenna_response.cache_clear()
                 logger.warning("Frequencies have changed. Clearing antenna response cache.")
 
-        antenna_model = det.get_antenna_model(sim_station.get_id(), channel_id, zenith_antenna)
+        antenna_model = det.get_antenna_model(sim_station.get_id(), channel_id, zenith_antenna_after_reflection)
         antenna_pattern = self.__antenna_provider.load_antenna_pattern(antenna_model)
         antenna_orientation = det.get_antenna_orientation(sim_station.get_id(), channel_id)
 
         if self.__caching:
-            vel = self._get_cached_antenna_response(antenna_pattern, zenith_antenna, azimuth, *antenna_orientation)
+            vel = self._get_cached_antenna_response(antenna_pattern, zenith_antenna_after_reflection, azimuth, *antenna_orientation)
         else:
-            vel = antenna_pattern.get_antenna_response_vectorized(ff, zenith_antenna, azimuth, *antenna_orientation)
+            vel = antenna_pattern.get_antenna_response_vectorized(ff, zenith_antenna_after_reflection, azimuth, *antenna_orientation)
 
         Efield_fft = Efield.get_frequency_spectrum()
         t_theta = 1
