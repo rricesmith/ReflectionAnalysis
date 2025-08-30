@@ -95,15 +95,15 @@ def get_all_cut_masks(data_dict, cuts):
     chi2016 = data_dict['Chi2016']
     
     chi_rcr_snr_cut_values = np.interp(snr, cuts['chi_rcr_line_snr'], cuts['chi_rcr_line_chi'])
-    chi_rcr_chi_cut_values = np.interp(chi2016, cuts['chi_chi_line_chi2016'], cuts['chi_chi_line_chircr'])
+    chi_diff = chircr - chi2016
 
     masks = {}
     masks['snr_cut'] = snr < cuts['snr_max']
     masks['snr_line_cut'] = chircr > chi_rcr_snr_cut_values
-    masks['chi_chi_line_cut'] = chircr > chi_rcr_chi_cut_values
+    masks['chi_diff_cut'] = chi_diff > cuts['chi_diff_threshold']
     
     masks['snr_and_snr_line'] = masks['snr_cut'] & masks['snr_line_cut']
-    masks['all_cuts'] = masks['snr_cut'] & masks['snr_line_cut'] & masks['chi_chi_line_cut']
+    masks['all_cuts'] = masks['snr_cut'] & masks['snr_line_cut'] & masks['chi_diff_cut']
     
     return masks
 
@@ -128,7 +128,7 @@ def calculate_cut_stats_table(data_dict, cuts, is_sim, title, pre_mask_count=Non
     cut_masks_to_report = {
         f"SNR < {cuts['snr_max']}": masks['snr_cut'],
         "ChiRCR > SNR Line": masks['snr_line_cut'],
-        "ChiRCR > Chi-Chi Line": masks['chi_chi_line_cut'],
+        f"ChiRCR - Chi2016 > {cuts['chi_diff_threshold']}": masks['chi_diff_cut'],
         "All Cuts": masks['all_cuts']
     }
     
@@ -160,8 +160,7 @@ def draw_cut_visuals(ax, plot_key, cuts_dict):
     snr_max = cuts_dict['snr_max']
     snr_line_snr = cuts_dict['chi_rcr_line_snr']
     snr_line_chi = cuts_dict['chi_rcr_line_chi']
-    chi_line_chi2016 = cuts_dict['chi_chi_line_chi2016']
-    chi_line_chircr = cuts_dict['chi_chi_line_chircr']
+    chi_diff_threshold = cuts_dict['chi_diff_threshold']
 
     if 'snr' in plot_key:
         ax.axvline(x=snr_max, color='m', linestyle='--', linewidth=1.5)
@@ -172,8 +171,20 @@ def draw_cut_visuals(ax, plot_key, cuts_dict):
         ax.fill_between(snr_line_snr, snr_line_chi, 1, color='purple', alpha=0.2, interpolate=True)
     
     elif plot_key == 'chi_vs_chi':
-        ax.plot(chi_line_chi2016, chi_line_chircr, color='darkgreen', linestyle='--', linewidth=1.5)
-        ax.fill_between(chi_line_chi2016, chi_line_chircr, 1, color='darkgreen', alpha=0.2, interpolate=True)
+        # Draw Chi difference cut line: ChiRCR = Chi2016 + threshold
+        x_vals = np.linspace(0, 1, 100)
+        y_vals = x_vals + chi_diff_threshold
+        # Only show the part where y_vals <= 1
+        valid_mask = y_vals <= 1
+        if np.any(valid_mask):
+            ax.plot(x_vals[valid_mask], y_vals[valid_mask], color='darkgreen', linestyle='--', linewidth=1.5)
+            # Shade the region below the line (ChiRCR - Chi2016 < threshold)
+            ax.fill_between(x_vals[valid_mask], 0, y_vals[valid_mask], color='darkgreen', alpha=0.2)
+    
+    elif plot_key == 'snr_vs_chidiff':
+        # Draw horizontal line for Chi difference cut
+        ax.axhline(y=chi_diff_threshold, color='darkgreen', linestyle='--', linewidth=1.5)
+        ax.fill_betweenx([chi_diff_threshold, ax.get_ylim()[0]], ax.get_xlim()[0], ax.get_xlim()[1], color='darkgreen', alpha=0.2)
 
 
 def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bins_dict=None):
@@ -225,7 +236,17 @@ def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bin
                     weights = overlay_data['weights']
                     sort_indices = np.argsort(weights)
                     x_data, y_data, weights = x_data[sort_indices], y_data[sort_indices], weights[sort_indices]
-                    ax.scatter(x_data, y_data, c=weights, cmap='hot', alpha=overlay['style']['alpha'], s=overlay['style']['s'])
+                    
+                    # Enhanced weight visualization with better color mapping and size scaling
+                    norm = colors.LogNorm(vmin=weights.min(), vmax=weights.max())
+                    scatter = ax.scatter(x_data, y_data, c=weights, cmap='viridis', norm=norm, 
+                                       alpha=overlay['style']['alpha'], s=overlay['style']['s'])
+                    
+                    # Add colorbar for weight visualization if this is the first overlay
+                    if overlay == overlays[0]:  # Only add colorbar for first overlay to avoid duplicates
+                        cbar = plt.colorbar(scatter, ax=ax, shrink=0.8, aspect=20)
+                        cbar.set_label('Event Weight', fontsize=8)
+                        cbar.ax.tick_params(labelsize=7)
                 else:
                     ax.scatter(x_data, y_data, **overlay['style'])
 
@@ -245,7 +266,7 @@ def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bin
                 for overlay in overlays:
                     if overlay['label']:
                         if overlay['style'].get('color_by_weight'):
-                            legend_elements.append(Line2D([0], [0], marker='o', color='w', label=overlay['label'], markerfacecolor='orange', markersize=8, alpha=0.5))
+                            legend_elements.append(Line2D([0], [0], marker='o', color='w', label=overlay['label'], markerfacecolor='blue', markersize=8, alpha=0.5))
                         else:
                             legend_elements.append(Line2D([0], [0], marker=overlay['style'].get('marker', 'o'), color='w', label=overlay['label'], markerfacecolor=overlay['style']['c'], markersize=8))
             ax.legend(handles=legend_elements, loc='upper left')
@@ -322,7 +343,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     # --- Other Plots (Sim vs Data, etc.) ---
     sim_base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Direct Sim (Hist)'}
     data_overlay_config = {'data': station_data, 'label': 'Data', 'style': {'marker': '.', 's': 5, 'alpha': 0.8, 'c': 'orangered'}}
-    reflected_overlay_config = {'data': sim_reflected, 'label': 'Reflected Sim', 'style': {'s': 8, 'alpha': 0.3, 'color_by_weight': True}}
+    reflected_overlay_config = {'data': sim_reflected, 'label': 'Reflected Sim (Weighted)', 'style': {'s': 12, 'alpha': 0.6, 'color_by_weight': True}}
 
     # Data over Composite Sim Plot
     ic("Generating data over composite simulation plot...")
@@ -373,11 +394,10 @@ if __name__ == "__main__":
     cuts = {
         'snr_max': 33,
         'chi_rcr_line_snr': np.array([0, 7, 8, 15, 20, 30, 100]),
-        'chi_rcr_line_chi': np.array([0.62, 0.62, 0.7, 0.74, 0.76, 0.78, 0.8]),
-        'chi_chi_line_chi2016': np.array([0, 0.65, 0.75, 0.8, 1.0]),
-        'chi_chi_line_chircr': np.array([0.62, 0.62, 0.67, 0.74, 0.94])
+        'chi_rcr_line_chi': np.array([0.65, 0.65, 0.73, 0.77, 0.79, 0.81, 0.83]),  # More aggressive cut
+        'chi_diff_threshold': 0.8  # New Chi difference cut
     }
-    cut_string = f"Cuts: SNR < {cuts['snr_max']} & Two Dynamic ChiRCR Cuts"
+    cut_string = f"Cuts: SNR < {cuts['snr_max']} & ChiRCR > SNR Line & ChiRCR - Chi2016 > {cuts['chi_diff_threshold']}"
     
     log_bins = np.logspace(np.log10(3), np.log10(100), 31)
     linear_bins = np.linspace(0, 1, 31)

@@ -88,7 +88,7 @@ class EfieldProcessor:
         return Efield
 
     def getVoltageFFTFromEfield(self, Efield, original_zenith_antenna, azimuth, det, sim_station, channel_id):
-        # origninal zenith antenna needs to be in radians, and the angle from above
+        # origninal zenith antenna needs to have NuRadioMC units attached, and should be the angle from above
         zenith_antenna_after_reflection = np.pi - original_zenith_antenna/units.rad
 
 
