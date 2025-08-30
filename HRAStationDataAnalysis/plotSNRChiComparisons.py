@@ -9,7 +9,7 @@ import h5py
 import pickle
 from icecream import ic
 import configparser
-from C_utils import getTimeEventMasks
+from HRAStationDataAnalysis.C_utils import getTimeEventMasks
 from HRASimulation.HRAEventObject import HRAevent 
 
 # --- Utility Functions ---
