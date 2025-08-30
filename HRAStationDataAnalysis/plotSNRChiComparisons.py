@@ -395,7 +395,7 @@ if __name__ == "__main__":
         'snr_max': 33,
         'chi_rcr_line_snr': np.array([0, 7, 8, 15, 20, 30, 100]),
         'chi_rcr_line_chi': np.array([0.65, 0.65, 0.73, 0.77, 0.79, 0.81, 0.83]),  # More aggressive cut
-        'chi_diff_threshold': 0.8  # New Chi difference cut
+        'chi_diff_threshold': 0.08  # New Chi difference cut
     }
     cut_string = f"Cuts: SNR < {cuts['snr_max']} & ChiRCR > SNR Line & ChiRCR - Chi2016 > {cuts['chi_diff_threshold']}"
     
