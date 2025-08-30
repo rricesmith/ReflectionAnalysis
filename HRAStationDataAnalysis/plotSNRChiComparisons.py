@@ -164,11 +164,17 @@ def draw_cut_visuals(ax, plot_key, cuts_dict):
 
     if 'snr' in plot_key:
         ax.axvline(x=snr_max, color='m', linestyle='--', linewidth=1.5)
-        ax.fill_betweenx(ax.get_ylim(), snr_max, ax.get_xlim()[1], color='m', alpha=0.1)
+        # Shade the GOOD region (SNR < threshold) with normal shading
+        ax.fill_betweenx(ax.get_ylim(), ax.get_xlim()[0], snr_max, color='m', alpha=0.2)
+        # Shade the BAD region (SNR > threshold) with dashed pattern
+        ax.fill_betweenx(ax.get_ylim(), snr_max, ax.get_xlim()[1], color='m', alpha=0.1, hatch='///')
 
     if plot_key == 'snr_vs_chircr':
         ax.plot(snr_line_snr, snr_line_chi, color='purple', linestyle='--', linewidth=1.5)
+        # Shade the GOOD region (above the line) with normal shading
         ax.fill_between(snr_line_snr, snr_line_chi, 1, color='purple', alpha=0.2, interpolate=True)
+        # Shade the BAD region (below the line) with dashed pattern
+        ax.fill_between(snr_line_snr, 0, snr_line_chi, color='purple', alpha=0.1, hatch='///')
     
     elif plot_key == 'chi_vs_chi':
         # Draw Chi difference cut line: ChiRCR = Chi2016 + threshold
@@ -178,13 +184,18 @@ def draw_cut_visuals(ax, plot_key, cuts_dict):
         valid_mask = y_vals <= 1
         if np.any(valid_mask):
             ax.plot(x_vals[valid_mask], y_vals[valid_mask], color='darkgreen', linestyle='--', linewidth=1.5)
-            # Shade the region below the line (ChiRCR - Chi2016 < threshold)
-            ax.fill_between(x_vals[valid_mask], 0, y_vals[valid_mask], color='darkgreen', alpha=0.2)
+            # Shade the GOOD region (above the line) with normal shading
+            ax.fill_between(x_vals[valid_mask], y_vals[valid_mask], 1, color='darkgreen', alpha=0.2)
+            # Shade the BAD region (below the line) with dashed pattern
+            ax.fill_between(x_vals[valid_mask], 0, y_vals[valid_mask], color='darkgreen', alpha=0.1, hatch='///')
     
     elif plot_key == 'snr_vs_chidiff':
         # Draw horizontal line for Chi difference cut
         ax.axhline(y=chi_diff_threshold, color='darkgreen', linestyle='--', linewidth=1.5)
-        ax.fill_betweenx([chi_diff_threshold, ax.get_ylim()[0]], ax.get_xlim()[0], ax.get_xlim()[1], color='darkgreen', alpha=0.2)
+        # Shade the GOOD region (above the line) with normal shading
+        ax.fill_betweenx([chi_diff_threshold, ax.get_ylim()[1]], ax.get_xlim()[0], ax.get_xlim()[1], color='darkgreen', alpha=0.2)
+        # Shade the BAD region (below the line) with dashed pattern
+        ax.fill_betweenx([ax.get_ylim()[0], chi_diff_threshold], ax.get_xlim()[0], ax.get_xlim()[1], color='darkgreen', alpha=0.1, hatch='///')
 
 
 def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bins_dict=None):
@@ -393,8 +404,8 @@ if __name__ == "__main__":
     # --- Define Cuts & Bins ---
     cuts = {
         'snr_max': 33,
-        'chi_rcr_line_snr': np.array([0, 7, 8, 15, 20, 30, 100]),
-        'chi_rcr_line_chi': np.array([0.65, 0.65, 0.73, 0.77, 0.79, 0.81, 0.83]),  # More aggressive cut
+        'chi_rcr_line_snr': np.array([0, 7, 7.5, 15, 20, 30, 100]),
+        'chi_rcr_line_chi': np.array([0.65, 0.65, 0.7, 0.77, 0.79, 0.81, 0.83]),  # More aggressive cut
         'chi_diff_threshold': 0.08  # New Chi difference cut
     }
     cut_string = f"Cuts: SNR < {cuts['snr_max']} & ChiRCR > SNR Line & ChiRCR - Chi2016 > {cuts['chi_diff_threshold']}"
