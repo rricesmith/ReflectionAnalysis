@@ -143,62 +143,55 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
             ic("Missing one or more raw data files (EventID, Times, Traces). Skipping station.")
             continue
 
-        # We need to map the 'unique_index' from the npz file back to the original raw data index.
-        # The 'unique_index' was an index into a *masked* array.
-        # We need to recreate that mask.
         initial_mask, unique_indices = getTimeEventMasks(raw_times, raw_event_ids)
 
-        raw_event_ids = raw_event_ids[initial_mask][unique_indices]
-        raw_times = raw_times[initial_mask][unique_indices]
-        raw_traces = raw_traces[initial_mask][unique_indices]
-        raw_snr = raw_snr[initial_mask][unique_indices]
-        raw_chi2016 = raw_chi2016[initial_mask][unique_indices]
-        raw_chircr = raw_chircr[initial_mask][unique_indices]
-        raw_chibad = raw_chibad[initial_mask][unique_indices]
-        raw_azi = raw_azi[initial_mask][unique_indices]
-        raw_zen = raw_zen[initial_mask][unique_indices]
+        # Apply the mask and select unique events to get the final, cleaned arrays
+        event_ids_clean = raw_event_ids[initial_mask][unique_indices]
+        traces_clean = raw_traces[initial_mask][unique_indices]
+        snr_clean = raw_snr[initial_mask][unique_indices] if raw_snr.size > 0 else np.array([])
+        chi2016_clean = raw_chi2016[initial_mask][unique_indices] if raw_chi2016.size > 0 else np.array([])
+        chircr_clean = raw_chircr[initial_mask][unique_indices] if raw_chircr.size > 0 else np.array([])
+        chibad_clean = raw_chibad[initial_mask][unique_indices] if raw_chibad.size > 0 else np.array([])
+        azi_clean = raw_azi[initial_mask][unique_indices] if raw_azi.size > 0 else np.array([])
+        zen_clean = raw_zen[initial_mask][unique_indices] if raw_zen.size > 0 else np.array([])
 
-        # The indices in unique_indices_map should correspond to the unique_index in the npz
-        # masked_indices = np.where(initial_mask)[0]
-        
         for passing_event in passing_events:
             event_id = passing_event['event_id']
             unique_idx = passing_event['unique_index']
 
             try:
-                # Find the original index in the raw files
-                # original_raw_index = masked_indices[unique_indices_map[unique_idx]]
+                # The unique_idx from the passing_events file directly corresponds to the index
+                # in the cleaned arrays (e.g., event_ids_clean, traces_clean).
                 
                 # Verify we have the correct event
-                if raw_event_ids[original_raw_index] != event_id:
-                    ic(f"Mismatch! Event ID {event_id} not found at expected index {original_raw_index}. Searching...")
-                    # Fallback search
-                    possible_indices = np.where(raw_event_ids == event_id)[0]
+                if event_ids_clean[unique_idx] != event_id:
+                    ic(f"Mismatch! Event ID {event_id} from file does not match event ID {event_ids_clean[unique_idx]} at index {unique_idx}. Searching...")
+                    # Fallback search in the cleaned array
+                    possible_indices = np.where(event_ids_clean == event_id)[0]
                     if not possible_indices.any():
-                        ic(f"Could not find event {event_id} at all. Skipping.")
+                        ic(f"Could not find event {event_id} in cleaned data. Skipping.")
                         continue
-                    original_raw_index = possible_indices[0] # Take the first one
-                    ic(f"Found event {event_id} at index {original_raw_index} instead.")
-            
-                trace = raw_traces[original_raw_index]
-                # The times array for a single event is inside the raw_times array
-                # This is assuming the sampling rate is constant and known
+                    unique_idx = possible_indices[0] # Take the first match
+                    ic(f"Found event {event_id} at new index {unique_idx} instead.")
+                
+                trace = traces_clean[unique_idx]
+                # The times array for a single event is calculated from the sampling rate
                 sampling_rate = 2 * units.GHz
                 times_for_event = np.arange(trace.shape[1]) / sampling_rate
 
                 event_info = {
-                    'snr': raw_snr[original_raw_index] if raw_snr.size > 0 else 'N/A',
-                    'azi': raw_azi[original_raw_index] if raw_azi.size > 0 else 0,
-                    'zen': raw_zen[original_raw_index] if raw_zen.size > 0 else 0,
-                    'chi2016': raw_chi2016[original_raw_index] if raw_chi2016.size > 0 else 'N/A',
-                    'chircr': raw_chircr[original_raw_index] if raw_chircr.size > 0 else 'N/A',
-                    'chibad': raw_chibad[original_raw_index] if raw_chibad.size > 0 else 'N/A'
+                    'snr': snr_clean[unique_idx] if snr_clean.size > 0 else 'N/A',
+                    'azi': azi_clean[unique_idx] if azi_clean.size > 0 else 0,
+                    'zen': zen_clean[unique_idx] if zen_clean.size > 0 else 0,
+                    'chi2016': chi2016_clean[unique_idx] if chi2016_clean.size > 0 else 'N/A',
+                    'chircr': chircr_clean[unique_idx] if chircr_clean.size > 0 else 'N/A',
+                    'chibad': chibad_clean[unique_idx] if chibad_clean.size > 0 else 'N/A'
                 }
 
                 plot_event_traces_and_ffts(event_id, trace, times_for_event, station_id, output_plot_dir, event_info)
 
             except IndexError:
-                ic(f"Could not find original index for event {event_id} with unique_index {unique_idx}. Skipping.")
+                ic(f"Index error for event {event_id} with unique_index {unique_idx}. The index is out of bounds for the cleaned data arrays. Skipping.")
             except Exception as e:
                 ic(f"An error occurred while plotting event {event_id}: {e}")
 
