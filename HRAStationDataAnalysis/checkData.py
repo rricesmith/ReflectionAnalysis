@@ -41,7 +41,7 @@ def plot_trace_and_fft(time_series, trace, title, save_path):
 def main():
     # Load templates
     templates = {
-        #'2016': D00_helperFunctions.loadMultipleTemplates(100, date='2016'),
+        '2016': D00_helperFunctions.loadMultipleTemplates(100, date='2016'),
         'RCR_100': D00_helperFunctions.loadMultipleTemplates(100),
         'RCR_bad_100': D00_helperFunctions.loadMultipleTemplates(100, bad=True),
         'RCR_200': D00_helperFunctions.loadMultipleTemplates(200),
@@ -56,6 +56,7 @@ def main():
     for name, template_set in templates.items():
         template_dir = os.path.join(plots_base_dir, name)
         os.makedirs(template_dir, exist_ok=True)
+        ic(template_set)
         for i, template_trace in enumerate(template_set):
             title = f"Template {name} #{i+1}"
             save_path = os.path.join(template_dir, f"template_{i+1}.png")
