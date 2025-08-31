@@ -459,7 +459,9 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
         if backlobe_data and len(backlobe_data['times']) > 0:
             plot_time_series_events(backlobe_data, station_id, backlobe_output_dir, 'Backlobe')
             plot_polar_events(backlobe_data, station_id, backlobe_output_dir, 'Backlobe')
-            plot_waveform_examples(backlobe_data, station_id, backlobe_output_dir, 'Backlobe', station_data_folder, date)
+
+            # Skipping plotting backlobe for now due to time constraints in runtime
+            # plot_waveform_examples(backlobe_data, station_id, backlobe_output_dir, 'Backlobe', station_data_folder, date)
             
             # Create seasonal plots for backlobe events
             plot_time_series_events_seasonal(backlobe_data, station_id, backlobe_output_dir, 'Backlobe')
