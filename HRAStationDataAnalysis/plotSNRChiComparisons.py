@@ -354,22 +354,22 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     
     # Note: The keys here must be valid Python identifiers for np.savez
     passing_events_to_save['snr_cut_only'] = np.zeros(np.sum(masks_rcr['snr_cut']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
-    passing_events_to_save['snr_and_snr_line'] = np.zeros(np.sum(masks_rcr['snrand_snr_line']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['snr_and_snr_line'] = np.zeros(np.sum(masks_rcr['snr_and_snr_line']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
     passing_events_to_save['all_cuts'] = np.zeros(np.sum(masks_rcr['all_cuts']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
     passing_events_to_save['backlobe_cut_only'] = np.zeros(np.sum(masks_backlobe['snr_cut']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
-    passing_events_to_save['backlobe_and_snr_line'] = np.zeros(np.sum(masks_backlobe['snrand_snr_line']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['backlobe_and_snr_line'] = np.zeros(np.sum(masks_backlobe['snr_and_snr_line']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
     passing_events_to_save['backlobe_all_cuts'] = np.zeros(np.sum(masks_backlobe['all_cuts']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
 
     passing_events_to_save['snr_cut_only']['event_id'] = event_ids[masks_rcr['snr_cut']]
     passing_events_to_save['snr_cut_only']['unique_index'] = unique_indices[masks_rcr['snr_cut']]
-    passing_events_to_save['snr_and_snr_line']['event_id'] = event_ids[masks_rcr['snrand_snr_line']]
-    passing_events_to_save['snr_and_snr_line']['unique_index'] = unique_indices[masks_rcr['snrand_snr_line']]
+    passing_events_to_save['snr_and_snr_line']['event_id'] = event_ids[masks_rcr['snr_and_snr_line']]
+    passing_events_to_save['snr_and_snr_line']['unique_index'] = unique_indices[masks_rcr['snr_and_snr_line']]
     passing_events_to_save['all_cuts']['event_id'] = event_ids[masks_rcr['all_cuts']]
     passing_events_to_save['all_cuts']['unique_index'] = unique_indices[masks_rcr['all_cuts']]
     passing_events_to_save['backlobe_cut_only']['event_id'] = event_ids[masks_backlobe['snr_cut']]
     passing_events_to_save['backlobe_cut_only']['unique_index'] = unique_indices[masks_backlobe['snr_cut']]
-    passing_events_to_save['backlobe_and_snr_line']['event_id'] = event_ids[masks_backlobe['snrand_snr_line']]
-    passing_events_to_save['backlobe_and_snr_line']['unique_index'] = unique_indices[masks_backlobe['snrand_snr_line']]
+    passing_events_to_save['backlobe_and_snr_line']['event_id'] = event_ids[masks_backlobe['snr_and_snr_line']]
+    passing_events_to_save['backlobe_and_snr_line']['unique_index'] = unique_indices[masks_backlobe['snr_and_snr_line']]
     passing_events_to_save['backlobe_all_cuts']['event_id'] = event_ids[masks_backlobe['all_cuts']]
     passing_events_to_save['backlobe_all_cuts']['unique_index'] = unique_indices[masks_backlobe['all_cuts']]
     
@@ -389,9 +389,9 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     }
     
     # Create data subsets for overlay
-    data_snr_snr_line = {key: station_data[key][masks_rcr['snrand_snr_line']] for key in station_data}
+    data_snr_snr_line = {key: station_data[key][masks_rcr['snr_and_snr_line']] for key in station_data}
     data_all_cuts = {key: station_data[key][masks_rcr['all_cuts']] for key in station_data}
-    
+
     count_snr_snr_line = len(data_snr_snr_line['snr'])
     count_all_cuts = len(data_all_cuts['snr'])
 

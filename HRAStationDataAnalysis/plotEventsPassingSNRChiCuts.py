@@ -212,11 +212,83 @@ def plot_combined_events(rcr_data, backlobe_data, station_id, output_dir):
     ic(f"Saved combined polar plot: {plot_filename}")
     plt.close(fig)
 
-def process_events_for_station(station_id, plot_folder, date, station_data_folder, event_type='rcr'):
+def plot_waveform_examples(event_data, station_id, output_dir, event_type, station_data_folder, date, max_examples=5):
+    """
+    Plot up to `max_examples` waveform examples by locating raw traces in the station data files.
+    This is a lightweight helper that will try to match event IDs to raw traces and call
+    `plot_event_traces_and_ffts` for each example.
+    """
+    if not event_data or len(event_data.get('event_ids', [])) == 0:
+        ic(f"No events to create waveform examples for station {station_id} ({event_type}).")
+        return
+
+    # Load raw arrays
+    raw_event_ids = load_station_data(station_data_folder, date, station_id, 'EventID')
+    raw_times = load_station_data(station_data_folder, date, station_id, 'Times')
+    raw_traces = load_station_data(station_data_folder, date, station_id, 'Traces')
+
+    if any(arr.size == 0 for arr in [raw_event_ids, raw_times, raw_traces]):
+        ic(f"Cannot load raw data for waveform examples for station {station_id}.")
+        return
+
+    examples_plotted = 0
+    for ev_id in event_data['event_ids']:
+        if examples_plotted >= max_examples:
+            break
+        matches = np.where(raw_event_ids == ev_id)[0]
+        if matches.size == 0:
+            continue
+        idx = matches[0]
+        trace = raw_traces[idx]
+        sampling_rate = 2 * units.GHz
+        times_for_event = np.arange(trace.shape[1]) / sampling_rate
+
+        event_info = {
+            'snr': event_data.get('snrs', [None])[examples_plotted] if event_data.get('snrs') else 'N/A',
+            'azi': event_data.get('azimuths', [0])[examples_plotted] if event_data.get('azimuths') else 0,
+            'zen': event_data.get('zeniths', [0])[examples_plotted] if event_data.get('zeniths') else 0,
+            'chi2016': 'N/A',
+            'chircr': 'N/A',
+            'chibad': 'N/A'
+        }
+
+        plot_event_traces_and_ffts(ev_id, trace, times_for_event, station_id, output_dir, event_info)
+        examples_plotted += 1
+
+
+def plot_time_series_events_seasonal(event_data, station_id, output_dir, event_type):
+    """Simple seasonal wrapper: reuses the time series plot but appends '_seasonal' to filename."""
+    if not event_data or len(event_data.get('times', [])) == 0:
+        ic(f"No seasonal {event_type} events to plot for station {station_id}")
+        return
+    # Reuse existing function (filename will include event_type so we mark seasonal)
+    plot_time_series_events(event_data, station_id, output_dir, f"{event_type}_seasonal")
+
+
+def plot_polar_events_seasonal(event_data, station_id, output_dir, event_type):
+    """Simple seasonal wrapper that calls the polar plotter with a modified event_type."""
+    if not event_data or len(event_data.get('azimuths', [])) == 0:
+        ic(f"No seasonal {event_type} polar events to plot for station {station_id}")
+        return
+    plot_polar_events(event_data, station_id, output_dir, f"{event_type}_seasonal")
+
+
+def plot_combined_events_seasonal(rcr_data, backlobe_data, station_id, output_dir):
+    """Wrapper for combined seasonal plots.
+    This currently reuses `plot_combined_events` and appends '_seasonal' to filenames.
+    """
+    plot_combined_events(rcr_data or {'times': [], 'event_ids': [], 'azimuths': [], 'zeniths': [], 'snrs': []},
+                         backlobe_data or {'times': [], 'event_ids': [], 'azimuths': [], 'zeniths': [], 'snrs': []},
+                         station_id, output_dir)
+    
+
+def process_events_for_station(station_id, plot_folder, date, station_data_folder, event_type='rcr', output_dir=None):
     """
     Process events for a specific station and event type (RCR or backlobe).
     """
     ic(f"--- Processing {event_type.upper()} events for Station {station_id} ---")
+    # Allow caller to override where individual event plots are saved
+    output_dir = output_dir or plot_folder
     
     # Determine which cut type to load
     if event_type == 'rcr':
@@ -363,10 +435,10 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
         ic(f"--- Processing Station {station_id} ---")
         
         # Process RCR events
-        rcr_data = process_events_for_station(station_id, plot_folder, date, station_data_folder, 'rcr')
+        rcr_data = process_events_for_station(station_id, plot_folder, date, station_data_folder, 'rcr', output_dir=rcr_output_dir)
         
         # Process backlobe events
-        backlobe_data = process_events_for_station(station_id, plot_folder, date, station_data_folder, 'backlobe')
+        backlobe_data = process_events_for_station(station_id, plot_folder, date, station_data_folder, 'backlobe', output_dir=backlobe_output_dir)
         
         # Create regular plots for RCR events
         if rcr_data and len(rcr_data['times']) > 0:
@@ -399,6 +471,16 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
             
             # Create seasonal summary
             plot_seasonal_summary(rcr_data, backlobe_data, station_id, combined_output_dir)
+
+def plot_seasonal_summary(rcr_data, backlobe_data, station_id, output_dir):
+    """
+    Stub for seasonal summary plot.
+    """
+    ic(f"Creating seasonal summary plot for Station {station_id}...")
+    # This function can be implemented to create a summary plot for seasonal data,
+    # such as comparing event rates, SNR distributions, or other relevant metrics
+    # between different seasons or time periods.
+    pass
 
 if __name__ == '__main__':
     stations_to_plot = [13, 14, 15, 17, 18, 19, 30]
