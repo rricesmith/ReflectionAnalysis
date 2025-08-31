@@ -79,48 +79,57 @@ def main():
 
     for station_id, files in unique_stations.items():
         ic(f"Processing {station_id}")
-        all_traces = []
-        for f in files:
-            all_traces.append(np.load(f))
         
-        if not all_traces:
-            ic(f"No traces found for {station_id}")
-            continue
-
-        all_traces = np.concatenate(all_traces, axis=0)
-        
-        if len(all_traces) == 0:
-            ic(f"No events in concatenated traces for {station_id}")
-            continue
-
-        num_events = len(all_traces)
-        num_samples = min(num_events, 10)
-        
-        if num_samples == 0:
-            ic(f"No events to sample for {station_id}")
-            continue
-            
-        random_indices = np.random.choice(num_events, num_samples, replace=False)
-        
+        # Create directory for this station's plots
         station_dir = os.path.join(plots_base_dir, station_id)
         os.makedirs(station_dir, exist_ok=True)
-
-        for i, event_idx in enumerate(random_indices):
-            event_traces = all_traces[event_idx]
-            ic(f"  Event {i+1}/{num_samples} (index {event_idx})")
-
+        
+        # Select up to 10 random files for this station (or all files if less than 10)
+        num_files = min(len(files), 10)
+        if num_files == 0:
+            ic(f"No files found for {station_id}")
+            continue
+            
+        selected_files = np.random.choice(files, num_files, replace=False)
+        events_processed = 0
+        
+        # Process one file at a time to conserve memory
+        for file_idx, file_path in enumerate(selected_files):
+            ic(f"Processing file {file_idx+1}/{num_files}: {os.path.basename(file_path)}")
+            
+            # Load the file
+            traces = np.load(file_path)
+            
+            if len(traces) == 0:
+                ic(f"No events in file {file_path}")
+                continue
+                
+            # Select one random event from this file
+            event_idx = np.random.randint(0, len(traces))
+            event_traces = traces[event_idx]
+            
+            # Get a unique identifier for this event (combining file index and event index)
+            event_id = f"{file_idx}_{event_idx}"
+            ic(f"  Selected event {event_idx} from file {file_idx+1}")
+            
             # Plot event traces
             for ch_idx, trace in enumerate(event_traces):
-                title = f"{station_id} Event {event_idx} Channel {ch_idx}"
-                save_path = os.path.join(station_dir, f"event_{event_idx}_ch_{ch_idx}.png")
+                title = f"{station_id} File {file_idx+1} Event {event_idx} Channel {ch_idx}"
+                save_path = os.path.join(station_dir, f"event_{event_id}_ch_{ch_idx}.png")
                 plot_trace_and_fft(time, trace, title, save_path)
-
+            
             # Calculate and print Chi
-            print(f"  Chi-squared for Event {event_idx}:")
+            print(f"  Chi-squared for {station_id} File {file_idx+1} Event {event_idx}:")
             for name, template_set in templates.items():
                 chi = getMaxAllChi(event_traces, 2*units.GHz, template_set, 2*units.GHz)
                 print(f"    vs {name}: {chi:.4f}")
-        ic(f"Finished processing {station_id}")
+                
+            events_processed += 1
+            
+            # Clear memory
+            del traces
+            
+        ic(f"Finished processing {station_id} - {events_processed} events processed")
 
 if __name__ == "__main__":
     main()
