@@ -4,6 +4,7 @@ import os
 import configparser
 from icecream import ic
 from NuRadioReco.utilities import fft as nu_fft
+from NuRadioReco.utilities import units
 import glob
 from HRAStationDataAnalysis.C_utils import getTimeEventMasks
 
@@ -25,12 +26,12 @@ def load_station_data(folder, date, station_id, data_name):
     return np.concatenate(data_arrays, axis=0)
 
 
-def plot_event_traces_and_ffts(event_id, traces, times, station_id, output_dir):
+def plot_event_traces_and_ffts(event_id, traces, times, station_id, output_dir, event_info):
     """
     Plots time traces and their FFTs for a single event.
     """
     num_channels = traces.shape[0]
-    fig, axs = plt.subplots(num_channels, 2, figsize=(14, 4 * num_channels), constrained_layout=True)
+    fig, axs = plt.subplots(num_channels, 2, figsize=(16, 4 * num_channels), constrained_layout=True)
     if num_channels == 1:
         axs = np.array([axs])
 
@@ -57,6 +58,20 @@ def plot_event_traces_and_ffts(event_id, traces, times, station_id, output_dir):
         ax_fft.set_title(f'Channel {i} FFT')
         ax_fft.set_yscale('log')
         ax_fft.grid(True)
+
+    # Add event info text
+    info_text = (
+        f"SNR: {event_info.get('snr', 'N/A'):.2f}\n"
+        f"Azimuth: {np.rad2deg(event_info.get('azi', 0)):.2f}°\n"
+        f"Zenith: {np.rad2deg(event_info.get('zen', 0)):.2f}°\n"
+        f"Chi2016: {event_info.get('chi2016', 'N/A'):.3f}\n"
+        f"ChiRCR: {event_info.get('chircr', 'N/A'):.3f}\n"
+        f"ChiBad: {event_info.get('chibad', 'N/A'):.3f}"
+    )
+    fig.text(0.99, 0.5, info_text, transform=fig.transFigure, fontsize=12,
+             verticalalignment='center', horizontalalignment='right', bbox=dict(boxstyle='round,pad=0.5', fc='wheat', alpha=0.5))
+    
+    plt.subplots_adjust(right=0.85)
 
     plot_filename = os.path.join(output_dir, f'Station{station_id}_Event{event_id}.png')
     plt.savefig(plot_filename)
@@ -117,6 +132,12 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
         raw_event_ids = load_station_data(station_data_folder, date, station_id, 'EventID')
         raw_times = load_station_data(station_data_folder, date, station_id, 'Times')
         raw_traces = load_station_data(station_data_folder, date, station_id, 'Traces')
+        raw_snr = load_station_data(station_data_folder, date, station_id, 'SNR')
+        raw_chi2016 = load_station_data(station_data_folder, date, station_id, 'Chi2016')
+        raw_chircr = load_station_data(station_data_folder, date, station_id, 'ChiRCR')
+        raw_chibad = load_station_data(station_data_folder, date, station_id, 'ChiBad')
+        raw_azi = load_station_data(station_data_folder, date, station_id, 'Azi')
+        raw_zen = load_station_data(station_data_folder, date, station_id, 'Zen')
         
         if any(arr.size == 0 for arr in [raw_event_ids, raw_times, raw_traces]):
             ic("Missing one or more raw data files (EventID, Times, Traces). Skipping station.")
@@ -125,8 +146,7 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
         # We need to map the 'unique_index' from the npz file back to the original raw data index.
         # The 'unique_index' was an index into a *masked* array.
         # We need to recreate that mask.
-        raw_full_times = load_station_data(station_data_folder, date, station_id, 'Times')
-        initial_mask, unique_indices_map = getTimeEventMasks(raw_full_times, raw_event_ids)
+        initial_mask, unique_indices_map = getTimeEventMasks(raw_times, raw_event_ids)
         
         # The indices in unique_indices_map should correspond to the unique_index in the npz
         masked_indices = np.where(initial_mask)[0]
@@ -141,19 +161,31 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
                 
                 # Verify we have the correct event
                 if raw_event_ids[original_raw_index] != event_id:
-                    ic(f"Mismatch! Event ID {event_id} not found at expected index. Searching...")
+                    ic(f"Mismatch! Event ID {event_id} not found at expected index {original_raw_index}. Searching...")
                     # Fallback search
                     possible_indices = np.where(raw_event_ids == event_id)[0]
                     if not possible_indices.any():
                         ic(f"Could not find event {event_id} at all. Skipping.")
                         continue
                     original_raw_index = possible_indices[0] # Take the first one
+                    ic(f"Found event {event_id} at index {original_raw_index} instead.")
             
                 trace = raw_traces[original_raw_index]
                 # The times array for a single event is inside the raw_times array
-                times_for_event = raw_times[original_raw_index][0] 
+                # This is assuming the sampling rate is constant and known
+                sampling_rate = 2 * units.GHz
+                times_for_event = np.arange(trace.shape[1]) / sampling_rate
 
-                plot_event_traces_and_ffts(event_id, trace, times_for_event, station_id, output_plot_dir)
+                event_info = {
+                    'snr': raw_snr[original_raw_index] if raw_snr.size > 0 else 'N/A',
+                    'azi': raw_azi[original_raw_index] if raw_azi.size > 0 else 0,
+                    'zen': raw_zen[original_raw_index] if raw_zen.size > 0 else 0,
+                    'chi2016': raw_chi2016[original_raw_index] if raw_chi2016.size > 0 else 'N/A',
+                    'chircr': raw_chircr[original_raw_index] if raw_chircr.size > 0 else 'N/A',
+                    'chibad': raw_chibad[original_raw_index] if raw_chibad.size > 0 else 'N/A'
+                }
+
+                plot_event_traces_and_ffts(event_id, trace, times_for_event, station_id, output_plot_dir, event_info)
 
             except IndexError:
                 ic(f"Could not find original index for event {event_id} with unique_index {unique_idx}. Skipping.")
