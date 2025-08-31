@@ -146,10 +146,20 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
         # We need to map the 'unique_index' from the npz file back to the original raw data index.
         # The 'unique_index' was an index into a *masked* array.
         # We need to recreate that mask.
-        initial_mask, unique_indices_map = getTimeEventMasks(raw_times, raw_event_ids)
-        
+        initial_mask, unique_indices = getTimeEventMasks(raw_times, raw_event_ids)
+
+        raw_event_ids = raw_event_ids[initial_mask][unique_indices]
+        raw_times = raw_times[initial_mask][unique_indices]
+        raw_traces = raw_traces[initial_mask][unique_indices]
+        raw_snr = raw_snr[initial_mask][unique_indices]
+        raw_chi2016 = raw_chi2016[initial_mask][unique_indices]
+        raw_chircr = raw_chircr[initial_mask][unique_indices]
+        raw_chibad = raw_chibad[initial_mask][unique_indices]
+        raw_azi = raw_azi[initial_mask][unique_indices]
+        raw_zen = raw_zen[initial_mask][unique_indices]
+
         # The indices in unique_indices_map should correspond to the unique_index in the npz
-        masked_indices = np.where(initial_mask)[0]
+        # masked_indices = np.where(initial_mask)[0]
         
         for passing_event in passing_events:
             event_id = passing_event['event_id']
@@ -157,7 +167,7 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
 
             try:
                 # Find the original index in the raw files
-                original_raw_index = masked_indices[unique_indices_map[unique_idx]]
+                # original_raw_index = masked_indices[unique_indices_map[unique_idx]]
                 
                 # Verify we have the correct event
                 if raw_event_ids[original_raw_index] != event_id:
@@ -194,6 +204,6 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
 
 
 if __name__ == '__main__':
-    # stations_to_plot = [13, 14, 15, 17, 18, 19, 30]
-    stations_to_plot = [13, 15, 17, 18]
+    stations_to_plot = [13, 14, 15, 17, 18, 19, 30]
+    # stations_to_plot = [13, 15, 17, 18]
     main(stations_to_plot)
