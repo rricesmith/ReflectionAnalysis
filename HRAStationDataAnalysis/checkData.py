@@ -57,7 +57,7 @@ def main():
         template_dir = os.path.join(plots_base_dir, name)
         os.makedirs(template_dir, exist_ok=True)
         for i, template_name in enumerate(template_set):
-            template_trace = template_set[template_trace]
+            template_trace = template_set[template_name]
             title = f"Template {name} #{i+1}, {template_name}"
             save_path = os.path.join(template_dir, f"template_{i+1}.png")
             ic(time, template_trace, title, save_path)
