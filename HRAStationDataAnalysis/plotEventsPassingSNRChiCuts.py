@@ -61,13 +61,18 @@ def plot_event_traces_and_ffts(event_id, traces, times, station_id, output_dir, 
         ax_fft.grid(True)
 
     # Add event info text
+    snr = event_info.get('snr', 'N/A')
+    chi2016 = event_info.get('chi2016', 'N/A')
+    chircr = event_info.get('chircr', 'N/A')
+    chibad = event_info.get('chibad', 'N/A')
+
     info_text = (
-        f"SNR: {event_info.get('snr', 'N/A'):.2f}\n"
+        f"SNR: {snr:.2f if isinstance(snr, (int, float)) else snr}\n"
         f"Azimuth: {np.rad2deg(event_info.get('azi', 0)):.2f}°\n"
         f"Zenith: {np.rad2deg(event_info.get('zen', 0)):.2f}°\n"
-        f"Chi2016: {event_info.get('chi2016', 'N/A'):.3f}\n"
-        f"ChiRCR: {event_info.get('chircr', 'N/A'):.3f}\n"
-        f"ChiBad: {event_info.get('chibad', 'N/A'):.3f}"
+        f"Chi2016: {chi2016:.3f if isinstance(chi2016, (int, float)) else chi2016}\n"
+        f"ChiRCR: {chircr:.3f if isinstance(chircr, (int, float)) else chircr}\n"
+        f"ChiBad: {chibad:.3f if isinstance(chibad, (int, float)) else chibad}"
     )
     fig.text(0.99, 0.5, info_text, transform=fig.transFigure, fontsize=12,
              verticalalignment='center', horizontalalignment='right', bbox=dict(boxstyle='round,pad=0.5', fc='wheat', alpha=0.5))
