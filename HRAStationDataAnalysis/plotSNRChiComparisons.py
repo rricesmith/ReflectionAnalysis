@@ -86,28 +86,44 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct
             
     return direct_data, reflected_data
 
-def get_all_cut_masks(data_dict, cuts):
+def get_all_cut_masks(data_dict, cuts, cut_type='rcr'):
     """
     Applies all cut combinations and returns a dictionary of boolean masks.
+    cut_type: 'rcr' for RCR events, 'backlobe' for backlobe events
     """
     snr = data_dict['snr']
     chircr = data_dict['ChiRCR']
     chi2016 = data_dict['Chi2016']
     
-    chi_rcr_snr_cut_values = np.interp(snr, cuts['chi_rcr_line_snr'], cuts['chi_rcr_line_chi'])
-    chi_diff = chircr - chi2016
-
-    masks = {}
-    masks['snr_cut'] = snr < cuts['snr_max']
-    masks['snr_line_cut'] = chircr > chi_rcr_snr_cut_values
-    masks['chi_diff_cut'] = chi_diff > cuts['chi_diff_threshold']
-    
-    masks['snr_and_snr_line'] = masks['snr_cut'] & masks['snr_line_cut']
-    masks['all_cuts'] = masks['snr_cut'] & masks['snr_line_cut'] & masks['chi_diff_cut']
+    if cut_type == 'rcr':
+        # Original RCR cuts
+        chi_rcr_snr_cut_values = np.interp(snr, cuts['chi_rcr_line_snr'], cuts['chi_rcr_line_chi'])
+        chi_diff = chircr - chi2016
+        
+        masks = {}
+        masks['snr_cut'] = snr < cuts['snr_max']
+        masks['snr_line_cut'] = chircr > chi_rcr_snr_cut_values
+        masks['chi_diff_cut'] = chi_diff > cuts['chi_diff_threshold']
+        
+        masks['snr_and_snr_line'] = masks['snr_cut'] & masks['snr_line_cut']
+        masks['all_cuts'] = masks['snr_cut'] & masks['snr_line_cut'] & masks['chi_diff_cut']
+        
+    elif cut_type == 'backlobe':
+        # Backlobe cuts (reversed logic)
+        chi_2016_snr_cut_values = np.interp(snr, cuts['chi_2016_line_snr'], cuts['chi_2016_line_chi'])
+        chi_diff = chircr - chi2016
+        
+        masks = {}
+        masks['snr_cut'] = snr < cuts['snr_max']
+        masks['snr_line_cut'] = chi2016 > chi_2016_snr_cut_values
+        masks['chi_diff_cut'] = chi_diff < cuts['chi_diff_threshold']
+        
+        masks['snr_and_snr_line'] = masks['snr_cut'] & masks['snr_line_cut']
+        masks['all_cuts'] = masks['snr_cut'] & masks['snr_line_cut'] & masks['chi_diff_cut']
     
     return masks
 
-def calculate_cut_stats_table(data_dict, cuts, is_sim, title, pre_mask_count=None):
+def calculate_cut_stats_table(data_dict, cuts, is_sim, title, pre_mask_count=None, cut_type='rcr'):
     """Calculates the percentage of events/weight passing each cut individually and all together."""
     lines = [f"{title}:"]
     
@@ -123,7 +139,7 @@ def calculate_cut_stats_table(data_dict, cuts, is_sim, title, pre_mask_count=Non
         lines.append(f"- {'All Data (post-mask)':<20}: {total_val}")
     
     weights = data_dict.get('weights', np.ones_like(data_dict['snr']))
-    masks = get_all_cut_masks(data_dict, cuts)
+    masks = get_all_cut_masks(data_dict, cuts, cut_type=cut_type)
     
     cut_masks_to_report = {
         f"SNR < {cuts['snr_max']}": masks['snr_cut'],
@@ -155,11 +171,9 @@ def set_plot_labels(ax, xlabel, ylabel, title, xlim, ylim, xscale='linear', ysca
     ax.set_yscale(yscale)
     ax.grid(visible=True, which='both', axis='both')
 
-def draw_cut_visuals(ax, plot_key, cuts_dict):
+def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
     """Draws lines and shaded regions for cuts on a given subplot."""
     snr_max = cuts_dict['snr_max']
-    snr_line_snr = cuts_dict['chi_rcr_line_snr']
-    snr_line_chi = cuts_dict['chi_rcr_line_chi']
     chi_diff_threshold = cuts_dict['chi_diff_threshold']
 
     if 'snr' in plot_key:
@@ -170,32 +184,74 @@ def draw_cut_visuals(ax, plot_key, cuts_dict):
         ax.fill_betweenx(ax.get_ylim(), snr_max, ax.get_xlim()[1], color='m', alpha=0.1, hatch='///')
 
     if plot_key == 'snr_vs_chircr':
-        ax.plot(snr_line_snr, snr_line_chi, color='purple', linestyle='--', linewidth=1.5)
-        # Shade the GOOD region (above the line) with normal shading
-        ax.fill_between(snr_line_snr, snr_line_chi, 1, color='purple', alpha=0.2, interpolate=True)
-        # Shade the BAD region (below the line) with dashed pattern
-        ax.fill_between(snr_line_snr, 0, snr_line_chi, color='purple', alpha=0.1, hatch='///')
+        if cut_type == 'rcr':
+            snr_line_snr = cuts_dict['chi_rcr_line_snr']
+            snr_line_chi = cuts_dict['chi_rcr_line_chi']
+            ax.plot(snr_line_snr, snr_line_chi, color='purple', linestyle='--', linewidth=1.5)
+            # Shade the GOOD region (above the line) with normal shading
+            ax.fill_between(snr_line_snr, snr_line_chi, 1, color='purple', alpha=0.2, interpolate=True)
+            # Shade the BAD region (below the line) with dashed pattern
+            ax.fill_between(snr_line_snr, 0, snr_line_chi, color='purple', alpha=0.1, hatch='///')
+        elif cut_type == 'backlobe':
+            snr_line_snr = cuts_dict['chi_2016_line_snr']
+            snr_line_chi = cuts_dict['chi_2016_line_chi']
+            ax.plot(snr_line_snr, snr_line_chi, color='orange', linestyle='--', linewidth=1.5)
+            # Shade the GOOD region (above the line) with normal shading
+            ax.fill_between(snr_line_snr, snr_line_chi, 1, color='orange', alpha=0.2, interpolate=True)
+            # Shade the BAD region (below the line) with dashed pattern
+            ax.fill_between(snr_line_snr, 0, snr_line_chi, color='orange', alpha=0.1, hatch='///')
+    
+    elif plot_key == 'snr_vs_chi2016':
+        if cut_type == 'backlobe':
+            snr_line_snr = cuts_dict['chi_2016_line_snr']
+            snr_line_chi = cuts_dict['chi_2016_line_chi']
+            ax.plot(snr_line_snr, snr_line_chi, color='orange', linestyle='--', linewidth=1.5)
+            # Shade the GOOD region (above the line) with normal shading
+            ax.fill_between(snr_line_snr, snr_line_chi, 1, color='orange', alpha=0.2, interpolate=True)
+            # Shade the BAD region (below the line) with dashed pattern
+            ax.fill_between(snr_line_snr, 0, snr_line_chi, color='orange', alpha=0.1, hatch='///')
     
     elif plot_key == 'chi_vs_chi':
-        # Draw Chi difference cut line: ChiRCR = Chi2016 + threshold
-        x_vals = np.linspace(0, 1, 100)
-        y_vals = x_vals + chi_diff_threshold
-        # Only show the part where y_vals <= 1
-        valid_mask = y_vals <= 1
-        if np.any(valid_mask):
-            ax.plot(x_vals[valid_mask], y_vals[valid_mask], color='darkgreen', linestyle='--', linewidth=1.5)
-            # Shade the GOOD region (above the line) with normal shading
-            ax.fill_between(x_vals[valid_mask], y_vals[valid_mask], 1, color='darkgreen', alpha=0.2)
-            # Shade the BAD region (below the line) with dashed pattern
-            ax.fill_between(x_vals[valid_mask], 0, y_vals[valid_mask], color='darkgreen', alpha=0.1, hatch='///')
+        if cut_type == 'rcr':
+            # Draw Chi difference cut line: ChiRCR = Chi2016 + threshold
+            x_vals = np.linspace(0, 1, 100)
+            y_vals = x_vals + chi_diff_threshold
+            # Only show the part where y_vals <= 1
+            valid_mask = y_vals <= 1
+            if np.any(valid_mask):
+                ax.plot(x_vals[valid_mask], y_vals[valid_mask], color='darkgreen', linestyle='--', linewidth=1.5)
+                # Shade the GOOD region (above the line) with normal shading
+                ax.fill_between(x_vals[valid_mask], y_vals[valid_mask], 1, color='darkgreen', alpha=0.2)
+                # Shade the BAD region (below the line) with dashed pattern
+                ax.fill_between(x_vals[valid_mask], 0, y_vals[valid_mask], color='darkgreen', alpha=0.1, hatch='///')
+        elif cut_type == 'backlobe':
+            # Draw Chi difference cut line: ChiRCR = Chi2016 + threshold (but reversed)
+            x_vals = np.linspace(0, 1, 100)
+            y_vals = x_vals + chi_diff_threshold
+            # Only show the part where y_vals <= 1
+            valid_mask = y_vals <= 1
+            if np.any(valid_mask):
+                ax.plot(x_vals[valid_mask], y_vals[valid_mask], color='darkorange', linestyle='--', linewidth=1.5)
+                # Shade the GOOD region (below the line) with normal shading
+                ax.fill_between(x_vals[valid_mask], 0, y_vals[valid_mask], color='darkorange', alpha=0.2)
+                # Shade the BAD region (above the line) with dashed pattern
+                ax.fill_between(x_vals[valid_mask], y_vals[valid_mask], 1, color='darkorange', alpha=0.1, hatch='///')
     
     elif plot_key == 'snr_vs_chidiff':
-        # Draw horizontal line for Chi difference cut
-        ax.axhline(y=chi_diff_threshold, color='darkgreen', linestyle='--', linewidth=1.5)
-        # Shade the GOOD region (above the line) with normal shading
-        ax.fill_betweenx([chi_diff_threshold, ax.get_ylim()[1]], ax.get_xlim()[0], ax.get_xlim()[1], color='darkgreen', alpha=0.2)
-        # Shade the BAD region (below the line) with dashed pattern
-        ax.fill_betweenx([ax.get_ylim()[0], chi_diff_threshold], ax.get_xlim()[0], ax.get_xlim()[1], color='darkgreen', alpha=0.1, hatch='///')
+        if cut_type == 'rcr':
+            # Draw horizontal line for Chi difference cut
+            ax.axhline(y=chi_diff_threshold, color='darkgreen', linestyle='--', linewidth=1.5)
+            # Shade the GOOD region (above the line) with normal shading
+            ax.fill_betweenx([chi_diff_threshold, ax.get_ylim()[1]], ax.get_xlim()[0], ax.get_xlim()[1], color='darkgreen', alpha=0.2)
+            # Shade the BAD region (below the line) with dashed pattern
+            ax.fill_betweenx([ax.get_ylim()[0], chi_diff_threshold], ax.get_xlim()[0], ax.get_xlim()[1], color='darkgreen', alpha=0.1, hatch='///')
+        elif cut_type == 'backlobe':
+            # Draw horizontal line for Chi difference cut (reversed)
+            ax.axhline(y=chi_diff_threshold, color='darkorange', linestyle='--', linewidth=1.5)
+            # Shade the GOOD region (below the line) with normal shading
+            ax.fill_betweenx([ax.get_ylim()[0], chi_diff_threshold], ax.get_xlim()[0], ax.get_xlim()[1], color='darkorange', alpha=0.2)
+            # Shade the BAD region (above the line) with dashed pattern
+            ax.fill_betweenx([chi_diff_threshold, ax.get_ylim()[1]], ax.get_xlim()[0], ax.get_xlim()[1], color='darkorange', alpha=0.1, hatch='///')
 
 
 def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bins_dict=None):
@@ -262,7 +318,7 @@ def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bin
                     ax.scatter(x_data, y_data, **overlay['style'])
 
         if cuts_dict:
-            draw_cut_visuals(ax, key, cuts_dict)
+            draw_cut_visuals(ax, key, cuts_dict, cut_type='rcr')  # For now, only show RCR cuts on main plots
         if key == 'chi_vs_chi':
             ax.plot([0, 1], [0, 1], linestyle='--', color='red', linewidth=1)
             
@@ -284,28 +340,38 @@ def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bin
 
     return im
 
-def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date):
+def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date):
     """
     Runs the full plotting and saving pipeline for a given station ID and its data.
     """
     ic(f"--- Running analysis for Station {station_id} ---")
 
     # --- Get Masks and Save Passing Events ---
-    masks = get_all_cut_masks(station_data, cuts)
+    masks_rcr = get_all_cut_masks(station_data, cuts, cut_type='rcr')
+    masks_backlobe = get_all_cut_masks(station_data, cuts, cut_type='backlobe')
     
     passing_events_to_save = {}
     
     # Note: The keys here must be valid Python identifiers for np.savez
-    passing_events_to_save['snr_cut_only'] = np.zeros(np.sum(masks['snr_cut']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
-    passing_events_to_save['snr_and_snr_line'] = np.zeros(np.sum(masks['snr_and_snr_line']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
-    passing_events_to_save['all_cuts'] = np.zeros(np.sum(masks['all_cuts']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['snr_cut_only'] = np.zeros(np.sum(masks_rcr['snr_cut']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['snr_and_snr_line'] = np.zeros(np.sum(masks_rcr['snrand_snr_line']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['all_cuts'] = np.zeros(np.sum(masks_rcr['all_cuts']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['backlobe_cut_only'] = np.zeros(np.sum(masks_backlobe['snr_cut']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['backlobe_and_snr_line'] = np.zeros(np.sum(masks_backlobe['snrand_snr_line']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['backlobe_all_cuts'] = np.zeros(np.sum(masks_backlobe['all_cuts']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
 
-    passing_events_to_save['snr_cut_only']['event_id'] = event_ids[masks['snr_cut']]
-    passing_events_to_save['snr_cut_only']['unique_index'] = unique_indices[masks['snr_cut']]
-    passing_events_to_save['snr_and_snr_line']['event_id'] = event_ids[masks['snr_and_snr_line']]
-    passing_events_to_save['snr_and_snr_line']['unique_index'] = unique_indices[masks['snr_and_snr_line']]
-    passing_events_to_save['all_cuts']['event_id'] = event_ids[masks['all_cuts']]
-    passing_events_to_save['all_cuts']['unique_index'] = unique_indices[masks['all_cuts']]
+    passing_events_to_save['snr_cut_only']['event_id'] = event_ids[masks_rcr['snr_cut']]
+    passing_events_to_save['snr_cut_only']['unique_index'] = unique_indices[masks_rcr['snr_cut']]
+    passing_events_to_save['snr_and_snr_line']['event_id'] = event_ids[masks_rcr['snrand_snr_line']]
+    passing_events_to_save['snr_and_snr_line']['unique_index'] = unique_indices[masks_rcr['snrand_snr_line']]
+    passing_events_to_save['all_cuts']['event_id'] = event_ids[masks_rcr['all_cuts']]
+    passing_events_to_save['all_cuts']['unique_index'] = unique_indices[masks_rcr['all_cuts']]
+    passing_events_to_save['backlobe_cut_only']['event_id'] = event_ids[masks_backlobe['snr_cut']]
+    passing_events_to_save['backlobe_cut_only']['unique_index'] = unique_indices[masks_backlobe['snr_cut']]
+    passing_events_to_save['backlobe_and_snr_line']['event_id'] = event_ids[masks_backlobe['snrand_snr_line']]
+    passing_events_to_save['backlobe_and_snr_line']['unique_index'] = unique_indices[masks_backlobe['snrand_snr_line']]
+    passing_events_to_save['backlobe_all_cuts']['event_id'] = event_ids[masks_backlobe['all_cuts']]
+    passing_events_to_save['backlobe_all_cuts']['unique_index'] = unique_indices[masks_backlobe['all_cuts']]
     
     savename = f'{plot_folder}PassingEvents_Station{station_id}_{date}.npz'
     np.savez(savename, **passing_events_to_save)
@@ -323,8 +389,8 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     }
     
     # Create data subsets for overlay
-    data_snr_snr_line = {key: station_data[key][masks['snr_and_snr_line']] for key in station_data}
-    data_all_cuts = {key: station_data[key][masks['all_cuts']] for key in station_data}
+    data_snr_snr_line = {key: station_data[key][masks_rcr['snrand_snr_line']] for key in station_data}
+    data_all_cuts = {key: station_data[key][masks_rcr['all_cuts']] for key in station_data}
     
     count_snr_snr_line = len(data_snr_snr_line['snr'])
     count_all_cuts = len(data_all_cuts['snr'])
@@ -343,9 +409,11 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     ]
 
     fig1, axs1 = plt.subplots(2, 2, figsize=(12, 14))
-    fig1.suptitle(f'Data: Chi Comparison for Station {station_id} on {date}\n{cut_string}', fontsize=14)
+    fig1.suptitle(f'Data: Chi Comparison for Station {station_id} on {date}\n{rcr_cut_string}', fontsize=14)
     plot_2x2_grid(fig1, axs1, base_data_config, cuts, overlays=data_overlays)
-    stats_str = calculate_cut_stats_table(station_data, cuts, is_sim=False, title="Data Stats", pre_mask_count=pre_mask_count)
+    rcr_stats_str = calculate_cut_stats_table(station_data, cuts, is_sim=False, title="Data Stats (RCR Cuts)", pre_mask_count=pre_mask_count, cut_type='rcr')
+    backlobe_stats_str = calculate_cut_stats_table(station_data, cuts, is_sim=False, title="Data Stats (Backlobe Cuts)", pre_mask_count=pre_mask_count, cut_type='backlobe')
+    stats_str = f"{rcr_stats_str}\n\n{backlobe_stats_str}"
     fig1.text(0.5, 0.01, stats_str, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
     fig1.tight_layout(rect=[0, 0.15, 1, 0.95])
     plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_Station{station_id}_{date}.png')
@@ -359,11 +427,11 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     # Data over Composite Sim Plot
     ic("Generating data over composite simulation plot...")
     fig_all, axs_all = plt.subplots(2, 2, figsize=(13, 15))
-    fig_all.suptitle(f'Data vs Composite Simulation - Station {station_id}\n{cut_string}', fontsize=14)
+    fig_all.suptitle(f'Data vs Composite Simulation - Station {station_id}\n{rcr_cut_string}', fontsize=14)
     im_all = plot_2x2_grid(fig_all, axs_all, sim_base_config, cuts, overlays=[reflected_overlay_config, data_overlay_config], hist_bins_dict=hist_bins)
     
-    direct_stats = calculate_cut_stats_table(sim_direct, cuts, True, "Direct Sim")
-    reflected_stats = calculate_cut_stats_table(sim_reflected, cuts, True, "Reflected Sim")
+    direct_stats = calculate_cut_stats_table(sim_direct, cuts, True, "Direct Sim", cut_type='rcr')
+    reflected_stats = calculate_cut_stats_table(sim_reflected, cuts, True, "Reflected Sim", cut_type='rcr')
     fig_all.text(0.5, 0.01, f"{direct_stats}\n\n{reflected_stats}", ha='center', va='bottom', fontsize=10, fontfamily='monospace')
     
     if im_all:
@@ -406,9 +474,12 @@ if __name__ == "__main__":
         'snr_max': 33,
         'chi_rcr_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
         'chi_rcr_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]),  # More aggressive cut
-        'chi_diff_threshold': 0.08  # New Chi difference cut
+        'chi_diff_threshold': 0.08,
+        'chi_2016_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
+        'chi_2016_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]) # More aggressive cut
     }
-    cut_string = f"Cuts: SNR < {cuts['snr_max']} & ChiRCR > SNR Line & ChiRCR - Chi2016 > {cuts['chi_diff_threshold']}"
+    rcr_cut_string = f"RCR Cuts: SNR < {cuts['snr_max']} & ChiRCR > SNR Line & ChiRCR - Chi2016 > {cuts['chi_diff_threshold']}"
+    backlobe_cut_string = f"Backlobe Cuts: SNR < {cuts['snr_max']} & Chi2016 > SNR Line & ChiRCR - Chi2016 < {cuts['chi_diff_threshold']}"
     
     log_bins = np.logspace(np.log10(3), np.log10(100), 31)
     linear_bins = np.linspace(0, 1, 31)
@@ -459,7 +530,7 @@ if __name__ == "__main__":
         all_stations_event_ids.append(station_event_ids)
         all_stations_unique_indices.append(unique_indices)
         
-        run_analysis_for_station(station_id, station_data, station_event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date)
+        run_analysis_for_station(station_id, station_data, station_event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date)
 
     # --- Run Analysis for Summed Stations ---
     if len(all_stations_data['snr']) > 1:
@@ -467,7 +538,7 @@ if __name__ == "__main__":
         summed_event_ids = np.concatenate(all_stations_event_ids)
         summed_unique_indices = np.concatenate(all_stations_unique_indices)
         summed_station_id = '+'.join(map(str, station_ids_to_process))
-        run_analysis_for_station(summed_station_id, summed_station_data, summed_event_ids, summed_unique_indices, total_pre_mask_count, sim_direct, sim_reflected, cuts, cut_string, hist_bins, plot_folder, date)
+        run_analysis_for_station(summed_station_id, summed_station_data, summed_event_ids, summed_unique_indices, total_pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date)
     else:
         ic("Not enough station data to perform a summed analysis.")
 
