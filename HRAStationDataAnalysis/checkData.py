@@ -59,6 +59,7 @@ def main():
         for i, template_trace in enumerate(template_set):
             title = f"Template {name} #{i+1}"
             save_path = os.path.join(template_dir, f"template_{i+1}.png")
+            ic(time, template_trace, title, save_path)
             plot_trace_and_fft(time, template_trace, title, save_path)
     ic("Templates plotted.")
 
