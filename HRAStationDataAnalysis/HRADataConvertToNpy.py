@@ -3,6 +3,7 @@ import numpy as np
 from NuRadioReco.modules.io import NuRadioRecoio
 import NuRadioReco.modules.correlationDirectionFitter
 import NuRadioReco.modules.channelSignalReconstructor
+import NuRadioReco.modules.channelBandPassFilter
 from NuRadioReco.framework.parameters import stationParameters as stnp
 from NuRadioReco.detector import detector
 from NuRadioReco.utilities import units
@@ -95,6 +96,10 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
 
     det = detector.Detector(f"HRASimulation/HRAStationLayoutForCoREAS.json")
 
+    # Initialize bandpass filter module
+    channelBandPassFilter = NuRadioReco.modules.channelBandPassFilter.channelBandPassFilter()
+    channelBandPassFilter.begin()
+    
     correlationDirectionFitter = NuRadioReco.modules.correlationDirectionFitter.correlationDirectionFitter()
     correlationDirectionFitter.begin(debug=False)
 
@@ -125,6 +130,9 @@ def convertHRANurToNpy(nurFiles, save_channels, save_folder, station_id, prefix,
         station_id = station.get_id()
         stationtime = station.get_station_time().unix
         det.update(station.get_station_time())
+        
+        # Apply bandpass filter (50 MHz to 1000 MHz) to all channels
+        channelBandPassFilter.run(evt, station, det, passband=[50 * units.MHz, 1000 * units.MHz], filter_type='butter', order=5)
 
         if station_id in stations_100s:
             use_templates = template_series_100
