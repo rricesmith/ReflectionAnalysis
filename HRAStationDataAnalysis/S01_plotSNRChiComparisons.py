@@ -14,6 +14,32 @@ from HRASimulation.HRAEventObject import HRAevent
 
 # --- Utility Functions ---
 
+def load_cuts_for_station(date, station_id, cuts_data_folder):
+    """
+    Load the cuts from C00 for a specific station and date.
+    Returns the final combined mask that should be applied to data.
+    """
+    cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station_id}_Cuts.npy')
+    if not os.path.exists(cuts_file):
+        ic(f"Warning: Cuts file not found for station {station_id} on date {date}. No cuts will be applied.")
+        return None
+    
+    try:
+        ic(f"Loading cuts file: {cuts_file}")
+        cuts_data = np.load(cuts_file, allow_pickle=True)[()]
+        
+        # Combine all cuts (L1 + Storm + Burst) as done in C00 and C01
+        final_cuts_mask = np.ones(len(cuts_data['L1_mask']), dtype=bool)
+        for cut_key in cuts_data.keys():
+            ic(f"Applying cut: {cut_key}")
+            final_cuts_mask &= cuts_data[cut_key]
+        
+        ic(f"Final cuts mask for station {station_id}: {np.sum(final_cuts_mask)}/{len(final_cuts_mask)} events pass")
+        return final_cuts_mask
+    except Exception as e:
+        ic(f"Error loading cuts file {cuts_file}: {e}")
+        return None
+
 def loadHRAfromH5(filename):
     """
     Loads a list of HRAevent objects from an HDF5 file.
@@ -178,9 +204,7 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
 
     if 'snr' in plot_key:
         ax.axvline(x=snr_max, color='m', linestyle='--', linewidth=1.5)
-        # Shade the GOOD region (SNR < threshold) with normal shading
-        ax.fill_betweenx(ax.get_ylim(), ax.get_xlim()[0], snr_max, color='m', alpha=0.2)
-        # Shade the BAD region (SNR > threshold) with dashed pattern
+        # Only shade the BAD region (SNR > threshold) with dashed pattern
         ax.fill_betweenx(ax.get_ylim(), snr_max, ax.get_xlim()[1], color='m', alpha=0.1, hatch='///')
 
     if plot_key == 'snr_vs_chircr':
@@ -188,28 +212,16 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
             snr_line_snr = cuts_dict['chi_rcr_line_snr']
             snr_line_chi = cuts_dict['chi_rcr_line_chi']
             ax.plot(snr_line_snr, snr_line_chi, color='purple', linestyle='--', linewidth=1.5)
-            # Shade the GOOD region (above the line) with normal shading
-            ax.fill_between(snr_line_snr, snr_line_chi, 1, color='purple', alpha=0.2, interpolate=True)
-            # Shade the BAD region (below the line) with dashed pattern
-            ax.fill_between(snr_line_snr, 0, snr_line_chi, color='purple', alpha=0.1, hatch='///')
         elif cut_type == 'backlobe':
             snr_line_snr = cuts_dict['chi_2016_line_snr']
             snr_line_chi = cuts_dict['chi_2016_line_chi']
             ax.plot(snr_line_snr, snr_line_chi, color='orange', linestyle='--', linewidth=1.5)
-            # Shade the GOOD region (above the line) with normal shading
-            ax.fill_between(snr_line_snr, snr_line_chi, 1, color='orange', alpha=0.2, interpolate=True)
-            # Shade the BAD region (below the line) with dashed pattern
-            ax.fill_between(snr_line_snr, 0, snr_line_chi, color='orange', alpha=0.1, hatch='///')
     
     elif plot_key == 'snr_vs_chi2016':
         if cut_type == 'backlobe':
             snr_line_snr = cuts_dict['chi_2016_line_snr']
             snr_line_chi = cuts_dict['chi_2016_line_chi']
             ax.plot(snr_line_snr, snr_line_chi, color='orange', linestyle='--', linewidth=1.5)
-            # Shade the GOOD region (above the line) with normal shading
-            ax.fill_between(snr_line_snr, snr_line_chi, 1, color='orange', alpha=0.2, interpolate=True)
-            # Shade the BAD region (below the line) with dashed pattern
-            ax.fill_between(snr_line_snr, 0, snr_line_chi, color='orange', alpha=0.1, hatch='///')
     
     elif plot_key == 'chi_vs_chi':
         if cut_type == 'rcr':
@@ -220,10 +232,6 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
             valid_mask = y_vals <= 1
             if np.any(valid_mask):
                 ax.plot(x_vals[valid_mask], y_vals[valid_mask], color='darkgreen', linestyle='--', linewidth=1.5)
-                # Shade the GOOD region (above the line) with normal shading
-                ax.fill_between(x_vals[valid_mask], y_vals[valid_mask], 1, color='darkgreen', alpha=0.2)
-                # Shade the BAD region (below the line) with dashed pattern
-                ax.fill_between(x_vals[valid_mask], 0, y_vals[valid_mask], color='darkgreen', alpha=0.1, hatch='///')
         elif cut_type == 'backlobe':
             # Draw Chi difference cut line: ChiRCR = Chi2016 - threshold
             x_vals = np.linspace(0, 1, 100)
@@ -232,26 +240,14 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
             valid_mask = y_vals >= 0
             if np.any(valid_mask):
                 ax.plot(x_vals[valid_mask], y_vals[valid_mask], color='darkorange', linestyle='--', linewidth=1.5)
-                # Shade the GOOD region (below the line) with normal shading
-                ax.fill_between(x_vals[valid_mask], 0, y_vals[valid_mask], color='darkorange', alpha=0.2)
-                # Shade the BAD region (above the line) with dashed pattern
-                ax.fill_between(x_vals[valid_mask], y_vals[valid_mask], 1, color='darkorange', alpha=0.1, hatch='///')
     
     elif plot_key == 'snr_vs_chidiff':
         if cut_type == 'rcr':
             # Draw horizontal line for Chi difference cut
             ax.axhline(y=chi_diff_threshold, color='darkgreen', linestyle='--', linewidth=1.5)
-            # Shade the GOOD region (above the line) with normal shading
-            ax.fill_betweenx([chi_diff_threshold, ax.get_ylim()[1]], ax.get_xlim()[0], ax.get_xlim()[1], color='darkgreen', alpha=0.2)
-            # Shade the BAD region (below the line) with dashed pattern
-            ax.fill_betweenx([ax.get_ylim()[0], chi_diff_threshold], ax.get_xlim()[0], ax.get_xlim()[1], color='darkgreen', alpha=0.1, hatch='///')
         elif cut_type == 'backlobe':
             # Draw horizontal line for Chi difference cut (reversed)
             ax.axhline(y=-chi_diff_threshold, color='darkorange', linestyle='--', linewidth=1.5)
-            # Shade the GOOD region (below the line) with normal shading
-            ax.fill_betweenx([ax.get_ylim()[0], -chi_diff_threshold], ax.get_xlim()[0], ax.get_xlim()[1], color='darkorange', alpha=0.2)
-            # Shade the BAD region (above the line) with dashed pattern
-            ax.fill_betweenx([-chi_diff_threshold, ax.get_ylim()[1]], ax.get_xlim()[0], ax.get_xlim()[1], color='darkorange', alpha=0.1, hatch='///')
 
 
 def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bins_dict=None):
@@ -457,6 +453,7 @@ if __name__ == "__main__":
     sim_sigma = float(config['SIMULATION']['sigma'])
 
     station_data_folder = f'HRAStationDataAnalysis/StationData/nurFiles/{date}/'
+    cuts_data_folder = f'HRAStationDataAnalysis/StationData/cuts/{date}/'
     plot_folder = f'HRAStationDataAnalysis/plots/{date_processing}/'
     os.makedirs(plot_folder, exist_ok=True)
     
@@ -471,7 +468,7 @@ if __name__ == "__main__":
 
     # --- Define Cuts & Bins ---
     cuts = {
-        'snr_max': 33,
+        'snr_max': 50,
         'chi_rcr_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
         'chi_rcr_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]),  # More aggressive cut
         'chi_diff_threshold': 0.08,
@@ -514,23 +511,45 @@ if __name__ == "__main__":
             ic(f"Skipping Station {station_id} due to missing Chi data.")
             continue
 
+        # Apply initial time and uniqueness cuts
         initial_mask, unique_indices = getTimeEventMasks(times, event_ids_raw)
         
-        station_data = {
-            'snr': snr_array[initial_mask][unique_indices],
-            'Chi2016': Chi2016_array[initial_mask][unique_indices],
-            'ChiRCR': ChiRCR_array[initial_mask][unique_indices]
-        }
-        station_event_ids = event_ids_raw[initial_mask][unique_indices]
+        # Apply cuts from C00 before processing
+        cuts_mask = load_cuts_for_station(date, station_id, cuts_data_folder)
+        if cuts_mask is not None:
+            # The cuts mask should be applied after initial_mask and unique_indices
+            # to match the same data flow as in C01
+            temp_times = times[initial_mask][unique_indices]
+            temp_event_ids = event_ids_raw[initial_mask][unique_indices]
+            
+            # Ensure cuts mask length matches the post-initial processing length
+            if len(cuts_mask) != len(temp_times):
+                ic(f"Warning: Cuts mask length ({len(cuts_mask)}) doesn't match data length ({len(temp_times)}). Truncating cuts mask.")
+                cuts_mask = cuts_mask[:len(temp_times)]
+            
+            # Apply cuts mask
+            final_indices = unique_indices[cuts_mask]
+            ic(f"Station {station_id}: {len(temp_times)} events after initial cuts, {np.sum(cuts_mask)} events after C00 cuts")
+        else:
+            # No cuts available, use all data after initial processing
+            final_indices = unique_indices
+            ic(f"Station {station_id}: {len(times[initial_mask][unique_indices])} events after initial cuts, no C00 cuts applied")
         
-        ic(f"Station {station_id} has {len(station_data['snr'])} events after masking.")
+        station_data = {
+            'snr': snr_array[initial_mask][final_indices],
+            'Chi2016': Chi2016_array[initial_mask][final_indices],
+            'ChiRCR': ChiRCR_array[initial_mask][final_indices]
+        }
+        station_event_ids = event_ids_raw[initial_mask][final_indices]
+        
+        ic(f"Station {station_id} has {len(station_data['snr'])} events after masking and cuts.")
         
         for key in all_stations_data:
             all_stations_data[key].append(station_data[key])
         all_stations_event_ids.append(station_event_ids)
-        all_stations_unique_indices.append(unique_indices)
+        all_stations_unique_indices.append(final_indices)
         
-        run_analysis_for_station(station_id, station_data, station_event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date)
+        run_analysis_for_station(station_id, station_data, station_event_ids, final_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date)
 
     # --- Run Analysis for Summed Stations ---
     if len(all_stations_data['snr']) > 1:

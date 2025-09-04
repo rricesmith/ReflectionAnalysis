@@ -10,6 +10,36 @@ from HRAStationDataAnalysis.C_utils import getTimeEventMasks
 import matplotlib.dates as mdates
 from datetime import datetime
 
+# Configuration flags for plotting individual events
+PLOT_RCR_EVENTS = False  # Set to True to enable plotting individual RCR events
+PLOT_BACKLOBE_EVENTS = False  # Set to True to enable plotting individual backlobe events
+
+def load_cuts_for_station(date, station_id, cuts_data_folder):
+    """
+    Load the cuts from C00 for a specific station and date.
+    Returns the final combined mask that should be applied to data.
+    """
+    cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station_id}_Cuts.npy')
+    if not os.path.exists(cuts_file):
+        ic(f"Warning: Cuts file not found for station {station_id} on date {date}. No cuts will be applied.")
+        return None
+    
+    try:
+        ic(f"Loading cuts file: {cuts_file}")
+        cuts_data = np.load(cuts_file, allow_pickle=True)[()]
+        
+        # Combine all cuts (L1 + Storm + Burst) as done in C00 and C01
+        final_cuts_mask = np.ones(len(cuts_data['L1_mask']), dtype=bool)
+        for cut_key in cuts_data.keys():
+            ic(f"Applying cut: {cut_key}")
+            final_cuts_mask &= cuts_data[cut_key]
+        
+        ic(f"Final cuts mask for station {station_id}: {np.sum(final_cuts_mask)}/{len(final_cuts_mask)} events pass")
+        return final_cuts_mask
+    except Exception as e:
+        ic(f"Error loading cuts file {cuts_file}: {e}")
+        return None
+
 def load_station_data(folder, date, station_id, data_name):
     """
     Loads and concatenates data files for a specific station and data type.
@@ -287,7 +317,7 @@ def plot_combined_events_seasonal(rcr_data, backlobe_data, station_id, output_di
                          station_id, output_dir)
     
 
-def process_events_for_station(station_id, plot_folder, date, station_data_folder, event_type='rcr', output_dir=None):
+def process_events_for_station(station_id, plot_folder, date, station_data_folder, cuts_data_folder, event_type='rcr', output_dir=None):
     """
     Process events for a specific station and event type (RCR or backlobe).
     """
@@ -339,18 +369,39 @@ def process_events_for_station(station_id, plot_folder, date, station_data_folde
         ic("Missing one or more raw data files. Skipping station.")
         return None
 
+    # Apply initial time and uniqueness cuts
     initial_mask, unique_indices = getTimeEventMasks(raw_times, raw_event_ids)
+    
+    # Apply cuts from C00 before processing
+    cuts_mask = load_cuts_for_station(date, station_id, cuts_data_folder)
+    if cuts_mask is not None:
+        # The cuts mask should be applied after initial_mask and unique_indices
+        temp_times = raw_times[initial_mask][unique_indices]
+        temp_event_ids = raw_event_ids[initial_mask][unique_indices]
+        
+        # Ensure cuts mask length matches the post-initial processing length
+        if len(cuts_mask) != len(temp_times):
+            ic(f"Warning: Cuts mask length ({len(cuts_mask)}) doesn't match data length ({len(temp_times)}). Truncating cuts mask.")
+            cuts_mask = cuts_mask[:len(temp_times)]
+        
+        # Apply cuts mask
+        final_indices = unique_indices[cuts_mask]
+        ic(f"Station {station_id}: {len(temp_times)} events after initial cuts, {np.sum(cuts_mask)} events after C00 cuts")
+    else:
+        # No cuts available, use all data after initial processing
+        final_indices = unique_indices
+        ic(f"Station {station_id}: {len(raw_times[initial_mask][unique_indices])} events after initial cuts, no C00 cuts applied")
 
-    # Apply the mask and select unique events
-    event_ids_clean = raw_event_ids[initial_mask][unique_indices]
-    traces_clean = raw_traces[initial_mask][unique_indices]
-    times_clean = raw_times[initial_mask][unique_indices]
-    snr_clean = raw_snr[initial_mask][unique_indices] if raw_snr.size > 0 else np.array([])
-    chi2016_clean = raw_chi2016[initial_mask][unique_indices] if raw_chi2016.size > 0 else np.array([])
-    chircr_clean = raw_chircr[initial_mask][unique_indices] if raw_chircr.size > 0 else np.array([])
-    chibad_clean = raw_chibad[initial_mask][unique_indices] if raw_chibad.size > 0 else np.array([])
-    azi_clean = raw_azi[initial_mask][unique_indices] if raw_azi.size > 0 else np.array([])
-    zen_clean = raw_zen[initial_mask][unique_indices] if raw_zen.size > 0 else np.array([])
+    # Apply the mask and select unique events (with C00 cuts applied)
+    event_ids_clean = raw_event_ids[initial_mask][final_indices]
+    traces_clean = raw_traces[initial_mask][final_indices]
+    times_clean = raw_times[initial_mask][final_indices]
+    snr_clean = raw_snr[initial_mask][final_indices] if raw_snr.size > 0 else np.array([])
+    chi2016_clean = raw_chi2016[initial_mask][final_indices] if raw_chi2016.size > 0 else np.array([])
+    chircr_clean = raw_chircr[initial_mask][final_indices] if raw_chircr.size > 0 else np.array([])
+    chibad_clean = raw_chibad[initial_mask][final_indices] if raw_chibad.size > 0 else np.array([])
+    azi_clean = raw_azi[initial_mask][final_indices] if raw_azi.size > 0 else np.array([])
+    zen_clean = raw_zen[initial_mask][final_indices] if raw_zen.size > 0 else np.array([])
 
     # Prepare data for plotting
     event_data = {
@@ -383,21 +434,28 @@ def process_events_for_station(station_id, plot_folder, date, station_data_folde
             event_data['zeniths'].append(zen_clean[unique_idx] if zen_clean.size > 0 else 0)
             event_data['snrs'].append(snr_clean[unique_idx] if snr_clean.size > 0 else 0)
             
-            # Plot individual event traces
-            trace = traces_clean[unique_idx]
-            sampling_rate = 2 * units.GHz
-            times_for_event = np.arange(trace.shape[1]) / sampling_rate
+            # Plot individual event traces only if enabled by flags
+            should_plot_individual = False
+            if event_type == 'rcr' and PLOT_RCR_EVENTS:
+                should_plot_individual = True
+            elif event_type == 'backlobe' and PLOT_BACKLOBE_EVENTS:
+                should_plot_individual = True
+            
+            if should_plot_individual:
+                trace = traces_clean[unique_idx]
+                sampling_rate = 2 * units.GHz
+                times_for_event = np.arange(trace.shape[1]) / sampling_rate
 
-            event_info = {
-                'snr': snr_clean[unique_idx] if snr_clean.size > 0 else 'N/A',
-                'azi': azi_clean[unique_idx] if azi_clean.size > 0 else 0,
-                'zen': zen_clean[unique_idx] if zen_clean.size > 0 else 0,
-                'chi2016': chi2016_clean[unique_idx] if chi2016_clean.size > 0 else 'N/A',
-                'chircr': chircr_clean[unique_idx] if chircr_clean.size > 0 else 'N/A',
-                'chibad': chibad_clean[unique_idx] if chibad_clean.size > 0 else 'N/A'
-            }
+                event_info = {
+                    'snr': snr_clean[unique_idx] if snr_clean.size > 0 else 'N/A',
+                    'azi': azi_clean[unique_idx] if azi_clean.size > 0 else 0,
+                    'zen': zen_clean[unique_idx] if zen_clean.size > 0 else 0,
+                    'chi2016': chi2016_clean[unique_idx] if chi2016_clean.size > 0 else 'N/A',
+                    'chircr': chircr_clean[unique_idx] if chircr_clean.size > 0 else 'N/A',
+                    'chibad': chibad_clean[unique_idx] if chibad_clean.size > 0 else 'N/A'
+                }
 
-            plot_event_traces_and_ffts(event_id, trace, times_for_event, station_id, output_dir, event_info)
+                plot_event_traces_and_ffts(event_id, trace, times_for_event, station_id, output_dir, event_info)
 
         except IndexError:
             ic(f"Index error for event {event_id} with unique_index {unique_idx}. Skipping.")
@@ -426,6 +484,7 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
 
     plot_folder = f'HRAStationDataAnalysis/plots/{date_processing}/'
     station_data_folder = f'HRAStationDataAnalysis/StationData/nurFiles/{date}/'
+    cuts_data_folder = f'HRAStationDataAnalysis/StationData/cuts/{date}/'
     
     # Create separate output directories for RCR and backlobe events
     rcr_output_dir = os.path.join(plot_folder, 'rcr_events_passing_cuts')
@@ -440,10 +499,10 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
         ic(f"--- Processing Station {station_id} ---")
         
         # Process RCR events
-        rcr_data = process_events_for_station(station_id, plot_folder, date, station_data_folder, 'rcr', output_dir=rcr_output_dir)
+        rcr_data = process_events_for_station(station_id, plot_folder, date, station_data_folder, cuts_data_folder, 'rcr', output_dir=rcr_output_dir)
         
         # Process backlobe events
-        backlobe_data = process_events_for_station(station_id, plot_folder, date, station_data_folder, 'backlobe', output_dir=backlobe_output_dir)
+        backlobe_data = process_events_for_station(station_id, plot_folder, date, station_data_folder, cuts_data_folder, 'backlobe', output_dir=backlobe_output_dir)
         
         # Create regular plots for RCR events
         if rcr_data and len(rcr_data['times']) > 0:
