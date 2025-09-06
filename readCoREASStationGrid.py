@@ -140,18 +140,24 @@ class readCoREAS:
             att_length = 420*units.m
             efield_adjust = np.exp(-np.abs(dist_traveled) / att_length)
         elif attenuation_model == 'MB_freq':
-#            freqs = electric_field.get_frequencies() * units.GHz
+            # Model is from https://github.com/nu-radio/NuRadioMC/blob/4f19eb9e0343300af5ab061ce7a3a8916edb2c2f/NuRadioMC/utilities/attenuation.py#L224
             freqs = electric_field.get_frequencies()
+            R = 0.82 # reflectivity of MB ice bottom
+            d_ice = 576 * units.m  # depth of ice at Moore's Bay
             att_length = 460 * units.m - 180 * units.m / units.GHz * freqs / units.GHz
+            # Correction factor due to previous line being calculated assuming R=1
+            att_length *= (1 + att_length / (2 * d_ice) * np.log(R)) ** -1
+
+            # Additional adjustment from temperature profile of ice
+            # Temperature dependence is currently IGNORED
+            # Probably needs to be added in at some point.
+
             att_length[att_length <= 0] = 1
             efield_adjust = np.exp(-dist_traveled / (att_length/units.m) )
 #            print(f'efield adjust from atten {np.exp(-dist_traveled / att_length)} of dist {dist_traveled}')
             efield_adjust[att_length <= 0] = 0	#Remove negative attenuation lenghts
             efield_adjust[efield_adjust > 1] = 1 #Remove increases in electric field
 
-#            plt.plot(freqs/units.MHz, np.abs(electric_field.get_frequency_spectrum()[0]), label='Pre-att 0')
-#            plt.plot(freqs/units.MHz, np.abs(electric_field.get_frequency_spectrum()[1]), label='Pre-att 1')
-#            plt.plot(freqs/units.MHz, np.abs(electric_field.get_frequency_spectrum()[2]), label='Pre-att 2')
 
         else:
             print(f'There exists no attenuation model {attenuation_model}')
