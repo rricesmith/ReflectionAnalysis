@@ -445,6 +445,7 @@ if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read('HRAStationDataAnalysis/config.ini')
     date = config['PARAMETERS']['date']
+    date_cuts = config['PARAMETERS']['date_cuts']
     date_processing = config['PARAMETERS']['date_processing']
     
     sim_file = config['SIMULATION']['sim_file']
@@ -453,7 +454,7 @@ if __name__ == "__main__":
     sim_sigma = float(config['SIMULATION']['sigma'])
 
     station_data_folder = f'HRAStationDataAnalysis/StationData/nurFiles/{date}/'
-    cuts_data_folder = f'HRAStationDataAnalysis/StationData/cuts/{date}/'
+    cuts_data_folder = f'HRAStationDataAnalysis/StationData/cuts/{date_cuts}/'
     plot_folder = f'HRAStationDataAnalysis/plots/{date_processing}/'
     os.makedirs(plot_folder, exist_ok=True)
     
@@ -534,7 +535,11 @@ if __name__ == "__main__":
             # No cuts available, use all data after initial processing
             final_indices = unique_indices
             ic(f"Station {station_id}: {len(times[initial_mask][unique_indices])} events after initial cuts, no C00 cuts applied")
-        
+
+            # For now, actually error out if no cuts are found
+            ic(f"Error: No cuts found for Station {station_id}. Please ensure cuts are available.")
+            quit()
+
         station_data = {
             'snr': snr_array[initial_mask][final_indices],
             'Chi2016': Chi2016_array[initial_mask][final_indices],

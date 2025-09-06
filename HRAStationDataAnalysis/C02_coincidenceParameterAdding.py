@@ -371,6 +371,7 @@ if __name__ == '__main__':
     config_parser = configparser.ConfigParser() 
     config_parser.read(os.path.join('HRAStationDataAnalysis', 'config.ini')) 
     date = config_parser['PARAMETERS']['date']
+    date_cuts = config_parser['PARAMETERS']['date_cuts']
     date_processing = config_parser['PARAMETERS']['date_processing']
     ic(f"Running parameter addition for date {date} with processing date {date_processing}")
 

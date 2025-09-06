@@ -10,9 +10,7 @@ from HRAStationDataAnalysis.C_utils import getTimeEventMasks
 import matplotlib.dates as mdates
 from datetime import datetime
 
-# Configuration flags for plotting individual events
-PLOT_RCR_EVENTS = False  # Set to True to enable plotting individual RCR events
-PLOT_BACKLOBE_EVENTS = False  # Set to True to enable plotting individual backlobe events
+# Configuration flags will be passed from main
 
 def load_cuts_for_station(date, station_id, cuts_data_folder):
     """
@@ -87,7 +85,6 @@ def plot_event_traces_and_ffts(event_id, traces, times, station_id, output_dir, 
         ax_fft.set_xlabel('Frequency [MHz]')
         ax_fft.set_ylabel('Amplitude [V/Hz]')
         ax_fft.set_title(f'Channel {i} FFT')
-        ax_fft.set_yscale('log')
         ax_fft.grid(True)
 
     # Add event info text
@@ -317,7 +314,7 @@ def plot_combined_events_seasonal(rcr_data, backlobe_data, station_id, output_di
                          station_id, output_dir)
     
 
-def process_events_for_station(station_id, plot_folder, date, station_data_folder, cuts_data_folder, event_type='rcr', output_dir=None):
+def process_events_for_station(station_id, plot_folder, date, station_data_folder, cuts_data_folder, event_type='rcr', output_dir=None, plot_individual_events=False):
     """
     Process events for a specific station and event type (RCR or backlobe).
     """
@@ -435,11 +432,7 @@ def process_events_for_station(station_id, plot_folder, date, station_data_folde
             event_data['snrs'].append(snr_clean[unique_idx] if snr_clean.size > 0 else 0)
             
             # Plot individual event traces only if enabled by flags
-            should_plot_individual = False
-            if event_type == 'rcr' and PLOT_RCR_EVENTS:
-                should_plot_individual = True
-            elif event_type == 'backlobe' and PLOT_BACKLOBE_EVENTS:
-                should_plot_individual = True
+            should_plot_individual = plot_individual_events
             
             if should_plot_individual:
                 trace = traces_clean[unique_idx]
@@ -464,7 +457,7 @@ def process_events_for_station(station_id, plot_folder, date, station_data_folde
 
     return event_data
 
-def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
+def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30], plot_rcr_events=False, plot_backlobe_events=False):
     ic.enable()
     ic.configureOutput(prefix='Plotter | ')
 
@@ -477,6 +470,7 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
 
     try:
         date = config['PARAMETERS']['date']
+        date_cuts = config['PARAMETERS']['date_cuts']
         date_processing = config['PARAMETERS']['date_processing']
     except KeyError as e:
         ic(f"Error: Missing parameter {e} in config file.")
@@ -484,7 +478,7 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
 
     plot_folder = f'HRAStationDataAnalysis/plots/{date_processing}/'
     station_data_folder = f'HRAStationDataAnalysis/StationData/nurFiles/{date}/'
-    cuts_data_folder = f'HRAStationDataAnalysis/StationData/cuts/{date}/'
+    cuts_data_folder = f'HRAStationDataAnalysis/StationData/cuts/{date_cuts}/'
     
     # Create separate output directories for RCR and backlobe events
     rcr_output_dir = os.path.join(plot_folder, 'rcr_events_passing_cuts')
@@ -499,10 +493,10 @@ def main(station_ids_to_process=[13, 14, 15, 17, 18, 19, 30]):
         ic(f"--- Processing Station {station_id} ---")
         
         # Process RCR events
-        rcr_data = process_events_for_station(station_id, plot_folder, date, station_data_folder, cuts_data_folder, 'rcr', output_dir=rcr_output_dir)
+        rcr_data = process_events_for_station(station_id, plot_folder, date, station_data_folder, cuts_data_folder, 'rcr', output_dir=rcr_output_dir, plot_individual_events=plot_rcr_events)
         
         # Process backlobe events
-        backlobe_data = process_events_for_station(station_id, plot_folder, date, station_data_folder, cuts_data_folder, 'backlobe', output_dir=backlobe_output_dir)
+        backlobe_data = process_events_for_station(station_id, plot_folder, date, station_data_folder, cuts_data_folder, 'backlobe', output_dir=backlobe_output_dir, plot_individual_events=plot_backlobe_events)
         
         # Create regular plots for RCR events
         if rcr_data and len(rcr_data['times']) > 0:
@@ -549,6 +543,12 @@ def plot_seasonal_summary(rcr_data, backlobe_data, station_id, output_dir):
     pass
 
 if __name__ == '__main__':
+    # Configuration for what to process
     stations_to_plot = [13, 14, 15, 17, 18, 19, 30]
     # stations_to_plot = [13, 15, 17, 18]
-    main(stations_to_plot)
+    
+    # Configuration flags for plotting individual events passing cuts
+    plot_rcr_events = False  # Set to True to enable plotting individual RCR events
+    plot_backlobe_events = False  # Set to True to enable plotting individual backlobe events
+    
+    main(stations_to_plot, plot_rcr_events, plot_backlobe_events)
