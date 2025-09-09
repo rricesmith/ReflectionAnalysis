@@ -491,13 +491,20 @@ if __name__ == '__main__':
         if not os.path.exists(d_path):
             ic(f"Warning: Input file not found: {d_path}. Skipping.")
             # Fallback to the previous file if the polarization one doesn't exist
-            fallback_file = f"{date_of_process}_CoincidenceDatetimes_with_all_params_recalcZenAzi.pkl"
-            d_path = os.path.join(processed_data_dir_for_date, fallback_file)
+            ic(f"-> Trying fallback 1...")
+            fallback_file_1 = f"{date_of_process}_CoincidenceDatetimes_with_all_params_recalcZenAzi.pkl"
+            d_path = os.path.join(processed_data_dir_for_date, fallback_file_1)
             if not os.path.exists(d_path):
-                ic(f"Error: Fallback file also not found: {d_path}. Cannot proceed.")
-                continue
+                ic(f"-> Fallback 1 not found. Trying fallback 2...")
+                fallback_file_2 = f"{date_of_process}_CoincidenceDatetimes_with_all_params.pkl"
+                d_path = os.path.join(processed_data_dir_for_date, fallback_file_2)
+                if not os.path.exists(d_path):
+                    ic(f"Error: All fallback files also not found. Cannot proceed for this dataset.")
+                    continue
+                else:
+                    ic(f"Found and using second fallback file: {d_path}")
             else:
-                ic(f"Found and using fallback file: {d_path}")
+                ic(f"Found and using first fallback file: {d_path}")
 
         data = _load_pickle(d_path)
         if data is not None: 
