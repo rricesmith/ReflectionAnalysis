@@ -419,10 +419,13 @@ if __name__ == '__main__':
 
     parameters_to_add = ['Traces', 'SNR', 'ChiRCR', 'Chi2016', 'ChiBad', 'Zen', 'Azi', 'Times']
     
+    # datasets_to_process = [
+    #     {"name": "CoincidenceEvents", "data_dict": initial_coincidence_events, "run_flag": "base", "final_save_name": f'{date_processing}_CoincidenceDatetimes_with_all_params.pkl'},
+    #     {"name": "CoincidenceEventsWithRepeat", "data_dict": initial_coincidence_with_repeat_stations_events, "run_flag": "with_repeat", "final_save_name": f'{date_processing}_CoincidenceRepeatStations_with_all_params.pkl'},
+    #     {"name": "CoincidenceEventsWithRepeatedEventIDs", "data_dict": initial_coincidence_with_repeated_eventIDs, "run_flag": "with_repeated_eventIDs", "final_save_name": f'{date_processing}_CoincidenceRepeatEventIDs_with_all_params.pkl'}
+    # ]
     datasets_to_process = [
-        {"name": "CoincidenceEvents", "data_dict": initial_coincidence_events, "run_flag": "base", "final_save_name": f'{date_processing}_CoincidenceDatetimes_with_all_params.pkl'},
-        {"name": "CoincidenceEventsWithRepeat", "data_dict": initial_coincidence_with_repeat_stations_events, "run_flag": "with_repeat", "final_save_name": f'{date_processing}_CoincidenceRepeatStations_with_all_params.pkl'},
-        {"name": "CoincidenceEventsWithRepeatedEventIDs", "data_dict": initial_coincidence_with_repeated_eventIDs, "run_flag": "with_repeated_eventIDs", "final_save_name": f'{date_processing}_CoincidenceRepeatEventIDs_with_all_params.pkl'}
+        {"name": "CoincidenceEvents", "data_dict": initial_coincidence_events, "run_flag": "base", "final_save_name": f'{date_processing}_CoincidenceDatetimes_with_all_params.pkl'}
     ]
 
     for dataset_info in datasets_to_process:
