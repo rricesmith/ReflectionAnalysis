@@ -395,7 +395,7 @@ if __name__ == "__main__":
             coincidence_with_repeated_eventIDs = {}
         ic("Loaded processed coincidences", len(coincidence_datetimes))
     else:
-        coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs = findCoincidenceDatetimes(date, date_cuts, cuts=True)
+        coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs = findCoincidenceDatetimes(date_cuts, date, cuts=True)
         np.save(output_file, [coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs], allow_pickle=True)
         ic("Saved new coincidences", len(coincidence_datetimes))
 
