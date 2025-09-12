@@ -36,7 +36,7 @@ def findCoincidenceDatetimes(date, date_cuts, cuts=True):
       (coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs)
     """
     station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
-    cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date)
+    cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date_cuts)
 
     station_ids = [13, 14, 15, 17, 18, 19, 30]
 
@@ -67,7 +67,7 @@ def findCoincidenceDatetimes(date, date_cuts, cuts=True):
         final_cuts_mask = np.ones(len(times), dtype=bool) # Initialize final cuts mask
 
         if cuts:
-            cuts_file = os.path.join(cuts_data_folder, f'{date_cuts}_Station{station_id}_Cuts.npy')
+            cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station_id}_Cuts.npy')
             if os.path.exists(cuts_file):
                 ic(f"Loading cuts file: {cuts_file}")
                 cuts_data = np.load(cuts_file, allow_pickle=True)[()]
@@ -80,7 +80,8 @@ def findCoincidenceDatetimes(date, date_cuts, cuts=True):
                 times = times[final_cuts_mask]
                 event_ids = event_ids[final_cuts_mask] # Apply the same mask to event_ids
             else:
-                ic(f"Warning: Cuts file {cuts_file} not found for station {station_id} on date {date}. No cuts applied for this station.")
+                ic(f"Warning: Cuts file {cuts_file} not found for station {station_id} on date {date}. Quitting.")
+                quit()
 
         for idx, event_time in enumerate(times):
             # The idx here is the post-cut index, which is what we want for mapping later
