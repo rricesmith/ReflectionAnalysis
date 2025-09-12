@@ -387,23 +387,53 @@ if __name__ == "__main__":
         data = np.load(output_file, allow_pickle=True)
         coincidence_datetimes = data[0]
         coincidence_with_repeated_stations = data[1]
+        # Safely load third dict if present; older saves may lack it
+        if len(data) > 2:
+            coincidence_with_repeated_eventIDs = data[2]
+        else:
+            coincidence_with_repeated_eventIDs = {}
         ic("Loaded processed coincidences", len(coincidence_datetimes))
     else:
         coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs = findCoincidenceDatetimes(date, cuts=True)
         np.save(output_file, [coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs], allow_pickle=True)
         ic("Saved new coincidences", len(coincidence_datetimes))
 
-    # Optional: ic first few coincidences for verification.
-    for key in list(coincidence_datetimes.keys()):
-        ic(key, coincidence_datetimes[key])
-        if isinstance(coincidence_datetimes[key], dict):
-            ic(coincidence_datetimes[key].keys())
-    for key in list(coincidence_with_repeated_stations.keys()):
-        ic(key, coincidence_with_repeated_stations[key])
-        if isinstance(coincidence_with_repeated_stations[key], dict):
-            ic(coincidence_with_repeated_stations[key].keys()) 
+    # --- Summary Printouts ---
+    def _print_summary(label, events_dict):
+        if not events_dict:
+            print(f"[Summary] {label}: None found.")
+            return
+        combo_level_counts = defaultdict(int)
+        station_participation = defaultdict(int)
+        for ev in events_dict.values():
+            stations_block = ev.get("stations", {})
+            # keys may be int or str; normalize to int where possible
+            norm_keys = []
+            for k in stations_block.keys():
+                try:
+                    norm_keys.append(int(k))
+                except Exception:
+                    norm_keys.append(k)
+            k_len = len(set(norm_keys))
+            combo_level_counts[k_len] += 1
+            for st in set(norm_keys):
+                station_participation[st] += 1
+        print(f"\n[Summary] {label} - total groups: {len(events_dict)}")
+        for combo_size in sorted(combo_level_counts.keys()):
+            print(f"  Groups with {combo_size} unique stations: {combo_level_counts[combo_size]}")
+        print("  Station participation counts (number of groups each station appears in):")
+        for st in sorted(station_participation.keys()):
+            print(f"    Station {st}: {station_participation[st]}")
 
-    for key in list(coincidence_with_repeated_eventIDs.keys()):
-        ic(key, coincidence_with_repeated_eventIDs[key])
-        if isinstance(coincidence_with_repeated_eventIDs[key], dict):
-            ic(coincidence_with_repeated_eventIDs[key].keys())
+    _print_summary("Valid coincidences", coincidence_datetimes)
+    _print_summary("Coincidences with repeated stations", coincidence_with_repeated_stations)
+    _print_summary("Coincidences with repeated EventIDs within a station", coincidence_with_repeated_eventIDs)
+
+    # Optional: ic first few coincidences for verification.
+    # (Optional detailed dumps can be re-enabled if needed)
+    # for key in list(coincidence_datetimes.keys())[:5]:
+    #     ic(key, coincidence_datetimes[key])
+    # for key in list(coincidence_with_repeated_stations.keys())[:5]:
+    #     ic(key, coincidence_with_repeated_stations[key])
+    # for key in list(coincidence_with_repeated_eventIDs.keys())[:5]:
+    #     ic(key, coincidence_with_repeated_eventIDs[key])
