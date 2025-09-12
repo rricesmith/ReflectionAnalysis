@@ -80,7 +80,7 @@ def findCoincidenceDatetimes(date, date_cuts, cuts=True):
                 times = times[final_cuts_mask]
                 event_ids = event_ids[final_cuts_mask] # Apply the same mask to event_ids
             else:
-                ic(f"Warning: Cuts file not found for station {station_id} on date {date}. No cuts applied for this station.")
+                ic(f"Warning: Cuts file {cuts_file} not found for station {station_id} on date {date}. No cuts applied for this station.")
 
         for idx, event_time in enumerate(times):
             # The idx here is the post-cut index, which is what we want for mapping later
