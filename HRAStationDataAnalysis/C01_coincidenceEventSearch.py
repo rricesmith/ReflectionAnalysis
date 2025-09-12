@@ -36,7 +36,7 @@ def findCoincidenceDatetimes(date, date_cuts, cuts=True):
       (coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs)
     """
     station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
-    cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date_cuts)
+    cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date)
 
     station_ids = [13, 14, 15, 17, 18, 19, 30]
 
@@ -67,7 +67,7 @@ def findCoincidenceDatetimes(date, date_cuts, cuts=True):
         final_cuts_mask = np.ones(len(times), dtype=bool) # Initialize final cuts mask
 
         if cuts:
-            cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station_id}_Cuts.npy')
+            cuts_file = os.path.join(cuts_data_folder, f'{date_cuts}_Station{station_id}_Cuts.npy')
             if os.path.exists(cuts_file):
                 ic(f"Loading cuts file: {cuts_file}")
                 cuts_data = np.load(cuts_file, allow_pickle=True)[()]
@@ -395,7 +395,7 @@ if __name__ == "__main__":
             coincidence_with_repeated_eventIDs = {}
         ic("Loaded processed coincidences", len(coincidence_datetimes))
     else:
-        coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs = findCoincidenceDatetimes(date_cuts, date, cuts=True)
+        coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs = findCoincidenceDatetimes(date, date_cuts, cuts=True)
         np.save(output_file, [coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs], allow_pickle=True)
         ic("Saved new coincidences", len(coincidence_datetimes))
 
