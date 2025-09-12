@@ -11,7 +11,7 @@ import tempfile # For atomic saving
 import time # For timestamping save messages
 from HRAStationDataAnalysis.C_utils import getTimeEventMasks
 
-def findCoincidenceDatetimes(date, cuts=True):
+def findCoincidenceDatetimes(date, date_cuts, cuts=True):
     """
     Finds all coincidence events between stations within a one-second window.
 
@@ -36,7 +36,7 @@ def findCoincidenceDatetimes(date, cuts=True):
       (coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs)
     """
     station_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'nurFiles', date)
-    cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date)
+    cuts_data_folder = os.path.join('HRAStationDataAnalysis', 'StationData', 'cuts', date_cuts)
 
     station_ids = [13, 14, 15, 17, 18, 19, 30]
 
@@ -373,6 +373,7 @@ if __name__ == "__main__":
     config = configparser.ConfigParser() 
     config.read(os.path.join('HRAStationDataAnalysis', 'config.ini')) 
     date = config['PARAMETERS']['date']
+    date_cuts = config['PARAMETERS']['date_cuts']
     date_processing = config['PARAMETERS']['date_processing']
     ic("Processing date:", date)
     ic("Saving to date_processing:", date_processing)
@@ -394,7 +395,7 @@ if __name__ == "__main__":
             coincidence_with_repeated_eventIDs = {}
         ic("Loaded processed coincidences", len(coincidence_datetimes))
     else:
-        coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs = findCoincidenceDatetimes(date, cuts=True)
+        coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs = findCoincidenceDatetimes(date, date_cuts, cuts=True)
         np.save(output_file, [coincidence_datetimes, coincidence_with_repeated_stations, coincidence_with_repeated_eventIDs], allow_pickle=True)
         ic("Saved new coincidences", len(coincidence_datetimes))
 
