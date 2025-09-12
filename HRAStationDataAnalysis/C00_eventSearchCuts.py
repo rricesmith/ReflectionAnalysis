@@ -832,7 +832,8 @@ if __name__ == "__main__":
         if storm_mask_final is None:
             ic(f"Calculating storm cut...")
             storm_mask_final = cluster_cut(base_times_for_cuts, base_max_amplitudes_for_cuts, base_event_ids_for_cuts, # USE MAX AMPS
-                                           amplitude_threshold=0.3, 
+                                        #    amplitude_threshold=0.3, 
+                                            amplitude_threshold=0.275,
                                            time_period=datetime.timedelta(seconds=3600).total_seconds(), 
                                            cut_frequency=2)
             current_all_cut_masks['storm_mask'] = storm_mask_final
@@ -841,7 +842,8 @@ if __name__ == "__main__":
         if burst_mask_final is None:
             ic(f"Calculating burst cut...")
             burst_mask_final = cluster_cut(base_times_for_cuts, base_max_amplitudes_for_cuts, base_event_ids_for_cuts, # USE MAX AMPS
-                                           amplitude_threshold=0.2, 
+                                        #    amplitude_threshold=0.2, 
+                                           amplitude_threshold=0.175, 
                                            time_period=datetime.timedelta(seconds=60).total_seconds(), 
                                            cut_frequency=2)
             current_all_cut_masks['burst_mask'] = burst_mask_final
