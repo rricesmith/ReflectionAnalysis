@@ -25,7 +25,7 @@ def _load_pickle(filepath):
     return None
 
 # --- Coincidence Event Cut Functions ---
-def check_chi_cut(event_details, chi_threshold=0.3, min_triggers_passing=2):
+def check_chi_cut(event_details, chi_threshold=0.45, min_triggers_passing=2):
     """
     Checks if a coincidence event passes the Chi cut.
     A coincidence passes if at least 'min_triggers_passing' of its constituent
@@ -273,12 +273,10 @@ def plot_polar_zen_azi(events_dict, output_dir, dataset_name):
 
 # --- Plotting Function 4: Master Event Plot (Updated) ---
 def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
-    ic(f"Generating master event plots for {dataset_name}, separating by cut status.")
+    ic(f"Generating master event plots for {dataset_name}, only for events that pass cuts.")
     master_folder_base = os.path.join(base_output_dir, f"{dataset_name}_master_event_plots")
     pass_cuts_folder = os.path.join(master_folder_base, "pass_cuts")
-    fail_cuts_folder = os.path.join(master_folder_base, "fail_cuts")
     os.makedirs(pass_cuts_folder, exist_ok=True)
-    os.makedirs(fail_cuts_folder, exist_ok=True)
 
     color_map = {13: 'tab:blue', 14: 'tab:orange', 15: 'tab:green',
                  17: 'tab:red', 18: 'tab:purple', 19: 'sienna', 30: 'tab:brown'}
@@ -292,7 +290,12 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
 
         cut_results = event_details.get('cut_results', {})
         passes_overall_analysis = event_details.get('passes_analysis_cuts', False)
-        current_event_plot_dir = pass_cuts_folder if passes_overall_analysis else fail_cuts_folder
+        
+        # Only plot events that pass the analysis cuts
+        if not passes_overall_analysis:
+            continue
+            
+        current_event_plot_dir = pass_cuts_folder
         
         # CHANGED: Increased figure height and adjusted GridSpec for better trace/spectrum layout
         fig = plt.figure(figsize=(18, 26))
@@ -310,9 +313,9 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
             try: event_time_dt = datetime.datetime.fromtimestamp(event_details["datetime"]); event_time_str = event_time_dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
             except Exception as e: ic(f"Error formatting datetime for event {event_id}: {e}. Timestamp: {event_details['datetime']}")
         
-        fig.suptitle(f"Master Plot: Event {event_id} ({dataset_name}) - OVERALL: {'PASS' if passes_overall_analysis else 'FAIL'}\nTime: {event_time_str}", fontsize=16, y=0.98)
+        fig.suptitle(f"Master Plot: Event {event_id} ({dataset_name}) - PASSES ALL CUTS\nTime: {event_time_str}", fontsize=16, y=0.98)
 
-        text_info_lines = [f"Event ID: {event_id} -- Overall: {'PASS' if passes_overall_analysis else 'FAIL'}"]
+        text_info_lines = [f"Event ID: {event_id} -- Overall: PASS (Analysis Cuts)"]
         text_info_lines.append(f"Cut Status -> Chi: {'Passed' if cut_results.get('chi_cut_passed') else 'Failed'}, Angle: {'Passed' if cut_results.get('angle_cut_passed') else 'Failed'}")
         text_info_lines.append("--- Station Triggers ---")
         
@@ -461,7 +464,39 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
         except Exception as e: 
             ic(f"Error saving master plot {master_filename}: {e}")
         plt.close(fig); gc.collect()
-    ic(f"Finished master event plots for {dataset_name}. Check pass_cuts/ and fail_cuts/ subfolders.")
+    ic(f"Finished master event plots for {dataset_name}. Only events passing cuts were plotted.")
+
+
+# --- Function to Save Passing Events ---
+def save_passing_events(events_dict, output_dir, dataset_name, date_of_process):
+    """
+    Saves only the events that pass the analysis cuts to a new pickle file.
+    """
+    ic(f"Saving events that pass cuts for {dataset_name}")
+    
+    # Filter events that pass cuts
+    passing_events = {}
+    for event_id, event_details in events_dict.items():
+        if isinstance(event_details, dict) and event_details.get('passes_analysis_cuts', False):
+            passing_events[event_id] = event_details
+    
+    if not passing_events:
+        ic(f"No events pass the cuts for {dataset_name}. No file will be saved.")
+        return None
+    
+    # Create output filename
+    output_filename = f"{date_of_process}_CoincidenceDatetimes_passing_cuts.pkl"
+    output_filepath = os.path.join(output_dir, output_filename)
+    
+    # Save to pickle file
+    try:
+        with open(output_filepath, 'wb') as f:
+            pickle.dump(passing_events, f)
+        ic(f"Saved {len(passing_events)} passing events to: {output_filepath}")
+        return output_filepath
+    except Exception as e:
+        ic(f"Error saving passing events to {output_filepath}: {e}")
+        return None
 
 
 # --- Main Script ---
@@ -546,7 +581,12 @@ if __name__ == '__main__':
         plot_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
         plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
         plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
-        # plot_master_event_updated(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+        plot_master_event_updated(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+        
+        # Save events that pass cuts to a new file
+        saved_filepath = save_passing_events(events_data_dict, processed_data_dir_for_date, dataset_name_label, date_of_process)
+        if saved_filepath:
+            ic(f"Events passing cuts saved to: {saved_filepath}")
 
         # Printing all keys for structure of dictionary for convenience
         # And all subkeys
