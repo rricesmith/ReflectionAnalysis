@@ -25,7 +25,7 @@ def _load_pickle(filepath):
     return None
 
 # --- Coincidence Event Cut Functions ---
-def check_chi_cut(event_details, chi_threshold=0.45, min_triggers_passing=2):
+def check_chi_cut(event_details, chi_threshold=0.6, min_triggers_passing=2):
     """
     Checks if a coincidence event passes the Chi cut.
     A coincidence passes if at least 'min_triggers_passing' of its constituent
@@ -126,74 +126,81 @@ def plot_snr_vs_chi(events_dict, output_dir, dataset_name):
     os.makedirs(output_dir, exist_ok=True)
 
     chi_params = ['ChiRCR', 'Chi2016', 'ChiBad']
-    fig, axs = plt.subplots(len(chi_params), 1, figsize=(12, 6 * len(chi_params)), sharex=True)
-    if len(chi_params) == 1: axs = [axs]
+    
+    # Separate events by cut status
+    passing_events = {k: v for k, v in events_dict.items() if v.get('passes_analysis_cuts', False)}
+    failing_events = {k: v for k, v in events_dict.items() if not v.get('passes_analysis_cuts', False)}
+    
+    # Create plots for both passed and failed events
+    for status, events_subset in [("passed", passing_events), ("failed", failing_events)]:
+        if not events_subset:
+            ic(f"No {status} events in {dataset_name} to plot for SNR vs Chi.")
+            continue
+            
+        fig, axs = plt.subplots(len(chi_params), 1, figsize=(12, 6 * len(chi_params)), sharex=True)
+        if len(chi_params) == 1: axs = [axs]
 
-    num_events = len(events_dict)
-    if num_events == 0:
-        ic(f"No events in {dataset_name} to plot for SNR vs Chi.")
-        plt.close(fig); return
-        
-    colors_cmap = cm.get_cmap('jet', num_events if num_events > 1 else 2)
+        num_events = len(events_subset)
+        colors_cmap = cm.get_cmap('jet', num_events if num_events > 1 else 2)
 
-    for i, (event_id, event_data) in enumerate(events_dict.items()):
-        event_color = colors_cmap(i)
-        event_plot_data_collected = []
-        
-        for station_id_str, station_triggers_data in event_data.get("stations", {}).items():
-            try: station_id_int = int(station_id_str)
-            except ValueError: ic(f"Warning: Could not convert station ID '{station_id_str}' to int for event {event_id}. Skipping station."); continue
+        for i, (event_id, event_data) in enumerate(events_subset.items()):
+            event_color = colors_cmap(i)
+            event_plot_data_collected = []
+            
+            for station_id_str, station_triggers_data in event_data.get("stations", {}).items():
+                try: station_id_int = int(station_id_str)
+                except ValueError: ic(f"Warning: Could not convert station ID '{station_id_str}' to int for event {event_id}. Skipping station."); continue
 
-            snr_list = station_triggers_data.get('SNR', [])
-            num_triggers_for_station = len(snr_list)
-            if num_triggers_for_station == 0: continue
+                snr_list = station_triggers_data.get('SNR', [])
+                num_triggers_for_station = len(snr_list)
+                if num_triggers_for_station == 0: continue
 
-            chi_data_for_station = {}
-            for cp in chi_params:
-                cp_list = station_triggers_data.get(cp, [])
-                chi_data_for_station[cp] = (cp_list + [np.nan] * num_triggers_for_station)[:num_triggers_for_station]
+                chi_data_for_station = {}
+                for cp in chi_params:
+                    cp_list = station_triggers_data.get(cp, [])
+                    chi_data_for_station[cp] = (cp_list + [np.nan] * num_triggers_for_station)[:num_triggers_for_station]
 
-            for trigger_idx in range(num_triggers_for_station):
-                snr_val = snr_list[trigger_idx]
-                if snr_val is None or np.isnan(snr_val): continue
+                for trigger_idx in range(num_triggers_for_station):
+                    snr_val = snr_list[trigger_idx]
+                    if snr_val is None or np.isnan(snr_val): continue
 
-                point_data = {'station_id': station_id_int, 'trigger_idx_orig': trigger_idx, 'SNR': snr_val}
-                for cp in chi_params: point_data[cp] = chi_data_for_station[cp][trigger_idx]
-                event_plot_data_collected.append(point_data)
-        
-        if not event_plot_data_collected: continue
-        event_plot_data_collected.sort(key=lambda p: (p['station_id'], p['trigger_idx_orig']))
-        snrs_event_sorted = np.array([p['SNR'] for p in event_plot_data_collected])
-        
+                    point_data = {'station_id': station_id_int, 'trigger_idx_orig': trigger_idx, 'SNR': snr_val}
+                    for cp in chi_params: point_data[cp] = chi_data_for_station[cp][trigger_idx]
+                    event_plot_data_collected.append(point_data)
+            
+            if not event_plot_data_collected: continue
+            event_plot_data_collected.sort(key=lambda p: (p['station_id'], p['trigger_idx_orig']))
+            snrs_event_sorted = np.array([p['SNR'] for p in event_plot_data_collected])
+            
+            for plot_idx, chi_param_name in enumerate(chi_params):
+                chi_values_event_sorted = np.array([p[chi_param_name] for p in event_plot_data_collected])
+                for point_d in event_plot_data_collected:
+                    if point_d['SNR'] is not None and not np.isnan(point_d['SNR']) and \
+                       point_d[chi_param_name] is not None and not np.isnan(point_d[chi_param_name]):
+                        axs[plot_idx].scatter(point_d['SNR'], point_d[chi_param_name], color=event_color, s=30, alpha=0.6, zorder=5)
+
+                valid_line_indices = ~np.isnan(snrs_event_sorted) & ~np.isnan(chi_values_event_sorted)
+                if np.sum(valid_line_indices) > 1:
+                        axs[plot_idx].plot(snrs_event_sorted[valid_line_indices], 
+                                           chi_values_event_sorted[valid_line_indices], 
+                                           linestyle='-', color=event_color, alpha=0.4, marker=None,
+                                           label=f"Event {event_id}" if plot_idx == 0 and i < 15 else None)
+
         for plot_idx, chi_param_name in enumerate(chi_params):
-            chi_values_event_sorted = np.array([p[chi_param_name] for p in event_plot_data_collected])
-            for point_d in event_plot_data_collected:
-                if point_d['SNR'] is not None and not np.isnan(point_d['SNR']) and \
-                   point_d[chi_param_name] is not None and not np.isnan(point_d[chi_param_name]):
-                    axs[plot_idx].scatter(point_d['SNR'], point_d[chi_param_name], color=event_color, s=30, alpha=0.8, zorder=5)
+            axs[plot_idx].set_ylabel(chi_param_name); axs[plot_idx].set_title(f'SNR vs {chi_param_name}')
+            axs[plot_idx].grid(True, linestyle='--', alpha=0.6); axs[plot_idx].set_xscale('log')
+            axs[plot_idx].set_xlim(3, 100); axs[plot_idx].set_ylim(0, 1)
+        
+        axs[-1].set_xlabel('SNR')
+        handles, labels = axs[0].get_legend_handles_labels()
+        if num_events > 0 and num_events <=15 and handles: 
+            fig.legend(handles, labels, loc='center right', title="Events", bbox_to_anchor=(1.12, 0.5), fontsize='small')
 
-            valid_line_indices = ~np.isnan(snrs_event_sorted) & ~np.isnan(chi_values_event_sorted)
-            if np.sum(valid_line_indices) > 1:
-                    axs[plot_idx].plot(snrs_event_sorted[valid_line_indices], 
-                                       chi_values_event_sorted[valid_line_indices], 
-                                       linestyle='-', color=event_color, alpha=0.6, marker=None,
-                                       label=f"Event {event_id}" if plot_idx == 0 and i < 15 else None)
-
-    for plot_idx, chi_param_name in enumerate(chi_params):
-        axs[plot_idx].set_ylabel(chi_param_name); axs[plot_idx].set_title(f'SNR vs {chi_param_name}')
-        axs[plot_idx].grid(True, linestyle='--', alpha=0.6); axs[plot_idx].set_xscale('log')
-        axs[plot_idx].set_xlim(3, 100); axs[plot_idx].set_ylim(0, 1)
-    
-    axs[-1].set_xlabel('SNR')
-    handles, labels = axs[0].get_legend_handles_labels()
-    if num_events > 0 and num_events <=15 and handles: 
-        fig.legend(handles, labels, loc='center right', title="Events", bbox_to_anchor=(1.12, 0.5), fontsize='small')
-
-    plt.suptitle(f'SNR vs Chi Parameters for {dataset_name}', fontsize=16)
-    plt.tight_layout(rect=[0, 0, 0.88 if num_events <=15 and handles else 0.98 , 0.96])
-    
-    plot_filename = os.path.join(output_dir, f"{dataset_name}_snr_vs_chi_params.png")
-    plt.savefig(plot_filename, bbox_inches='tight'); ic(f"Saved SNR vs Chi plot: {plot_filename}"); plt.close(fig); gc.collect()
+        plt.suptitle(f'SNR vs Chi Parameters for {dataset_name} - {status.title()} Events', fontsize=16)
+        plt.tight_layout(rect=[0, 0, 0.88 if num_events <=15 and handles else 0.98 , 0.96])
+        
+        plot_filename = os.path.join(output_dir, f"{dataset_name}_snr_vs_chi_params_{status}.png")
+        plt.savefig(plot_filename, bbox_inches='tight'); ic(f"Saved SNR vs Chi plot: {plot_filename}"); plt.close(fig); gc.collect()
 
 
 # --- Plotting Function 2: Parameter Histograms ---
@@ -221,9 +228,18 @@ def plot_parameter_histograms(events_dict, output_dir, dataset_name):
         ax = axs_flat[i]; ax.set_title(f'{param_name}'); ax.set_xlabel("Value"); ax.set_ylabel('Frequency')
         values_all, values_pass, values_fail = param_values_all.get(param_name,[]), param_values_passing_cuts.get(param_name,[]), param_values_failing_cuts.get(param_name,[])
         has_data = False
-        if values_all: ax.hist(values_all, bins=50, edgecolor='black', alpha=0.4, label='All Events', color='grey'); has_data=True
-        if values_pass: ax.hist(values_pass, bins=50, edgecolor='darkgreen', alpha=0.6, label='Pass Analysis Cuts', color='lightgreen'); has_data=True
-        if values_fail: ax.hist(values_fail, bins=50, edgecolor='darkred', alpha=0.6, label='Fail Analysis Cuts', color='lightcoral'); has_data=True
+        
+        # Set up bins - use log scale for SNR
+        if param_name == 'SNR' and values_all:
+            bins = np.logspace(np.log10(min(values_all)), np.log10(max(values_all)), 50)
+        else:
+            bins = 50
+        
+        # Plot in order: All (bottom), Fail (middle), Pass (top) for better visibility
+        if values_all: ax.hist(values_all, bins=bins, edgecolor='black', linewidth=1, alpha=0.2, label='All Events', color='grey'); has_data=True
+        if values_fail: ax.hist(values_fail, bins=bins, edgecolor='darkred', linewidth=1, alpha=0.3, label='Fail Analysis Cuts', color='lightcoral'); has_data=True
+        if values_pass: ax.hist(values_pass, bins=bins, edgecolor='darkgreen', linewidth=1, alpha=0.4, label='Pass Analysis Cuts', color='lightgreen'); has_data=True
+        
         if has_data:
             if param_name in ['ChiRCR','Chi2016','ChiBad','SNR'] and any(v > 0 for v in values_all): ax.set_yscale('log'); ax.set_ylabel('Frequency (log scale)')
             if param_name in ['ChiRCR','Chi2016','ChiBad']: ax.set_xlim(0, 1)
@@ -320,8 +336,6 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
         text_info_lines.append("--- Station Triggers ---")
         
         legend_handles_for_fig = {}; global_trace_min = float('inf'); global_trace_max = float('-inf')
-        # NEW: List to collect points for the connecting line in the SNR-Chi plot
-        points_for_line_plot = []
 
         for station_id_str_calc, station_data_calc in event_details.get("stations", {}).items():
             all_traces_for_st = station_data_calc.get("Traces", [])
@@ -357,6 +371,9 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
             event_ids_for_station = (station_data.get("event_ids", []) + ["N/A"] * num_triggers)[:num_triggers]
             all_traces_for_station = station_data.get("Traces", [])
 
+            # NEW: Collect points for connecting lines within this station
+            station_points = []
+
             for trigger_idx in range(num_triggers):
                 marker = marker_list[trigger_idx % len(marker_list)]
                 snr_val, chi_rcr_val, chi_2016_val = snr_values[trigger_idx], chi_rcr_values[trigger_idx], chi_2016_values[trigger_idx]
@@ -370,10 +387,10 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
                 if snr_val is not None and not np.isnan(snr_val):
                     if chi_2016_val is not None and not np.isnan(chi_2016_val):
                         ax_scatter.scatter(snr_val, chi_2016_val, c=color, marker=marker, s=60, alpha=0.9, zorder=3)
-                        points_for_line_plot.append((snr_val, chi_2016_val)) # Add point for line
+                        station_points.append((snr_val, chi_2016_val)) # Add point for station line
                     if chi_rcr_val is not None and not np.isnan(chi_rcr_val):
                         ax_scatter.scatter(snr_val, chi_rcr_val, marker=marker, s=60, alpha=0.9, facecolors='none', edgecolors=color, linewidths=1.5, zorder=3)
-                        points_for_line_plot.append((snr_val, chi_rcr_val)) # Add point for line
+                        station_points.append((snr_val, chi_rcr_val)) # Add point for station line
                 
                 if zen_rad is not None and not np.isnan(zen_rad) and azi_rad is not None and not np.isnan(azi_rad): 
                     ax_polar.scatter(azi_rad, np.degrees(zen_rad), c=color, marker=marker, s=60, alpha=0.9)
@@ -414,13 +431,13 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
 
                 text_info_lines.append(f"  St{station_id_int} T{trigger_idx+1} Unix={time_text}: ID={ev_id_fstr}, SNR={snr_fstr}, ChiRCR={chi_rcr_text}, Chi2016={chi_2016_text}, Zen={zen_d_text}, Azi={azi_d_text}, Pol={pol_angle_full_text}")
 
-        # === START: SNR vs CHI PLOT SETUP ===
-        # NEW: Add connecting line ("arrow") between points
-        if len(points_for_line_plot) > 1:
-            points_for_line_plot.sort() # Sort by SNR
-            snrs, chis = zip(*points_for_line_plot)
-            ax_scatter.plot(snrs, chis, color='gray', linestyle='--', marker=None, alpha=0.8, zorder=2)
+            # NEW: Add connecting line for points within this station only
+            if len(station_points) > 1:
+                station_points.sort() # Sort by SNR
+                snrs, chis = zip(*station_points)
+                ax_scatter.plot(snrs, chis, color=color, linestyle='--', marker=None, alpha=0.8, zorder=2)
 
+        # === START: SNR vs CHI PLOT SETUP ===
         ax_scatter.set_xlabel("SNR")
         ax_scatter.set_ylabel(r"$\chi$")
         ax_scatter.set_title(r"SNR vs. $\chi$")

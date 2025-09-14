@@ -335,15 +335,21 @@ def cluster_cut(times, max_amplitudes_per_event, event_ids, amplitude_threshold,
 # ... (L1_cut, approximate_bad_times, format_duration, calculate_livetime, GTI functions, plotting functions remain the same) ...
 def L1_cut(traces, power_cut=0.3):
     # ... (implementation from previous response, ensure NuRadioReco.utilities.fft is importable) ...
+    from NuRadioReco.utilities import units
     try: from NuRadioReco.utilities.fft import time2freq
-    except ImportError: ic("NuRadioReco.utilities.fft not found for L1_cut. Returning all pass."); return np.ones(traces.shape[0], dtype=bool)
-    if traces.ndim != 3 or traces.shape[1] != 4 or traces.shape[2] != 256: return np.ones(traces.shape[0], dtype=bool)
-    n_events = traces.shape[0]; mask = np.ones(n_events, dtype=bool)
+    except ImportError: ic("NuRadioReco.utilities.fft not found for L1_cut. Quitting"); quit()
+    if traces.ndim != 3 or traces.shape[1] != 4 or traces.shape[2] != 256:
+        ic("Format wrong, quitting")
+        quit()
+    n_events = traces.shape[0]
+    mask = np.ones(n_events, dtype=bool)
     for i in range(n_events):
         for channel_idx in range(traces.shape[1]):
-            trace_channel_freq = np.abs(time2freq(traces[i, channel_idx, :], 2e9)) 
-            total_power = np.sum(trace_channel_freq)
-            if total_power == 0: continue
+            trace_channel_freq = np.abs(time2freq(traces[i, channel_idx], 2*units.GHz)) 
+            total_power = np.sum(trace_channel_freq[13:128])    # Look only within the range of ~50MHz to 500MHz
+            if total_power == 0: 
+                mask[i] = False
+                break
             if np.any(trace_channel_freq > power_cut * total_power): mask[i] = False; break 
     return mask
 # approximate_bad_times can be included if used.
