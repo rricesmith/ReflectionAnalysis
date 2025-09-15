@@ -25,7 +25,7 @@ def _load_pickle(filepath):
     return None
 
 # --- Coincidence Event Cut Functions ---
-def check_chi_cut(event_details, chi_threshold=0.55, min_triggers_passing=2):
+def check_chi_cut(event_details, chi_threshold=0.5, min_triggers_passing=1):
     """
     Checks if a coincidence event passes the Chi cut.
     A coincidence passes if at least 'min_triggers_passing' of its constituent
@@ -45,12 +45,9 @@ def check_chi_cut(event_details, chi_threshold=0.55, min_triggers_passing=2):
 
         for i in range(num_triggers_in_station):
             trigger_passed_chi = False
-            if i < len(chi_rcr_list) and chi_rcr_list[i] is not None and \
-               not np.isnan(chi_rcr_list[i]) and chi_rcr_list[i] > chi_threshold:
+            if chi_rcr_list[i] >= chi_threshold:
                 trigger_passed_chi = True
-            if not trigger_passed_chi and i < len(chi_2016_list) and \
-               chi_2016_list[i] is not None and not np.isnan(chi_2016_list[i]) and \
-               chi_2016_list[i] > chi_threshold:
+            if chi_2016_list[i] >= chi_threshold:
                 trigger_passed_chi = True
             if trigger_passed_chi:
                 passing_station_triggers_count += 1
