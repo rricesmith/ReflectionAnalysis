@@ -25,7 +25,7 @@ def _load_pickle(filepath):
     return None
 
 # --- Coincidence Event Cut Functions ---
-def check_chi_cut(event_details, chi_threshold=0.6, min_triggers_passing=2):
+def check_chi_cut(event_details, chi_threshold=0.4, min_triggers_passing=2):
     """
     Checks if a coincidence event passes the Chi cut.
     A coincidence passes if at least 'min_triggers_passing' of its constituent
