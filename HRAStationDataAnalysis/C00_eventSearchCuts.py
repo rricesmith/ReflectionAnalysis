@@ -344,13 +344,17 @@ def L1_cut(traces, power_cut=0.3):
     n_events = traces.shape[0]
     mask = np.ones(n_events, dtype=bool)
     for i in range(n_events):
+        n_bad = 0
         for channel_idx in range(traces.shape[1]):
             trace_channel_freq = np.abs(time2freq(traces[i, channel_idx], 2*units.GHz)) 
-            total_power = np.sum(trace_channel_freq[13:128])    # Look only within the range of ~50MHz to 500MHz
+            total_power = np.sum(trace_channel_freq[5:128])    # Look only within the range of ~50MHz to 500MHz
             if total_power == 0: 
-                mask[i] = False
-                break
-            if np.any(trace_channel_freq > power_cut * total_power): mask[i] = False; break 
+                n_bad += 1
+            if np.any(trace_channel_freq > power_cut * total_power): 
+                n_bad += 1
+        if n_bad >= 2: 
+            mask[i] = False
+
     return mask
 # approximate_bad_times can be included if used.
 
