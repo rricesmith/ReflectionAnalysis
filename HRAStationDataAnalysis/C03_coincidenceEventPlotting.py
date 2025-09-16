@@ -25,7 +25,7 @@ def _load_pickle(filepath):
     return None
 
 # --- Coincidence Event Cut Functions ---
-def check_chi_cut(event_details, chi_threshold=0.5, min_triggers_passing=1):
+def check_chi_cut(event_details, chi_threshold=0.3, min_triggers_passing=2):
     """
     Checks if a coincidence event passes the Chi cut.
     A coincidence passes if at least 'min_triggers_passing' of its constituent
@@ -102,12 +102,70 @@ def check_angle_cut(event_details, zenith_margin_deg=10.0, azimuth_margin_deg=20
 
     return False # No agreeing pair found
 
-def check_coincidence_cuts(event_details):
+def check_time_cut(events_dict, time_threshold_hours=1.0):
+    """
+    Checks if coincidence events are isolated in time (not within time_threshold_hours of each other).
+    Returns a dictionary with event IDs as keys and boolean values indicating if they pass the time cut.
+    
+    Args:
+        events_dict: Dictionary of all events with event_id as keys
+        time_threshold_hours: Time threshold in hours (default 1.0 hour)
+    
+    Returns:
+        dict: {event_id: bool} indicating which events pass the time cut
+    """
+    time_threshold_seconds = time_threshold_hours * 3600  # Convert to seconds
+    
+    # Extract event times and sort by time
+    event_times_list = []
+    for event_id, event_details in events_dict.items():
+        if isinstance(event_details, dict) and "datetime" in event_details:
+            event_time = event_details["datetime"]
+            if event_time is not None:
+                event_times_list.append((event_time, event_id))
+    
+    # Sort by time (events are already time ordered, but this ensures it)
+    event_times_list.sort()
+    
+    # Initialize all events with valid times as passing
+    time_cut_results = {event_id: True for _, event_id in event_times_list}
+    
+    # Check each event only against subsequent events (more efficient)
+    for i in range(len(event_times_list)):
+        current_time, current_event_id = event_times_list[i]
+        
+        # Only check forward in time
+        for j in range(i + 1, len(event_times_list)):
+            other_time, other_event_id = event_times_list[j]
+            
+            time_diff = other_time - current_time  # Always positive since sorted
+            
+            if time_diff <= time_threshold_seconds:
+                # Both events fail the time cut
+                time_cut_results[current_event_id] = False
+                time_cut_results[other_event_id] = False
+            else:
+                # Since events are sorted, no need to check further
+                break
+    
+    # Events without valid datetime are considered to fail the time cut
+    for event_id in events_dict.keys():
+        if event_id not in time_cut_results:
+            time_cut_results[event_id] = False
+    
+    return time_cut_results
+
+def check_coincidence_cuts(event_details, time_cut_result=True):
     """
     Main function to check if a coincidence event passes all defined analysis cuts.
     Returns a dictionary with the pass/fail status for each cut.
+    
+    Args:
+        event_details: Details for a single event
+        time_cut_result: Boolean result from the time cut (calculated externally)
     """
     results = {}
+    results['time_cut_passed'] = time_cut_result
     results['chi_cut_passed'] = check_chi_cut(event_details)
     results['angle_cut_passed'] = check_angle_cut(event_details)
     
@@ -329,7 +387,7 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
         fig.suptitle(f"Master Plot: Event {event_id} ({dataset_name}) - PASSES ALL CUTS\nTime: {event_time_str}", fontsize=16, y=0.98)
 
         text_info_lines = [f"Event ID: {event_id} -- Overall: PASS (Analysis Cuts)"]
-        text_info_lines.append(f"Cut Status -> Chi: {'Passed' if cut_results.get('chi_cut_passed') else 'Failed'}, Angle: {'Passed' if cut_results.get('angle_cut_passed') else 'Failed'}")
+        text_info_lines.append(f"Cut Status -> Time: {'Passed' if cut_results.get('time_cut_passed') else 'Failed'}, Chi: {'Passed' if cut_results.get('chi_cut_passed') else 'Failed'}, Angle: {'Passed' if cut_results.get('angle_cut_passed') else 'Failed'}")
         text_info_lines.append("--- Station Triggers ---")
         
         legend_handles_for_fig = {}; global_trace_min = float('inf'); global_trace_max = float('-inf')
@@ -574,10 +632,19 @@ if __name__ == '__main__':
         if not isinstance(events_data_dict, dict) or not events_data_dict:
             ic(f"Dataset '{dataset_name_label}' is empty or not a dict. Skipping."); continue
 
+        # First, apply the time cut to all events
+        ic(f"Applying time cut to {len(events_data_dict)} events...")
+        time_cut_results = check_time_cut(events_data_dict, time_threshold_hours=1.0)
+        num_passing_time_cut = sum(time_cut_results.values())
+        num_failing_time_cut = len(time_cut_results) - num_passing_time_cut
+        ic(f"Time cut results: {num_passing_time_cut} events passed, {num_failing_time_cut} events failed (within 1 hour of another event)")
+
         num_passing_overall = 0; num_failing_overall = 0
         for event_id, event_details_loopvar in events_data_dict.items():
             if isinstance(event_details_loopvar, dict):
-                 cut_results_dict = check_coincidence_cuts(event_details_loopvar)
+                 # Get the time cut result for this specific event
+                 time_cut_passed = time_cut_results.get(event_id, False)
+                 cut_results_dict = check_coincidence_cuts(event_details_loopvar, time_cut_result=time_cut_passed)
                  event_details_loopvar['cut_results'] = cut_results_dict
                  event_details_loopvar['passes_analysis_cuts'] = all(cut_results_dict.values())
                  
