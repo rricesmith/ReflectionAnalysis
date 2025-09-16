@@ -25,13 +25,14 @@ def _load_pickle(filepath):
     return None
 
 # --- Coincidence Event Cut Functions ---
-def check_chi_cut(event_details, chi_threshold=0.3, min_triggers_passing=2):
+def check_chi_cut(event_details, high_chi_threshold=0.6, low_chi_threshold=0.5, min_triggers_passing=2):
     """
     Checks if a coincidence event passes the Chi cut.
     A coincidence passes if at least 'min_triggers_passing' of its constituent
     station triggers have a ChiRCR or Chi2016 value above 'chi_threshold'.
     """
-    passing_station_triggers_count = 0
+    high_thresh_passed = False
+    low_thresh_passed = []
     if not isinstance(event_details, dict):
         return False
 
@@ -43,16 +44,20 @@ def check_chi_cut(event_details, chi_threshold=0.3, min_triggers_passing=2):
         chi_rcr_list = station_triggers_data.get('ChiRCR', [])
         chi_2016_list = station_triggers_data.get('Chi2016', [])
 
+
         for i in range(num_triggers_in_station):
-            trigger_passed_chi = False
-            if chi_rcr_list[i] >= chi_threshold:
-                trigger_passed_chi = True
-            if chi_2016_list[i] >= chi_threshold:
-                trigger_passed_chi = True
-            if trigger_passed_chi:
-                passing_station_triggers_count += 1
-    
-    return passing_station_triggers_count >= min_triggers_passing
+            if chi_rcr_list[i] >= high_chi_threshold or chi_2016_list[i] >= high_chi_threshold:
+                if high_thresh_passed == True:
+                    low_thresh_passed.append(True)
+                else:
+                    high_thresh_passed = True
+            elif chi_rcr_list[i] >= low_chi_threshold or chi_2016_list[i] >= low_chi_threshold:
+                low_thresh_passed.append(True)
+
+    if high_thresh_passed and np.sum(low_thresh_passed) >= (min_triggers_passing - 1):
+        return True
+
+    return False
 
 def check_angle_cut(event_details, zenith_margin_deg=10.0, azimuth_margin_deg=20.0):
     """
@@ -165,7 +170,7 @@ def check_coincidence_cuts(event_details, time_cut_result=True):
         time_cut_result: Boolean result from the time cut (calculated externally)
     """
     results = {}
-    results['time_cut_passed'] = time_cut_result
+    # results['time_cut_passed'] = time_cut_result
     results['chi_cut_passed'] = check_chi_cut(event_details)
     results['angle_cut_passed'] = check_angle_cut(event_details)
     
