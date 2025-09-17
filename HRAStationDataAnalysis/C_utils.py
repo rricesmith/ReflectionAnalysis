@@ -25,3 +25,12 @@ def getTimeEventMasks(times_raw, event_ids):
     return initial_mask, unique_indices
 
 
+## Global parameter for date checking
+import datetime
+time_unix = datetime.datetime(2017, 2, 16, 19, 9, 51).timestamp() # RCR-BL event found
+
+def timeInTimes(times_list):
+    for time in times_list:
+        if abs(time - time_unix) < 1:  # within 1 second
+            return True
+    return False

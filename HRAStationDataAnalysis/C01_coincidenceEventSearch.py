@@ -48,7 +48,14 @@ def findCoincidenceDatetimes(date, date_cuts, cuts=True):
         file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_Times*'))
         times = [np.load(f) for f in file_list]
         times = np.concatenate(times, axis=0)
-
+        from HRAStationDataAnalysis.C_utils import timeInTimes
+        if station_id == 13 or station_id == 17:
+            if timeInTimes(times):
+                ic(f"Found RCR-BL event in station {station_id} data!")
+            else:
+                ic(f"Did NOT find RCR-BL event in station {station_id} data!")
+                quit(1)
+                
         # Load Event IDs
         event_id_files = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_EventIDs*'))
         event_ids = [np.load(f) for f in event_id_files]
@@ -78,6 +85,14 @@ def findCoincidenceDatetimes(date, date_cuts, cuts=True):
                     current_cut = cuts_data[cut_key][:len(times)]
                     final_cuts_mask &= current_cut
                 times = times[final_cuts_mask]
+                from HRAStationDataAnalysis.C_utils import timeInTimes
+                if station_id == 13 or station_id == 17:
+                    if timeInTimes(times):
+                        ic(f"Found RCR-BL event in station {station_id} data!")
+                    else:
+                        ic(f"Did NOT find RCR-BL event in station {station_id} data!")
+                        quit(1)
+
                 event_ids = event_ids[final_cuts_mask] # Apply the same mask to event_ids
             else:
                 ic(f"Warning: Cuts file {cuts_file} not found for station {station_id} on date {date}. Quitting.")

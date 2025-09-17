@@ -656,7 +656,15 @@ if __name__ == "__main__":
             eventids_list = [np.load(f) for f in eventid_files]; eventids_raw = np.concatenate(eventids_list, axis=0).squeeze()
             if times_raw.ndim == 0: times_raw = np.array([times_raw.item()])
             if eventids_raw.ndim == 0: eventids_raw = np.array([eventids_raw.item()])
-            
+
+            from HRAStationDataAnalysis.C_utils import timeInTimes
+            if current_station_id == 13 or current_station_id == 17:
+                if timeInTimes(times_list):
+                    ic(f"Found RCR-BL event in station {current_station_id} data!")
+                else:
+                    ic(f"Did NOT find RCR-BL event in station {current_station_id} data!")
+                    quit(1)
+        
             # --- Max Amplitudes & Traces Loading/Calculation ---
             max_amplitudes_parts_collected = []
             traces_parts_collected = [] # Still collect trace parts for L1/plotting
@@ -905,6 +913,18 @@ if __name__ == "__main__":
             ("L1+Storm cut", np.logical_and(L1_mask_final,storm_mask_final)),
             ("L1+Storm+Burst cut", np.logical_and(np.logical_and(L1_mask_final, storm_mask_final), burst_mask_final)),
         ])
+
+        for cut in cuts_dict_for_plotting:
+            times_check = base_times_for_cuts[cuts_dict_for_plotting[cut]]
+            ic(f"checking cut {cut} with {len(times_check)} events")
+            from HRAStationDataAnalysis.C_utils import timeInTimes
+            if current_station_id == 13 or current_station_id == 17:
+                if timeInTimes(times_list):
+                    ic(f"Found RCR-BL event in station {current_station_id} data!")
+                else:
+                    ic(f"Did NOT find RCR-BL event in station {current_station_id} data!")
+                    quit(1)
+
 
         # Define the final overall cut mask
         final_overall_mask = L1_mask_final & storm_mask_final & burst_mask_final # This should align with base_times_for_cuts
