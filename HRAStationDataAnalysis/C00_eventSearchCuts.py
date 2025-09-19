@@ -741,9 +741,6 @@ if __name__ == "__main__":
             if max_amplitudes_raw.ndim == 0 and max_amplitudes_raw.size == 1: max_amplitudes_raw = np.array([max_amplitudes_raw.item()])
 
 
-        except Exception as e:
-            ic(f"Error during data loading/MaxAmplitude processing for St {current_station_id}: {e}")
-            exit(1)
 
         if times_raw.size == 0 or eventids_raw.size == 0 or max_amplitudes_raw.size == 0 or \
            not (times_raw.shape[0] == eventids_raw.shape[0] == max_amplitudes_raw.shape[0]):
