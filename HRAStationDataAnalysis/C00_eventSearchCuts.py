@@ -644,6 +644,7 @@ if __name__ == "__main__":
                 ic("Invalid zoom date format. Please use YYYY-MM-DD. Ignoring zoom.")
                 zoom_start_dt, zoom_end_dt = None, None
 
+        # try:
         time_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Times*')))
         trace_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Traces*'))) # Paths to trace parts
         eventid_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_EventIDs*')))
@@ -682,7 +683,7 @@ if __name__ == "__main__":
                         traces_parts_collected.append(np.array([]).reshape(0,4,256))
                         max_amplitudes_parts_collected.append(np.array([]))
                         if not os.path.exists(expected_max_amp_f_path): # Save empty if calc needed
-                        np.save(expected_max_amp_f_path, np.array([]))
+                            np.save(expected_max_amp_f_path, np.array([]))
                         continue # Skip to next part
                 else:
                     ic(f"Warning: Trace part {trace_file_path} has unexpected shape {current_trace_part.shape}. Attempting reshape or skipping.")
@@ -740,6 +741,9 @@ if __name__ == "__main__":
         if max_amplitudes_raw.ndim == 0 and max_amplitudes_raw.size == 1: max_amplitudes_raw = np.array([max_amplitudes_raw.item()])
 
 
+        # except Exception as e:
+        #     ic(f"Error during data loading/MaxAmplitude processing for St {current_station_id}: {e}")
+        #     exit(1)
 
         if times_raw.size == 0 or eventids_raw.size == 0 or max_amplitudes_raw.size == 0 or \
            not (times_raw.shape[0] == eventids_raw.shape[0] == max_amplitudes_raw.shape[0]):
