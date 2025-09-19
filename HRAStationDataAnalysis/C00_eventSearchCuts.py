@@ -644,101 +644,100 @@ if __name__ == "__main__":
                 ic("Invalid zoom date format. Please use YYYY-MM-DD. Ignoring zoom.")
                 zoom_start_dt, zoom_end_dt = None, None
 
-        try:
-            time_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Times*')))
-            trace_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Traces*'))) # Paths to trace parts
-            eventid_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_EventIDs*')))
+        time_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Times*')))
+        trace_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Traces*'))) # Paths to trace parts
+        eventid_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_EventIDs*')))
 
-            if not time_files or not trace_files or not eventid_files:
-                raise FileNotFoundError(f"Core data files (Times, Traces, or EventIDs) missing for St {current_station_id}, Date {date_filter}")
+        if not time_files or not trace_files or not eventid_files:
+            raise FileNotFoundError(f"Core data files (Times, Traces, or EventIDs) missing for St {current_station_id}, Date {date_filter}")
 
-            times_list = [np.load(f) for f in time_files]; times_raw = np.concatenate(times_list, axis=0).squeeze()
-            eventids_list = [np.load(f) for f in eventid_files]; eventids_raw = np.concatenate(eventids_list, axis=0).squeeze()
-            if times_raw.ndim == 0: times_raw = np.array([times_raw.item()])
-            if eventids_raw.ndim == 0: eventids_raw = np.array([eventids_raw.item()])
+        times_list = [np.load(f) for f in time_files]; times_raw = np.concatenate(times_list, axis=0).squeeze()
+        eventids_list = [np.load(f) for f in eventid_files]; eventids_raw = np.concatenate(eventids_list, axis=0).squeeze()
+        if times_raw.ndim == 0: times_raw = np.array([times_raw.item()])
+        if eventids_raw.ndim == 0: eventids_raw = np.array([eventids_raw.item()])
 
-            from HRAStationDataAnalysis.C_utils import timeInTimes
-            if current_station_id == 13 or current_station_id == 17:
-                if timeInTimes(times_list):
-                    ic(f"Found RCR-BL event in station {current_station_id} data!")
-                else:
-                    ic(f"Did NOT find RCR-BL event in station {current_station_id} data!")
-                    quit(1)
-        
-            # --- Max Amplitudes & Traces Loading/Calculation ---
-            max_amplitudes_parts_collected = []
-            traces_parts_collected = [] # Still collect trace parts for L1/plotting
+        from HRAStationDataAnalysis.C_utils import timeInTimes
+        if current_station_id == 13 or current_station_id == 17:
+            if timeInTimes(times_list):
+                ic(f"Found RCR-BL event in station {current_station_id} data!")
+            else:
+                ic(f"Did NOT find RCR-BL event in station {current_station_id} data!")
+                quit(1)
+    
+        # --- Max Amplitudes & Traces Loading/Calculation ---
+        max_amplitudes_parts_collected = []
+        traces_parts_collected = [] # Still collect trace parts for L1/plotting
 
-            ic("Processing Traces and MaxAmplitudes (part by part if necessary)...")
-            for i, trace_file_path in enumerate(trace_files):
-                expected_max_amp_f_path = trace_file_path.replace("_Traces_", "_MaxAmplitudes_")
-                
-                current_trace_part = np.load(trace_file_path)
-                # Ensure current_trace_part has a leading dimension for N_events in part
-                if current_trace_part.ndim == 2 and current_trace_part.shape == (4,256): current_trace_part = current_trace_part.reshape(1,4,256)
-                elif current_trace_part.ndim == 1 and current_trace_part.size == 4*256: current_trace_part = current_trace_part.reshape(1,4,256)
-                elif current_trace_part.ndim != 3 or current_trace_part.shape[1:3] != (4,256): # Check if not (N,4,256)
-                    if current_trace_part.size == 0: # Empty part
-                         ic(f"Trace part {trace_file_path} is empty.")
-                         traces_parts_collected.append(np.array([]).reshape(0,4,256))
-                         max_amplitudes_parts_collected.append(np.array([]))
-                         if not os.path.exists(expected_max_amp_f_path): # Save empty if calc needed
-                            np.save(expected_max_amp_f_path, np.array([]))
-                         continue # Skip to next part
-                    else:
-                        ic(f"Warning: Trace part {trace_file_path} has unexpected shape {current_trace_part.shape}. Attempting reshape or skipping.")
-                        # Attempt to reshape based on total size, if fails, this part is problematic
-                        try:
-                            num_events_in_part_candidate = current_trace_part.size // (4*256)
-                            if current_trace_part.size % (4*256) == 0:
-                                current_trace_part = current_trace_part.reshape(num_events_in_part_candidate, 4, 256)
-                                ic(f"Reshaped trace part to {current_trace_part.shape}")
-                            else:
-                                raise ValueError("Cannot reshape to N,4,256")
-                        except ValueError as e:
-                            ic(f"Could not reshape trace part {trace_file_path}: {e}. Skipping this part for traces and max_amps.")
-                            traces_parts_collected.append(np.array([]).reshape(0,4,256)) # Add empty placeholder
-                            max_amplitudes_parts_collected.append(np.array([])) # Add empty placeholder
-                            continue
-
-
-                traces_parts_collected.append(current_trace_part)
-                
-                max_amp_part_data = None
-                if os.path.exists(expected_max_amp_f_path):
-                    try:
-                        loaded_max_amp_part = np.load(expected_max_amp_f_path)
-                        # Validate length against the number of events in the current trace part
-                        if loaded_max_amp_part.ndim == 1 and loaded_max_amp_part.shape[0] == current_trace_part.shape[0]:
-                            max_amp_part_data = loaded_max_amp_part
-                            # ic(f"Loaded valid MaxAmplitudes part: {expected_max_amp_f_path}")
-                        elif loaded_max_amp_part.ndim == 0 and current_trace_part.shape[0] == 1: # Scalar saved for single event part
-                            max_amp_part_data = np.array([loaded_max_amp_part.item()])
-                        elif current_trace_part.shape[0] == 0 and loaded_max_amp_part.size == 0: # both empty
-                            max_amp_part_data = np.array([])
-                        else:
-                            ic(f"MaxAmplitudes part {expected_max_amp_f_path} event count mismatch (Trace evts: {current_trace_part.shape[0]}, MaxAmp evts: {loaded_max_amp_part.shape}). Recalculating.")
-                    except Exception as e:
-                        ic(f"Error loading MaxAmplitudes part {expected_max_amp_f_path}: {e}. Recalculating.")
-                
-                if max_amp_part_data is None: # Calculate if missing or validation failed
-                    ic(f"Calculating MaxAmplitudes for part: {os.path.basename(trace_file_path)}")
-                    if current_trace_part.shape[0] == 0: # Empty trace part
-                        max_amp_part_data = np.array([])
-                    else: # Should be (N_in_part, 4, 256)
-                        max_amp_part_data = np.max(np.abs(current_trace_part), axis=(1, 2))
-                    
-                    np.save(expected_max_amp_f_path, max_amp_part_data)
-                    ic(f"Saved calculated MaxAmplitudes part: {expected_max_amp_f_path}")
-                max_amplitudes_parts_collected.append(max_amp_part_data)
-
-            # Concatenate all parts
-            traces_raw = np.concatenate(traces_parts_collected, axis=0) if traces_parts_collected and any(p.size > 0 for p in traces_parts_collected) else np.array([]).reshape(0,4,256)
-            max_amplitudes_raw = np.concatenate(max_amplitudes_parts_collected, axis=0) if max_amplitudes_parts_collected and any(p.size>0 for p in max_amplitudes_parts_collected) else np.array([])
+        ic("Processing Traces and MaxAmplitudes (part by part if necessary)...")
+        for i, trace_file_path in enumerate(trace_files):
+            expected_max_amp_f_path = trace_file_path.replace("_Traces_", "_MaxAmplitudes_")
             
-            # Final reshape/squeeze for single total event cases if needed
-            if traces_raw.ndim == 2 and traces_raw.shape == (4,256) : traces_raw = traces_raw.reshape(1,4,256)
-            if max_amplitudes_raw.ndim == 0 and max_amplitudes_raw.size == 1: max_amplitudes_raw = np.array([max_amplitudes_raw.item()])
+            current_trace_part = np.load(trace_file_path)
+            # Ensure current_trace_part has a leading dimension for N_events in part
+            if current_trace_part.ndim == 2 and current_trace_part.shape == (4,256): current_trace_part = current_trace_part.reshape(1,4,256)
+            elif current_trace_part.ndim == 1 and current_trace_part.size == 4*256: current_trace_part = current_trace_part.reshape(1,4,256)
+            elif current_trace_part.ndim != 3 or current_trace_part.shape[1:3] != (4,256): # Check if not (N,4,256)
+                if current_trace_part.size == 0: # Empty part
+                        ic(f"Trace part {trace_file_path} is empty.")
+                        traces_parts_collected.append(np.array([]).reshape(0,4,256))
+                        max_amplitudes_parts_collected.append(np.array([]))
+                        if not os.path.exists(expected_max_amp_f_path): # Save empty if calc needed
+                        np.save(expected_max_amp_f_path, np.array([]))
+                        continue # Skip to next part
+                else:
+                    ic(f"Warning: Trace part {trace_file_path} has unexpected shape {current_trace_part.shape}. Attempting reshape or skipping.")
+                    # Attempt to reshape based on total size, if fails, this part is problematic
+                    try:
+                        num_events_in_part_candidate = current_trace_part.size // (4*256)
+                        if current_trace_part.size % (4*256) == 0:
+                            current_trace_part = current_trace_part.reshape(num_events_in_part_candidate, 4, 256)
+                            ic(f"Reshaped trace part to {current_trace_part.shape}")
+                        else:
+                            raise ValueError("Cannot reshape to N,4,256")
+                    except ValueError as e:
+                        ic(f"Could not reshape trace part {trace_file_path}: {e}. Skipping this part for traces and max_amps.")
+                        traces_parts_collected.append(np.array([]).reshape(0,4,256)) # Add empty placeholder
+                        max_amplitudes_parts_collected.append(np.array([])) # Add empty placeholder
+                        continue
+
+
+            traces_parts_collected.append(current_trace_part)
+            
+            max_amp_part_data = None
+            if os.path.exists(expected_max_amp_f_path):
+                try:
+                    loaded_max_amp_part = np.load(expected_max_amp_f_path)
+                    # Validate length against the number of events in the current trace part
+                    if loaded_max_amp_part.ndim == 1 and loaded_max_amp_part.shape[0] == current_trace_part.shape[0]:
+                        max_amp_part_data = loaded_max_amp_part
+                        # ic(f"Loaded valid MaxAmplitudes part: {expected_max_amp_f_path}")
+                    elif loaded_max_amp_part.ndim == 0 and current_trace_part.shape[0] == 1: # Scalar saved for single event part
+                        max_amp_part_data = np.array([loaded_max_amp_part.item()])
+                    elif current_trace_part.shape[0] == 0 and loaded_max_amp_part.size == 0: # both empty
+                        max_amp_part_data = np.array([])
+                    else:
+                        ic(f"MaxAmplitudes part {expected_max_amp_f_path} event count mismatch (Trace evts: {current_trace_part.shape[0]}, MaxAmp evts: {loaded_max_amp_part.shape}). Recalculating.")
+                except Exception as e:
+                    ic(f"Error loading MaxAmplitudes part {expected_max_amp_f_path}: {e}. Recalculating.")
+            
+            if max_amp_part_data is None: # Calculate if missing or validation failed
+                ic(f"Calculating MaxAmplitudes for part: {os.path.basename(trace_file_path)}")
+                if current_trace_part.shape[0] == 0: # Empty trace part
+                    max_amp_part_data = np.array([])
+                else: # Should be (N_in_part, 4, 256)
+                    max_amp_part_data = np.max(np.abs(current_trace_part), axis=(1, 2))
+                
+                np.save(expected_max_amp_f_path, max_amp_part_data)
+                ic(f"Saved calculated MaxAmplitudes part: {expected_max_amp_f_path}")
+            max_amplitudes_parts_collected.append(max_amp_part_data)
+
+        # Concatenate all parts
+        traces_raw = np.concatenate(traces_parts_collected, axis=0) if traces_parts_collected and any(p.size > 0 for p in traces_parts_collected) else np.array([]).reshape(0,4,256)
+        max_amplitudes_raw = np.concatenate(max_amplitudes_parts_collected, axis=0) if max_amplitudes_parts_collected and any(p.size>0 for p in max_amplitudes_parts_collected) else np.array([])
+        
+        # Final reshape/squeeze for single total event cases if needed
+        if traces_raw.ndim == 2 and traces_raw.shape == (4,256) : traces_raw = traces_raw.reshape(1,4,256)
+        if max_amplitudes_raw.ndim == 0 and max_amplitudes_raw.size == 1: max_amplitudes_raw = np.array([max_amplitudes_raw.item()])
 
 
 
