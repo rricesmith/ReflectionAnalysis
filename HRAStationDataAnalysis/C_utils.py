@@ -1,6 +1,5 @@
 import numpy as np
 import datetime
-from icecream import ic
 
 
 def getTimeEventMasks(times_raw, event_ids):
