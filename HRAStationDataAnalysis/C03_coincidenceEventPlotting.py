@@ -347,6 +347,212 @@ def plot_polar_zen_azi(events_dict, output_dir, dataset_name):
     plt.savefig(plot_filename); ic(f"Saved polar Zenith vs Azimuth plot: {plot_filename}"); plt.close(fig); gc.collect()
 
 
+# --- Helper Function: Plot Single Master Event ---
+def plot_single_master_event(event_id, event_details, output_dir, dataset_name, title_suffix=""):
+    """
+    Plots a single master event with all details.
+    
+    Args:
+        event_id: ID of the event
+        event_details: Event data dictionary
+        output_dir: Directory to save the plot
+        dataset_name: Name of the dataset for labeling
+        title_suffix: Additional text to add to the title
+        
+    Returns:
+        str: Path to the saved plot file, or None if failed
+    """
+    if not isinstance(event_details, dict):
+        ic(f"Warning: Event {event_id} data is not a dictionary. Skipping master plot.")
+        return None
+
+    os.makedirs(output_dir, exist_ok=True)
+    
+    color_map = {13: 'tab:blue', 14: 'tab:orange', 15: 'tab:green',
+                 17: 'tab:red', 18: 'tab:purple', 19: 'sienna', 30: 'tab:brown'}
+    default_color = 'grey'; marker_list = ['o', 's', 'D', '^', 'v', '>', '<', 'p', '*', 'X', '+']
+    num_trace_channels = 4
+
+    cut_results = event_details.get('cut_results', {})
+    passes_overall_analysis = event_details.get('passes_analysis_cuts', False)
+        
+    # CHANGED: Increased figure height and adjusted GridSpec for better trace/spectrum layout
+    fig = plt.figure(figsize=(18, 26))
+    gs = gridspec.GridSpec(6, 2, figure=fig, hspace=0.9, wspace=0.3,
+                           height_ratios=[4, 2, 2, 2, 2, 2.5])
+    
+    ax_scatter = fig.add_subplot(gs[0, 0])
+    ax_polar = fig.add_subplot(gs[0, 1], polar=True)
+    trace_axs = [fig.add_subplot(gs[1+i, 0]) for i in range(num_trace_channels)]
+    spectrum_axs = [fig.add_subplot(gs[1+i, 1]) for i in range(num_trace_channels)]
+    ax_text_box = fig.add_subplot(gs[5, :])
+    
+    event_time_str = "Unknown Time"
+    if "datetime" in event_details and event_details["datetime"] is not None:
+        try: event_time_dt = datetime.datetime.fromtimestamp(event_details["datetime"]); event_time_str = event_time_dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        except Exception as e: ic(f"Error formatting datetime for event {event_id}: {e}. Timestamp: {event_details['datetime']}")
+    
+    # Determine title based on cut status
+    cut_status = "PASSES ALL CUTS" if passes_overall_analysis else "FAILS CUTS"
+    main_title = f"Master Plot: Event {event_id} ({dataset_name}) - {cut_status}{title_suffix}\nTime: {event_time_str}"
+    fig.suptitle(main_title, fontsize=16, y=0.98)
+
+    status_text = "PASS" if passes_overall_analysis else "FAIL"
+    text_info_lines = [f"Event ID: {event_id} -- Overall: {status_text} (Analysis Cuts)"]
+    text_info_lines.append(f"Cut Status -> Time: {'Passed' if cut_results.get('time_cut_passed') else 'Failed'}, Chi: {'Passed' if cut_results.get('chi_cut_passed') else 'Failed'}, Angle: {'Passed' if cut_results.get('angle_cut_passed') else 'Failed'}")
+    text_info_lines.append("--- Station Triggers ---")
+    
+    legend_handles_for_fig = {}; global_trace_min = float('inf'); global_trace_max = float('-inf')
+
+    for station_id_str_calc, station_data_calc in event_details.get("stations", {}).items():
+        all_traces_for_st = station_data_calc.get("Traces", [])
+        for traces_for_one_trig in all_traces_for_st:
+            if traces_for_one_trig is not None and np.asarray(traces_for_one_trig).any():
+                padded_tr = (list(traces_for_one_trig) + [None]*num_trace_channels)[:num_trace_channels]
+                for tr_arr in padded_tr: 
+                    if tr_arr is not None and hasattr(tr_arr, "__len__") and len(tr_arr) > 0:
+                        c_min,c_max = np.nanmin(tr_arr), np.nanmax(tr_arr)
+                        if not np.isnan(c_min): global_trace_min = min(global_trace_min, c_min)
+                        if not np.isnan(c_max): global_trace_max = max(global_trace_max, c_max)
+    if global_trace_min == float('inf'): global_trace_min = -0.1 
+    if global_trace_max == float('-inf'): global_trace_max = 0.1
+    if abs(global_trace_max - global_trace_min) < 1e-6 : global_trace_min -= 0.05; global_trace_max += 0.05 
+    y_margin = (global_trace_max - global_trace_min) * 0.1; final_trace_ylim = (global_trace_min - y_margin, global_trace_max + y_margin)
+    if final_trace_ylim[0] == final_trace_ylim[1]: final_trace_ylim = (final_trace_ylim[0]-0.1, final_trace_ylim[1]+0.1)
+
+    for station_id_str, station_data in event_details.get("stations", {}).items():
+        try: station_id_int = int(station_id_str)
+        except ValueError: continue
+        color = color_map.get(station_id_int, default_color)
+        snr_values = station_data.get("SNR", []); num_triggers = len(snr_values)
+        if num_triggers == 0: continue
+        
+        zen_values_rad = (station_data.get("Zen", []) + [np.nan] * num_triggers)[:num_triggers]
+        azi_values_rad = (station_data.get("Azi", []) + [np.nan] * num_triggers)[:num_triggers]
+        pol_angle_values_rad = (station_data.get("PolAngle", []) + [np.nan] * num_triggers)[:num_triggers]
+        pol_angle_err_values_rad = (station_data.get("PolAngleErr", []) + [np.nan] * num_triggers)[:num_triggers]
+        
+        time_values = station_data.get("Time", [])
+        chi_rcr_values = (station_data.get("ChiRCR", []) + [np.nan] * num_triggers)[:num_triggers]
+        chi_2016_values = (station_data.get("Chi2016", []) + [np.nan] * num_triggers)[:num_triggers]
+        event_ids_for_station = (station_data.get("event_ids", []) + ["N/A"] * num_triggers)[:num_triggers]
+        all_traces_for_station = station_data.get("Traces", [])
+
+        # NEW: Collect points for connecting lines within this station
+        station_points = []
+
+        for trigger_idx in range(num_triggers):
+            marker = marker_list[trigger_idx % len(marker_list)]
+            snr_val, chi_rcr_val, chi_2016_val = snr_values[trigger_idx], chi_rcr_values[trigger_idx], chi_2016_values[trigger_idx]
+            zen_rad, azi_rad = zen_values_rad[trigger_idx], azi_values_rad[trigger_idx]
+            pol_rad = pol_angle_values_rad[trigger_idx] 
+            pol_err_rad = pol_angle_err_values_rad[trigger_idx]
+            current_event_id_val = event_ids_for_station[trigger_idx]                
+            traces_this_trigger = (all_traces_for_station[trigger_idx] if trigger_idx < len(all_traces_for_station) else [])
+            padded_traces_this_trigger = (list(traces_this_trigger) + [None]*num_trace_channels)[:num_trace_channels]
+
+            if snr_val is not None and not np.isnan(snr_val):
+                if chi_2016_val is not None and not np.isnan(chi_2016_val):
+                    ax_scatter.scatter(snr_val, chi_2016_val, c=color, marker=marker, s=60, alpha=0.9, zorder=3)
+                    station_points.append((snr_val, chi_2016_val)) # Add point for station line
+                if chi_rcr_val is not None and not np.isnan(chi_rcr_val):
+                    ax_scatter.scatter(snr_val, chi_rcr_val, marker=marker, s=60, alpha=0.9, facecolors='none', edgecolors=color, linewidths=1.5, zorder=3)
+                    station_points.append((snr_val, chi_rcr_val)) # Add point for station line
+            
+            if zen_rad is not None and not np.isnan(zen_rad) and azi_rad is not None and not np.isnan(azi_rad): 
+                ax_polar.scatter(azi_rad, np.degrees(zen_rad), c=color, marker=marker, s=60, alpha=0.9)
+            
+            for ch_idx in range(num_trace_channels):
+                trace_ch_data = padded_traces_this_trigger[ch_idx]
+                if trace_ch_data is not None and hasattr(trace_ch_data, "__len__") and len(trace_ch_data) > 0:
+                    trace_ch_data_arr = np.asarray(trace_ch_data)
+                    time_ax_ns = np.linspace(0, (len(trace_ch_data_arr)-1)*0.5, len(trace_ch_data_arr)) 
+                    trace_axs[ch_idx].plot(time_ax_ns, trace_ch_data_arr, c=color, ls='-' if trigger_idx % 2 == 0 else '--', alpha=0.7)
+                    sampling_rate_hz = 2e9 
+                    if len(trace_ch_data_arr) > 1: 
+                        freq_ax_mhz = np.fft.rfftfreq(len(trace_ch_data_arr), d=1/sampling_rate_hz) / 1e6 
+                        spectrum = np.abs(fft.time2freq(trace_ch_data_arr, sampling_rate_hz))
+                        if len(spectrum)>0: spectrum[0]=0
+                        # CHANGED: Spectrum line is now solid with slightly higher alpha
+                        spectrum_axs[ch_idx].plot(freq_ax_mhz, spectrum, c=color, ls='-', alpha=0.6)
+            
+            if station_id_int not in legend_handles_for_fig:
+                # CHANGED: Station legend now uses a line instead of a marker to avoid confusion
+                legend_handles_for_fig[station_id_int] = Line2D([0], [0], color=color, linestyle='-', linewidth=4, label=f"St {station_id_int}")
+            
+            time_text = f"{time_values}"
+            chi_rcr_text = f"{chi_rcr_val:.2f}" if chi_rcr_val is not None and not np.isnan(chi_rcr_val) else "N/A"
+            chi_2016_text = f"{chi_2016_val:.2f}" if chi_2016_val is not None and not np.isnan(chi_2016_val) else "N/A"
+            zen_d_text = f"{np.degrees(zen_rad):.1f}°" if zen_rad is not None and not np.isnan(zen_rad) else "N/A"
+            azi_d_text = f"{(np.degrees(azi_rad) % 360):.1f}°" if azi_rad is not None and not np.isnan(azi_rad) else "N/A"
+            snr_fstr = f"{snr_val:.1f}" if snr_val is not None and not np.isnan(snr_val) else "N/A"
+            ev_id_fstr = f"{int(current_event_id_val)}" if current_event_id_val not in ["N/A", np.nan, None] else "N/A"
+
+            pol_angle_full_text = "N/A"
+            if pol_rad is not None and not np.isnan(pol_rad):
+                pol_angle_full_text = f"{np.degrees(pol_rad):.1f}"
+                if pol_err_rad is not None and not np.isnan(pol_err_rad) and isinstance(pol_err_rad, (float, int)):
+                     pol_angle_full_text += f" ± {np.degrees(pol_err_rad):.1f}°"
+                else:
+                     pol_angle_full_text += "°"
+
+            text_info_lines.append(f"  St{station_id_int} T{trigger_idx+1} Unix={time_text}: ID={ev_id_fstr}, SNR={snr_fstr}, ChiRCR={chi_rcr_text}, Chi2016={chi_2016_text}, Zen={zen_d_text}, Azi={azi_d_text}, Pol={pol_angle_full_text}")
+
+        # NEW: Add connecting line for points within this station only
+        if len(station_points) > 1:
+            station_points.sort() # Sort by SNR
+            snrs, chis = zip(*station_points)
+            ax_scatter.plot(snrs, chis, color=color, linestyle='--', marker=None, alpha=0.8, zorder=2)
+
+    # === START: SNR vs CHI PLOT SETUP ===
+    ax_scatter.set_xlabel("SNR")
+    ax_scatter.set_ylabel(r"$\chi$")
+    ax_scatter.set_title(r"SNR vs. $\chi$")
+    ax_scatter.set_xscale('log')
+    ax_scatter.set_xlim(3, 100)
+    ax_scatter.set_ylim(0, 1)
+    ax_scatter.grid(True, linestyle='--', alpha=0.6)
+
+    # Create handles for the two legends
+    chi_2016_handle = Line2D([0], [0], marker='o', color='k', label=r'$\chi_{2016}$ (Filled)',
+                             linestyle='None', markersize=8, markerfacecolor='k')
+    chi_RCR_handle = Line2D([0], [0], marker='o', color='k', label=r'$\chi_{RCR}$ (Outline)',
+                          linestyle='None', markersize=8, markerfacecolor='none', markeredgecolor='k')
+    station_handles = list(legend_handles_for_fig.values())
+    
+    # Add the legends to the ax_scatter plot
+    if station_handles:
+        leg1 = ax_scatter.legend(handles=station_handles, loc='upper right', title="Stations")
+        ax_scatter.add_artist(leg1)
+    ax_scatter.legend(handles=[chi_2016_handle, chi_RCR_handle], loc='lower left', title=r"$\chi$ Type")
+    # === END: SNR vs CHI PLOT SETUP ===
+    
+    ax_text_box.axis('off') 
+    ax_text_box.text(0.01, 0.95, "\n".join(text_info_lines), ha='left', va='top', fontsize=9, 
+                     family='monospace', linespacing=1.4, 
+                     bbox=dict(boxstyle="round,pad=0.5", fc="wheat", alpha=0.6))
+
+    ax_polar.set_theta_zero_location("N"); ax_polar.set_theta_direction(-1); ax_polar.set_rlabel_position(22.5)
+    ax_polar.set_rlim(0, 90); ax_polar.set_rticks(np.arange(0, 91, 30)); ax_polar.set_title("Zenith (radius) vs Azimuth (angle)")
+    ax_polar.grid(True, linestyle='--', alpha=0.5)
+    
+    for i in range(num_trace_channels):
+        trace_axs[i].set_title(f"Trace - Ch {i+1}",fontsize=10); trace_axs[i].set_ylabel("Amp (mV)",fontsize=8); trace_axs[i].grid(True,ls=':',alpha=0.5); trace_axs[i].set_ylim(final_trace_ylim)
+        spectrum_axs[i].set_title(f"Spectrum - Ch {i+1}",fontsize=10); spectrum_axs[i].set_ylabel("Mag",fontsize=8); spectrum_axs[i].grid(True,ls=':',alpha=0.5); spectrum_axs[i].set_xlim(0,1000)
+        if i < num_trace_channels -1 : trace_axs[i].set_xticklabels([]); spectrum_axs[i].set_xticklabels([])
+        else: trace_axs[i].set_xlabel("Time (ns)", fontsize=8); spectrum_axs[i].set_xlabel("Freq (MHz)", fontsize=8)
+
+    master_filename = os.path.join(output_dir, f'master_event_{event_id}.png')
+    try: 
+        plt.savefig(master_filename, dpi=150, bbox_inches='tight')
+        plt.close(fig); gc.collect()
+        return master_filename
+    except Exception as e: 
+        ic(f"Error saving master plot {master_filename}: {e}")
+        plt.close(fig); gc.collect()
+        return None
+
+
 # --- Plotting Function 4: Master Event Plot (Updated) ---
 def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
     ic(f"Generating master event plots for {dataset_name}, only for events that pass cuts.")
@@ -354,194 +560,183 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
     pass_cuts_folder = os.path.join(master_folder_base, "pass_cuts")
     os.makedirs(pass_cuts_folder, exist_ok=True)
 
-    color_map = {13: 'tab:blue', 14: 'tab:orange', 15: 'tab:green',
-                 17: 'tab:red', 18: 'tab:purple', 19: 'sienna', 30: 'tab:brown'}
-    default_color = 'grey'; marker_list = ['o', 's', 'D', '^', 'v', '>', '<', 'p', '*', 'X', '+']
-    num_trace_channels = 4
-
     for event_id, event_details in events_dict.items():
         if not isinstance(event_details, dict):
             ic(f"Warning: Event {event_id} data is not a dictionary. Skipping master plot.")
             continue
 
-        cut_results = event_details.get('cut_results', {})
         passes_overall_analysis = event_details.get('passes_analysis_cuts', False)
         
         # Only plot events that pass the analysis cuts
         if not passes_overall_analysis:
             continue
             
-        current_event_plot_dir = pass_cuts_folder
-        
-        # CHANGED: Increased figure height and adjusted GridSpec for better trace/spectrum layout
-        fig = plt.figure(figsize=(18, 26))
-        gs = gridspec.GridSpec(6, 2, figure=fig, hspace=0.9, wspace=0.3,
-                               height_ratios=[4, 2, 2, 2, 2, 2.5])
-        
-        ax_scatter = fig.add_subplot(gs[0, 0])
-        ax_polar = fig.add_subplot(gs[0, 1], polar=True)
-        trace_axs = [fig.add_subplot(gs[1+i, 0]) for i in range(num_trace_channels)]
-        spectrum_axs = [fig.add_subplot(gs[1+i, 1]) for i in range(num_trace_channels)]
-        ax_text_box = fig.add_subplot(gs[5, :])
-        
-        event_time_str = "Unknown Time"
-        if "datetime" in event_details and event_details["datetime"] is not None:
-            try: event_time_dt = datetime.datetime.fromtimestamp(event_details["datetime"]); event_time_str = event_time_dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            except Exception as e: ic(f"Error formatting datetime for event {event_id}: {e}. Timestamp: {event_details['datetime']}")
-        
-        fig.suptitle(f"Master Plot: Event {event_id} ({dataset_name}) - PASSES ALL CUTS\nTime: {event_time_str}", fontsize=16, y=0.98)
-
-        text_info_lines = [f"Event ID: {event_id} -- Overall: PASS (Analysis Cuts)"]
-        text_info_lines.append(f"Cut Status -> Time: {'Passed' if cut_results.get('time_cut_passed') else 'Failed'}, Chi: {'Passed' if cut_results.get('chi_cut_passed') else 'Failed'}, Angle: {'Passed' if cut_results.get('angle_cut_passed') else 'Failed'}")
-        text_info_lines.append("--- Station Triggers ---")
-        
-        legend_handles_for_fig = {}; global_trace_min = float('inf'); global_trace_max = float('-inf')
-
-        for station_id_str_calc, station_data_calc in event_details.get("stations", {}).items():
-            all_traces_for_st = station_data_calc.get("Traces", [])
-            for traces_for_one_trig in all_traces_for_st:
-                if traces_for_one_trig is not None and np.asarray(traces_for_one_trig).any():
-                    padded_tr = (list(traces_for_one_trig) + [None]*num_trace_channels)[:num_trace_channels]
-                    for tr_arr in padded_tr: 
-                        if tr_arr is not None and hasattr(tr_arr, "__len__") and len(tr_arr) > 0:
-                            c_min,c_max = np.nanmin(tr_arr), np.nanmax(tr_arr)
-                            if not np.isnan(c_min): global_trace_min = min(global_trace_min, c_min)
-                            if not np.isnan(c_max): global_trace_max = max(global_trace_max, c_max)
-        if global_trace_min == float('inf'): global_trace_min = -0.1 
-        if global_trace_max == float('-inf'): global_trace_max = 0.1
-        if abs(global_trace_max - global_trace_min) < 1e-6 : global_trace_min -= 0.05; global_trace_max += 0.05 
-        y_margin = (global_trace_max - global_trace_min) * 0.1; final_trace_ylim = (global_trace_min - y_margin, global_trace_max + y_margin)
-        if final_trace_ylim[0] == final_trace_ylim[1]: final_trace_ylim = (final_trace_ylim[0]-0.1, final_trace_ylim[1]+0.1)
-
-        for station_id_str, station_data in event_details.get("stations", {}).items():
-            try: station_id_int = int(station_id_str)
-            except ValueError: continue
-            color = color_map.get(station_id_int, default_color)
-            snr_values = station_data.get("SNR", []); num_triggers = len(snr_values)
-            if num_triggers == 0: continue
-            
-            zen_values_rad = (station_data.get("Zen", []) + [np.nan] * num_triggers)[:num_triggers]
-            azi_values_rad = (station_data.get("Azi", []) + [np.nan] * num_triggers)[:num_triggers]
-            pol_angle_values_rad = (station_data.get("PolAngle", []) + [np.nan] * num_triggers)[:num_triggers]
-            pol_angle_err_values_rad = (station_data.get("PolAngleErr", []) + [np.nan] * num_triggers)[:num_triggers]
-            
-            time_values = station_data.get("Time", [])
-            chi_rcr_values = (station_data.get("ChiRCR", []) + [np.nan] * num_triggers)[:num_triggers]
-            chi_2016_values = (station_data.get("Chi2016", []) + [np.nan] * num_triggers)[:num_triggers]
-            event_ids_for_station = (station_data.get("event_ids", []) + ["N/A"] * num_triggers)[:num_triggers]
-            all_traces_for_station = station_data.get("Traces", [])
-
-            # NEW: Collect points for connecting lines within this station
-            station_points = []
-
-            for trigger_idx in range(num_triggers):
-                marker = marker_list[trigger_idx % len(marker_list)]
-                snr_val, chi_rcr_val, chi_2016_val = snr_values[trigger_idx], chi_rcr_values[trigger_idx], chi_2016_values[trigger_idx]
-                zen_rad, azi_rad = zen_values_rad[trigger_idx], azi_values_rad[trigger_idx]
-                pol_rad = pol_angle_values_rad[trigger_idx] 
-                pol_err_rad = pol_angle_err_values_rad[trigger_idx]
-                current_event_id_val = event_ids_for_station[trigger_idx]                
-                traces_this_trigger = (all_traces_for_station[trigger_idx] if trigger_idx < len(all_traces_for_station) else [])
-                padded_traces_this_trigger = (list(traces_this_trigger) + [None]*num_trace_channels)[:num_trace_channels]
-
-                if snr_val is not None and not np.isnan(snr_val):
-                    if chi_2016_val is not None and not np.isnan(chi_2016_val):
-                        ax_scatter.scatter(snr_val, chi_2016_val, c=color, marker=marker, s=60, alpha=0.9, zorder=3)
-                        station_points.append((snr_val, chi_2016_val)) # Add point for station line
-                    if chi_rcr_val is not None and not np.isnan(chi_rcr_val):
-                        ax_scatter.scatter(snr_val, chi_rcr_val, marker=marker, s=60, alpha=0.9, facecolors='none', edgecolors=color, linewidths=1.5, zorder=3)
-                        station_points.append((snr_val, chi_rcr_val)) # Add point for station line
-                
-                if zen_rad is not None and not np.isnan(zen_rad) and azi_rad is not None and not np.isnan(azi_rad): 
-                    ax_polar.scatter(azi_rad, np.degrees(zen_rad), c=color, marker=marker, s=60, alpha=0.9)
-                
-                for ch_idx in range(num_trace_channels):
-                    trace_ch_data = padded_traces_this_trigger[ch_idx]
-                    if trace_ch_data is not None and hasattr(trace_ch_data, "__len__") and len(trace_ch_data) > 0:
-                        trace_ch_data_arr = np.asarray(trace_ch_data)
-                        time_ax_ns = np.linspace(0, (len(trace_ch_data_arr)-1)*0.5, len(trace_ch_data_arr)) 
-                        trace_axs[ch_idx].plot(time_ax_ns, trace_ch_data_arr, c=color, ls='-' if trigger_idx % 2 == 0 else '--', alpha=0.7)
-                        sampling_rate_hz = 2e9 
-                        if len(trace_ch_data_arr) > 1: 
-                            freq_ax_mhz = np.fft.rfftfreq(len(trace_ch_data_arr), d=1/sampling_rate_hz) / 1e6 
-                            spectrum = np.abs(fft.time2freq(trace_ch_data_arr, sampling_rate_hz))
-                            if len(spectrum)>0: spectrum[0]=0
-                            # CHANGED: Spectrum line is now solid with slightly higher alpha
-                            spectrum_axs[ch_idx].plot(freq_ax_mhz, spectrum, c=color, ls='-', alpha=0.6)
-                
-                if station_id_int not in legend_handles_for_fig:
-                    # CHANGED: Station legend now uses a line instead of a marker to avoid confusion
-                    legend_handles_for_fig[station_id_int] = Line2D([0], [0], color=color, linestyle='-', linewidth=4, label=f"St {station_id_int}")
-                
-                time_text = f"{time_values}"
-                chi_rcr_text = f"{chi_rcr_val:.2f}" if chi_rcr_val is not None and not np.isnan(chi_rcr_val) else "N/A"
-                chi_2016_text = f"{chi_2016_val:.2f}" if chi_2016_val is not None and not np.isnan(chi_2016_val) else "N/A"
-                zen_d_text = f"{np.degrees(zen_rad):.1f}°" if zen_rad is not None and not np.isnan(zen_rad) else "N/A"
-                azi_d_text = f"{(np.degrees(azi_rad) % 360):.1f}°" if azi_rad is not None and not np.isnan(azi_rad) else "N/A"
-                snr_fstr = f"{snr_val:.1f}" if snr_val is not None and not np.isnan(snr_val) else "N/A"
-                ev_id_fstr = f"{int(current_event_id_val)}" if current_event_id_val not in ["N/A", np.nan, None] else "N/A"
-
-                pol_angle_full_text = "N/A"
-                if pol_rad is not None and not np.isnan(pol_rad):
-                    pol_angle_full_text = f"{np.degrees(pol_rad):.1f}"
-                    if pol_err_rad is not None and not np.isnan(pol_err_rad) and isinstance(pol_err_rad, (float, int)):
-                         pol_angle_full_text += f" ± {np.degrees(pol_err_rad):.1f}°"
-                    else:
-                         pol_angle_full_text += "°"
-
-                text_info_lines.append(f"  St{station_id_int} T{trigger_idx+1} Unix={time_text}: ID={ev_id_fstr}, SNR={snr_fstr}, ChiRCR={chi_rcr_text}, Chi2016={chi_2016_text}, Zen={zen_d_text}, Azi={azi_d_text}, Pol={pol_angle_full_text}")
-
-            # NEW: Add connecting line for points within this station only
-            if len(station_points) > 1:
-                station_points.sort() # Sort by SNR
-                snrs, chis = zip(*station_points)
-                ax_scatter.plot(snrs, chis, color=color, linestyle='--', marker=None, alpha=0.8, zorder=2)
-
-        # === START: SNR vs CHI PLOT SETUP ===
-        ax_scatter.set_xlabel("SNR")
-        ax_scatter.set_ylabel(r"$\chi$")
-        ax_scatter.set_title(r"SNR vs. $\chi$")
-        ax_scatter.set_xscale('log')
-        ax_scatter.set_xlim(3, 100)
-        ax_scatter.set_ylim(0, 1)
-        ax_scatter.grid(True, linestyle='--', alpha=0.6)
-
-        # Create handles for the two legends
-        chi_2016_handle = Line2D([0], [0], marker='o', color='k', label=r'$\chi_{2016}$ (Filled)',
-                                 linestyle='None', markersize=8, markerfacecolor='k')
-        chi_RCR_handle = Line2D([0], [0], marker='o', color='k', label=r'$\chi_{RCR}$ (Outline)',
-                              linestyle='None', markersize=8, markerfacecolor='none', markeredgecolor='k')
-        station_handles = list(legend_handles_for_fig.values())
-        
-        # Add the legends to the ax_scatter plot
-        if station_handles:
-            leg1 = ax_scatter.legend(handles=station_handles, loc='upper right', title="Stations")
-            ax_scatter.add_artist(leg1)
-        ax_scatter.legend(handles=[chi_2016_handle, chi_RCR_handle], loc='lower left', title=r"$\chi$ Type")
-        # === END: SNR vs CHI PLOT SETUP ===
-        
-        ax_text_box.axis('off') 
-        ax_text_box.text(0.01, 0.95, "\n".join(text_info_lines), ha='left', va='top', fontsize=9, 
-                         family='monospace', linespacing=1.4, 
-                         bbox=dict(boxstyle="round,pad=0.5", fc="wheat", alpha=0.6))
-
-        ax_polar.set_theta_zero_location("N"); ax_polar.set_theta_direction(-1); ax_polar.set_rlabel_position(22.5)
-        ax_polar.set_rlim(0, 90); ax_polar.set_rticks(np.arange(0, 91, 30)); ax_polar.set_title("Zenith (radius) vs Azimuth (angle)")
-        ax_polar.grid(True, linestyle='--', alpha=0.5)
-        
-        for i in range(num_trace_channels):
-            trace_axs[i].set_title(f"Trace - Ch {i+1}",fontsize=10); trace_axs[i].set_ylabel("Amp (mV)",fontsize=8); trace_axs[i].grid(True,ls=':',alpha=0.5); trace_axs[i].set_ylim(final_trace_ylim)
-            spectrum_axs[i].set_title(f"Spectrum - Ch {i+1}",fontsize=10); spectrum_axs[i].set_ylabel("Mag",fontsize=8); spectrum_axs[i].grid(True,ls=':',alpha=0.5); spectrum_axs[i].set_xlim(0,1000)
-            if i < num_trace_channels -1 : trace_axs[i].set_xticklabels([]); spectrum_axs[i].set_xticklabels([])
-            else: trace_axs[i].set_xlabel("Time (ns)", fontsize=8); spectrum_axs[i].set_xlabel("Freq (MHz)", fontsize=8)
-
-        master_filename = os.path.join(current_event_plot_dir, f'master_event_{event_id}.png')
-        try: 
-            plt.savefig(master_filename, dpi=150, bbox_inches='tight')
-        except Exception as e: 
-            ic(f"Error saving master plot {master_filename}: {e}")
-        plt.close(fig); gc.collect()
+        # Use the new single event plotting method
+        plot_single_master_event(event_id, event_details, pass_cuts_folder, dataset_name)
+    
     ic(f"Finished master event plots for {dataset_name}. Only events passing cuts were plotted.")
+
+
+# --- Function to Save Passing Events ---
+def save_passing_events(events_dict, output_dir, dataset_name, date_of_process):
+    """
+    Saves only the events that pass the analysis cuts to a new pickle file.
+    """
+    ic(f"Saving events that pass cuts for {dataset_name}")
+    
+    # Filter events that pass cuts
+    passing_events = {}
+    for event_id, event_details in events_dict.items():
+        if isinstance(event_details, dict) and event_details.get('passes_analysis_cuts', False):
+            passing_events[event_id] = event_details
+    
+    if not passing_events:
+        ic(f"No events pass the cuts for {dataset_name}. No file will be saved.")
+        return None
+    
+    # Create output filename
+    output_filename = f"{date_of_process}_CoincidenceDatetimes_passing_cuts.pkl"
+    output_filepath = os.path.join(output_dir, output_filename)
+    
+    # Save to pickle file
+    try:
+        with open(output_filepath, 'wb') as f:
+            pickle.dump(passing_events, f)
+        ic(f"Saved {len(passing_events)} passing events to: {output_filepath}")
+        return output_filepath
+    except Exception as e:
+        ic(f"Error saving passing events to {output_filepath}: {e}")
+        return None
+
+
+# --- Function to Check for Key Events ---
+def checkForKeyEvents(events_dict, target_timestamps, output_dir, dataset_name, time_tolerance_sec=1.0):
+    """
+    Searches for events that match within time_tolerance_sec of the provided target timestamps.
+    Prints detailed information about found events and plots them to a 'specific_event_search/' subfolder.
+    
+    Args:
+        events_dict: Dictionary of all events with event_id as keys
+        target_timestamps: List of target datetime timestamps (as returned by datetime.timestamp())
+        output_dir: Base output directory
+        dataset_name: Name of the dataset for labeling
+        time_tolerance_sec: Time tolerance in seconds for matching (default 1.0 second)
+    
+    Returns:
+        dict: Dictionary of found events {event_id: event_details}
+    """
+    ic(f"Searching for key events in {dataset_name} with {len(target_timestamps)} target times")
+    
+    # Create output directory for specific event search
+    search_output_dir = os.path.join(output_dir, "specific_event_search")
+    os.makedirs(search_output_dir, exist_ok=True)
+    
+    found_events = {}
+    
+    # Convert target timestamps to a set for faster lookup
+    target_set = set(target_timestamps)
+    
+    print(f"\n=== KEY EVENT SEARCH RESULTS for {dataset_name} ===")
+    print(f"Searching for {len(target_timestamps)} target events within ±{time_tolerance_sec} seconds")
+    print(f"Target timestamps: {[datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S') for ts in target_timestamps]}")
+    print("-" * 80)
+    
+    matches_found = 0
+    
+    for target_idx, target_timestamp in enumerate(target_timestamps):
+        target_dt = datetime.datetime.fromtimestamp(target_timestamp)
+        print(f"\nTarget {target_idx + 1}: {target_dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+        
+        found_match = False
+        
+        # Search through all events for matches
+        for event_id, event_details in events_dict.items():
+            if not isinstance(event_details, dict):
+                continue
+                
+            event_timestamp = event_details.get("datetime")
+            if event_timestamp is None:
+                continue
+                
+            # Check if event time is within tolerance of target time
+            time_diff = abs(event_timestamp - target_timestamp)
+            
+            if time_diff <= time_tolerance_sec:
+                found_match = True
+                matches_found += 1
+                found_events[event_id] = event_details
+                
+                # Format event timestamp for display
+                event_dt = datetime.datetime.fromtimestamp(event_timestamp)
+                
+                print(f"  ✓ FOUND MATCH: Event {event_id}")
+                print(f"    Event Time: {event_dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+                print(f"    Time Difference: {time_diff:.3f} seconds")
+                
+                # Get cut results
+                cut_results = event_details.get('cut_results', {})
+                passes_overall = event_details.get('passes_analysis_cuts', False)
+                
+                print(f"    Overall Status: {'PASS' if passes_overall else 'FAIL'} (Analysis Cuts)")
+                print(f"    Cut Details:")
+                print(f"      - Time Cut: {'PASS' if cut_results.get('time_cut_passed', False) else 'FAIL'}")
+                print(f"      - Chi Cut: {'PASS' if cut_results.get('chi_cut_passed', False) else 'FAIL'}")
+                print(f"      - Angle Cut: {'PASS' if cut_results.get('angle_cut_passed', False) else 'FAIL'}")
+                
+                # Print station information
+                stations_info = event_details.get("stations", {})
+                print(f"    Stations ({len(stations_info)} total):")
+                
+                for station_id_str, station_data in stations_info.items():
+                    snr_values = station_data.get("SNR", [])
+                    chi_rcr_values = station_data.get("ChiRCR", [])
+                    chi_2016_values = station_data.get("Chi2016", [])
+                    zen_values = station_data.get("Zen", [])
+                    azi_values = station_data.get("Azi", [])
+                    pol_values = station_data.get("PolAngle", [])
+                    
+                    if snr_values:  # Only print if there's data
+                        print(f"      Station {station_id_str}: {len(snr_values)} triggers")
+                        for i in range(len(snr_values)):
+                            snr = snr_values[i] if i < len(snr_values) else None
+                            chi_rcr = chi_rcr_values[i] if i < len(chi_rcr_values) else None
+                            chi_2016 = chi_2016_values[i] if i < len(chi_2016_values) else None
+                            zen = zen_values[i] if i < len(zen_values) else None
+                            azi = azi_values[i] if i < len(azi_values) else None
+                            pol = pol_values[i] if i < len(pol_values) else None
+                            
+                            snr_str = f"{snr:.1f}" if snr is not None and not np.isnan(snr) else "N/A"
+                            chi_rcr_str = f"{chi_rcr:.2f}" if chi_rcr is not None and not np.isnan(chi_rcr) else "N/A"
+                            chi_2016_str = f"{chi_2016:.2f}" if chi_2016 is not None and not np.isnan(chi_2016) else "N/A"
+                            zen_str = f"{np.degrees(zen):.1f}°" if zen is not None and not np.isnan(zen) else "N/A"
+                            azi_str = f"{np.degrees(azi):.1f}°" if azi is not None and not np.isnan(azi) else "N/A"
+                            pol_str = f"{np.degrees(pol):.1f}°" if pol is not None and not np.isnan(pol) else "N/A"
+                            
+                            print(f"        Trigger {i+1}: SNR={snr_str}, ChiRCR={chi_rcr_str}, Chi2016={chi_2016_str}, Zen={zen_str}, Azi={azi_str}, Pol={pol_str}")
+                
+                # Plot the event
+                title_suffix = f" - TARGET MATCH #{target_idx + 1}"
+                plot_path = plot_single_master_event(event_id, event_details, search_output_dir, dataset_name, title_suffix)
+                
+                if plot_path:
+                    print(f"    Plot saved: {plot_path}")
+                else:
+                    print(f"    Warning: Failed to save plot for event {event_id}")
+                
+                print("-" * 40)
+        
+        if not found_match:
+            print(f"  ✗ NO MATCH FOUND for target {target_idx + 1}")
+            print("-" * 40)
+    
+    print(f"\n=== SEARCH SUMMARY ===")
+    print(f"Total targets searched: {len(target_timestamps)}")
+    print(f"Total matches found: {matches_found}")
+    print(f"Found events: {list(found_events.keys()) if found_events else 'None'}")
+    print(f"Plots saved to: {search_output_dir}")
+    print("=" * 80)
+    
+    return found_events
 
 
 # --- Function to Save Passing Events ---
@@ -588,7 +783,23 @@ if __name__ == '__main__':
     date_of_process = config['PARAMETERS']['date_processing']
     base_processed_data_dir = os.path.join("HRAStationDataAnalysis", "StationData", "processedNumpyData")
     processed_data_dir_for_date = os.path.join(base_processed_data_dir, date_of_data)
-    
+
+    # List of times of specific events I believe are CRs    
+    target_times = [
+        datetime.datetime(2017, 2, 16, 19, 9, 51).timestamp(),
+        datetime.datetime(2017, 10, 15, 4, 41, 20).timestamp(),
+        datetime.datetime(2017, 1, 25, 22, 45, 58).timestamp()
+    ]
+    # Below are known CR from 2016 search
+    target_times.extend([
+        datetime.datetime(2015, 12, 11, 11, 20, 9).timestamp(),
+        datetime.datetime(2015, 12, 21, 13, 46, 11).timestamp(),
+        datetime.datetime(2016, 2, 11, 7, 52, 30).timestamp(),
+        datetime.datetime(2016, 2, 14, 21, 21, 2).timestamp(),
+        datetime.datetime(2016, 3, 18, 2, 42, 51).timestamp()
+    ])
+
+
     # CHANGED: Point to the file that includes polarization data
     input_file = f"{date_of_process}_CoincidenceDatetimes_with_all_params_recalcZenAzi_calcPol.pkl"
     dataset_paths = [os.path.join(processed_data_dir_for_date, input_file)]
@@ -626,6 +837,8 @@ if __name__ == '__main__':
             ic(f"Could not load data from: {d_path}.")
 
     if not datasets_to_plot_info: ic("No datasets loaded. Exiting."); exit()
+
+
 
     for dataset_info in datasets_to_plot_info:
         dataset_name_label = dataset_info["name"]
@@ -668,6 +881,16 @@ if __name__ == '__main__':
         plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
         plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
         plot_master_event_updated(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+        
+
+        found_events = checkForKeyEvents(
+            events_data_dict, 
+            target_times, 
+            specific_dataset_plot_dir, 
+            dataset_name_label,
+            time_tolerance_sec=1.0
+        )
+
         
         # Save events that pass cuts to a new file
         saved_filepath = save_passing_events(events_data_dict, processed_data_dir_for_date, dataset_name_label, date_of_process)
