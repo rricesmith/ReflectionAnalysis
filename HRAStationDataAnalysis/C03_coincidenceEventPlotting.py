@@ -639,7 +639,7 @@ if __name__ == '__main__':
 
         # First, apply the time cut to all events
         ic(f"Applying time cut to {len(events_data_dict)} events...")
-        time_cut_results = check_time_cut(events_data_dict, time_threshold_hours=1.0)
+        time_cut_results = check_time_cut(events_data_dict, time_threshold_hours=0.1)
         num_passing_time_cut = sum(time_cut_results.values())
         num_failing_time_cut = len(time_cut_results) - num_passing_time_cut
         ic(f"Time cut results: {num_passing_time_cut} events passed, {num_failing_time_cut} events failed (within 1 hour of another event)")
