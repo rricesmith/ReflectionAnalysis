@@ -123,20 +123,27 @@ def create_final_idx_to_grci_map(
 
             if isinstance(cuts_data, dict):
                 first_cut_key = next(iter(cuts_data), None)
+
                 if first_cut_key:
-                    num_cut_entries = len(cuts_data[first_cut_key])
-                    mask_from_dict = np.ones(num_cut_entries, dtype=bool)
-                    for cut_array in cuts_data.values():
-                        if len(cut_array) == num_cut_entries:
-                            mask_from_dict &= cut_array
-                    
-                    if num_cut_entries != num_events_pre_external_cuts:
-                        ic(f"Warning: Cuts length ({num_cut_entries}) in {external_cuts_file_path} doesn't match pre-filtered events ({num_events_pre_external_cuts}). Adjusting.")
-                        min_len = min(num_cut_entries, num_events_pre_external_cuts)
-                        combined_external_cut_mask = np.zeros(num_events_pre_external_cuts, dtype=bool)
-                        combined_external_cut_mask[:min_len] = mask_from_dict[:min_len]
-                    else:
-                        combined_external_cut_mask = mask_from_dict
+                    for cut_name, cut_array in cuts_data.items():
+                        if len(cut_array) == num_events_pre_external_cuts:
+                            combined_external_cut_mask &= cut_array
+                        else:
+                            ic(f"Warning: Cut {cut_name} length mismatch: {len(cut_array)} vs {num_events_pre_external_cuts}")
+
+                        num_cut_entries = len(cuts_data[first_cut_key])
+                        mask_from_dict = np.ones(num_cut_entries, dtype=bool)
+                        for cut_array in cuts_data.values():
+                            if len(cut_array) == num_cut_entries:
+                                mask_from_dict &= cut_array
+                        
+                        if num_cut_entries != num_events_pre_external_cuts:
+                            ic(f"Warning: Cuts length ({num_cut_entries}) in {external_cuts_file_path} doesn't match pre-filtered events ({num_events_pre_external_cuts}). Adjusting.")
+                            min_len = min(num_cut_entries, num_events_pre_external_cuts)
+                            combined_external_cut_mask = np.zeros(num_events_pre_external_cuts, dtype=bool)
+                            combined_external_cut_mask[:min_len] = mask_from_dict[:min_len]
+                        else:
+                            combined_external_cut_mask = mask_from_dict
             elif isinstance(cuts_data, np.ndarray) and cuts_data.dtype == bool:
                 if len(cuts_data) != num_events_pre_external_cuts:
                     ic(f"Warning: Cuts array length ({len(cuts_data)}) in {external_cuts_file_path} doesn't match pre-filtered events ({num_events_pre_external_cuts}). Adjusting.")
@@ -230,10 +237,10 @@ def fetch_parameters_by_grci(
                     if parameter_data_array.ndim == 0: parameter_data_array = np.array([parameter_data_array.item()])
 
                 for local_file_idx, target_grci in grcis_in_current_file_data.items():
-                    if 0 <= local_file_idx < len(parameter_data_array):
-                        results[target_grci] = parameter_data_array[local_file_idx]
+                    if local_file_idx < len(parameter_data_array):
+                        value_to_assign = parameter_data_array[local_file_idx]
+                        results[target_grci] = value_to_assign
                     else:
-                        ic(f"Error: Local idx {local_file_idx} out of bounds for {param_file_path} (len {len(parameter_data_array)}) GRCI {target_grci}. NaN.")
                         results[target_grci] = np.nan
                     if grci_pointer < len(unique_grcis_to_fetch_sorted) and \
                        target_grci == unique_grcis_to_fetch_sorted[grci_pointer]:
@@ -322,20 +329,18 @@ def add_parameter_orchestrator(
 
                 if parameter_name not in station_event_data or not isinstance(station_event_data[parameter_name], list) or len(station_event_data[parameter_name]) != len(indices_list):
                     station_event_data[parameter_name] = [None] * len(indices_list)
+                    events_needing_param_count += 1
 
                 for pos, final_idx in enumerate(indices_list):
                     if station_event_data[parameter_name][pos] is None:
-                        events_needing_param_count += 1
-                        grci = final_idx_to_grci_map.get(final_idx)
-                        if grci is not None:
+                        if final_idx in final_idx_to_grci_map:
+                            grci = final_idx_to_grci_map[final_idx]
                             grcis_to_fetch_for_station.append(grci)
-                            map_grci_to_event_updates[grci].append(
-                                (event_data_ref, station_key_in_event, pos)
-                            )
+                            map_grci_to_event_updates[grci].append((event_data_ref, station_key_in_event, pos))
                         else:
-                            ic(f"Warn: final_idx {final_idx} not in map for St {station_id}, Ev {event_id}. NaN for '{parameter_name}' pos {pos}.")
-                            station_event_data[parameter_name][pos] = np.nan
-        
+                            # Mark as NaN if index can't be mapped
+                            station_event_data[parameter_name][pos] = np.nan        
+
         if not grcis_to_fetch_for_station:
             if events_needing_param_count == 0: ic(f"St {station_id}: No '{parameter_name}' values needed.")
             else: ic(f"St {station_id}: No GRCIs to fetch for '{parameter_name}' (all final_idx missing from map?).")
