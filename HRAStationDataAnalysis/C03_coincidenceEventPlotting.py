@@ -610,9 +610,20 @@ def plot_single_master_event(event_id, event_details, output_dir, dataset_name, 
 
 
 # --- Plotting Function 4: Master Event Plot (Updated) ---
-def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
+def plot_master_event_updated(events_dict, base_output_dir, dataset_name, include_failed_when_passing_source=False):
+    """Generate master event plots.
+
+    By default, plots only events that pass analysis cuts. If
+    include_failed_when_passing_source is True, also plots all events that
+    fail into a separate folder. This is intended for cases where the source
+    data path contains 'passing_cuts' and we want to compare failed events
+    after re-evaluating cuts.
+    """
     with SectionTimer(f"Master event batch plots for {dataset_name}"):
-        ic(f"Generating master event plots for {dataset_name}, only for events that pass cuts.")
+        ic(
+            f"Generating master event plots for {dataset_name}"
+            + (", including failed events" if include_failed_when_passing_source else ", only for events that pass cuts.")
+        )
         master_folder_base = os.path.join(base_output_dir, f"{dataset_name}_master_event_plots")
         pass_cuts_folder = os.path.join(master_folder_base, "pass_cuts")
         os.makedirs(pass_cuts_folder, exist_ok=True)
@@ -623,7 +634,24 @@ def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
             _progress(idx, len(passing_items), "Master plots")
             plot_single_master_event(event_id, event_details, pass_cuts_folder, dataset_name)
         
-        ic(f"Finished master event plots for {dataset_name}. Only events passing cuts were plotted.")
+        # Optionally also plot failing events if requested
+        if include_failed_when_passing_source:
+            fail_cuts_folder = os.path.join(master_folder_base, "fail_cuts")
+            os.makedirs(fail_cuts_folder, exist_ok=True)
+            failing_items = [
+                (eid, ed)
+                for eid, ed in events_dict.items()
+                if isinstance(ed, dict) and not ed.get('passes_analysis_cuts', False)
+            ]
+            ic(f"Total failing events to plot: {len(failing_items)}")
+            for idx, (event_id, event_details) in enumerate(failing_items):
+                _progress(idx, len(failing_items), "Master plots (fail)")
+                plot_single_master_event(event_id, event_details, fail_cuts_folder, dataset_name)
+
+        ic(
+            f"Finished master event plots for {dataset_name}. "
+            + ("Pass and fail events were plotted." if include_failed_when_passing_source else "Only events passing cuts were plotted.")
+        )
 
 
 # --- Function to Check for Key Events ---
@@ -917,7 +945,13 @@ if __name__ == '__main__':
             with SectionTimer("Plot: Polar zen/azi"):
                 plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
             with SectionTimer("Plot: Master events batch"):
-                plot_master_event_updated(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+                include_failed = isinstance(chosen_path, str) and ("passing_cuts" in os.path.basename(chosen_path) or "passing_cuts" in chosen_path)
+                plot_master_event_updated(
+                    events_data_dict,
+                    specific_dataset_plot_dir,
+                    dataset_name_label,
+                    include_failed_when_passing_source=include_failed,
+                )
             
             with SectionTimer("Key event search"):
                 found_events = checkForKeyEvents(
