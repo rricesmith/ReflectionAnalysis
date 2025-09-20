@@ -342,8 +342,11 @@ if __name__ == '__main__':
     date_processing = main_config_parser['PARAMETERS']['date_processing']
     ic(f"Running parameter addition for date {date} with processing date {date_processing}")
 
-    input_events_file = f"HRAStationDataAnalysis/StationData/processedNumpyData/{date}/{date_processing}_CoincidenceDatetimes_with_all_params.pkl"
-    output_events_file = f"HRAStationDataAnalysis/StationData/processedNumpyData/{date}/{date_processing}_CoincidenceDatetimes_with_all_params_recalcZenAzi.pkl"
+    input_events_file = f"HRAStationDataAnalysis/StationData/processedNumpyData/{date}/{date_processing}_CoincidenceDatetimes_passing_cuts_with_all_params.pkl"
+    output_events_file = f"HRAStationDataAnalysis/StationData/processedNumpyData/{date}/{date_processing}_CoincidenceDatetimes_passing_cuts_with_all_params_recalcZenAzi.pkl"
+    if not os.path.exists(input_events_file):
+        input_events_file = f"HRAStationDataAnalysis/StationData/processedNumpyData/{date}/{date_processing}_CoincidenceDatetimes_with_all_params.pkl"    
+        output_events_file = f"HRAStationDataAnalysis/StationData/processedNumpyData/{date}/{date_processing}_CoincidenceDatetimes_with_all_params_recalcZenAzi.pkl"
 
     args = parser.parse_args()
     ic.enable()

@@ -12,14 +12,49 @@ from collections import defaultdict
 import matplotlib.gridspec as gridspec
 from NuRadioReco.utilities import fft, units
 import itertools # For combinations in angle cut
+import time
+
+# --- Lightweight Timing + Progress Helpers ---
+PROGRESS_EVERY = 50  # How often to print loop progress
+
+class SectionTimer:
+    def __init__(self, name: str):
+        self.name = name
+        self.t0 = None
+
+    def __enter__(self):
+        self.t0 = time.perf_counter()
+        ic(f"⏳ {self.name} ...")
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        dt = time.perf_counter() - self.t0 if self.t0 is not None else float('nan')
+        ic(f"✅ {self.name} done in {dt:.2f}s")
+
+
+def _progress(idx: int, total: int, label: str):
+    """Periodic progress printing for long loops."""
+    if total <= 0:
+        return
+    if idx == 0 or (idx + 1) % PROGRESS_EVERY == 0 or (idx + 1) == total:
+        pct = 100.0 * (idx + 1) / total
+        ic(f"[{label}] {idx + 1}/{total} ({pct:.1f}%)")
 
 # --- Helper for Loading Data ---
 def _load_pickle(filepath):
     """Loads data from a pickle file."""
     if os.path.exists(filepath):
         try:
-            with open(filepath, 'rb') as f:
-                return pickle.load(f)
+            with SectionTimer(f"Loading pickle '{os.path.basename(filepath)}'"):
+                with open(filepath, 'rb') as f:
+                    data = pickle.load(f)
+            # Basic size info if possible
+            try:
+                fsize_mb = os.path.getsize(filepath) / (1024 * 1024)
+                ic(f"Loaded pickle size: {fsize_mb:.2f} MB")
+            except Exception:
+                pass
+            return data
         except Exception as e:
             ic(f"Error loading pickle file {filepath}: {e}")
     return None
@@ -119,46 +154,48 @@ def check_time_cut(events_dict, time_threshold_hours=1.0):
     Returns:
         dict: {event_id: bool} indicating which events pass the time cut
     """
-    time_threshold_seconds = time_threshold_hours * 3600  # Convert to seconds
-    
-    # Extract event times and sort by time
-    event_times_list = []
-    for event_id, event_details in events_dict.items():
-        if isinstance(event_details, dict) and "datetime" in event_details:
-            event_time = event_details["datetime"]
-            if event_time is not None:
-                event_times_list.append((event_time, event_id))
-    
-    # Sort by time (events are already time ordered, but this ensures it)
-    event_times_list.sort()
-    
-    # Initialize all events with valid times as passing
-    time_cut_results = {event_id: True for _, event_id in event_times_list}
-    
-    # Check each event only against subsequent events (more efficient)
-    for i in range(len(event_times_list)):
-        current_time, current_event_id = event_times_list[i]
+    with SectionTimer("Time cut computation"):
+        time_threshold_seconds = time_threshold_hours * 3600  # Convert to seconds
         
-        # Only check forward in time
-        for j in range(i + 1, len(event_times_list)):
-            other_time, other_event_id = event_times_list[j]
+        # Extract event times and sort by time
+        event_times_list = []
+        for event_id, event_details in events_dict.items():
+            if isinstance(event_details, dict) and "datetime" in event_details:
+                event_time = event_details["datetime"]
+                if event_time is not None:
+                    event_times_list.append((event_time, event_id))
+        ic(f"Found {len(event_times_list)} events with valid times")
+        
+        # Sort by time (events are already time ordered, but this ensures it)
+        event_times_list.sort()
+        
+        # Initialize all events with valid times as passing
+        time_cut_results = {event_id: True for _, event_id in event_times_list}
+        
+        # Check each event only against subsequent events (more efficient)
+        for i in range(len(event_times_list)):
+            current_time, current_event_id = event_times_list[i]
             
-            time_diff = other_time - current_time  # Always positive since sorted
-            
-            if time_diff <= time_threshold_seconds:
-                # Both events fail the time cut
-                time_cut_results[current_event_id] = False
-                time_cut_results[other_event_id] = False
-            else:
-                # Since events are sorted, no need to check further
-                break
-    
-    # Events without valid datetime are considered to fail the time cut
-    for event_id in events_dict.keys():
-        if event_id not in time_cut_results:
-            time_cut_results[event_id] = False
-    
-    return time_cut_results
+            # Only check forward in time
+            for j in range(i + 1, len(event_times_list)):
+                other_time, other_event_id = event_times_list[j]
+                
+                time_diff = other_time - current_time  # Always positive since sorted
+                
+                if time_diff <= time_threshold_seconds:
+                    # Both events fail the time cut
+                    time_cut_results[current_event_id] = False
+                    time_cut_results[other_event_id] = False
+                else:
+                    # Since events are sorted, no need to check further
+                    break
+        
+        # Events without valid datetime are considered to fail the time cut
+        for event_id in events_dict.keys():
+            if event_id not in time_cut_results:
+                time_cut_results[event_id] = False
+        ic(f"Time cut map size: {len(time_cut_results)}")
+        return time_cut_results
 
 def check_coincidence_cuts(event_details, time_cut_result=True):
     """
@@ -182,8 +219,9 @@ def check_coincidence_cuts(event_details, time_cut_result=True):
 
 # --- Plotting Function 1: SNR vs Chi Parameters ---
 def plot_snr_vs_chi(events_dict, output_dir, dataset_name):
-    ic(f"Generating SNR vs Chi plots for {dataset_name}")
-    os.makedirs(output_dir, exist_ok=True)
+    with SectionTimer(f"Plot SNR vs Chi for {dataset_name}"):
+        ic(f"Generating SNR vs Chi plots for {dataset_name}")
+        os.makedirs(output_dir, exist_ok=True)
 
     chi_params = ['ChiRCR', 'Chi2016', 'ChiBad']
     
@@ -196,7 +234,7 @@ def plot_snr_vs_chi(events_dict, output_dir, dataset_name):
         if not events_subset:
             ic(f"No {status} events in {dataset_name} to plot for SNR vs Chi.")
             continue
-            
+        start_subset = time.perf_counter()
         fig, axs = plt.subplots(len(chi_params), 1, figsize=(12, 6 * len(chi_params)), sharex=True)
         if len(chi_params) == 1: axs = [axs]
 
@@ -204,6 +242,7 @@ def plot_snr_vs_chi(events_dict, output_dir, dataset_name):
         colors_cmap = cm.get_cmap('jet', num_events if num_events > 1 else 2)
 
         for i, (event_id, event_data) in enumerate(events_subset.items()):
+            _progress(i, num_events, f"SNR-chi {status}")
             event_color = colors_cmap(i)
             event_plot_data_collected = []
             
@@ -260,13 +299,17 @@ def plot_snr_vs_chi(events_dict, output_dir, dataset_name):
         plt.tight_layout(rect=[0, 0, 0.88 if num_events <=15 and handles else 0.98 , 0.96])
         
         plot_filename = os.path.join(output_dir, f"{dataset_name}_snr_vs_chi_params_{status}.png")
-        plt.savefig(plot_filename, bbox_inches='tight'); ic(f"Saved SNR vs Chi plot: {plot_filename}"); plt.close(fig); gc.collect()
+        with SectionTimer(f"Saving SNR vs Chi plot ({status})"):
+            plt.savefig(plot_filename, bbox_inches='tight')
+        ic(f"Saved SNR vs Chi plot: {plot_filename} (subset took {(time.perf_counter()-start_subset):.2f}s)")
+        plt.close(fig); gc.collect()
 
 
 # --- Plotting Function 2: Parameter Histograms ---
 def plot_parameter_histograms(events_dict, output_dir, dataset_name):
-    ic(f"Generating parameter histograms for {dataset_name} (with cut status)")
-    os.makedirs(output_dir, exist_ok=True)
+    with SectionTimer(f"Plot parameter histograms for {dataset_name}"):
+        ic(f"Generating parameter histograms for {dataset_name} (with cut status)")
+        os.makedirs(output_dir, exist_ok=True)
     params_to_histogram = ['SNR', 'ChiRCR', 'Chi2016', 'ChiBad', 'Zen', 'Azi', 'PolAngle'] # CHANGED: Added PolAngle
     param_values_all, param_values_passing_cuts, param_values_failing_cuts = defaultdict(list), defaultdict(list), defaultdict(list)
     for event_data in events_dict.values():
@@ -308,13 +351,18 @@ def plot_parameter_histograms(events_dict, output_dir, dataset_name):
         else: ax.text(0.5,0.5,f"No data for\n{param_name}",ha='center',va='center',transform=ax.transAxes); ax.set_title(f'{param_name}')
     for j in range(i + 1, len(axs_flat)): fig.delaxes(axs_flat[j])
     plt.suptitle(f'Parameter Histograms for {dataset_name} (by Cut Status)', fontsize=16); plt.tight_layout(rect=[0,0,1,0.96])
-    plot_filename = os.path.join(output_dir, f"{dataset_name}_parameter_histograms_by_cut.png"); plt.savefig(plot_filename); ic(f"Saved: {plot_filename}"); plt.close(fig); gc.collect()
+    plot_filename = os.path.join(output_dir, f"{dataset_name}_parameter_histograms_by_cut.png")
+    with SectionTimer("Saving parameter histograms"):
+        plt.savefig(plot_filename)
+    ic(f"Saved: {plot_filename}")
+    plt.close(fig); gc.collect()
 
 
 # --- Plotting Function 3: Polar Plot (Zenith vs Azimuth) ---
 def plot_polar_zen_azi(events_dict, output_dir, dataset_name):
-    ic(f"Generating polar Zenith vs Azimuth plot for {dataset_name}")
-    os.makedirs(output_dir, exist_ok=True); all_zen_rad_values, all_azi_rad_values = [], []
+    with SectionTimer(f"Plot polar zen/azi for {dataset_name}"):
+        ic(f"Generating polar Zenith vs Azimuth plot for {dataset_name}")
+        os.makedirs(output_dir, exist_ok=True); all_zen_rad_values, all_azi_rad_values = [], []
     for event_data in events_dict.values():
         for station_triggers in event_data.get("stations", {}).values():
             zen_list_rad = station_triggers.get('Zen', []) # Assumed in RADIANS
@@ -344,7 +392,10 @@ def plot_polar_zen_azi(events_dict, output_dir, dataset_name):
     ax.grid(True, linestyle='--', alpha=0.7)
     
     plot_filename = os.path.join(output_dir, f"{dataset_name}_polar_zen_azi.png")
-    plt.savefig(plot_filename); ic(f"Saved polar Zenith vs Azimuth plot: {plot_filename}"); plt.close(fig); gc.collect()
+    with SectionTimer("Saving polar plot"):
+        plt.savefig(plot_filename)
+    ic(f"Saved polar Zenith vs Azimuth plot: {plot_filename}")
+    plt.close(fig); gc.collect()
 
 
 # --- Helper Function: Plot Single Master Event ---
@@ -362,9 +413,10 @@ def plot_single_master_event(event_id, event_details, output_dir, dataset_name, 
     Returns:
         str: Path to the saved plot file, or None if failed
     """
-    if not isinstance(event_details, dict):
-        ic(f"Warning: Event {event_id} data is not a dictionary. Skipping master plot.")
-        return None
+    with SectionTimer(f"Master plot for event {event_id}"):
+        if not isinstance(event_details, dict):
+            ic(f"Warning: Event {event_id} data is not a dictionary. Skipping master plot.")
+            return None
 
     os.makedirs(output_dir, exist_ok=True)
     
@@ -404,23 +456,26 @@ def plot_single_master_event(event_id, event_details, output_dir, dataset_name, 
     
     legend_handles_for_fig = {}; global_trace_min = float('inf'); global_trace_max = float('-inf')
 
-    for station_id_str_calc, station_data_calc in event_details.get("stations", {}).items():
-        all_traces_for_st = station_data_calc.get("Traces", [])
-        for traces_for_one_trig in all_traces_for_st:
-            if traces_for_one_trig is not None and np.asarray(traces_for_one_trig).any():
-                padded_tr = (list(traces_for_one_trig) + [None]*num_trace_channels)[:num_trace_channels]
-                for tr_arr in padded_tr: 
-                    if tr_arr is not None and hasattr(tr_arr, "__len__") and len(tr_arr) > 0:
-                        c_min,c_max = np.nanmin(tr_arr), np.nanmax(tr_arr)
-                        if not np.isnan(c_min): global_trace_min = min(global_trace_min, c_min)
-                        if not np.isnan(c_max): global_trace_max = max(global_trace_max, c_max)
+    with SectionTimer("Compute global trace min/max"):
+        for station_id_str_calc, station_data_calc in event_details.get("stations", {}).items():
+            all_traces_for_st = station_data_calc.get("Traces", [])
+            for traces_for_one_trig in all_traces_for_st:
+                if traces_for_one_trig is not None and np.asarray(traces_for_one_trig).any():
+                    padded_tr = (list(traces_for_one_trig) + [None]*num_trace_channels)[:num_trace_channels]
+                    for tr_arr in padded_tr: 
+                        if tr_arr is not None and hasattr(tr_arr, "__len__") and len(tr_arr) > 0:
+                            c_min,c_max = np.nanmin(tr_arr), np.nanmax(tr_arr)
+                            if not np.isnan(c_min): global_trace_min = min(global_trace_min, c_min)
+                            if not np.isnan(c_max): global_trace_max = max(global_trace_max, c_max)
     if global_trace_min == float('inf'): global_trace_min = -0.1 
     if global_trace_max == float('-inf'): global_trace_max = 0.1
     if abs(global_trace_max - global_trace_min) < 1e-6 : global_trace_min -= 0.05; global_trace_max += 0.05 
     y_margin = (global_trace_max - global_trace_min) * 0.1; final_trace_ylim = (global_trace_min - y_margin, global_trace_max + y_margin)
     if final_trace_ylim[0] == final_trace_ylim[1]: final_trace_ylim = (final_trace_ylim[0]-0.1, final_trace_ylim[1]+0.1)
 
-    for station_id_str, station_data in event_details.get("stations", {}).items():
+    station_items = list(event_details.get("stations", {}).items())
+    for s_idx, (station_id_str, station_data) in enumerate(station_items):
+        _progress(s_idx, len(station_items), f"Master event {event_id} stations")
         try: station_id_int = int(station_id_str)
         except ValueError: continue
         color = color_map.get(station_id_int, default_color)
@@ -544,69 +599,31 @@ def plot_single_master_event(event_id, event_details, output_dir, dataset_name, 
 
     master_filename = os.path.join(output_dir, f'master_event_{event_id}.png')
     try: 
-        plt.savefig(master_filename, dpi=150, bbox_inches='tight')
+        with SectionTimer("Saving master plot"):
+            plt.savefig(master_filename, dpi=150, bbox_inches='tight')
         plt.close(fig); gc.collect()
         return master_filename
     except Exception as e: 
         ic(f"Error saving master plot {master_filename}: {e}")
         plt.close(fig); gc.collect()
-        return None
+    return None
 
 
 # --- Plotting Function 4: Master Event Plot (Updated) ---
 def plot_master_event_updated(events_dict, base_output_dir, dataset_name):
-    ic(f"Generating master event plots for {dataset_name}, only for events that pass cuts.")
-    master_folder_base = os.path.join(base_output_dir, f"{dataset_name}_master_event_plots")
-    pass_cuts_folder = os.path.join(master_folder_base, "pass_cuts")
-    os.makedirs(pass_cuts_folder, exist_ok=True)
+    with SectionTimer(f"Master event batch plots for {dataset_name}"):
+        ic(f"Generating master event plots for {dataset_name}, only for events that pass cuts.")
+        master_folder_base = os.path.join(base_output_dir, f"{dataset_name}_master_event_plots")
+        pass_cuts_folder = os.path.join(master_folder_base, "pass_cuts")
+        os.makedirs(pass_cuts_folder, exist_ok=True)
 
-    for event_id, event_details in events_dict.items():
-        if not isinstance(event_details, dict):
-            ic(f"Warning: Event {event_id} data is not a dictionary. Skipping master plot.")
-            continue
-
-        passes_overall_analysis = event_details.get('passes_analysis_cuts', False)
+        passing_items = [(eid, ed) for eid, ed in events_dict.items() if isinstance(ed, dict) and ed.get('passes_analysis_cuts', False)]
+        ic(f"Total passing events to plot: {len(passing_items)}")
+        for idx, (event_id, event_details) in enumerate(passing_items):
+            _progress(idx, len(passing_items), "Master plots")
+            plot_single_master_event(event_id, event_details, pass_cuts_folder, dataset_name)
         
-        # Only plot events that pass the analysis cuts
-        if not passes_overall_analysis:
-            continue
-            
-        # Use the new single event plotting method
-        plot_single_master_event(event_id, event_details, pass_cuts_folder, dataset_name)
-    
-    ic(f"Finished master event plots for {dataset_name}. Only events passing cuts were plotted.")
-
-
-# --- Function to Save Passing Events ---
-def save_passing_events(events_dict, output_dir, dataset_name, date_of_process):
-    """
-    Saves only the events that pass the analysis cuts to a new pickle file.
-    """
-    ic(f"Saving events that pass cuts for {dataset_name}")
-    
-    # Filter events that pass cuts
-    passing_events = {}
-    for event_id, event_details in events_dict.items():
-        if isinstance(event_details, dict) and event_details.get('passes_analysis_cuts', False):
-            passing_events[event_id] = event_details
-    
-    if not passing_events:
-        ic(f"No events pass the cuts for {dataset_name}. No file will be saved.")
-        return None
-    
-    # Create output filename
-    output_filename = f"{date_of_process}_CoincidenceDatetimes_passing_cuts.pkl"
-    output_filepath = os.path.join(output_dir, output_filename)
-    
-    # Save to pickle file
-    try:
-        with open(output_filepath, 'wb') as f:
-            pickle.dump(passing_events, f)
-        ic(f"Saved {len(passing_events)} passing events to: {output_filepath}")
-        return output_filepath
-    except Exception as e:
-        ic(f"Error saving passing events to {output_filepath}: {e}")
-        return None
+        ic(f"Finished master event plots for {dataset_name}. Only events passing cuts were plotted.")
 
 
 # --- Function to Check for Key Events ---
@@ -650,80 +667,82 @@ def checkForKeyEvents(events_dict, target_timestamps, output_dir, dataset_name, 
         found_match = False
         
         # Search through all events for matches
-        for event_id, event_details in events_dict.items():
-            if not isinstance(event_details, dict):
-                continue
-                
-            event_timestamp = event_details.get("datetime")
-            if event_timestamp is None:
-                continue
-                
-            # Check if event time is within tolerance of target time
-            time_diff = abs(event_timestamp - target_timestamp)
-            
-            if time_diff <= time_tolerance_sec:
-                found_match = True
-                matches_found += 1
-                found_events[event_id] = event_details
-                
-                # Format event timestamp for display
-                event_dt = datetime.datetime.fromtimestamp(event_timestamp)
-                
-                print(f"  ✓ FOUND MATCH: Event {event_id}")
-                print(f"    Event Time: {event_dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
-                print(f"    Time Difference: {time_diff:.3f} seconds")
-                
-                # Get cut results
-                cut_results = event_details.get('cut_results', {})
-                passes_overall = event_details.get('passes_analysis_cuts', False)
-                
-                print(f"    Overall Status: {'PASS' if passes_overall else 'FAIL'} (Analysis Cuts)")
-                print(f"    Cut Details:")
-                print(f"      - Time Cut: {'PASS' if cut_results.get('time_cut_passed', False) else 'FAIL'}")
-                print(f"      - Chi Cut: {'PASS' if cut_results.get('chi_cut_passed', False) else 'FAIL'}")
-                print(f"      - Angle Cut: {'PASS' if cut_results.get('angle_cut_passed', False) else 'FAIL'}")
-                
-                # Print station information
-                stations_info = event_details.get("stations", {})
-                print(f"    Stations ({len(stations_info)} total):")
-                
-                for station_id_str, station_data in stations_info.items():
-                    snr_values = station_data.get("SNR", [])
-                    chi_rcr_values = station_data.get("ChiRCR", [])
-                    chi_2016_values = station_data.get("Chi2016", [])
-                    zen_values = station_data.get("Zen", [])
-                    azi_values = station_data.get("Azi", [])
-                    pol_values = station_data.get("PolAngle", [])
+        with SectionTimer(f"Search events for target #{target_idx + 1}"):
+            for i_ev, (event_id, event_details) in enumerate(events_dict.items()):
+                _progress(i_ev, len(events_dict), f"KeyEvent target {target_idx + 1}")
+                if not isinstance(event_details, dict):
+                    continue
                     
-                    if snr_values:  # Only print if there's data
-                        print(f"      Station {station_id_str}: {len(snr_values)} triggers")
-                        for i in range(len(snr_values)):
-                            snr = snr_values[i] if i < len(snr_values) else None
-                            chi_rcr = chi_rcr_values[i] if i < len(chi_rcr_values) else None
-                            chi_2016 = chi_2016_values[i] if i < len(chi_2016_values) else None
-                            zen = zen_values[i] if i < len(zen_values) else None
-                            azi = azi_values[i] if i < len(azi_values) else None
-                            pol = pol_values[i] if i < len(pol_values) else None
-                            
-                            snr_str = f"{snr:.1f}" if snr is not None and not np.isnan(snr) else "N/A"
-                            chi_rcr_str = f"{chi_rcr:.2f}" if chi_rcr is not None and not np.isnan(chi_rcr) else "N/A"
-                            chi_2016_str = f"{chi_2016:.2f}" if chi_2016 is not None and not np.isnan(chi_2016) else "N/A"
-                            zen_str = f"{np.degrees(zen):.1f}°" if zen is not None and not np.isnan(zen) else "N/A"
-                            azi_str = f"{np.degrees(azi):.1f}°" if azi is not None and not np.isnan(azi) else "N/A"
-                            pol_str = f"{np.degrees(pol):.1f}°" if pol is not None and not np.isnan(pol) else "N/A"
-                            
-                            print(f"        Trigger {i+1}: SNR={snr_str}, ChiRCR={chi_rcr_str}, Chi2016={chi_2016_str}, Zen={zen_str}, Azi={azi_str}, Pol={pol_str}")
+                event_timestamp = event_details.get("datetime")
+                if event_timestamp is None:
+                    continue
+                    
+                # Check if event time is within tolerance of target time
+                time_diff = abs(event_timestamp - target_timestamp)
                 
-                # Plot the event
-                title_suffix = f" - TARGET MATCH #{target_idx + 1}"
-                plot_path = plot_single_master_event(event_id, event_details, search_output_dir, dataset_name, title_suffix)
-                
-                if plot_path:
-                    print(f"    Plot saved: {plot_path}")
-                else:
-                    print(f"    Warning: Failed to save plot for event {event_id}")
-                
-                print("-" * 40)
+                if time_diff <= time_tolerance_sec:
+                    found_match = True
+                    matches_found += 1
+                    found_events[event_id] = event_details
+                    
+                    # Format event timestamp for display
+                    event_dt = datetime.datetime.fromtimestamp(event_timestamp)
+                    
+                    print(f"  ✓ FOUND MATCH: Event {event_id}")
+                    print(f"    Event Time: {event_dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+                    print(f"    Time Difference: {time_diff:.3f} seconds")
+                    
+                    # Get cut results
+                    cut_results = event_details.get('cut_results', {})
+                    passes_overall = event_details.get('passes_analysis_cuts', False)
+                    
+                    print(f"    Overall Status: {'PASS' if passes_overall else 'FAIL'} (Analysis Cuts)")
+                    print(f"    Cut Details:")
+                    print(f"      - Time Cut: {'PASS' if cut_results.get('time_cut_passed', False) else 'FAIL'}")
+                    print(f"      - Chi Cut: {'PASS' if cut_results.get('chi_cut_passed', False) else 'FAIL'}")
+                    print(f"      - Angle Cut: {'PASS' if cut_results.get('angle_cut_passed', False) else 'FAIL'}")
+                    
+                    # Print station information
+                    stations_info = event_details.get("stations", {})
+                    print(f"    Stations ({len(stations_info)} total):")
+                    
+                    for station_id_str, station_data in stations_info.items():
+                        snr_values = station_data.get("SNR", [])
+                        chi_rcr_values = station_data.get("ChiRCR", [])
+                        chi_2016_values = station_data.get("Chi2016", [])
+                        zen_values = station_data.get("Zen", [])
+                        azi_values = station_data.get("Azi", [])
+                        pol_values = station_data.get("PolAngle", [])
+                        
+                        if snr_values:  # Only print if there's data
+                            print(f"      Station {station_id_str}: {len(snr_values)} triggers")
+                            for i in range(len(snr_values)):
+                                snr = snr_values[i] if i < len(snr_values) else None
+                                chi_rcr = chi_rcr_values[i] if i < len(chi_rcr_values) else None
+                                chi_2016 = chi_2016_values[i] if i < len(chi_2016_values) else None
+                                zen = zen_values[i] if i < len(zen_values) else None
+                                azi = azi_values[i] if i < len(azi_values) else None
+                                pol = pol_values[i] if i < len(pol_values) else None
+                                
+                                snr_str = f"{snr:.1f}" if snr is not None and not np.isnan(snr) else "N/A"
+                                chi_rcr_str = f"{chi_rcr:.2f}" if chi_rcr is not None and not np.isnan(chi_rcr) else "N/A"
+                                chi_2016_str = f"{chi_2016:.2f}" if chi_2016 is not None and not np.isnan(chi_2016) else "N/A"
+                                zen_str = f"{np.degrees(zen):.1f}°" if zen is not None and not np.isnan(zen) else "N/A"
+                                azi_str = f"{np.degrees(azi):.1f}°" if azi is not None and not np.isnan(azi) else "N/A"
+                                pol_str = f"{np.degrees(pol):.1f}°" if pol is not None and not np.isnan(pol) else "N/A"
+                                
+                                print(f"        Trigger {i+1}: SNR={snr_str}, ChiRCR={chi_rcr_str}, Chi2016={chi_2016_str}, Zen={zen_str}, Azi={azi_str}, Pol={pol_str}")
+                    
+                    # Plot the event
+                    title_suffix = f" - TARGET MATCH #{target_idx + 1}"
+                    plot_path = plot_single_master_event(event_id, event_details, search_output_dir, dataset_name, title_suffix)
+                    
+                    if plot_path:
+                        print(f"    Plot saved: {plot_path}")
+                    else:
+                        print(f"    Warning: Failed to save plot for event {event_id}")
+                    
+                    print("-" * 40)
         
         if not found_match:
             print(f"  ✗ NO MATCH FOUND for target {target_idx + 1}")
@@ -740,7 +759,7 @@ def checkForKeyEvents(events_dict, target_timestamps, output_dir, dataset_name, 
 
 
 # --- Function to Save Passing Events ---
-def save_passing_events(events_dict, output_dir, dataset_name, date_of_process):
+def save_passing_events(events_dict, output_dir, dataset_name, date_of_process, chosen_path):
     """
     Saves only the events that pass the analysis cuts to a new pickle file.
     """
@@ -757,13 +776,15 @@ def save_passing_events(events_dict, output_dir, dataset_name, date_of_process):
         return None
     
     # Create output filename
-    output_filename = f"{date_of_process}_CoincidenceDatetimes_passing_cuts.pkl"
-    output_filepath = os.path.join(output_dir, output_filename)
+    output_filepath = chosen_path.replace("CoincidenceDatetimes", "CoincidenceDatetimes_passing_cuts")
+    # output_filename = f"{date_of_process}_CoincidenceDatetimes_passing_cuts.pkl"
+    # output_filepath = os.path.join(output_dir, output_filename)
     
     # Save to pickle file
     try:
-        with open(output_filepath, 'wb') as f:
-            pickle.dump(passing_events, f)
+        with SectionTimer("Saving passing events pickle"):
+            with open(output_filepath, 'wb') as f:
+                pickle.dump(passing_events, f)
         ic(f"Saved {len(passing_events)} passing events to: {output_filepath}")
         return output_filepath
     except Exception as e:
@@ -800,102 +821,117 @@ if __name__ == '__main__':
     ])
 
 
-    # CHANGED: Point to the file that includes polarization data
-    input_file = f"{date_of_process}_CoincidenceDatetimes_with_all_params_recalcZenAzi_calcPol.pkl"
-    dataset_paths = [os.path.join(processed_data_dir_for_date, input_file)]
-    
+    # Build candidate list: try all passing_cuts variants first, then non-passing with calcPol first
     dataset_names = ["CoincidenceEvents"]
     dataset_plot_suffixes = [f"CoincidenceEvents_{date_of_process}"]
     output_plot_basedir = os.path.join("HRAStationDataAnalysis", "plots")
     os.makedirs(output_plot_basedir, exist_ok=True)
     datasets_to_plot_info = []
-    
-    for i, d_path in enumerate(dataset_paths):
-        if not os.path.exists(d_path):
-            ic(f"Warning: Input file not found: {d_path}. Skipping.")
-            # Fallback to the previous file if the polarization one doesn't exist
-            ic(f"-> Trying fallback 1...")
-            fallback_file_1 = f"{date_of_process}_CoincidenceDatetimes_with_all_params_recalcZenAzi.pkl"
-            d_path = os.path.join(processed_data_dir_for_date, fallback_file_1)
-            if not os.path.exists(d_path):
-                ic(f"-> Fallback 1 not found. Trying fallback 2...")
-                fallback_file_2 = f"{date_of_process}_CoincidenceDatetimes_with_all_params.pkl"
-                d_path = os.path.join(processed_data_dir_for_date, fallback_file_2)
-                if not os.path.exists(d_path):
-                    ic(f"Error: All fallback files also not found. Cannot proceed for this dataset.")
-                    continue
-                else:
-                    ic(f"Found and using second fallback file: {d_path}")
-            else:
-                ic(f"Found and using first fallback file: {d_path}")
 
-        data = _load_pickle(d_path)
-        if data is not None: 
-            datasets_to_plot_info.append({"name": dataset_names[i], "data": data, "plot_dir_suffix": dataset_plot_suffixes[i]})
-            ic(f"Loaded: {d_path}")
-        else: 
-            ic(f"Could not load data from: {d_path}.")
+    prefixes = [
+        f"{date_of_process}_CoincidenceDatetimes_passing_cuts",
+        f"{date_of_process}_CoincidenceDatetimes",
+    ]
+    # Ensure calcPol is tried first within each prefix
+    suffixes = [
+        "with_all_params_recalcZenAzi_calcPol.pkl",
+        "with_all_params_recalcZenAzi.pkl",
+        "with_all_params.pkl",
+    ]
+
+    candidates = [os.path.join(processed_data_dir_for_date, f"{p}_{s}") for p in prefixes for s in suffixes]
+    ic("File search order:")
+    for c in candidates:
+        ic(f"  -> {os.path.basename(c)}")
+
+    chosen_path = None
+    for c in candidates:
+        if os.path.exists(c):
+            chosen_path = c
+            break
+
+    if chosen_path is None:
+        ic("Error: No candidate data file found. Cannot proceed for this dataset.")
+    else:
+        ic(f"Using data file: {chosen_path}")
+        data = _load_pickle(chosen_path)
+        if data is not None:
+            datasets_to_plot_info.append({
+                "name": dataset_names[0],
+                "data": data,
+                "plot_dir_suffix": dataset_plot_suffixes[0],
+            })
+            ic(f"Loaded: {chosen_path}")
+        else:
+            ic(f"Could not load data from: {chosen_path}.")
 
     if not datasets_to_plot_info: ic("No datasets loaded. Exiting."); exit()
 
 
 
     for dataset_info in datasets_to_plot_info:
-        dataset_name_label = dataset_info["name"]
-        events_data_dict = dataset_info["data"]
-        specific_dataset_plot_dir = os.path.join(output_plot_basedir, dataset_info["plot_dir_suffix"])
-        os.makedirs(specific_dataset_plot_dir, exist_ok=True)
+        with SectionTimer("Per-dataset processing"):
+            dataset_name_label = dataset_info["name"]
+            events_data_dict = dataset_info["data"]
+            specific_dataset_plot_dir = os.path.join(output_plot_basedir, dataset_info["plot_dir_suffix"])
+            os.makedirs(specific_dataset_plot_dir, exist_ok=True)
 
-        ic(f"\n--- Processing dataset for cuts and plots: {dataset_name_label} ---")
-        if not isinstance(events_data_dict, dict) or not events_data_dict:
-            ic(f"Dataset '{dataset_name_label}' is empty or not a dict. Skipping."); continue
+            ic(f"\n--- Processing dataset for cuts and plots: {dataset_name_label} ---")
+            if not isinstance(events_data_dict, dict) or not events_data_dict:
+                ic(f"Dataset '{dataset_name_label}' is empty or not a dict. Skipping."); continue
 
-        # First, apply the time cut to all events
-        ic(f"Applying time cut to {len(events_data_dict)} events...")
-        time_cut_results = check_time_cut(events_data_dict, time_threshold_hours=0.1)
-        num_passing_time_cut = sum(time_cut_results.values())
-        num_failing_time_cut = len(time_cut_results) - num_passing_time_cut
-        ic(f"Time cut results: {num_passing_time_cut} events passed, {num_failing_time_cut} events failed (within 1 hour of another event)")
+            # First, apply the time cut to all events
+            ic(f"Applying time cut to {len(events_data_dict)} events...")
+            time_cut_results = check_time_cut(events_data_dict, time_threshold_hours=0.1)
+            num_passing_time_cut = sum(time_cut_results.values())
+            num_failing_time_cut = len(time_cut_results) - num_passing_time_cut
+            ic(f"Time cut results: {num_passing_time_cut} events passed, {num_failing_time_cut} events failed (within 1 hour of another event)")
 
-        num_passing_overall = 0; num_failing_overall = 0
-        for event_id, event_details_loopvar in events_data_dict.items():
-            if isinstance(event_details_loopvar, dict):
-                 # Get the time cut result for this specific event
-                 time_cut_passed = time_cut_results.get(event_id, False)
-                 cut_results_dict = check_coincidence_cuts(event_details_loopvar, time_cut_result=time_cut_passed)
-                 event_details_loopvar['cut_results'] = cut_results_dict
-                 event_details_loopvar['passes_analysis_cuts'] = all(cut_results_dict.values())
-                 
-                 if event_details_loopvar['passes_analysis_cuts']: num_passing_overall +=1
-                 else: num_failing_overall +=1
-            elif event_details_loopvar is not None : 
-                 event_details_loopvar_placeholder = {'passes_analysis_cuts': False, 
-                                       'cut_results': {'error': 'Malformed event data'}}
-                 if isinstance(events_data_dict, dict):
-                    events_data_dict[event_id] = event_details_loopvar_placeholder
-                 num_failing_overall +=1
+            num_passing_overall = 0; num_failing_overall = 0
+            with SectionTimer("Apply chi/angle cuts per event"):
+                total_events = len(events_data_dict)
+                for loop_idx, (event_id, event_details_loopvar) in enumerate(events_data_dict.items()):
+                    _progress(loop_idx, total_events, "Event cuts")
+                    if isinstance(event_details_loopvar, dict):
+                        # Get the time cut result for this specific event
+                        time_cut_passed = time_cut_results.get(event_id, False)
+                        cut_results_dict = check_coincidence_cuts(event_details_loopvar, time_cut_result=time_cut_passed)
+                        event_details_loopvar['cut_results'] = cut_results_dict
+                        event_details_loopvar['passes_analysis_cuts'] = all(cut_results_dict.values())
+                        
+                        if event_details_loopvar['passes_analysis_cuts']: num_passing_overall +=1
+                        else: num_failing_overall +=1
+                    elif event_details_loopvar is not None:
+                        event_details_loopvar_placeholder = {'passes_analysis_cuts': False, 
+                                                              'cut_results': {'error': 'Malformed event data'}}
+                        if isinstance(events_data_dict, dict):
+                            events_data_dict[event_id] = event_details_loopvar_placeholder
+                        num_failing_overall +=1
 
-        ic(f"Analysis cuts applied to '{dataset_name_label}': {num_passing_overall} events passed, {num_failing_overall} events failed overall.")
+            ic(f"Analysis cuts applied to '{dataset_name_label}': {num_passing_overall} events passed, {num_failing_overall} events failed overall.")
 
-        plot_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
-        plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
-        plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
-        plot_master_event_updated(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
-        
+            with SectionTimer("Plot: SNR vs Chi"):
+                plot_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+            with SectionTimer("Plot: Histograms"):
+                plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+            with SectionTimer("Plot: Polar zen/azi"):
+                plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+            with SectionTimer("Plot: Master events batch"):
+                plot_master_event_updated(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+            
+            with SectionTimer("Key event search"):
+                found_events = checkForKeyEvents(
+                    events_data_dict, 
+                    target_times, 
+                    specific_dataset_plot_dir, 
+                    dataset_name_label,
+                    time_tolerance_sec=1.0
+                )
 
-        found_events = checkForKeyEvents(
-            events_data_dict, 
-            target_times, 
-            specific_dataset_plot_dir, 
-            dataset_name_label,
-            time_tolerance_sec=1.0
-        )
-
-        
-        # Save events that pass cuts to a new file
-        saved_filepath = save_passing_events(events_data_dict, processed_data_dir_for_date, dataset_name_label, date_of_process)
-        if saved_filepath:
-            ic(f"Events passing cuts saved to: {saved_filepath}")
+            # Save events that pass cuts to a new file
+            saved_filepath = save_passing_events(events_data_dict, processed_data_dir_for_date, dataset_name_label, date_of_process, chosen_path)
+            if saved_filepath:
+                ic(f"Events passing cuts saved to: {saved_filepath}")
 
         # Printing all keys for structure of dictionary for convenience
         # And all subkeys
