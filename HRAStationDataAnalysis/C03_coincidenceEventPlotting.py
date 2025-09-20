@@ -895,6 +895,10 @@ if __name__ == '__main__':
 
     if not datasets_to_plot_info: ic("No datasets loaded. Exiting."); exit()
 
+    if isinstance(chosen_path, str) and ("passing_cuts" in os.path.basename(chosen_path) or "passing_cuts" in chosen_path):
+        output_plot_basedir = os.path.join("HRAStationDataAnalysis", "plots", "passing_cuts")
+        os.makedirs(output_plot_basedir, exist_ok=True)
+
 
 
     for dataset_info in datasets_to_plot_info:
