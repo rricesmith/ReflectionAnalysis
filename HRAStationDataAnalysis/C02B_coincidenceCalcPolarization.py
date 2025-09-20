@@ -21,6 +21,7 @@ from NuRadioReco.modules.voltageToAnalyticEfieldConverter import voltageToAnalyt
 import NuRadioReco.modules.eventTypeIdentifier
 
 from icecream import ic
+from HRAStationDataAnalysis.C_utils import load_station_events, build_station_cuts_path
 
 # Attempt to import the user's function for loading .nur files
 try:
@@ -116,8 +117,25 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
 
     ic(f"Will process stations: {stations_to_iterate} for date {date_str}")
 
+    # Prepare templates for uniform loading
+    station_data_root = os.path.join('HRAStationDataAnalysis', 'StationData')
+    time_files_template = os.path.join(station_data_root, 'nurFiles', '{date}', '{date}_Station{station_id}_Times*.npy')
+    event_id_files_template = time_files_template.replace('_Times', '_EventIDs')
+    date_cuts = main_config['PARAMETERS'].get('date_cuts', date_str)
+
     for station_id in stations_to_iterate:
         ic(f"\n--- Processing Station {station_id} for Polarization ---")
+
+        # Uniformly load station events to ensure Times/EventIDs match final indices
+        cuts_path = build_station_cuts_path(date_cuts, date_str, station_id, station_data_root)
+        loader = load_station_events(
+            date_str=date_str,
+            station_id=station_id,
+            time_files_template=time_files_template,
+            event_id_files_template=event_id_files_template,
+            external_cuts_file_path=cuts_path,
+            apply_external_cuts=True,
+        )
 
         # Find all triggers for the current station that need processing
         targets_for_station = []
@@ -142,6 +160,16 @@ def calculate_polarization_for_events(events_dict, main_config, date_str, statio
             station_event_data["ExpectedPolAngle"] = [np.nan] * num_indices
 
             for k in range(num_indices):
+                # Ensure Times and EventIDs are filled uniformly via loader if needed
+                if (station_event_data["Times"][k] is None or np.isnan(station_event_data["Times"][k])) and k < len(station_event_data["indices"]):
+                    fi = int(station_event_data["indices"][k])
+                    if 0 <= fi < len(loader['final_times']):
+                        station_event_data["Times"][k] = loader['final_times'][fi]
+                if (station_event_data["event_ids"][k] is None or (isinstance(station_event_data["event_ids"][k], float) and np.isnan(station_event_data["event_ids"][k]))) and k < len(station_event_data["indices"]):
+                    fi = int(station_event_data["indices"][k])
+                    if 0 <= fi < len(loader['final_event_ids']):
+                        station_event_data["event_ids"][k] = loader['final_event_ids'][fi]
+
                 targets_for_station.append({
                     "event_id_tag": station_event_data["event_ids"][k],
                     "station_time_tag": station_event_data["Times"][k],

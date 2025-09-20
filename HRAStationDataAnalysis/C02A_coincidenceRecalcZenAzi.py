@@ -16,6 +16,7 @@ from NuRadioReco.detector import detector
 from NuRadioReco.utilities import units # Not directly used here, but often in NuRadioReco context
 
 from icecream import ic
+from HRAStationDataAnalysis.C_utils import load_station_events, build_station_cuts_path
 
 # Attempt to import the user's function
 try:
@@ -137,8 +138,25 @@ def recalculate_zen_azi_for_events(events_dict, main_config, date_str, station_i
 
     ic(f"Will process stations: {stations_to_iterate} for date {date_str}")
 
+    # Prepare templates for uniform loading
+    station_data_root = os.path.join('HRAStationDataAnalysis', 'StationData')
+    time_files_template = os.path.join(station_data_root, 'nurFiles', '{date}', '{date}_Station{station_id}_Times*.npy')
+    event_id_files_template = time_files_template.replace('_Times', '_EventIDs')
+    date_cuts = main_config['PARAMETERS'].get('date_cuts', date_str)
+
     for station_id in stations_to_iterate:
         ic(f"\n--- Processing Station {station_id} ---")
+
+        # Uniformly load station events to ensure Times/EventIDs match final indices
+        cuts_path = build_station_cuts_path(date_cuts, date_str, station_id, station_data_root)
+        loader = load_station_events(
+            date_str=date_str,
+            station_id=station_id,
+            time_files_template=time_files_template,
+            event_id_files_template=event_id_files_template,
+            external_cuts_file_path=cuts_path,
+            apply_external_cuts=True,
+        )
 
         targets_for_station = []
 
@@ -160,6 +178,21 @@ def recalculate_zen_azi_for_events(events_dict, main_config, date_str, station_i
             zeniths = station_event_data.get("Zen")
             event_ids_for_param = station_event_data.get("event_ids")
             times_for_param = station_event_data.get("Times")
+
+            # Ensure uniform Times/EventIDs via loader if missing or length-mismatched
+            if times_for_param is None or len(times_for_param) != num_indices or event_ids_for_param is None or len(event_ids_for_param) != num_indices:
+                station_event_data["Times"] = [np.nan] * num_indices
+                station_event_data["event_ids"] = [np.nan] * num_indices
+                for k, final_idx in enumerate(station_event_data.get("indices", [])):
+                    if final_idx is None or np.isnan(final_idx):
+                        continue
+                    final_idx_int = int(final_idx)
+                    if 0 <= final_idx_int < len(loader['final_times']):
+                        station_event_data["Times"][k] = loader['final_times'][final_idx_int]
+                    if 0 <= final_idx_int < len(loader['final_event_ids']):
+                        station_event_data["event_ids"][k] = loader['final_event_ids'][final_idx_int]
+                event_ids_for_param = station_event_data.get("event_ids")
+                times_for_param = station_event_data.get("Times")
 
             # ic(event_data_ref)
             # ic(f"Event {event_id}, St {station_id}: Found {num_indices} indices, "

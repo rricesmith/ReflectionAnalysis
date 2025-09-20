@@ -9,7 +9,7 @@ from collections import defaultdict
 import pickle # Using pickle for potentially complex dict structure
 import tempfile # For atomic saving
 import time # For timestamping save messages
-from HRAStationDataAnalysis.C_utils import getTimeEventMasks
+from HRAStationDataAnalysis.C_utils import getTimeEventMasks, load_station_events, build_station_cuts_path
 
 def findCoincidenceDatetimes(date, date_cuts, cuts=True):
     """
@@ -42,65 +42,34 @@ def findCoincidenceDatetimes(date, date_cuts, cuts=True):
 
     all_events = [] # Each event is represented as a tuple: (timestamp, station_id, event_index, event_id)
 
-    # Load data for each station.
+    # Load data for each station using unified loader.
     for station_id in station_ids:
-        # Load times
-        file_list = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_Times*'))
-        times = [np.load(f) for f in file_list]
-        times = np.concatenate(times, axis=0)
+        time_tmpl = os.path.join(station_data_folder, f"{date}_Station{{station_id}}_Times*.npy")
+        evt_tmpl = time_tmpl.replace('_Times', '_EventIDs')
+        cuts_file = build_station_cuts_path(date_cuts=date_cuts, date_str=date, station_id=station_id)
+
+        loader_result = load_station_events(
+            date_str=date,
+            station_id=station_id,
+            time_files_template=time_tmpl,
+            event_id_files_template=evt_tmpl,
+            external_cuts_file_path=cuts_file,
+            apply_external_cuts=bool(cuts),
+        )
+
+        final_times = loader_result['final_times']
+        final_event_ids = loader_result['final_event_ids']
+
         from HRAStationDataAnalysis.C_utils import timeInTimes
         if station_id == 13 or station_id == 17:
-            if timeInTimes(times):
+            if timeInTimes(final_times):
                 ic(f"Found RCR-BL event in station {station_id} data!")
             else:
                 ic(f"Did NOT find RCR-BL event in station {station_id} data!")
                 quit(1)
-                
-        # Load Event IDs
-        event_id_files = sorted(glob.glob(station_data_folder + f'/{date}_Station{station_id}_EventIDs*'))
-        event_ids = [np.load(f) for f in event_id_files]
-        event_ids = np.concatenate(event_ids, axis=0)
 
-        # Ensure times and event_ids have the same length
-        if len(times) != len(event_ids):
-            ic(f"Error: Mismatch in length between Times ({len(times)}) and EventIDs ({len(event_ids)}) for station {station_id}.")
-            continue
-
-        # Apply initial time and uniqueness cuts using the utility function.
-        initial_mask, unique_indices = getTimeEventMasks(times, event_ids)
-        times = times[initial_mask][unique_indices]
-        event_ids = event_ids[initial_mask][unique_indices]
-
-        final_cuts_mask = np.ones(len(times), dtype=bool) # Initialize final cuts mask
-
-        if cuts:
-            cuts_file = os.path.join(cuts_data_folder, f'{date}_Station{station_id}_Cuts.npy')
-            if os.path.exists(cuts_file):
-                ic(f"Loading cuts file: {cuts_file}")
-                cuts_data = np.load(cuts_file, allow_pickle=True)[()]
-                for cut_key in cuts_data.keys():
-                    ic(f"Applying cut: {cut_key}")
-                    # Ensure cut_data matches the length of current times/event_ids
-                    # before applying the mask
-                    current_cut = cuts_data[cut_key][:len(times)]
-                    final_cuts_mask &= current_cut
-                times = times[final_cuts_mask]
-                from HRAStationDataAnalysis.C_utils import timeInTimes
-                if station_id == 13 or station_id == 17:
-                    if timeInTimes(times):
-                        ic(f"Found RCR-BL event in station {station_id} data!")
-                    else:
-                        ic(f"Did NOT find RCR-BL event in station {station_id} data!")
-                        quit(1)
-
-                event_ids = event_ids[final_cuts_mask] # Apply the same mask to event_ids
-            else:
-                ic(f"Warning: Cuts file {cuts_file} not found for station {station_id} on date {date}. Quitting.")
-                quit()
-
-        for idx, event_time in enumerate(times):
-            # The idx here is the post-cut index, which is what we want for mapping later
-            all_events.append((event_time, station_id, idx, event_ids[idx]))
+        for idx, event_time in enumerate(final_times):
+            all_events.append((event_time, station_id, idx, final_event_ids[idx]))
 
     all_events.sort(key=lambda x: x[0]) # Sort all events by timestamp.
 

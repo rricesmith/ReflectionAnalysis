@@ -9,7 +9,7 @@ from collections import defaultdict
 import time
 import tempfile
 from icecream import ic
-from HRAStationDataAnalysis.C_utils import getTimeEventMasks
+from HRAStationDataAnalysis.C_utils import getTimeEventMasks, load_station_events, build_station_cuts_path
 
 # --- Helper for Caching ---
 def _load_pickle(filepath):
@@ -74,197 +74,25 @@ def create_final_idx_to_grci_map(
 
     ic(f"Cache not found. Building map for Station {station_id}...")
 
-    # Load and concatenate all time and event_id files for the station
-    sorted_time_files = sorted(glob.glob(time_files_template.format(date=date_str, station_id=station_id)))
-    sorted_eventid_files = sorted(glob.glob(event_id_files_template.format(date=date_str, station_id=station_id)))
+    # Use unified loader to ensure identical selection to C01
+    time_tmpl = time_files_template.format(date=date_str, station_id=station_id)
+    evt_tmpl = event_id_files_template.format(date=date_str, station_id=station_id)
+    loader = load_station_events(
+        date_str=date_str,
+        station_id=station_id,
+        time_files_template=time_tmpl,
+        event_id_files_template=evt_tmpl,
+        external_cuts_file_path=external_cuts_file_path,
+        apply_external_cuts=True,
+    )
 
-    if not sorted_time_files:
-        ic(f"Warning: No time files found for Station {station_id}.")
-        _save_pickle_atomic({}, map_cache_file_path)
-        return {}
-    if len(sorted_time_files) != len(sorted_eventid_files):
-        ic(f"Warning: Mismatch in file count between Time ({len(sorted_time_files)}) and EventID ({len(sorted_eventid_files)}) files for Station {station_id}.")
-        _save_pickle_atomic({}, map_cache_file_path)
-        return {}
-
-    try:
-        all_times = np.concatenate([np.load(f) for f in sorted_time_files])
-        all_event_ids = np.concatenate([np.load(f) for f in sorted_eventid_files])
-    except Exception as e:
-        ic(f"Error loading or concatenating files for station {station_id}: {e}")
-        return {}
-    
-    if len(all_times) != len(all_event_ids):
-        ic(f"Warning: Mismatch in total event count between concatenated Time and EventID arrays for Station {station_id}.")
-        return {}
-
-    # Use utility to get time and uniqueness masks
-    initial_mask, unique_indices = getTimeEventMasks(all_times, all_event_ids)
-    
-    # Get the Global Raw Concatenated Indices of events passing the initial time cut
-    grcis_time_passed = np.where(initial_mask)[0]
-    # Further filter by uniqueness to get the GRCIs of events for which external cuts are defined
-    grcis_pre_external_cuts = grcis_time_passed[unique_indices]
-    
-    num_events_pre_external_cuts = len(grcis_pre_external_cuts)
-
-    if num_events_pre_external_cuts == 0:
-        ic(f"No events passed time/uniqueness cuts for Station {station_id}.")
-        _save_pickle_atomic({}, map_cache_file_path)
-        return {}
-
-    # Load and apply the external cuts mask
-    combined_external_cut_mask = np.ones(num_events_pre_external_cuts, dtype=bool)
-    if os.path.exists(external_cuts_file_path):
-        try:
-            cuts_data = np.load(external_cuts_file_path, allow_pickle=True)
-            if isinstance(cuts_data, np.ndarray) and cuts_data.ndim == 0 and isinstance(cuts_data.item(), dict):
-                cuts_data = cuts_data.item()
-
-            if isinstance(cuts_data, dict):
-                first_cut_key = next(iter(cuts_data), None)
-
-                if first_cut_key:
-                    for cut_name, cut_array in cuts_data.items():
-                        if len(cut_array) == num_events_pre_external_cuts:
-                            combined_external_cut_mask &= cut_array
-                        else:
-                            ic(f"Warning: Cut {cut_name} length mismatch: {len(cut_array)} vs {num_events_pre_external_cuts}")
-
-                        num_cut_entries = len(cuts_data[first_cut_key])
-                        mask_from_dict = np.ones(num_cut_entries, dtype=bool)
-                        for cut_array in cuts_data.values():
-                            if len(cut_array) == num_cut_entries:
-                                mask_from_dict &= cut_array
-                        
-                        if num_cut_entries != num_events_pre_external_cuts:
-                            ic(f"Warning: Cuts length ({num_cut_entries}) in {external_cuts_file_path} doesn't match pre-filtered events ({num_events_pre_external_cuts}). Adjusting.")
-                            min_len = min(num_cut_entries, num_events_pre_external_cuts)
-                            combined_external_cut_mask = np.zeros(num_events_pre_external_cuts, dtype=bool)
-                            combined_external_cut_mask[:min_len] = mask_from_dict[:min_len]
-                        else:
-                            combined_external_cut_mask = mask_from_dict
-            elif isinstance(cuts_data, np.ndarray) and cuts_data.dtype == bool:
-                if len(cuts_data) != num_events_pre_external_cuts:
-                    ic(f"Warning: Cuts array length ({len(cuts_data)}) in {external_cuts_file_path} doesn't match pre-filtered events ({num_events_pre_external_cuts}). Adjusting.")
-                    min_len = min(len(cuts_data), num_events_pre_external_cuts)
-                    combined_external_cut_mask = np.zeros(num_events_pre_external_cuts, dtype=bool)
-                    combined_external_cut_mask[:min_len] = cuts_data[:min_len]
-                else:
-                    combined_external_cut_mask = cuts_data
-        except Exception as e:
-            ic(f"Error processing external cuts {external_cuts_file_path}: {e}")
-    
-    # Apply the external cuts mask to get the final list of GRCIs
-    final_grcis = grcis_pre_external_cuts[combined_external_cut_mask]
-    
-    # Create the final map: {final_idx: GRCI}
+    final_grcis = loader['final_grcis']
     final_map_final_idx_to_grci = {i: grci for i, grci in enumerate(final_grcis)}
     
     ic(f"Station {station_id}: {len(final_map_final_idx_to_grci)} events passed all cuts.")
     _save_pickle_atomic(final_map_final_idx_to_grci, map_cache_file_path)
     ic(f"Saved final_idx_to_grci_map to cache: {map_cache_file_path}")
     return final_map_final_idx_to_grci
-
-# --- Function 2: Fetch Parameters by GRCI ---
-def fetch_parameters_by_grci(
-    list_of_grcis,
-    station_id,
-    date_str,
-    parameter_name,
-    parameter_files_template, 
-    filename_event_count_regex 
-    ):
-    """
-    Retrieves parameter values for a list of GRCIs.
-    """
-    if not list_of_grcis: return {}
-    ic(f"Fetching param '{parameter_name}' for {len(list_of_grcis)} GRCIs, Station {station_id}...")
-
-    actual_param_files_glob = parameter_files_template.format(
-        date=date_str, station_id=station_id, parameter_name=parameter_name
-    )
-    sorted_param_files = sorted(glob.glob(actual_param_files_glob))
-
-    if not sorted_param_files:
-        ic(f"Warning: No files for {parameter_name}, St {station_id}, pattern: {actual_param_files_glob}")
-        return {grci: np.nan for grci in list_of_grcis}
-
-    results = {}
-    unique_grcis_to_fetch_sorted = sorted(list(set(list_of_grcis)))
-    grci_pointer = 0
-    cumulative_grci_offset = 0
-
-    for param_file_path in sorted_param_files:
-        if grci_pointer >= len(unique_grcis_to_fetch_sorted): break
-        match = filename_event_count_regex.search(os.path.basename(param_file_path))
-        if not match:
-            ic(f"Warning: No event count in filename: {param_file_path}. Skipping.")
-            continue
-        try:
-            events_in_this_file = int(match.group(1))
-            if events_in_this_file <= 0:
-                 ic(f"Warning: Invalid event count {events_in_this_file} in {param_file_path}. Skipping.")
-                 continue
-        except ValueError:
-            ic(f"Warning: Non-integer event count in {param_file_path}. Skipping.")
-            continue
-
-        file_grci_start = cumulative_grci_offset
-        file_grci_end = cumulative_grci_offset + events_in_this_file
-        grcis_in_current_file_data = {}
-        
-        temp_grci_pointer_for_file_scan = grci_pointer
-        while temp_grci_pointer_for_file_scan < len(unique_grcis_to_fetch_sorted):
-            target_grci = unique_grcis_to_fetch_sorted[temp_grci_pointer_for_file_scan]
-            if target_grci >= file_grci_end: break
-            if target_grci >= file_grci_start:
-                local_file_idx = int(target_grci - file_grci_start)
-                grcis_in_current_file_data[local_file_idx] = target_grci
-            elif target_grci < file_grci_start and target_grci not in results:
-                 ic(f"Warning: Target GRCI {target_grci} < file start {file_grci_start}. File: {param_file_path}. Marking NaN.")
-                 results[target_grci] = np.nan
-                 if temp_grci_pointer_for_file_scan == grci_pointer:
-                     grci_pointer +=1 
-            temp_grci_pointer_for_file_scan += 1
-        
-        if grcis_in_current_file_data:
-            parameter_data_array = None
-            try:
-                parameter_data_array = np.load(param_file_path, allow_pickle=True)
-                if parameter_name != 'Traces':
-                    if parameter_data_array.ndim > 1: parameter_data_array = parameter_data_array.squeeze()
-                    if parameter_data_array.ndim == 0: parameter_data_array = np.array([parameter_data_array.item()])
-
-                for local_file_idx, target_grci in grcis_in_current_file_data.items():
-                    if local_file_idx < len(parameter_data_array):
-                        value_to_assign = parameter_data_array[local_file_idx]
-                        results[target_grci] = value_to_assign
-                    else:
-                        results[target_grci] = np.nan
-                    if grci_pointer < len(unique_grcis_to_fetch_sorted) and \
-                       target_grci == unique_grcis_to_fetch_sorted[grci_pointer]:
-                        grci_pointer += 1
-            except Exception as e:
-                ic(f"Error loading/processing param file {param_file_path}: {e}")
-                for target_grci_in_error_file in grcis_in_current_file_data.values():
-                    results[target_grci_in_error_file] = np.nan
-                    if grci_pointer < len(unique_grcis_to_fetch_sorted) and \
-                       target_grci_in_error_file == unique_grcis_to_fetch_sorted[grci_pointer]:
-                        grci_pointer += 1
-            finally:
-                if parameter_data_array is not None: del parameter_data_array
-                gc.collect()
-        cumulative_grci_offset += events_in_this_file
-
-    while grci_pointer < len(unique_grcis_to_fetch_sorted):
-        target_grci = unique_grcis_to_fetch_sorted[grci_pointer]
-        if target_grci not in results:
-            ic(f"Warning: GRCI {target_grci} not found in any file. Setting to NaN.")
-            results[target_grci] = np.nan
-        grci_pointer += 1
-        
-    return {grci: results.get(grci, np.nan) for grci in list_of_grcis}
 
 # --- Function 3: Orchestrator ---
 def add_parameter_orchestrator(
@@ -282,7 +110,7 @@ def add_parameter_orchestrator(
     time_files_tmpl = config['time_files_template']
     # Derive EventID template from Time template
     eventid_files_tmpl = config['time_files_template'].replace("_Times", "_EventIDs")
-    ext_cuts_tmpl = config['external_cuts_file_template']
+    # Cuts path will be computed via build_station_cuts_path using date_cuts
     map_cache_tmpl = config['map_cache_template']
     param_files_tmpl = config['parameter_files_template']
     event_count_regex = re.compile(config['filename_event_count_regex_str'])
@@ -305,7 +133,12 @@ def add_parameter_orchestrator(
     for station_id in sorted_unique_stations:
         ic(f"\n--- Processing Station {station_id} for parameter '{parameter_name}' ---")
         current_map_cache_path = map_cache_tmpl.format(date_processing=date_processing_str, flag=run_flag, station_id=station_id)
-        current_ext_cuts_path = ext_cuts_tmpl.format(date=date_str, station_id=station_id)
+        current_ext_cuts_path = build_station_cuts_path(
+            date_cuts=config['date_cuts'],
+            date_str=date_str,
+            station_id=station_id,
+            station_data_root=config.get('station_data_root', 'HRAStationDataAnalysis/StationData')
+        )
 
         final_idx_to_grci_map = create_final_idx_to_grci_map(
             date_str, station_id, time_files_tmpl, eventid_files_tmpl,
@@ -350,10 +183,28 @@ def add_parameter_orchestrator(
         unique_grcis_to_fetch = sorted(list(set(grcis_to_fetch_for_station)))
         ic(f"St {station_id}: Fetching {len(unique_grcis_to_fetch)} unique GRCIs for '{parameter_name}'.")
 
-        fetched_params_by_grci = fetch_parameters_by_grci(
-            unique_grcis_to_fetch, station_id, date_str, parameter_name,
-            param_files_tmpl, event_count_regex
+        # Use unified loader to produce by_grci mapping for the parameter
+        time_tmpl = time_files_tmpl
+        evt_tmpl = eventid_files_tmpl
+        cuts_path = build_station_cuts_path(
+            date_cuts=config['date_cuts'],
+            date_str=date_str,
+            station_id=station_id,
+            station_data_root=config.get('station_data_root', 'HRAStationDataAnalysis/StationData')
         )
+
+        loader_for_param = load_station_events(
+            date_str=date_str,
+            station_id=station_id,
+            time_files_template=time_tmpl,
+            event_id_files_template=evt_tmpl,
+            external_cuts_file_path=cuts_path,
+            apply_external_cuts=True,
+            parameter_name=parameter_name,
+            parameter_files_template=param_files_tmpl,
+            filename_event_count_regex=event_count_regex,
+        )
+        fetched_params_by_grci = loader_for_param.get('parameters', {}).get(parameter_name, {}).get('by_grci', {})
         updated_count = 0
         for grci, update_targets_list in map_grci_to_event_updates.items():
             value_to_assign = fetched_params_by_grci.get(grci, np.nan)
@@ -388,12 +239,13 @@ if __name__ == '__main__':
 
     CONFIG = {
         'time_files_template': os.path.join(data_path, "nurFiles", "{date}", "{date}_Station{station_id}_Times*.npy"),
-        'external_cuts_file_template': os.path.join(data_path, "cuts", "{date}", "{date}_Station{station_id}_Cuts.npy"),
         'map_cache_template': os.path.join(cache_path, "{date_processing}", "{flag}", "maps", "st_{station_id}_final_to_grci.pkl"),
         'parameter_files_template': os.path.join(data_path, "nurFiles", "{date}", "{date}_Station{station_id}_{parameter_name}*_Xevts_*.npy").replace("_Xevts_", "_*evts_"),
         'filename_event_count_regex_str': r"_(\d+)evts_",
         'checkpoint_path_template': os.path.join(cache_path, "{date_processing}", "{flag}", "checkpoints", "{dataset_name}_{parameter_name}_events_dict.pkl"),
-        'dataset_name_for_checkpoint': 'HRA_Events'
+        'dataset_name_for_checkpoint': 'HRA_Events',
+        'date_cuts': date_cuts,
+        'station_data_root': data_path,
     }
     
     ic("Pre-calculating GRCI maps for all relevant stations...")
@@ -406,7 +258,12 @@ if __name__ == '__main__':
             date_str=date, station_id=station_id,
             time_files_template=CONFIG['time_files_template'],
             event_id_files_template=eventid_files_tmpl_main,
-            external_cuts_file_path=CONFIG['external_cuts_file_template'].format(date=date, station_id=station_id),
+            external_cuts_file_path=build_station_cuts_path(
+                date_cuts=CONFIG['date_cuts'],
+                date_str=date,
+                station_id=station_id,
+                station_data_root=CONFIG['station_data_root']
+            ),
             map_cache_file_path=map_cache_p
         )
     ic("Finished pre-calculating GRCI maps.")
