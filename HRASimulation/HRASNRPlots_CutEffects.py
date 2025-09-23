@@ -454,6 +454,127 @@ def plot_snr_vs_chi_combined_rows(fig_title, save_path, rows_data, xlim=(3, 100)
     plt.close(fig)
 
 
+def collect_1d_chi_weighted(HRAeventList, weight_name, direct_stations, reflected_stations, sigma,
+                             bad_stations, which: str, predicate=lambda ev, sts: True):
+    """Collect weighted chi values for 1D histograms (direct/reflected split).
+
+    which: 'rcr' or '2016'
+    """
+    direct_vals, refl_vals = [], []
+    direct_w, refl_w = [], []
+
+    for ev in HRAeventList:
+        if not ev.hasWeight(weight_name, sigma=sigma):
+            continue
+        ev_w = ev.getWeight(weight_name, sigma=sigma)
+        if ev_w <= 0:
+            continue
+
+        d_list, r_list, both = _get_trigger_station_lists(ev, sigma=sigma, bad_stations=bad_stations)
+        if not both:
+            continue
+        if not predicate(ev, both):
+            continue
+
+        # Extract chi per station
+        ev_direct = []
+        for st in direct_stations:
+            if st in d_list:
+                rcr, c16 = _get_station_chi_values(ev, st)
+                val = rcr if which == 'rcr' else c16
+                if val is not None:
+                    ev_direct.append(val)
+
+        ev_refl = []
+        for st in reflected_stations:
+            if st in r_list:
+                rcr, c16 = _get_station_chi_values(ev, st)
+                val = rcr if which == 'rcr' else c16
+                if val is not None:
+                    ev_refl.append(val)
+
+        total = len(ev_direct) + len(ev_refl)
+        if total == 0:
+            continue
+        split_w = ev_w / total
+        for v in ev_direct:
+            direct_vals.append(v)
+            direct_w.append(split_w)
+            refl_vals.append(0)
+            refl_w.append(0)
+        for v in ev_refl:
+            direct_vals.append(0)
+            direct_w.append(0)
+            refl_vals.append(v)
+            refl_w.append(split_w)
+
+    return np.array(direct_vals), np.array(refl_vals), np.array(direct_w), np.array(refl_w)
+
+
+def plot_chi_hist_combined_rows(fig_title, save_path, bins, rows_data):
+    """rows_data: list of 4 entries, each is tuple(direct_vals, refl_vals, direct_w, refl_w, row_title)
+    Mirrors plot_1d_combined_rows but for Chi histograms.
+    """
+    fig, axs = plt.subplots(4, 2, figsize=(12, 18), sharey=True)
+    # Baseline totals from 'No Cuts'
+    if rows_data:
+        base_dm = rows_data[0][2] > 0
+        base_rm = rows_data[0][3] > 0
+        base_direct_total = float(np.sum(rows_data[0][2][base_dm])) if np.any(base_dm) else 0.0
+        base_reflected_total = float(np.sum(rows_data[0][3][base_rm])) if np.any(base_rm) else 0.0
+    else:
+        base_direct_total = 0.0
+        base_reflected_total = 0.0
+
+    for i, (d_vals, r_vals, d_w, r_w, title) in enumerate(rows_data):
+        ax_d = axs[i, 0]
+        ax_r = axs[i, 1]
+
+        dm = d_w > 0
+        direct_total = float(np.sum(d_w[dm])) if np.any(dm) else 0.0
+        if np.any(dm):
+            ax_d.hist(d_vals[dm], bins=bins, weights=d_w[dm], histtype='step', linewidth=2)
+        ax_d.set_xlim(0, 1)
+        ax_d.set_ylabel('Weighted Counts (Evts/Yr)')
+        ax_d.set_title(f'{title} — Direct')
+        ax_d.set_yscale('log')
+        # Legend with total and efficiency
+        ax_d.plot([], [], ' ', label=f'{direct_total:.2f} Evts/Yr')
+        if i > 0:
+            if base_direct_total > 0:
+                eff = 100.0 * direct_total / base_direct_total
+                ax_d.plot([], [], ' ', label=f'{eff:.1f}% Eff')
+            else:
+                ax_d.plot([], [], ' ', label='N/A Eff')
+        ax_d.legend(loc='upper right')
+
+        rm = r_w > 0
+        reflected_total = float(np.sum(r_w[rm])) if np.any(rm) else 0.0
+        if np.any(rm):
+            ax_r.hist(r_vals[rm], bins=bins, weights=r_w[rm], histtype='step', linewidth=2, color='C1')
+        ax_r.set_xlim(0, 1)
+        ax_r.set_title(f'{title} — Reflected')
+        # Legend with total and efficiency
+        ax_r.plot([], [], ' ', label=f'{reflected_total:.2f} Evts/Yr')
+        if i > 0:
+            if base_reflected_total > 0:
+                eff = 100.0 * reflected_total / base_reflected_total
+                ax_r.plot([], [], ' ', label=f'{eff:.1f}% Eff')
+            else:
+                ax_r.plot([], [], ' ', label='N/A Eff')
+        ax_r.legend(loc='upper right')
+
+        if i == 3:
+            ax_d.set_xlabel('Chi')
+            ax_r.set_xlabel('Chi')
+
+    plt.suptitle(fig_title)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    ic(f"Saving Chi histogram plot: {save_path}")
+    plt.savefig(save_path)
+    plt.close(fig)
+
+
 # ----------------------------
 # Main
 # ----------------------------
@@ -594,6 +715,33 @@ if __name__ == "__main__":
             fig_title_sc = f'SNR vs Chi ({i}-Fold, {scen_label}) — Cut Effects'
             save_path_sc = os.path.join(scen_folder, f'snr_vs_chi_{i}coinc_{scen_label}.png')
             plot_snr_vs_chi_combined_rows(fig_title_sc, save_path_sc, rows_snr_chi, xlim=(3, 100), ylim=(0, 1))
+
+            # --- New: Chi histograms (RCR and 2016) ---
+            # RCR
+            rows_chi_rcr = []
+            for pred, title in row_preds:
+                d_vals, r_vals, d_w, r_w = collect_1d_chi_weighted(
+                    HRAeventList, weight_name, direct_stations, reflected_stations, plot_sigma,
+                    bad_stations, which='rcr', predicate=pred
+                )
+                rows_chi_rcr.append((d_vals, r_vals, d_w, r_w, title))
+            fig_title_chircr = f'ChiRCR Histograms ({i}-Fold, {scen_label}) — Cut Effects'
+            save_path_chircr = os.path.join(scen_folder, f'chiRCR_hists_{i}coinc_{scen_label}.png')
+            # Use uniform bins 0..1
+            chi_bins = np.linspace(0, 1, 21)
+            plot_chi_hist_combined_rows(fig_title_chircr, save_path_chircr, bins=chi_bins, rows_data=rows_chi_rcr)
+
+            # 2016
+            rows_chi_2016 = []
+            for pred, title in row_preds:
+                d_vals, r_vals, d_w, r_w = collect_1d_chi_weighted(
+                    HRAeventList, weight_name, direct_stations, reflected_stations, plot_sigma,
+                    bad_stations, which='2016', predicate=pred
+                )
+                rows_chi_2016.append((d_vals, r_vals, d_w, r_w, title))
+            fig_title_chi2016 = f'Chi2016 Histograms ({i}-Fold, {scen_label}) — Cut Effects'
+            save_path_chi2016 = os.path.join(scen_folder, f'chi2016_hists_{i}coinc_{scen_label}.png')
+            plot_chi_hist_combined_rows(fig_title_chi2016, save_path_chi2016, bins=chi_bins, rows_data=rows_chi_2016)
 
     if weights_were_added:
         ic("New weights were added, resaving HRAeventList to H5 file...")
