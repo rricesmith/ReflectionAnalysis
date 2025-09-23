@@ -223,6 +223,73 @@ def collect_2d_pairs_weighted(HRAeventList, weight_name, direct_stations, reflec
 # Plotting helpers
 # ----------------------------
 
+def collect_snr_chi_weighted(
+    HRAeventList,
+    weight_name,
+    allowed_stations,
+    sigma,
+    bad_stations,
+    predicate=lambda ev, sts: True,
+):
+    """Collect weighted (SNR, Chi) points for both ChiRCR and Chi2016 columns.
+
+    Splits each event's weight equally across the total number of points produced
+    across both columns so that the combined sum of subplot weights equals the
+    total event rate for the selected events.
+    """
+    snr_rcr, chi_rcr, w_rcr = [], [], []
+    snr_2016, chi_2016, w_2016 = [], [], []
+
+    allowed = set(allowed_stations)
+
+    for ev in HRAeventList:
+        if not ev.hasWeight(weight_name, sigma=sigma):
+            continue
+        ev_w = ev.getWeight(weight_name, sigma=sigma)
+        if ev_w <= 0:
+            continue
+
+        d_list, r_list, both = _get_trigger_station_lists(ev, sigma=sigma, bad_stations=bad_stations)
+        if not both:
+            continue
+        stations = [st for st in both if st in allowed]
+        if not stations:
+            continue
+        if not predicate(ev, stations):
+            continue
+
+        # Build per-event points
+        rcr_points = []  # (snr, chi)
+        c2016_points = []
+        for st in stations:
+            snr_val = ev.getSNR(st)
+            if snr_val is None:
+                continue
+            chi_rcr_val, chi2016_val = _get_station_chi_values(ev, st)
+            if chi_rcr_val is not None:
+                rcr_points.append((snr_val, chi_rcr_val))
+            if chi2016_val is not None:
+                c2016_points.append((snr_val, chi2016_val))
+
+        total_points = len(rcr_points) + len(c2016_points)
+        if total_points == 0:
+            continue
+
+        split_w = ev_w / total_points
+        for s, c in rcr_points:
+            snr_rcr.append(s)
+            chi_rcr.append(c)
+            w_rcr.append(split_w)
+        for s, c in c2016_points:
+            snr_2016.append(s)
+            chi_2016.append(c)
+            w_2016.append(split_w)
+
+    return (
+        np.array(snr_rcr), np.array(chi_rcr), np.array(w_rcr),
+        np.array(snr_2016), np.array(chi_2016), np.array(w_2016),
+    )
+
 def plot_1d_combined_rows(fig_title, save_path, bins, rows_data):
     """rows_data: list of 4 entries, each is tuple(direct_snrs, refl_snrs, direct_w, refl_w, row_title)"""
     fig, axs = plt.subplots(4, 2, figsize=(12, 18), sharey=True)
@@ -231,18 +298,26 @@ def plot_1d_combined_rows(fig_title, save_path, bins, rows_data):
         ax_r = axs[i, 1]
 
         dm = d_w > 0
+        direct_total = float(np.sum(d_w[dm])) if np.any(dm) else 0.0
         if np.any(dm):
             ax_d.hist(d_snr[dm], bins=bins, weights=d_w[dm], histtype='step', linewidth=2)
         ax_d.set_xscale('log')
         ax_d.set_yscale('log')
         ax_d.set_ylabel('Weighted Counts (Evts/Yr)')
         ax_d.set_title(f'{title} — Direct')
+        # Legend with total weight
+        ax_d.plot([], [], ' ', label=f'{direct_total:.2f} Evts/Yr')
+        ax_d.legend(loc='upper right')
 
         rm = r_w > 0
+        reflected_total = float(np.sum(r_w[rm])) if np.any(rm) else 0.0
         if np.any(rm):
             ax_r.hist(r_snr[rm], bins=bins, weights=r_w[rm], histtype='step', linewidth=2, color='C1')
         ax_r.set_xscale('log')
         ax_r.set_title(f'{title} — Reflected')
+        # Legend with total weight
+        ax_r.plot([], [], ' ', label=f'{reflected_total:.2f} Evts/Yr')
+        ax_r.legend(loc='upper right')
 
         if i == 3:
             ax_d.set_xlabel('SNR')
@@ -260,6 +335,7 @@ def plot_2d_combined_rows(fig_title, save_path, bins, rows_data):
     fig, axs = plt.subplots(4, 1, figsize=(8, 18))
     for i, (dx, rx, w, title) in enumerate(rows_data):
         ax = axs[i]
+        total_w = float(np.sum(w)) if len(w) > 0 else 0.0
         if len(w) > 0:
             h, xedges, yedges, im = ax.hist2d(
                 dx, rx, bins=bins, weights=w, norm=colors.LogNorm(), cmin=1e-5
@@ -270,10 +346,65 @@ def plot_2d_combined_rows(fig_title, save_path, bins, rows_data):
         ax.set_xlabel('SNR (Direct)')
         ax.set_ylabel('SNR (Reflected)')
         ax.set_title(title)
+        # Legend with total weight used in this panel
+        ax.plot([], [], ' ', label=f'{total_w:.2f} Evts/Yr')
+        ax.legend(loc='upper right')
 
     plt.suptitle(fig_title)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     ic(f"Saving 2D combined plot: {save_path}")
+    plt.savefig(save_path)
+    plt.close(fig)
+
+
+def plot_snr_vs_chi_combined_rows(fig_title, save_path, rows_data, xlim=(3, 100), ylim=(0, 1)):
+    """rows_data: list of 4 entries, each is tuple(
+        snr_rcr, chi_rcr, w_rcr, snr_2016, chi_2016, w_2016, row_title
+    )
+    Produces a 4x2 grid: columns (ChiRCR, Chi2016) across cuts rows.
+    """
+    fig, axs = plt.subplots(4, 2, figsize=(12, 18), sharex=True, sharey=True)
+    for i, (sx_rcr, cx_rcr, wx_rcr, sx_16, cx_16, wx_16, title) in enumerate(rows_data):
+        # Left column: RCR
+        ax_l = axs[i, 0]
+        if len(wx_rcr) > 0:
+            ax_l.scatter(sx_rcr, cx_rcr, s=8, alpha=0.6)
+        ax_l.set_xscale('log')
+        ax_l.set_xlim(xlim)
+        ax_l.set_ylim(ylim)
+        ax_l.set_ylabel('Chi')
+        if i == 0:
+            ax_l.set_title('ChiRCR')
+        # Legend with total weight
+        tot_l = float(np.sum(wx_rcr)) if len(wx_rcr) > 0 else 0.0
+        ax_l.plot([], [], ' ', label=f'{tot_l:.2f} Evts/Yr')
+        ax_l.legend(loc='upper right')
+
+        # Right column: 2016
+        ax_r = axs[i, 1]
+        if len(wx_16) > 0:
+            ax_r.scatter(sx_16, cx_16, s=8, alpha=0.6, color='C1')
+        ax_r.set_xscale('log')
+        ax_r.set_xlim(xlim)
+        ax_r.set_ylim(ylim)
+        if i == 0:
+            ax_r.set_title('Chi2016')
+        # Legend with total weight
+        tot_r = float(np.sum(wx_16)) if len(wx_16) > 0 else 0.0
+        ax_r.plot([], [], ' ', label=f'{tot_r:.2f} Evts/Yr')
+        ax_r.legend(loc='upper right')
+
+        # Row titles on left side
+        axs[i, 0].text(0.02, 0.92, title, transform=axs[i, 0].transAxes,
+                        fontsize=11, fontweight='bold', va='top', ha='left')
+
+        if i == 3:
+            ax_l.set_xlabel('SNR')
+            ax_r.set_xlabel('SNR')
+
+    plt.suptitle(fig_title)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    ic(f"Saving SNR vs Chi combined plot: {save_path}")
     plt.savefig(save_path)
     plt.close(fig)
 
@@ -366,6 +497,10 @@ if __name__ == "__main__":
                 )
                 rows_1d.append((d_snr, r_snr, d_w, r_w, title))
 
+            # Diagnostics: print total weights used per row (sum of direct+reflected weights)
+            row_totals_1d = [(title, float(np.sum(d_w) + np.sum(r_w))) for (_, _, d_w, r_w, title) in rows_1d]
+            ic(f"1D totals for {i}-Fold {scen_label}: {row_totals_1d}")
+
             fig_title_1d = f'SNR Distribution ({i}-Fold, {scen_label}) — Cut Effects'
             save_path_1d = os.path.join(scen_folder, f'snr_cuteffects_{i}coinc_{scen_label}_1d.png')
             plot_1d_combined_rows(fig_title_1d, save_path_1d, bins=log_bins, rows_data=rows_1d)
@@ -380,9 +515,40 @@ if __name__ == "__main__":
                     )
                     rows_2d.append((dx, rx, w, title))
 
+                # Diagnostics: print total weights per 2D row
+                row_totals_2d = [(title, float(np.sum(w))) for (_, _, w, title) in rows_2d]
+                ic(f"2D totals for {i}-Fold {scen_label}: {row_totals_2d}")
+
                 fig_title_2d = f'2D SNR Histogram (2-Fold, {scen_label}) — Cut Effects'
                 save_path_2d = os.path.join(scen_folder, f'snr_cuteffects_{i}coinc_{scen_label}_2d.png')
                 plot_2d_combined_rows(fig_title_2d, save_path_2d, bins=log_bins, rows_data=rows_2d)
+
+            # --- New: SNR vs Chi (4x2) per coincidence level ---
+            # Allowed stations depend on scenario: both direct and reflected contribute points
+            if scen_label == "noRefl":
+                allowed = direct_stations + reflected_stations  # plotting includes all stations
+            else:
+                allowed = direct_stations + reflected_stations
+
+            rows_snr_chi = []
+            for pred, title in row_preds:
+                sx_rcr, cx_rcr, wx_rcr, sx_16, cx_16, wx_16 = collect_snr_chi_weighted(
+                    HRAeventList,
+                    weight_name,
+                    allowed_stations=allowed,
+                    sigma=plot_sigma,
+                    bad_stations=bad_stations,
+                    predicate=pred,
+                )
+                rows_snr_chi.append((sx_rcr, cx_rcr, wx_rcr, sx_16, cx_16, wx_16, title))
+
+            # Diagnostics: totals per row/column (RCR and 2016)
+            diag = [(title, float(np.sum(wx_rcr)), float(np.sum(wx_16))) for (sx_rcr, cx_rcr, wx_rcr, sx_16, cx_16, wx_16, title) in rows_snr_chi]
+            ic(f"SNR-vs-Chi totals (RCR, 2016) for {i}-Fold {scen_label}: {diag}")
+
+            fig_title_sc = f'SNR vs Chi ({i}-Fold, {scen_label}) — Cut Effects'
+            save_path_sc = os.path.join(scen_folder, f'snr_vs_chi_{i}coinc_{scen_label}.png')
+            plot_snr_vs_chi_combined_rows(fig_title_sc, save_path_sc, rows_snr_chi, xlim=(3, 100), ylim=(0, 1))
 
     if weights_were_added:
         ic("New weights were added, resaving HRAeventList to H5 file...")
