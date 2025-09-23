@@ -293,6 +293,15 @@ def collect_snr_chi_weighted(
 def plot_1d_combined_rows(fig_title, save_path, bins, rows_data):
     """rows_data: list of 4 entries, each is tuple(direct_snrs, refl_snrs, direct_w, refl_w, row_title)"""
     fig, axs = plt.subplots(4, 2, figsize=(12, 18), sharey=True)
+    # Baseline totals from the 'No Cuts' row (row 0)
+    if rows_data:
+        base_dm = rows_data[0][2] > 0
+        base_rm = rows_data[0][3] > 0
+        base_direct_total = float(np.sum(rows_data[0][2][base_dm])) if np.any(base_dm) else 0.0
+        base_reflected_total = float(np.sum(rows_data[0][3][base_rm])) if np.any(base_rm) else 0.0
+    else:
+        base_direct_total = 0.0
+        base_reflected_total = 0.0
     for i, (d_snr, r_snr, d_w, r_w, title) in enumerate(rows_data):
         ax_d = axs[i, 0]
         ax_r = axs[i, 1]
@@ -305,8 +314,14 @@ def plot_1d_combined_rows(fig_title, save_path, bins, rows_data):
         ax_d.set_yscale('log')
         ax_d.set_ylabel('Weighted Counts (Evts/Yr)')
         ax_d.set_title(f'{title} — Direct')
-        # Legend with total weight
+        # Legend with total weight and efficiency (for cut rows)
         ax_d.plot([], [], ' ', label=f'{direct_total:.2f} Evts/Yr')
+        if i > 0:
+            if base_direct_total > 0:
+                eff = 100.0 * direct_total / base_direct_total
+                ax_d.plot([], [], ' ', label=f'{eff:.1f}% Eff')
+            else:
+                ax_d.plot([], [], ' ', label='N/A Eff')
         ax_d.legend(loc='upper right')
 
         rm = r_w > 0
@@ -315,8 +330,14 @@ def plot_1d_combined_rows(fig_title, save_path, bins, rows_data):
             ax_r.hist(r_snr[rm], bins=bins, weights=r_w[rm], histtype='step', linewidth=2, color='C1')
         ax_r.set_xscale('log')
         ax_r.set_title(f'{title} — Reflected')
-        # Legend with total weight
+        # Legend with total weight and efficiency (for cut rows)
         ax_r.plot([], [], ' ', label=f'{reflected_total:.2f} Evts/Yr')
+        if i > 0:
+            if base_reflected_total > 0:
+                eff = 100.0 * reflected_total / base_reflected_total
+                ax_r.plot([], [], ' ', label=f'{eff:.1f}% Eff')
+            else:
+                ax_r.plot([], [], ' ', label='N/A Eff')
         ax_r.legend(loc='upper right')
 
         if i == 3:
@@ -333,6 +354,8 @@ def plot_1d_combined_rows(fig_title, save_path, bins, rows_data):
 def plot_2d_combined_rows(fig_title, save_path, bins, rows_data):
     """rows_data: list of 4 entries, each is tuple(direct_snrs, reflected_snrs, weights, row_title)"""
     fig, axs = plt.subplots(4, 1, figsize=(8, 18))
+    # Baseline from 'No Cuts'
+    base_total = float(np.sum(rows_data[0][2])) if rows_data and len(rows_data[0][2]) > 0 else 0.0
     for i, (dx, rx, w, title) in enumerate(rows_data):
         ax = axs[i]
         total_w = float(np.sum(w)) if len(w) > 0 else 0.0
@@ -346,8 +369,14 @@ def plot_2d_combined_rows(fig_title, save_path, bins, rows_data):
         ax.set_xlabel('SNR (Direct)')
         ax.set_ylabel('SNR (Reflected)')
         ax.set_title(title)
-        # Legend with total weight used in this panel
+        # Legend with total weight and efficiency (for cut rows)
         ax.plot([], [], ' ', label=f'{total_w:.2f} Evts/Yr')
+        if i > 0:
+            if base_total > 0:
+                eff = 100.0 * total_w / base_total
+                ax.plot([], [], ' ', label=f'{eff:.1f}% Eff')
+            else:
+                ax.plot([], [], ' ', label='N/A Eff')
         ax.legend(loc='upper right')
 
     plt.suptitle(fig_title)
@@ -364,6 +393,10 @@ def plot_snr_vs_chi_combined_rows(fig_title, save_path, rows_data, xlim=(3, 100)
     Produces a 4x2 grid: columns (ChiRCR, Chi2016) across cuts rows.
     """
     fig, axs = plt.subplots(4, 2, figsize=(12, 18), sharex=True, sharey=True)
+    # Baselines from 'No Cuts' row for each column
+    base_rcr = float(np.sum(rows_data[0][2])) if rows_data and len(rows_data[0][2]) > 0 else 0.0
+    base_2016 = float(np.sum(rows_data[0][5])) if rows_data and len(rows_data[0][5]) > 0 else 0.0
+
     for i, (sx_rcr, cx_rcr, wx_rcr, sx_16, cx_16, wx_16, title) in enumerate(rows_data):
         # Left column: RCR
         ax_l = axs[i, 0]
@@ -375,9 +408,15 @@ def plot_snr_vs_chi_combined_rows(fig_title, save_path, rows_data, xlim=(3, 100)
         ax_l.set_ylabel('Chi')
         if i == 0:
             ax_l.set_title('ChiRCR')
-        # Legend with total weight
+        # Legend with total weight and efficiency (for cut rows)
         tot_l = float(np.sum(wx_rcr)) if len(wx_rcr) > 0 else 0.0
         ax_l.plot([], [], ' ', label=f'{tot_l:.2f} Evts/Yr')
+        if i > 0:
+            if base_rcr > 0:
+                eff = 100.0 * tot_l / base_rcr
+                ax_l.plot([], [], ' ', label=f'{eff:.1f}% Eff')
+            else:
+                ax_l.plot([], [], ' ', label='N/A Eff')
         ax_l.legend(loc='upper right')
 
         # Right column: 2016
@@ -389,9 +428,15 @@ def plot_snr_vs_chi_combined_rows(fig_title, save_path, rows_data, xlim=(3, 100)
         ax_r.set_ylim(ylim)
         if i == 0:
             ax_r.set_title('Chi2016')
-        # Legend with total weight
+        # Legend with total weight and efficiency (for cut rows)
         tot_r = float(np.sum(wx_16)) if len(wx_16) > 0 else 0.0
         ax_r.plot([], [], ' ', label=f'{tot_r:.2f} Evts/Yr')
+        if i > 0:
+            if base_2016 > 0:
+                eff = 100.0 * tot_r / base_2016
+                ax_r.plot([], [], ' ', label=f'{eff:.1f}% Eff')
+            else:
+                ax_r.plot([], [], ' ', label='N/A Eff')
         ax_r.legend(loc='upper right')
 
         # Row titles on left side
