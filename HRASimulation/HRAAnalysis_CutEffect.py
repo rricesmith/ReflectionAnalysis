@@ -303,7 +303,7 @@ def generate_cut_effect_plots(HRAeventList, save_folder, bad_stations, use_secon
             title = f'{n_coinc}-fold Coincidence Rate - {scenario["title_suffix"]}'
             savename = os.path.join(cut_effects_folder, f'{scenario["name"]}_{n_coinc}fold_coincidence.png')
             
-            HRAAnalysis.imshowRate(event_rate, title, savename, colorbar_label='Evts/yr')
+            HRAAnalysis.imshowRate(event_rate, title, savename, colorbar_label=f'Evts/yr, Sum {np.nansum(event_rate):.3f}')
     
     ic(f"All cut effect plots saved to: {cut_effects_folder}")
 
