@@ -94,7 +94,7 @@ def check_chi_cut(event_details, high_chi_threshold=0.6, low_chi_threshold=0.5, 
 
     return False
 
-def check_angle_cut(event_details, zenith_margin_deg=10.0, azimuth_margin_deg=20.0):
+def check_angle_cut(event_details, zenith_margin_deg=20.0, azimuth_margin_deg=45.0):
     """
     Checks if a coincidence event passes the Angle (Zenith/Azimuth) agreement cut.
     Zenith and Azimuth values from event_details are assumed to be in RADIANS.
@@ -207,7 +207,7 @@ def check_coincidence_cuts(event_details, time_cut_result=True):
         time_cut_result: Boolean result from the time cut (calculated externally)
     """
     results = {}
-    # results['time_cut_passed'] = time_cut_result
+    results['time_cut_passed'] = time_cut_result
     results['chi_cut_passed'] = check_chi_cut(event_details)
     results['angle_cut_passed'] = check_angle_cut(event_details)
     
@@ -912,33 +912,79 @@ if __name__ == '__main__':
             if not isinstance(events_data_dict, dict) or not events_data_dict:
                 ic(f"Dataset '{dataset_name_label}' is empty or not a dict. Skipping."); continue
 
-            # First, apply the time cut to all events
-            ic(f"Applying time cut to {len(events_data_dict)} events...")
-            time_cut_results = check_time_cut(events_data_dict, time_threshold_hours=0.1)
-            num_passing_time_cut = sum(time_cut_results.values())
-            num_failing_time_cut = len(time_cut_results) - num_passing_time_cut
-            ic(f"Time cut results: {num_passing_time_cut} events passed, {num_failing_time_cut} events failed (within 1 hour of another event)")
+            # Determine if we're working with a passing_cuts dataset
+            is_passing_cuts_dataset = isinstance(chosen_path, str) and ("passing_cuts" in os.path.basename(chosen_path) or "passing_cuts" in chosen_path)
+            ic(f"Dataset is passing_cuts type: {is_passing_cuts_dataset}")
 
+            # First, apply angle and chi cuts to all events
             num_passing_overall = 0; num_failing_overall = 0
             with SectionTimer("Apply chi/angle cuts per event"):
                 total_events = len(events_data_dict)
                 for loop_idx, (event_id, event_details_loopvar) in enumerate(events_data_dict.items()):
                     _progress(loop_idx, total_events, "Event cuts")
                     if isinstance(event_details_loopvar, dict):
-                        # Get the time cut result for this specific event
-                        time_cut_passed = time_cut_results.get(event_id, False)
-                        cut_results_dict = check_coincidence_cuts(event_details_loopvar, time_cut_result=time_cut_passed)
+                        # Apply only chi and angle cuts initially (no time cut)
+                        chi_cut_passed = check_chi_cut(event_details_loopvar)
+                        angle_cut_passed = check_angle_cut(event_details_loopvar)
+                        
+                        # Store initial cut results without time cut
+                        cut_results_dict = {
+                            'chi_cut_passed': chi_cut_passed,
+                            'angle_cut_passed': angle_cut_passed,
+                            'time_cut_passed': True  # Default to True, will be updated if time cut is applied
+                        }
                         event_details_loopvar['cut_results'] = cut_results_dict
-                        event_details_loopvar['passes_analysis_cuts'] = all(cut_results_dict.values())
+                        event_details_loopvar['passes_analysis_cuts'] = chi_cut_passed and angle_cut_passed  # Will be updated after time cut if applicable
                         
                         if event_details_loopvar['passes_analysis_cuts']: num_passing_overall +=1
                         else: num_failing_overall +=1
                     elif event_details_loopvar is not None:
                         event_details_loopvar_placeholder = {'passes_analysis_cuts': False, 
-                                                              'cut_results': {'error': 'Malformed event data'}}
+                                                              'cut_results': {'chi_cut_passed': False, 'angle_cut_passed': False, 'time_cut_passed': False, 'error': 'Malformed event data'}}
                         if isinstance(events_data_dict, dict):
                             events_data_dict[event_id] = event_details_loopvar_placeholder
                         num_failing_overall +=1
+
+            ic(f"After chi/angle cuts: {num_passing_overall} events passed, {num_failing_overall} events failed")
+
+            # Apply time cut only if processing a passing_cuts dataset
+            if is_passing_cuts_dataset:
+                ic(f"Applying time cut to events that passed chi/angle cuts...")
+                # Create a filtered dict with only events that passed chi and angle cuts
+                events_passing_chi_angle = {
+                    event_id: event_details 
+                    for event_id, event_details in events_data_dict.items() 
+                    if isinstance(event_details, dict) and 
+                       event_details.get('cut_results', {}).get('chi_cut_passed', False) and 
+                       event_details.get('cut_results', {}).get('angle_cut_passed', False)
+                }
+                
+                if events_passing_chi_angle:
+                    time_cut_results = check_time_cut(events_passing_chi_angle, time_threshold_hours=1.0)
+                    num_passing_time_cut = sum(time_cut_results.values())
+                    num_failing_time_cut = len(time_cut_results) - num_passing_time_cut
+                    ic(f"Time cut results: {num_passing_time_cut} events passed, {num_failing_time_cut} events failed (within 1 hour of another passing event)")
+                    
+                    # Update the cut results and overall pass status for all events
+                    num_passing_overall = 0; num_failing_overall = 0
+                    for event_id, event_details in events_data_dict.items():
+                        if isinstance(event_details, dict):
+                            # Update time cut result
+                            if event_id in time_cut_results:
+                                event_details['cut_results']['time_cut_passed'] = time_cut_results[event_id]
+                            else:
+                                # Event didn't pass chi/angle cuts, so time cut is irrelevant but set to False
+                                event_details['cut_results']['time_cut_passed'] = False
+                            
+                            # Update overall pass status
+                            event_details['passes_analysis_cuts'] = all(event_details['cut_results'].values())
+                            
+                            if event_details['passes_analysis_cuts']: num_passing_overall +=1
+                            else: num_failing_overall +=1
+                else:
+                    ic("No events passed chi/angle cuts, so time cut is not applicable")
+            else:
+                ic("Time cut skipped (not a passing_cuts dataset)")
 
             ic(f"Analysis cuts applied to '{dataset_name_label}': {num_passing_overall} events passed, {num_failing_overall} events failed overall.")
 
