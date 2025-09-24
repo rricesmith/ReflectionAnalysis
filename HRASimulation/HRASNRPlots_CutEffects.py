@@ -31,7 +31,7 @@ def _wrap_delta_az_deg(az1_deg, az2_deg):
     return min(d, 360.0 - d)
 
 
-def event_passes_angle_cut(event: HRAevent, station_ids, zenith_margin_deg=10.0, azimuth_margin_deg=20.0):
+def event_passes_angle_cut(event: HRAevent, station_ids, zenith_margin_deg=20.0, azimuth_margin_deg=45.0):
     """Angle cut using reconstructed per-station angles from a simulated event.
 
     - Uses event.recon_zenith[st] and event.recon_azimuth[st] (assumed radians).
