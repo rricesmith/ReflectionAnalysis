@@ -155,7 +155,7 @@ def _get_trigger_station_lists(event: HRAevent, sigma=4.5, bad_stations=None):
 
 def getCoincidencesTriggerRatesWithCuts(HRAeventList, bad_stations, use_secondary=False, force_stations=None, 
                                         sigma=4.5, sigma_52=7, apply_angle_cut=False, apply_chi_cut=False,
-                                        zenith_margin_deg=10.0, azimuth_margin_deg=20.0,
+                                        zenith_margin_deg=20.0, azimuth_margin_deg=45.0,
                                         high_chi_threshold=0.6, low_chi_threshold=0.5, min_triggers_passing=2):
     """
     Modified version of getCoincidencesTriggerRates that applies angle and/or chi cuts
