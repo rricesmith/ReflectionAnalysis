@@ -10,7 +10,7 @@ from NuRadioReco.utilities import units
 from HRASimulation.HRANurToNpy import loadHRAfromH5
 from HRASimulation.HRAAnalysis import getCoincidencesTriggerRates
 
-def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, station_ids):
+def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, n, station_ids, bad_stations):
     # Rather than average stations, since we are looking at coincidences, we will return all angles and weights for events that triggered the right stations
     zenith_list = []
     recon_zenith_list = []
@@ -24,11 +24,9 @@ def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, station_ids):
     smallest_diff_weights = []
 
     for event in HRAEventList:
-        if not hasattr(event, 'triggered_stations'):
+        if not event.hasCoincidence(num=n, bad_stations=bad_stations):
             continue
-        triggered = event.triggered_stations
-        if not np.any([station in triggered for station in station_ids]):
-            continue
+
         if weight_name not in event.weight_dict:
             ic(f"No weight name {weight_name} in event, quitting")
             quit(1)
@@ -39,7 +37,7 @@ def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, station_ids):
         n_weights_to_add = 0
         
         for station_id in station_ids:
-            if station_id in triggered:
+            if event.hasTriggered(station_id):
                 zenith_list.append(event.getAngles()[0])
                 recon_zenith_list.append(event.recon_zenith[station_id])
                 azimuth_list.append(event.getAngles()[1])
@@ -264,6 +262,10 @@ def load_HRA_data():
 
 
 if __name__ == "__main__":
+    ####### NOTE ##########
+    # This script currently doesn't look at sigma trigger. Something that could be added
+
+
     # Load HRA event data
     try:
         HRAeventList, save_folder = load_HRA_data()
@@ -295,7 +297,7 @@ if __name__ == "__main__":
         # Get coincidence angles and weights
         zenith, recon_zenith, azimuth, recon_azimuth, weights, \
         smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights = \
-            getRawCoincidenceAnglesWeights(HRAeventList, weight_name, station_ids)
+            getRawCoincidenceAnglesWeights(HRAeventList, weight_name, i, station_ids, bad_stations)
         
         # Skip if no events found
         if len(zenith) == 0:
@@ -318,12 +320,13 @@ if __name__ == "__main__":
     for i in trigger_rate_coincidence:
         if i < 2:
             continue
-        weight_name = f'{i}_coincidence_wrefl'
+        weight_name = f'{i}_coincidence_norefl'
+        
     
         # Get coincidence angles and weights
         zenith, recon_zenith, azimuth, recon_azimuth, weights, \
         smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights = \
-            getRawCoincidenceAnglesWeights(HRAeventList, weight_name, station_ids)
+            getRawCoincidenceAnglesWeights(HRAeventList, weight_name, i, station_ids, bad_stations)
         
         # Skip if no events found
         if len(zenith) == 0:
