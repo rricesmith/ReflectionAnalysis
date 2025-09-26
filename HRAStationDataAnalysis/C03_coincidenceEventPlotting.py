@@ -358,15 +358,71 @@ def plot_parameter_histograms(events_dict, output_dir, dataset_name):
     plt.close(fig); gc.collect()
 
 
-# --- Plotting Function 3: Polar Plot (Zenith vs Azimuth) ---
-def plot_polar_zen_azi(events_dict, output_dir, dataset_name):
-    with SectionTimer(f"Plot polar zen/azi for {dataset_name}"):
-        ic(f"Generating polar Zenith vs Azimuth plot for {dataset_name}")
-        os.makedirs(output_dir, exist_ok=True); all_zen_rad_values, all_azi_rad_values = [], []
-    for event_data in events_dict.values():
+# --- Plotting Function 3: Polar Plot (Zenith vs Azimuth) - Updated ---
+def plot_polar_zen_azi(events_dict, output_dir, dataset_name, only_passing_cuts=False, specific_event_ids=None):
+    """
+    Generate polar Zenith vs Azimuth plot.
+    
+    Args:
+        events_dict: Dictionary of all events
+        output_dir: Directory to save plots
+        dataset_name: Name of dataset for labeling
+        only_passing_cuts: If True, plot only events that pass analysis cuts
+        specific_event_ids: List of specific event IDs to plot. If provided, only these events will be plotted.
+                           Example: [11230, 12345, 67890]
+    """
+    # Determine plot suffix based on filtering
+    if specific_event_ids is not None:
+        plot_suffix = f"_specific_events_{len(specific_event_ids)}"
+        filter_description = f"Specific Events ({len(specific_event_ids)} events)"
+        ic(f"Generating polar plot for specific events: {specific_event_ids}")
+    elif only_passing_cuts:
+        plot_suffix = "_passing_cuts"
+        filter_description = "Events Passing All Cuts"
+        ic(f"Generating polar plot for events passing all cuts")
+    else:
+        plot_suffix = ""
+        filter_description = "All Events"
+        ic(f"Generating polar plot for all events")
+
+    with SectionTimer(f"Plot polar zen/azi for {dataset_name} - {filter_description}"):
+        os.makedirs(output_dir, exist_ok=True)
+        all_zen_rad_values, all_azi_rad_values = [], []
+        plotted_event_count = 0
+
+    # Filter events based on criteria
+    events_to_plot = {}
+    if specific_event_ids is not None:
+        # Plot only specific events
+        for event_id in specific_event_ids:
+            if str(event_id) in events_dict:
+                events_to_plot[str(event_id)] = events_dict[str(event_id)]
+            elif event_id in events_dict:
+                events_to_plot[event_id] = events_dict[event_id]
+        ic(f"Found {len(events_to_plot)} out of {len(specific_event_ids)} requested specific events")
+    elif only_passing_cuts:
+        # Plot only events that pass cuts
+        events_to_plot = {k: v for k, v in events_dict.items() 
+                         if isinstance(v, dict) and v.get('passes_analysis_cuts', False)}
+        ic(f"Found {len(events_to_plot)} events passing all cuts")
+    else:
+        # Plot all events
+        events_to_plot = events_dict
+        ic(f"Plotting all {len(events_to_plot)} events")
+
+    # Extract angle data from filtered events and assign colors by event
+    event_color_map = []  # List to store color index for each data point
+    event_list = list(events_to_plot.keys())  # Get ordered list of event IDs
+    
+    for event_idx, (event_id, event_data) in enumerate(events_to_plot.items()):
+        if not isinstance(event_data, dict):
+            continue
+            
+        event_has_data = False
         for station_triggers in event_data.get("stations", {}).values():
-            zen_list_rad = station_triggers.get('Zen', []) # Assumed in RADIANS
-            azi_list_rad = station_triggers.get('Azi', []) # Assumed in RADIANS
+            zen_list_rad = station_triggers.get('Zen', [])  # Assumed in RADIANS
+            azi_list_rad = station_triggers.get('Azi', [])  # Assumed in RADIANS
+            
             for k in range(len(zen_list_rad)):
                 if k < len(azi_list_rad):
                     zen_r_val, azi_r_val = zen_list_rad[k], azi_list_rad[k]
@@ -374,28 +430,70 @@ def plot_polar_zen_azi(events_dict, output_dir, dataset_name):
                        azi_r_val is not None and not np.isnan(azi_r_val):
                         all_zen_rad_values.append(zen_r_val) 
                         all_azi_rad_values.append(azi_r_val)
+                        event_color_map.append(event_idx)  # Assign same color index for all points from this event
+                        event_has_data = True
+        
+        if event_has_data:
+            plotted_event_count += 1
+
+    if not all_azi_rad_values: 
+        ic(f"No valid Zenith/Azimuth data to plot for {dataset_name} - {filter_description}.")
+        return
     
-    if not all_azi_rad_values: ic(f"No valid Zenith/Azimuth data to plot for {dataset_name}."); return
+    ic(f"Plotting {len(all_azi_rad_values)} data points from {plotted_event_count} events")
     
-    fig = plt.figure(figsize=(8, 8)); ax = plt.subplot(111, polar=True)
+    fig = plt.figure(figsize=(8, 8))
+    ax = plt.subplot(111, polar=True)
     
     all_zen_deg_values = np.degrees(np.array(all_zen_rad_values))
-    # Azimuth is already in radians, Zenith converted to degrees for radial plot
-    scatter = ax.scatter(np.array(all_azi_rad_values), # Azimuth (theta) in RADIANS
-                         all_zen_deg_values,           # Zenith (r) in DEGREES
-                         alpha=0.5, s=20, cmap='viridis', 
-                         c=np.degrees(np.array(all_azi_rad_values))) # Color by Azimuth in degrees for interpretability
     
-    ax.set_theta_zero_location("N"); ax.set_theta_direction(-1); ax.set_rlabel_position(45)
-    ax.set_rlim(0, 90); ax.set_rticks(np.arange(0, 91, 15)) # Zenith ticks in degrees
-    ax.set_title(f'Sky Plot: Zenith vs Azimuth for {dataset_name}\n(Zenith in degrees from center)', va='bottom', fontsize=14)
+    # Color points by event - each event gets a unique color
+    scatter = ax.scatter(np.array(all_azi_rad_values),  # Azimuth (theta) in RADIANS
+                         all_zen_deg_values,            # Zenith (r) in DEGREES
+                         alpha=0.6, s=30, cmap='viridis', 
+                         c=event_color_map)  # Color by event index
+    
+    # Set up polar plot
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.set_rlabel_position(45)
+    ax.set_rlim(0, 90)
+    ax.set_rticks(np.arange(0, 91, 15))  # Zenith ticks in degrees
+    
+    # Create title with event count information
+    title_text = f'Sky Plot: Zenith vs Azimuth for {dataset_name}\n'
+    title_text += f'{filter_description} - {plotted_event_count} events, {len(all_azi_rad_values)} points\n'
+    title_text += '(Zenith in degrees from center)'
+    
+    if specific_event_ids is not None:
+        title_text += f'\nEvent IDs: {specific_event_ids}'
+    
+    ax.set_title(title_text, va='bottom', fontsize=12, pad=20)
     ax.grid(True, linestyle='--', alpha=0.7)
     
-    plot_filename = os.path.join(output_dir, f"{dataset_name}_polar_zen_azi.png")
+    # Add colorbar with event information
+    cbar = plt.colorbar(scatter, ax=ax, pad=0.1, shrink=0.8)
+    cbar.set_label('Event Index', rotation=270, labelpad=15)
+    
+    # Set colorbar ticks to show event indices if not too many events
+    if plotted_event_count <= 20:
+        unique_event_indices = sorted(set(event_color_map))
+        cbar.set_ticks(unique_event_indices)
+        # Show event IDs on colorbar if specific events were requested
+        if specific_event_ids is not None and len(specific_event_ids) <= 10:
+            event_labels = [str(event_list[i]) for i in unique_event_indices if i < len(event_list)]
+            if len(event_labels) == len(unique_event_indices):
+                cbar.set_ticklabels(event_labels)
+    
+    # Generate filename with appropriate suffix
+    plot_filename = os.path.join(output_dir, f"{dataset_name}_polar_zen_azi{plot_suffix}.png")
+    
     with SectionTimer("Saving polar plot"):
-        plt.savefig(plot_filename)
+        plt.savefig(plot_filename, dpi=150, bbox_inches='tight')
+    
     ic(f"Saved polar Zenith vs Azimuth plot: {plot_filename}")
-    plt.close(fig); gc.collect()
+    plt.close(fig)
+    gc.collect()
 
 
 # --- Helper Function: Plot Single Master Event ---
@@ -848,6 +946,12 @@ if __name__ == '__main__':
         datetime.datetime(2016, 3, 18, 2, 42, 51).timestamp()
     ])
 
+    # Plot specific events
+    specific_events_to_plot = [3047, 3432, 10195, 10231, 10284, 10444,
+                            10554, 11197, 11230]
+    specific_events_with_eyeball = specific_events_to_plot + [10449, 10466, 11243, 10273, 10471, 11220, 11236] 
+
+
 
     # Build candidate list: try all passing_cuts variants first, then non-passing with calcPol first
     dataset_names = ["CoincidenceEvents"]
@@ -993,7 +1097,16 @@ if __name__ == '__main__':
             with SectionTimer("Plot: Histograms"):
                 plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
             with SectionTimer("Plot: Polar zen/azi"):
+                # Plot all events
                 plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+                
+                # Plot only events passing cuts
+                plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label, only_passing_cuts=True)
+                
+                # Plot specific events
+                plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label, specific_event_ids=specific_events_to_plot)
+                plot_polar_zen_azi(events_data_dict, specific_dataset_plot_dir, dataset_name_label, specific_event_ids=specific_events_with_eyeball)
+
             with SectionTimer("Plot: Master events batch"):
                 include_failed = isinstance(chosen_path, str) and ("passing_cuts" in os.path.basename(chosen_path) or "passing_cuts" in chosen_path)
                 plot_master_event_updated(

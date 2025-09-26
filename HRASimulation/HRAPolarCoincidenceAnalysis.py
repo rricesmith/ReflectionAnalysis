@@ -59,7 +59,9 @@ def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, n, station_ids, ba
             np.fill_diagonal(zen_diff_matrix, np.inf)
             np.fill_diagonal(azi_diff_matrix, np.inf)
             min_zen_diff = np.min(zen_diff_matrix)
+            azi_diff_matrix[azi_diff_matrix > np.pi] = 2 * np.pi - azi_diff_matrix[azi_diff_matrix > np.pi]  # Account for wrap-around
             min_azi_diff = np.min(azi_diff_matrix)
+
 
             smallest_diff_recon_zen_list.append(min_zen_diff)
             smallest_diff_recon_azi_list.append(min_azi_diff)
@@ -85,9 +87,9 @@ def plot_polar_histogram(azimuth, zenith, weights, title, savename, colorbar_lab
     Create a polar 2D histogram of azimuth and zenith angles
     """
     # Convert angles to appropriate formats for polar plot
-    if max(zenith) < np.pi/2 or max(azimuth) < np.pi*2:
-        zenith = np.rad2deg(zenith)
-        azimuth = np.rad2deg(azimuth)
+    # if max(zenith) < np.pi/2 or max(azimuth) < np.pi*2:
+    # zenith = np.rad2deg(zenith)
+    # azimuth = np.rad2deg(azimuth)
     
     # Create bins
     azimuth_bins = np.linspace(0, 360, 37)  # 10 degree bins
@@ -138,7 +140,6 @@ def plot_angle_differences(zenith_diff, azimuth_diff, weights, title, savename):
     ax[0].hist(zenith_diff, bins=diff_bins_zen, weights=weights, alpha=0.7, edgecolor='black')
     ax[0].set_xlabel('True - Reconstructed Zenith (deg)')
     ax[0].set_ylabel('Weighted count')
-    ax[0].set_title('Zenith Difference')
     ax[0].grid(True, alpha=0.3)
     
     # Azimuth difference histogram
@@ -146,7 +147,6 @@ def plot_angle_differences(zenith_diff, azimuth_diff, weights, title, savename):
     ax[1].hist(azimuth_diff, bins=diff_bins_azi, weights=weights, alpha=0.7, edgecolor='black')
     ax[1].set_xlabel('True - Reconstructed Azimuth (deg)')
     ax[1].set_ylabel('Weighted count')
-    ax[1].set_title('Azimuth Difference')
     ax[1].grid(True, alpha=0.3)
     
     plt.suptitle(title)
@@ -167,25 +167,23 @@ def plot_smallest_differences(smallest_diff_zen, smallest_diff_azi, diff_weights
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(12, 5))
     
     # Convert to degrees if in radians
-    if max(smallest_diff_zen) < np.pi/2:
-        smallest_diff_zen = np.rad2deg(smallest_diff_zen)
-    if max(smallest_diff_azi) < np.pi:
-        smallest_diff_azi = np.rad2deg(smallest_diff_azi)
+    # if max(smallest_diff_zen) < np.pi/2:
+    # smallest_diff_zen = np.rad2deg(smallest_diff_zen)
+    # if max(smallest_diff_azi) < np.pi:
+    # smallest_diff_azi = np.rad2deg(smallest_diff_azi)
     
     # Smallest zenith difference histogram
     diff_bins_zen = np.linspace(0, max(smallest_diff_zen)*1.1, 25)
     ax[0].hist(smallest_diff_zen, bins=diff_bins_zen, weights=diff_weights, alpha=0.7, edgecolor='black')
-    ax[0].set_xlabel('Smallest Zenith Difference Between Stations (deg)')
+    ax[0].set_xlabel('Smallest Zenith Difference (deg)')
     ax[0].set_ylabel('Weighted count')
-    ax[0].set_title('Smallest Zenith Difference')
     ax[0].grid(True, alpha=0.3)
     
     # Smallest azimuth difference histogram
     diff_bins_azi = np.linspace(0, max(smallest_diff_azi)*1.1, 25)
     ax[1].hist(smallest_diff_azi, bins=diff_bins_azi, weights=diff_weights, alpha=0.7, edgecolor='black')
-    ax[1].set_xlabel('Smallest Azimuth Difference Between Stations (deg)')
+    ax[1].set_xlabel('Smallest Azimuth Difference (deg)')
     ax[1].set_ylabel('Weighted count')
-    ax[1].set_title('Smallest Azimuth Difference')
     ax[1].grid(True, alpha=0.3)
     
     plt.suptitle(title)
@@ -202,11 +200,11 @@ def histCoincidenceAngles(zenith, recon_zenith, azimuth, recon_azimuth, weights,
     Create all coincidence angle plots similar to histAngleRecon
     """
     # Convert angles to degrees if they're in radians
-    if max(zenith) < np.pi/2 or max(azimuth) < np.pi*2:
-        zenith = np.rad2deg(zenith)
-        azimuth = np.rad2deg(azimuth) 
-        recon_zenith = np.rad2deg(recon_zenith)
-        recon_azimuth = np.rad2deg(recon_azimuth)
+    # if max(zenith) < np.pi/2 or max(azimuth) < np.pi*2:
+    zenith = np.rad2deg(zenith)
+    azimuth = np.rad2deg(azimuth) 
+    recon_zenith = np.rad2deg(recon_zenith)
+    recon_azimuth = np.rad2deg(recon_azimuth)
     
     # 1. Polar 2D histogram of true zenith/azimuth
     plot_polar_histogram(azimuth, zenith, weights, 
