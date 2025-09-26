@@ -63,7 +63,7 @@ def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, n, station_ids, ba
 
             smallest_diff_recon_zen_list.append(min_zen_diff)
             smallest_diff_recon_azi_list.append(min_azi_diff)
-            smallest_diff_weights.append(event.getWeight(weight_name])
+            smallest_diff_weights.append(event.getWeight(weight_name))
 
     zenith = np.array(zenith_list)
     n = 1.37
