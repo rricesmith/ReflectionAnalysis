@@ -27,7 +27,7 @@ def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, station_ids):
         if not hasattr(event, 'triggered_stations'):
             continue
         triggered = event.triggered_stations
-        if not any(station in triggered for station in station_ids):
+        if not np.any([station in triggered for station in station_ids]):
             continue
         if weight_name not in event.weight_dict:
             ic(f"No weight name {weight_name} in event, quitting")
