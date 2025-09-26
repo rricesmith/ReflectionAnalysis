@@ -27,9 +27,6 @@ def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, n, station_ids, ba
         if not event.hasCoincidence(num=n, bad_stations=bad_stations):
             continue
 
-        if weight_name not in event.weight_dict:
-            ic(f"No weight name {weight_name} in event, quitting")
-            quit(1)
         
         recon_zens = []
         recon_azis = []
@@ -50,7 +47,7 @@ def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, n, station_ids, ba
 
         # Add weight for each angle added, divided equally between stations
         for _ in range(n_weights_to_add):
-            raw_weights_list.append(event.weight_dict[weight_name] / n_weights_to_add)
+            raw_weights_list.append(event.getWeight(weight_name) / n_weights_to_add)
 
         # Find the smallest difference between the different reconstructions for this event
         if len(recon_zens) > 1:
@@ -66,7 +63,7 @@ def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, n, station_ids, ba
 
             smallest_diff_recon_zen_list.append(min_zen_diff)
             smallest_diff_recon_azi_list.append(min_azi_diff)
-            smallest_diff_weights.append(event.weight_dict[weight_name])
+            smallest_diff_weights.append(event.getWeight(weight_name])
 
     zenith = np.array(zenith_list)
     n = 1.37
