@@ -687,7 +687,7 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
         azimuth = np.rad2deg(azimuth)
         recon_azimuth = np.rad2deg(recon_azimuth)
     
-    zenith_bins, azimuth_bins = np.linspace(0, 90, 50), np.linspace(0, 360, 50)
+    zenith_bins, azimuth_bins = np.linspace(0, 90, 25), np.linspace(0, 360, 25)
     fig, ax = plt.subplots(nrows=1, ncols=2)
     norm = matplotlib.colors.LogNorm(vmin=np.min(weights[np.nonzero(weights)]), vmax=np.max(weights))
 
@@ -747,14 +747,14 @@ def histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, title,
 
     fig, ax = plt.subplots(nrows=1, ncols=2)
 
-    diff_bins = np.linspace(-90, 90, 50)
+    diff_bins = np.linspace(-90, 90, 25)
 
     h, xedges, im = ax[0].hist(zenith_diff, bins=diff_bins, weights=weights)
     ax[0].set_xlabel('True - Reconstructed Zenith (deg)')
     ax[0].set_ylabel('Weighted count')
     ax[0].set_title('Zenith')
 
-    diff_bins = np.linspace(-360, 360, 50)
+    diff_bins = np.linspace(-360, 360, 25)
     h, xedges, im = ax[1].hist(azimuth_diff, bins=diff_bins, weights=weights)
     ax[1].set_xlabel('True - Reconstructed Azimuth (deg)')
     ax[1].set_ylabel('Weighted count')
@@ -1141,18 +1141,18 @@ if __name__ == "__main__":
         zenith, recon_zenith, azimuth, recon_azimuth, weights = getAnglesReconWeights(HRAeventList, station_id, station_id)
         # zenith angle needs to be adjusted for refraction in ice
         n = 1.37
-        zenith = np.arcsin(np.sin(np.deg2rad(zenith))/n)
+        zenith = np.arcsin(np.sin(zenith)/n)
         histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for Station {station_id}', f'{angle_save_folder}recon_angles_{station_id}.png')
     
     # Also plot angles for combination of all reflected and direct stations together
     zenith, recon_zenith, azimuth, recon_azimuth, weights = getAnglesReconWeights(HRAeventList, 'combined_direct', [13, 14, 15, 17, 18, 19, 30])
     n = 1.37
-    zenith = np.arcsin(np.sin(np.deg2rad(zenith))/n)
+    zenith = np.arcsin(np.sin(zenith)/n)
     histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for Combined Backlobe Stations', f'{angle_save_folder}recon_angles_combined_backlobe.png')
 
     zenith, recon_zenith, azimuth, recon_azimuth, weights = getAnglesReconWeights(HRAeventList, 'combined_reflected', [113, 114, 115, 117, 118, 119, 130])
     n = 1.37
-    zenith = np.arcsin(np.sin(np.deg2rad(zenith))/n)
+    zenith = np.arcsin(np.sin(zenith)/n)
     histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for Combined Reflected Stations', f'{angle_save_folder}recon_angles_combined_reflected.png')
 
 
@@ -1169,7 +1169,7 @@ if __name__ == "__main__":
             ic(f'No events for {i} coincidences, skipping angle plot')
             continue
         n = 1.37
-        zenith = np.arcsin(np.sin(np.deg2rad(zenith))/n)
+        zenith = np.arcsin(np.sin(zenith)/n)
         histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for {i}-Fold Coincidences, Direct Only', f'{angle_save_folder}recon_angles_{i}fold_coincidence_directOnly.png')
 
     # With reflections
@@ -1184,7 +1184,6 @@ if __name__ == "__main__":
             ic(f'No events for {i} coincidences, skipping angle plot')
             continue
         n = 1.37
-        zenith = np.arcsin(np.sin(np.deg2rad(zenith))/n)
+        zenith = np.arcsin(np.sin(zenith)/n)
         histAngleRecon(zenith, azimuth, recon_zenith, recon_azimuth, weights, f'Reconstruction Angles for {i}-Fold Coincidences, w/Refl', f'{angle_save_folder}recon_angles_{i}fold_coincidence_wRefl.png')
-
 
