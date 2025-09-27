@@ -102,7 +102,7 @@ def getSummedCoincidenceAnglesWeights(HRAEventList, station_ids, bad_stations, m
         total_weight = 0
         
         # Sum weights from all coincidence levels for this event
-        for n in range(min_coincidence, 15):  # Check up to 14 stations
+        for n in range(min_coincidence, 7): 
             weight_name = f'{n}_coincidence_wrefl' if 113 in station_ids else f'{n}_coincidence_norefl'
             if event.hasCoincidence(num=n, bad_stations=bad_stations):
                 has_coincidence = True
