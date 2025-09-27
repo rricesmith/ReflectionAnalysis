@@ -82,6 +82,86 @@ def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, n, station_ids, ba
     return zenith, recon_zenith, azimuth, recon_azimuth, weights, smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights
 
 
+def getSummedCoincidenceAnglesWeights(HRAEventList, station_ids, bad_stations, min_coincidence=2):
+    """
+    Get angles and weights for events, summing across all coincidence levels
+    """
+    # Rather than average stations, since we are looking at coincidences, we will return all angles and weights for events that triggered the right stations
+    zenith_list = []
+    recon_zenith_list = []
+    azimuth_list = []
+    recon_azimuth_list = []
+    raw_weights_list = []
+    smallest_diff_recon_zen_list = []
+    smallest_diff_recon_azi_list = []
+    smallest_diff_weights = []
+
+    for event in HRAEventList:
+        # Check if event has any coincidence >= min_coincidence
+        has_coincidence = False
+        total_weight = 0
+        
+        # Sum weights from all coincidence levels for this event
+        for n in range(min_coincidence, 15):  # Check up to 14 stations
+            weight_name = f'{n}_coincidence_wrefl' if 113 in station_ids else f'{n}_coincidence_norefl'
+            if event.hasCoincidence(num=n, bad_stations=bad_stations):
+                has_coincidence = True
+                total_weight += event.getWeight(weight_name)
+        
+        if not has_coincidence:
+            continue
+
+        recon_zens = []
+        recon_azis = []
+        n_weights_to_add = 0
+        
+        for station_id in station_ids:
+            if event.hasTriggered(station_id):
+                zenith_list.append(event.getAngles()[0])
+                recon_zenith_list.append(event.recon_zenith[station_id])
+                azimuth_list.append(event.getAngles()[1])
+                recon_azimuth_list.append(event.recon_azimuth[station_id])
+                
+                recon_zens.append(event.recon_zenith[station_id])
+                recon_azis.append(event.recon_azimuth[station_id])
+                n_weights_to_add += 1
+
+        # Add weight for each angle added, divided equally between stations
+        for _ in range(n_weights_to_add):
+            raw_weights_list.append(total_weight / n_weights_to_add)
+
+        # Find the smallest difference between the different reconstructions for this event
+        if len(recon_zens) > 1:
+            recon_zens = np.array(recon_zens)
+            recon_azis = np.array(recon_azis)
+            zen_diff_matrix = np.abs(recon_zens[:, None] - recon_zens[None, :])
+            azi_diff_matrix = np.abs(recon_azis[:, None] - recon_azis[None, :])
+            # Set diagonal to large value to ignore zero differences
+            np.fill_diagonal(zen_diff_matrix, np.inf)
+            np.fill_diagonal(azi_diff_matrix, np.inf)
+            min_zen_diff = np.min(zen_diff_matrix)
+            azi_diff_matrix[azi_diff_matrix > np.pi] = 2 * np.pi - azi_diff_matrix[azi_diff_matrix > np.pi]  # Account for wrap-around
+            min_azi_diff = np.min(azi_diff_matrix)
+
+            smallest_diff_recon_zen_list.append(min_zen_diff)
+            smallest_diff_recon_azi_list.append(min_azi_diff)
+            smallest_diff_weights.append(total_weight)
+
+    zenith = np.array(zenith_list)
+    n = 1.37
+    zenith = np.arcsin(np.sin(zenith) / n)  # Convert to in-ice angle
+    recon_zenith = np.array(recon_zenith_list)
+    azimuth = np.array(azimuth_list)
+    recon_azimuth = np.array(recon_azimuth_list)
+    weights = np.array(raw_weights_list)    
+    smallest_diff_recon_zen = np.array(smallest_diff_recon_zen_list)
+    smallest_diff_recon_azi = np.array(smallest_diff_recon_azi_list)
+    diff_weights = np.array(smallest_diff_weights)
+
+    ic(f'Got {len(zenith)} angles for summed coincidences with stations {station_ids}')
+    return zenith, recon_zenith, azimuth, recon_azimuth, weights, smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights
+
+
 def plot_polar_histogram(azimuth, zenith, weights, title, savename, colorbar_label='Weighted count'):
     """
     Create a polar 2D histogram of azimuth and zenith angles
@@ -149,9 +229,9 @@ def plot_angle_differences(zenith_diff, azimuth_diff, weights, title, savename):
     ax[1].set_ylabel('Weighted count')
     ax[1].grid(True, alpha=0.3)
     
-    plt.suptitle(title)
+    plt.suptitle(title, y=1.02)  # Add vertical spacing above plots
     plt.tight_layout()
-    fig.savefig(savename)
+    fig.savefig(savename, bbox_inches='tight')  # Ensure title is included
     ic(f'Saved {savename}')
     plt.close(fig)
 
@@ -166,11 +246,9 @@ def plot_smallest_differences(smallest_diff_zen, smallest_diff_azi, diff_weights
     
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(12, 5))
     
-    # Convert to degrees if in radians
-    # if max(smallest_diff_zen) < np.pi/2:
-    # smallest_diff_zen = np.rad2deg(smallest_diff_zen)
-    # if max(smallest_diff_azi) < np.pi:
-    # smallest_diff_azi = np.rad2deg(smallest_diff_azi)
+    # Convert to degrees - these are calculated in radians in the main function
+    smallest_diff_zen = np.rad2deg(smallest_diff_zen)
+    smallest_diff_azi = np.rad2deg(smallest_diff_azi)
     
     # Smallest zenith difference histogram
     diff_bins_zen = np.linspace(0, max(smallest_diff_zen)*1.1, 25)
@@ -186,10 +264,62 @@ def plot_smallest_differences(smallest_diff_zen, smallest_diff_azi, diff_weights
     ax[1].set_ylabel('Weighted count')
     ax[1].grid(True, alpha=0.3)
     
-    plt.suptitle(title)
+    plt.suptitle(title, y=1.02)  # Add vertical spacing above plots
     plt.tight_layout()
-    fig.savefig(savename)
+    fig.savefig(savename, bbox_inches='tight')  # Ensure title is included
     ic(f'Saved {savename}')
+    plt.close(fig)
+
+
+def plot_smallest_differences_with_cuts(smallest_diff_zen, smallest_diff_azi, diff_weights, title, savename, 
+                                       zen_cut=20, azi_cut=45):
+    """
+    Create 1D histograms of smallest differences between reconstructions with efficiency cuts
+    """
+    if len(smallest_diff_zen) == 0 or len(smallest_diff_azi) == 0:
+        ic("No coincidence events with multiple reconstructions found")
+        return
+    
+    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(12, 5))
+    
+    # Convert to degrees - these are calculated in radians in the main function
+    smallest_diff_zen_deg = np.rad2deg(smallest_diff_zen)
+    smallest_diff_azi_deg = np.rad2deg(smallest_diff_azi)
+    
+    # Calculate efficiencies
+    total_weight = np.sum(diff_weights)
+    zen_pass_mask = smallest_diff_zen_deg > zen_cut
+    azi_pass_mask = smallest_diff_azi_deg > azi_cut
+    combined_pass_mask = zen_pass_mask & azi_pass_mask
+    
+    zen_efficiency = np.sum(diff_weights[zen_pass_mask]) / total_weight if total_weight > 0 else 0
+    azi_efficiency = np.sum(diff_weights[azi_pass_mask]) / total_weight if total_weight > 0 else 0
+    combined_efficiency = np.sum(diff_weights[combined_pass_mask]) / total_weight if total_weight > 0 else 0
+    
+    # Smallest zenith difference histogram
+    diff_bins_zen = np.linspace(0, max(smallest_diff_zen_deg)*1.1, 25)
+    ax[0].hist(smallest_diff_zen_deg, bins=diff_bins_zen, weights=diff_weights, alpha=0.7, edgecolor='black')
+    ax[0].axvline(zen_cut, color='red', linestyle='--', linewidth=2, label=f'Cut at {zen_cut}°\nEff: {zen_efficiency:.3f}')
+    ax[0].set_xlabel('Smallest Zenith Difference (deg)')
+    ax[0].set_ylabel('Weighted count')
+    ax[0].grid(True, alpha=0.3)
+    ax[0].legend()
+    
+    # Smallest azimuth difference histogram
+    diff_bins_azi = np.linspace(0, max(smallest_diff_azi_deg)*1.1, 25)
+    ax[1].hist(smallest_diff_azi_deg, bins=diff_bins_azi, weights=diff_weights, alpha=0.7, edgecolor='black')
+    ax[1].axvline(azi_cut, color='red', linestyle='--', linewidth=2, label=f'Cut at {azi_cut}°\nEff: {azi_efficiency:.3f}')
+    ax[1].set_xlabel('Smallest Azimuth Difference (deg)')
+    ax[1].set_ylabel('Weighted count')
+    ax[1].grid(True, alpha=0.3)
+    ax[1].legend()
+    
+    # Add combined efficiency to title
+    title_with_eff = f'{title}\nCombined Cut Efficiency: {combined_efficiency:.3f}'
+    plt.suptitle(title_with_eff, y=1.08)  # Extra space for multi-line title
+    plt.tight_layout()
+    fig.savefig(savename, bbox_inches='tight')  # Ensure title is included
+    ic(f'Saved {savename} with efficiencies: zen={zen_efficiency:.3f}, azi={azi_efficiency:.3f}, combined={combined_efficiency:.3f}')
     plt.close(fig)
 
 
@@ -229,6 +359,11 @@ def histCoincidenceAngles(zenith, recon_zenith, azimuth, recon_azimuth, weights,
     plot_smallest_differences(smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights,
                             f'{title} - Smallest Reconstruction Differences',
                             savename_base.replace('.png', '_smallest_diffs.png'))
+    
+    # 5. 1D histograms of smallest differences with efficiency cuts
+    plot_smallest_differences_with_cuts(smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights,
+                                      f'{title} - Smallest Reconstruction Differences with Cuts',
+                                      savename_base.replace('.png', '_smallest_diffs_cuts.png'))
 
 
 def load_HRA_data():
@@ -337,6 +472,49 @@ if __name__ == "__main__":
                             title, savename_base)
 
         ic(f"Completed analysis for {weight_name}")
+
+    
+    # Add analysis for sum of all coincidences with reflections
+    ic("Starting summed coincidence analysis with reflections")
+    station_ids = [13, 14, 15, 17, 18, 19, 30, 113, 114, 115, 117, 118, 119, 130]
+    bad_stations = [32, 52, 132, 152]
+    
+    zenith, recon_zenith, azimuth, recon_azimuth, weights, \
+    smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights = \
+        getSummedCoincidenceAnglesWeights(HRAeventList, station_ids, bad_stations)
+    
+    if len(zenith) > 0:
+        title = f'Summed Coincidence Analysis - All Stations, Refl Required'
+        savename_base = f'{coincidence_save_folder}coincidence_summed_wrefl_reflreq.png'
+        
+        histCoincidenceAngles(zenith, recon_zenith, azimuth, recon_azimuth, weights,
+                            smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights,
+                            title, savename_base)
+        
+        ic("Completed summed analysis with reflections")
+    else:
+        ic("No events found for summed coincidences with reflections")
+    
+    # Add analysis for sum of all coincidences - direct only
+    ic("Starting summed coincidence analysis - direct only")
+    station_ids = direct_stations
+    bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
+    
+    zenith, recon_zenith, azimuth, recon_azimuth, weights, \
+    smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights = \
+        getSummedCoincidenceAnglesWeights(HRAeventList, station_ids, bad_stations)
+    
+    if len(zenith) > 0:
+        title = f'Summed Coincidence Analysis - All Stations, Direct Only'
+        savename_base = f'{coincidence_save_folder}coincidence_summed_norefl_directonly.png'
+        
+        histCoincidenceAngles(zenith, recon_zenith, azimuth, recon_azimuth, weights,
+                            smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights,
+                            title, savename_base)
+        
+        ic("Completed summed analysis - direct only")
+    else:
+        ic("No events found for summed coincidences - direct only")
 
 
 
