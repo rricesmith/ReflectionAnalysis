@@ -59,7 +59,8 @@ def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, n, station_ids, ba
             np.fill_diagonal(zen_diff_matrix, np.inf)
             np.fill_diagonal(azi_diff_matrix, np.inf)
             min_zen_diff = np.min(zen_diff_matrix)
-            azi_diff_matrix[1000 > azi_diff_matrix > np.pi] = 2 * np.pi - azi_diff_matrix[1000 > azi_diff_matrix > np.pi]  # Account for wrap-around
+            wrap_mask = (azi_diff_matrix > np.pi) & (azi_diff_matrix < 1000)
+            azi_diff_matrix[wrap_mask] = 2 * np.pi - azi_diff_matrix[wrap_mask]  # Account for wrap-around
             min_azi_diff = np.min(azi_diff_matrix)
 
 
@@ -141,7 +142,8 @@ def getSummedCoincidenceAnglesWeights(HRAEventList, station_ids, bad_stations, m
             np.fill_diagonal(zen_diff_matrix, np.inf)
             np.fill_diagonal(azi_diff_matrix, np.inf)
             min_zen_diff = np.min(zen_diff_matrix)
-            azi_diff_matrix[1000 > azi_diff_matrix > np.pi] = 2 * np.pi - azi_diff_matrix[1000 > azi_diff_matrix > np.pi]  # Account for wrap-around
+            wrap_mask = (azi_diff_matrix > np.pi) & (azi_diff_matrix < 1000)
+            azi_diff_matrix[wrap_mask] = 2 * np.pi - azi_diff_matrix[wrap_mask]  # Account for wrap-around
             min_azi_diff = np.min(azi_diff_matrix)
 
             smallest_diff_recon_zen_list.append(min_zen_diff)
