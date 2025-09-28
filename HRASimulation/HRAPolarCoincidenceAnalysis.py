@@ -59,7 +59,7 @@ def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, n, station_ids, ba
             np.fill_diagonal(zen_diff_matrix, np.inf)
             np.fill_diagonal(azi_diff_matrix, np.inf)
             min_zen_diff = np.min(zen_diff_matrix)
-            azi_diff_matrix[azi_diff_matrix > np.pi] = 2 * np.pi - azi_diff_matrix[azi_diff_matrix > np.pi]  # Account for wrap-around
+            azi_diff_matrix[azi_diff_matrix > 180] = 360 - azi_diff_matrix[azi_diff_matrix > 180]  # Account for wrap-around
             min_azi_diff = np.min(azi_diff_matrix)
 
 
@@ -141,7 +141,7 @@ def getSummedCoincidenceAnglesWeights(HRAEventList, station_ids, bad_stations, m
             np.fill_diagonal(zen_diff_matrix, np.inf)
             np.fill_diagonal(azi_diff_matrix, np.inf)
             min_zen_diff = np.min(zen_diff_matrix)
-            azi_diff_matrix[azi_diff_matrix > np.pi] = 2 * np.pi - azi_diff_matrix[azi_diff_matrix > np.pi]  # Account for wrap-around
+            azi_diff_matrix[azi_diff_matrix > 180] = 360 - azi_diff_matrix[azi_diff_matrix > 180]  # Account for wrap-around
             min_azi_diff = np.min(azi_diff_matrix)
 
             smallest_diff_recon_zen_list.append(min_zen_diff)
@@ -289,18 +289,18 @@ def plot_smallest_differences_with_cuts(smallest_diff_zen, smallest_diff_azi, di
     
     # Calculate efficiencies
     total_weight = np.sum(diff_weights)
-    zen_pass_mask = smallest_diff_zen_deg > zen_cut
-    azi_pass_mask = smallest_diff_azi_deg > azi_cut
+    zen_pass_mask = smallest_diff_zen_deg < zen_cut
+    azi_pass_mask = smallest_diff_azi_deg < azi_cut
     combined_pass_mask = zen_pass_mask & azi_pass_mask
     
-    zen_efficiency = np.sum(diff_weights[zen_pass_mask]) / total_weight if total_weight > 0 else 0
-    azi_efficiency = np.sum(diff_weights[azi_pass_mask]) / total_weight if total_weight > 0 else 0
-    combined_efficiency = np.sum(diff_weights[combined_pass_mask]) / total_weight if total_weight > 0 else 0
+    zen_efficiency = 100*np.sum(diff_weights[zen_pass_mask]) / total_weight if total_weight > 0 else 0
+    azi_efficiency = 100*np.sum(diff_weights[azi_pass_mask]) / total_weight if total_weight > 0 else 0
+    combined_efficiency = 100*np.sum(diff_weights[combined_pass_mask]) / total_weight if total_weight > 0 else 0
     
     # Smallest zenith difference histogram
     diff_bins_zen = np.linspace(0, max(smallest_diff_zen_deg)*1.1, 25)
     ax[0].hist(smallest_diff_zen_deg, bins=diff_bins_zen, weights=diff_weights, alpha=0.7, edgecolor='black')
-    ax[0].axvline(zen_cut, color='red', linestyle='--', linewidth=2, label=f'Cut at {zen_cut}°\nEff: {zen_efficiency:.3f}')
+    ax[0].axvline(zen_cut, color='red', linestyle='--', linewidth=2, label=f'Cut at {zen_cut}°\nEff: {zen_efficiency:.2f}%')
     ax[0].set_xlabel('Smallest Zenith Difference (deg)')
     ax[0].set_ylabel('Weighted count')
     ax[0].grid(True, alpha=0.3)
@@ -308,19 +308,20 @@ def plot_smallest_differences_with_cuts(smallest_diff_zen, smallest_diff_azi, di
     
     # Smallest azimuth difference histogram
     diff_bins_azi = np.linspace(0, max(smallest_diff_azi_deg)*1.1, 25)
+    ic(smallest_diff_azi_deg)
     ax[1].hist(smallest_diff_azi_deg, bins=diff_bins_azi, weights=diff_weights, alpha=0.7, edgecolor='black')
-    ax[1].axvline(azi_cut, color='red', linestyle='--', linewidth=2, label=f'Cut at {azi_cut}°\nEff: {azi_efficiency:.3f}')
+    ax[1].axvline(azi_cut, color='red', linestyle='--', linewidth=2, label=f'Cut at {azi_cut}°\nEff: {azi_efficiency:.2f}%')
     ax[1].set_xlabel('Smallest Azimuth Difference (deg)')
     ax[1].set_ylabel('Weighted count')
     ax[1].grid(True, alpha=0.3)
     ax[1].legend()
     
     # Add combined efficiency to title
-    title_with_eff = f'{title}\nCombined Cut Efficiency: {combined_efficiency:.3f}'
+    title_with_eff = f'{title}\nCombined Cut Efficiency: {combined_efficiency:.2f}%'
     plt.suptitle(title_with_eff, y=1.08)  # Extra space for multi-line title
     plt.tight_layout()
     fig.savefig(savename, bbox_inches='tight')  # Ensure title is included
-    ic(f'Saved {savename} with efficiencies: zen={zen_efficiency:.3f}, azi={azi_efficiency:.3f}, combined={combined_efficiency:.3f}')
+    ic(f'Saved {savename} with efficiencies: zen={zen_efficiency:.2f}%, azi={azi_efficiency:.2f}%, combined={combined_efficiency:.2f}%')
     plt.close(fig)
 
 
