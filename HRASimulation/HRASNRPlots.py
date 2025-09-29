@@ -10,7 +10,7 @@ import itertools
 
 # Import your existing modules
 from HRASimulation.HRAEventObject import HRAevent
-from HRASimulation.HRANurToNpy import loadHRAfromH5
+from HRASimulation.S02_HRANurToNpy import loadHRAfromH5
 import HRASimulation.HRAAnalysis as HRAAnalysis
 from NuRadioReco.utilities import units
 

@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import HRASimulation.HRAAnalysis as HRAAnalysis
 import configparser
 from HRASimulation.HRAEventObject import HRAevent
-from HRASimulation.HRANurToNpy import loadHRAfromH5
+from HRASimulation.S02_HRANurToNpy import loadHRAfromH5
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()

@@ -5,7 +5,7 @@ import configparser
 from icecream import ic
 
 from HRASimulation.HRAEventObject import HRAevent
-from HRASimulation.HRANurToNpy import loadHRAfromH5
+from HRASimulation.S02_HRANurToNpy import loadHRAfromH5
 from NuRadioReco.utilities import units
 
 import HRASimulation.HRAAnalysis as HRAAnalysis

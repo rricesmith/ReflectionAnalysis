@@ -10,7 +10,7 @@ from NuRadioReco.utilities import fft
 # accessible by your Python path. If not, you might need to adjust the path.
 # import sys
 # sys.path.append('/path/to/your/modules')
-from HRANurToNpy import loadHRAfromH5
+from HRASimulation.S02_HRANurToNpy import loadHRAfromH5
 # The HRAevent class is loaded via pickle, so we need it in the scope.
 from HRAEventObject import HRAevent
 

@@ -208,8 +208,9 @@ def run_stations(stations_list, mode='by_depth'):
 
                 # efieldToVoltageConverter.run(evt, station, det)
 
-                if add_noise:
-                    channelGenericNoiseAdder.run(evt, station, det, type='rayleigh', amplitude=preAmpVrms_per_channel[station_id])
+                # Moving noise to after lowest trigger, removes the case of noise significantly adding to trigger rates that don't represent real events
+                # if add_noise:
+                #     channelGenericNoiseAdder.run(evt, station, det, type='rayleigh', amplitude=preAmpVrms_per_channel[station_id])
 
                 hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
 
@@ -232,6 +233,12 @@ def run_stations(stations_list, mode='by_depth'):
 
 
                 if station.get_trigger(f'primary_LPDA_2of4_{trigger_sigmas[0]}sigma').has_triggered():
+
+                    # Add pre-amp noise if lowest trigger was met
+                    if add_noise:
+                        hardwareResponseIncorporator.run(evt, station, det, sim_to_data=False)
+                        channelGenericNoiseAdder.run(evt, station, det, type='rayleigh', amplitude=preAmpVrms_per_channel[station_id])
+                        hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
 
                     if station_id == 52 or station_id == 152:
                         # For station 52, primary and secondary are reveresed due to ordering of channels that are upward/downward

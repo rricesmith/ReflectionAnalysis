@@ -11,7 +11,7 @@ import matplotlib.colors
 import matplotlib.pyplot as plt
 import configparser
 from HRASimulation.HRAEventObject import HRAevent
-from HRASimulation.HRANurToNpy import loadHRAfromH5
+from HRASimulation.S02_HRANurToNpy import loadHRAfromH5
 import itertools
 import collections
 from scipy.special import comb as nCr 

@@ -7,7 +7,7 @@ import configparser
 import os
 from icecream import ic
 from NuRadioReco.utilities import units
-from HRASimulation.HRANurToNpy import loadHRAfromH5
+from HRASimulation.S02_HRANurToNpy import loadHRAfromH5
 from HRASimulation.HRAAnalysis import getCoincidencesTriggerRates
 
 def getRawCoincidenceAnglesWeights(HRAEventList, weight_name, n, station_ids, bad_stations):

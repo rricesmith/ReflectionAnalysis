@@ -10,7 +10,7 @@ import itertools
 
 # Project imports
 from HRASimulation.HRAEventObject import HRAevent, stns_100s, stns_200s
-from HRASimulation.HRANurToNpy import loadHRAfromH5
+from HRASimulation.S02_HRANurToNpy import loadHRAfromH5
 import HRASimulation.HRAAnalysis as HRAAnalysis
 from NuRadioReco.utilities import units
 
