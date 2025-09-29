@@ -6,8 +6,11 @@ import configparser
 
 config = configparser.ConfigParser()
 config.read('HRASimulation/config.ini')
-#sim_folder = config['FOLDERS']['sim_folder']
-sim_folder = config['FOLDERS']['area_sim_folder']
+
+# Normal sim loc
+sim_folder = config['FOLDERS']['sim_folder']
+# Area sim loc
+# sim_folder = config['FOLDERS']['area_sim_folder']
 
 
 n_cores = 1000   #Decenty sensitivity to RCRs, so don't overdo
