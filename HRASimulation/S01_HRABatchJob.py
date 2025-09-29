@@ -36,7 +36,7 @@ file_range = np.linspace(min_file, max_file, num_sims)
 for iF in range(len(file_range)-1):
     lower_file = file_range[iF]
     upper_file = file_range[iF+1]
-    cmd = f'python HRASimulation/HRASim.py {output_folder}{output_filename}_files{lower_file:.0f}-{upper_file:.0f}_{n_cores}cores {n_cores} --min_file {lower_file:.0f} --max_file {upper_file:.0f} --add_noise {add_noise} --distance {distance} --seed {int(lower_file)}'
-    # cmd = f'python HRASimulation/HRASimAreaSensitivity.py {output_folder}{output_filename}_files{lower_file:.0f}-{upper_file:.0f}_{n_cores}cores {n_cores} --min_file {lower_file:.0f} --max_file {upper_file:.0f} --add_noise {add_noise} --distance {distance} --seed {int(lower_file)}'
+    cmd = f'python HRASimulation/S01A_HRASim.py {output_folder}{output_filename}_files{lower_file:.0f}-{upper_file:.0f}_{n_cores}cores {n_cores} --min_file {lower_file:.0f} --max_file {upper_file:.0f} --add_noise {add_noise} --distance {distance} --seed {int(lower_file)}'
+    # cmd = f'python HRASimulation/S01B_HRASimAreaSensitivity.py {output_folder}{output_filename}_files{lower_file:.0f}-{upper_file:.0f}_{n_cores}cores {n_cores} --min_file {lower_file:.0f} --max_file {upper_file:.0f} --add_noise {add_noise} --distance {distance} --seed {int(lower_file)}'
 
     A00_SlurmUtil.makeAndRunJob(cmd, f'HRA_{lower_file:.0f}-{upper_file:.0f}', runDirectory='run/HRASimulation', partition='standard')
