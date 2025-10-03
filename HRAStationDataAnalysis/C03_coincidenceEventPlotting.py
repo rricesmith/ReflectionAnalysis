@@ -142,6 +142,116 @@ def check_angle_cut(event_details, zenith_margin_deg=20.0, azimuth_margin_deg=45
 
     return False # No agreeing pair found
 
+def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.2, min_failing_stations=2, debug_print=True):
+    """
+    Checks if a coincidence event passes the FFT cut.
+    For station 18 triggers, calculates the fraction that the largest FFT value
+    is of the total FFT for each channel, and fails the event if enough stations
+    exceed the threshold.
+    
+    Args:
+        event_details: Event data dictionary
+        event_id: Event ID for logging purposes (optional)
+        max_fraction_threshold: Maximum allowed fraction for largest FFT value (default 0.2)
+        min_failing_stations: Minimum number of stations above threshold to fail event (default 2)
+        debug_print: Whether to print debug information for each event (default True)
+    
+    Returns:
+        bool: True if event passes FFT cut, False otherwise
+    """
+    if not isinstance(event_details, dict):
+        return False
+    
+    if event_id is None:
+        event_id = event_details.get('event_id', 'Unknown')
+    stations_above_threshold = 0
+    station_18_found = False
+    
+    # Check if station 18 is present
+    stations_data = event_details.get("stations", {})
+    if "18" not in stations_data:
+        if debug_print:
+            print(f"Event {event_id}: Station 18 not found - FFT cut not applicable")
+        return True  # Pass if station 18 not present
+    
+    station_18_found = True
+    station_18_data = stations_data["18"]
+    
+    # Get traces for station 18
+    traces_list = station_18_data.get("Traces", [])
+    if not traces_list:
+        if debug_print:
+            print(f"Event {event_id}: No traces found for station 18")
+        return True  # Pass if no traces
+    
+    if debug_print:
+        print(f"Event {event_id}: Station 18 FFT Analysis")
+    
+    # Analyze each trigger in station 18
+    for trigger_idx, traces_for_trigger in enumerate(traces_list):
+        if traces_for_trigger is None:
+            continue
+            
+        # Ensure we have 4 channels, pad with None if needed
+        padded_traces = (list(traces_for_trigger) + [None] * 4)[:4]
+        
+        channel_fractions = []
+        
+        for ch_idx, trace_data in enumerate(padded_traces):
+            if trace_data is None or not hasattr(trace_data, "__len__") or len(trace_data) == 0:
+                channel_fractions.append(np.nan)
+                continue
+                
+            trace_array = np.asarray(trace_data)
+            if len(trace_array) <= 1:
+                channel_fractions.append(np.nan)
+                continue
+                
+            # Calculate FFT
+            sampling_rate_hz = 2e9  # 2 GHz sampling rate
+            try:
+                fft_spectrum = np.abs(fft.time2freq(trace_array, sampling_rate_hz))
+                
+                # Set DC component to 0
+                if len(fft_spectrum) > 0:
+                    fft_spectrum[0] = 0
+                
+                # Calculate total FFT power and max value
+                total_fft = np.sum(fft_spectrum)
+                max_fft = np.max(fft_spectrum)
+                
+                # Calculate fraction
+                if total_fft > 0:
+                    fraction = max_fft / total_fft
+                else:
+                    fraction = np.nan
+                    
+                channel_fractions.append(fraction)
+                
+            except Exception as e:
+                if debug_print:
+                    print(f"  Error calculating FFT for channel {ch_idx}: {e}")
+                channel_fractions.append(np.nan)
+        
+        # Check if any channel exceeds threshold
+        valid_fractions = [f for f in channel_fractions if not np.isnan(f)]
+        if valid_fractions and any(f > max_fraction_threshold for f in valid_fractions):
+            stations_above_threshold += 1
+        
+        if debug_print:
+            fraction_str = ", ".join([f"{f:.4f}" if not np.isnan(f) else "NaN" for f in channel_fractions])
+            print(f"  Trigger {trigger_idx + 1}: Channel fractions = [{fraction_str}]")
+            exceeds_threshold = valid_fractions and any(f > max_fraction_threshold for f in valid_fractions)
+            print(f"  Trigger {trigger_idx + 1}: Exceeds threshold ({max_fraction_threshold}): {exceeds_threshold}")
+    
+    # Determine if event passes FFT cut
+    passes_fft_cut = stations_above_threshold < min_failing_stations
+    
+    if debug_print:
+        print(f"Event {event_id}: Stations above threshold: {stations_above_threshold}, Passes FFT cut: {passes_fft_cut}")
+    
+    return passes_fft_cut
+
 def check_time_cut(events_dict, time_threshold_hours=1.0):
     """
     Checks if coincidence events are isolated in time (not within time_threshold_hours of each other).
@@ -197,19 +307,21 @@ def check_time_cut(events_dict, time_threshold_hours=1.0):
         ic(f"Time cut map size: {len(time_cut_results)}")
         return time_cut_results
 
-def check_coincidence_cuts(event_details, time_cut_result=True):
+def check_coincidence_cuts(event_details, event_id=None, time_cut_result=True):
     """
     Main function to check if a coincidence event passes all defined analysis cuts.
     Returns a dictionary with the pass/fail status for each cut.
     
     Args:
         event_details: Details for a single event
+        event_id: Event ID for logging purposes (optional)
         time_cut_result: Boolean result from the time cut (calculated externally)
     """
     results = {}
     results['time_cut_passed'] = time_cut_result
     results['chi_cut_passed'] = check_chi_cut(event_details)
     results['angle_cut_passed'] = check_angle_cut(event_details)
+    results['fft_cut_passed'] = check_fft_cut(event_details, event_id)
     
     # Add more cut checks here in the future:
     # results['another_cut_passed'] = check_another_cut(event_details)
@@ -549,7 +661,7 @@ def plot_single_master_event(event_id, event_details, output_dir, dataset_name, 
 
     status_text = "PASS" if passes_overall_analysis else "FAIL"
     text_info_lines = [f"Event ID: {event_id} -- Overall: {status_text} (Analysis Cuts)"]
-    text_info_lines.append(f"Cut Status -> Time: {'Passed' if cut_results.get('time_cut_passed') else 'Failed'}, Chi: {'Passed' if cut_results.get('chi_cut_passed') else 'Failed'}, Angle: {'Passed' if cut_results.get('angle_cut_passed') else 'Failed'}")
+    text_info_lines.append(f"Cut Status -> Time: {'Passed' if cut_results.get('time_cut_passed') else 'Failed'}, Chi: {'Passed' if cut_results.get('chi_cut_passed') else 'Failed'}, Angle: {'Passed' if cut_results.get('angle_cut_passed') else 'Failed'}, FFT: {'Passed' if cut_results.get('fft_cut_passed') else 'Failed'}")
     text_info_lines.append("--- Station Triggers ---")
     
     legend_handles_for_fig = {}; global_trace_min = float('inf'); global_trace_max = float('-inf')
@@ -827,6 +939,7 @@ def checkForKeyEvents(events_dict, target_timestamps, output_dir, dataset_name, 
                     print(f"      - Time Cut: {'PASS' if cut_results.get('time_cut_passed', False) else 'FAIL'}")
                     print(f"      - Chi Cut: {'PASS' if cut_results.get('chi_cut_passed', False) else 'FAIL'}")
                     print(f"      - Angle Cut: {'PASS' if cut_results.get('angle_cut_passed', False) else 'FAIL'}")
+                    print(f"      - FFT Cut: {'PASS' if cut_results.get('fft_cut_passed', False) else 'FAIL'}")
                     
                     # Print station information
                     stations_info = event_details.get("stations", {})
@@ -1027,45 +1140,48 @@ if __name__ == '__main__':
                 for loop_idx, (event_id, event_details_loopvar) in enumerate(events_data_dict.items()):
                     _progress(loop_idx, total_events, "Event cuts")
                     if isinstance(event_details_loopvar, dict):
-                        # Apply only chi and angle cuts initially (no time cut)
+                        # Apply chi, angle, and FFT cuts initially (no time cut)
                         chi_cut_passed = check_chi_cut(event_details_loopvar)
                         # angle_cut_passed = check_angle_cut(event_details_loopvar)
                         angle_cut_passed = True  # Temporarily disable angle cut for testing
+                        fft_cut_passed = check_fft_cut(event_details_loopvar, event_id)
 
                         # Store initial cut results without time cut
                         cut_results_dict = {
                             'chi_cut_passed': chi_cut_passed,
                             'angle_cut_passed': angle_cut_passed,
+                            'fft_cut_passed': fft_cut_passed,
                             'time_cut_passed': True  # Default to True, will be updated if time cut is applied
                         }
                         event_details_loopvar['cut_results'] = cut_results_dict
-                        event_details_loopvar['passes_analysis_cuts'] = chi_cut_passed and angle_cut_passed  # Will be updated after time cut if applicable
+                        event_details_loopvar['passes_analysis_cuts'] = chi_cut_passed and angle_cut_passed and fft_cut_passed  # Will be updated after time cut if applicable
                         
                         if event_details_loopvar['passes_analysis_cuts']: num_passing_overall +=1
                         else: num_failing_overall +=1
                     elif event_details_loopvar is not None:
                         event_details_loopvar_placeholder = {'passes_analysis_cuts': False, 
-                                                              'cut_results': {'chi_cut_passed': False, 'angle_cut_passed': False, 'time_cut_passed': False, 'error': 'Malformed event data'}}
+                                                              'cut_results': {'chi_cut_passed': False, 'angle_cut_passed': False, 'fft_cut_passed': False, 'time_cut_passed': False, 'error': 'Malformed event data'}}
                         if isinstance(events_data_dict, dict):
                             events_data_dict[event_id] = event_details_loopvar_placeholder
                         num_failing_overall +=1
 
-            ic(f"After chi/angle cuts: {num_passing_overall} events passed, {num_failing_overall} events failed")
+            ic(f"After chi/angle/FFT cuts: {num_passing_overall} events passed, {num_failing_overall} events failed")
 
             # Apply time cut only if processing a passing_cuts dataset
             if is_passing_cuts_dataset:
-                ic(f"Applying time cut to events that passed chi/angle cuts...")
-                # Create a filtered dict with only events that passed chi and angle cuts
-                events_passing_chi_angle = {
+                ic(f"Applying time cut to events that passed chi/angle/FFT cuts...")
+                # Create a filtered dict with only events that passed chi, angle, and FFT cuts
+                events_passing_initial_cuts = {
                     event_id: event_details 
                     for event_id, event_details in events_data_dict.items() 
                     if isinstance(event_details, dict) and 
                        event_details.get('cut_results', {}).get('chi_cut_passed', False) and 
-                       event_details.get('cut_results', {}).get('angle_cut_passed', False)
+                       event_details.get('cut_results', {}).get('angle_cut_passed', False) and 
+                       event_details.get('cut_results', {}).get('fft_cut_passed', False)
                 }
                 
-                if events_passing_chi_angle:
-                    time_cut_results = check_time_cut(events_passing_chi_angle, time_threshold_hours=24.0)
+                if events_passing_initial_cuts:
+                    time_cut_results = check_time_cut(events_passing_initial_cuts, time_threshold_hours=24.0)
                     num_passing_time_cut = sum(time_cut_results.values())
                     num_failing_time_cut = len(time_cut_results) - num_passing_time_cut
                     ic(f"Time cut results: {num_passing_time_cut} events passed, {num_failing_time_cut} events failed (within 1 hour of another passing event)")
@@ -1087,7 +1203,7 @@ if __name__ == '__main__':
                             if event_details['passes_analysis_cuts']: num_passing_overall +=1
                             else: num_failing_overall +=1
                 else:
-                    ic("No events passed chi/angle cuts, so time cut is not applicable")
+                    ic("No events passed chi/angle/FFT cuts, so time cut is not applicable")
             else:
                 ic("Time cut skipped (not a passing_cuts dataset)")
 
