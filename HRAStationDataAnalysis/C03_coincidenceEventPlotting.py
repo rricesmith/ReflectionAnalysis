@@ -169,7 +169,7 @@ def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.2, min_
     
     # Check if station 18 is present
     stations_data = event_details.get("stations", {})
-    if "18" not in stations_data:
+    if 18 not in stations_data:
         if debug_print:
             print(f"Event {event_id}: Station 18 not found - FFT cut not applicable")
         return True  # Pass if station 18 not present
