@@ -931,7 +931,7 @@ if __name__ == "__main__":
     # Define all modes to be processed
     base_stations = [13, 14, 15, 17, 18, 19, 30]
     analysis_modes = ['required', 'included', 'excluded', 'only']
-    snr_threshold = 7.0
+    snr_threshold = 1.0
 
     for mode in analysis_modes:
         ic(f"\n{'='*20} Starting Analysis for Mode: '{mode}' {'='*20}")
