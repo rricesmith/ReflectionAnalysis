@@ -1029,8 +1029,9 @@ if __name__ == '__main__':
                     if isinstance(event_details_loopvar, dict):
                         # Apply only chi and angle cuts initially (no time cut)
                         chi_cut_passed = check_chi_cut(event_details_loopvar)
-                        angle_cut_passed = check_angle_cut(event_details_loopvar)
-                        
+                        # angle_cut_passed = check_angle_cut(event_details_loopvar)
+                        angle_cut_passed = True  # Temporarily disable angle cut for testing
+
                         # Store initial cut results without time cut
                         cut_results_dict = {
                             'chi_cut_passed': chi_cut_passed,
@@ -1064,7 +1065,7 @@ if __name__ == '__main__':
                 }
                 
                 if events_passing_chi_angle:
-                    time_cut_results = check_time_cut(events_passing_chi_angle, time_threshold_hours=1.0)
+                    time_cut_results = check_time_cut(events_passing_chi_angle, time_threshold_hours=24.0)
                     num_passing_time_cut = sum(time_cut_results.values())
                     num_failing_time_cut = len(time_cut_results) - num_passing_time_cut
                     ic(f"Time cut results: {num_passing_time_cut} events passed, {num_failing_time_cut} events failed (within 1 hour of another passing event)")
