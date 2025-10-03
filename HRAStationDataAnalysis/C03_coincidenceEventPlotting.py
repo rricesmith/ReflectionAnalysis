@@ -175,7 +175,7 @@ def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.2, min_
         return True  # Pass if station 18 not present
     
     station_18_found = True
-    station_18_data = stations_data["18"]
+    station_18_data = stations_data[18]
     
     # Get traces for station 18
     traces_list = station_18_data.get("Traces", [])
