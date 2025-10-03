@@ -933,59 +933,59 @@ if __name__ == "__main__":
     analysis_modes = ['required', 'included', 'excluded', 'only']
     snr_threshold = 7.0
 
-    # for mode in analysis_modes:
-    #     ic(f"\n{'='*20} Starting Analysis for Mode: '{mode}' {'='*20}")
+    for mode in analysis_modes:
+        ic(f"\n{'='*20} Starting Analysis for Mode: '{mode}' {'='*20}")
 
-    #     # --- New: Add a suffix to filenames if SNR is used ---
-    #     snr_suffix = f'_snr{snr_threshold}' if snr_threshold is not None else ''
-    #     initial_rates_file = os.path.join(save_folder, f'initial_station_combination_rates_{mode}{snr_suffix}.txt')
+        # --- New: Add a suffix to filenames if SNR is used ---
+        snr_suffix = f'_snr{snr_threshold}' if snr_threshold is not None else ''
+        initial_rates_file = os.path.join(save_folder, f'initial_station_combination_rates_{mode}{snr_suffix}.txt')
         
-    #     # --- Modified call to pass the SNR threshold ---
-    #     initial_rates = calculate_all_station_combination_rates(
-    #         HRAeventList,
-    #         initial_rates_file,
-    #         max_distance=max_distance,
-    #         sigma=plot_sigma,
-    #         reflected_mode=mode,
-    #         snr_threshold=snr_threshold  # Pass the value here
-    #     )
+        # --- Modified call to pass the SNR threshold ---
+        initial_rates = calculate_all_station_combination_rates(
+            HRAeventList,
+            initial_rates_file,
+            max_distance=max_distance,
+            sigma=plot_sigma,
+            reflected_mode=mode,
+            snr_threshold=snr_threshold  # Pass the value here
+        )
 
-    #     # --- Step 2: Propagate Rates (Unchanged Logic) ---
-    #     ic(f"Propagating rates for '{mode}' mode with {downtime_prob*100:.0f}% downtime...")
+        # --- Step 2: Propagate Rates (Unchanged Logic) ---
+        ic(f"Propagating rates for '{mode}' mode with {downtime_prob*100:.0f}% downtime...")
         
-    #     final_adjusted_rates = propagate_downtime_rates(
-    #         initial_rates,
-    #         base_stations=base_stations,
-    #         downtime_prob=downtime_prob
-    #     )
+        final_adjusted_rates = propagate_downtime_rates(
+            initial_rates,
+            base_stations=base_stations,
+            downtime_prob=downtime_prob
+        )
 
-    #     # --- New: Use the same suffix for the propagated rates file ---
-    #     propagated_rates_file = os.path.join(save_folder, f'propagated_station_combination_rates_{mode}{snr_suffix}.txt')
-    #     ic(f"Saving propagated rates to: {propagated_rates_file}")
+        # --- New: Use the same suffix for the propagated rates file ---
+        propagated_rates_file = os.path.join(save_folder, f'propagated_station_combination_rates_{mode}{snr_suffix}.txt')
+        ic(f"Saving propagated rates to: {propagated_rates_file}")
 
-    #     with open(propagated_rates_file, 'w') as f:
-    #         # ... (writing to file is unchanged) ...
-    #         f.write(f"# Propagated rates for Analysis Mode: {mode}\n")
-    #         f.write(f"# Accounts for a {downtime_prob*100:.0f}% single-station downtime probability.\n")
-    #         if snr_threshold is not None:
-    #             f.write(f"# Event triggers are filtered with SNR >= {snr_threshold}\n")
-    #         f.write("Station Combination, Adjusted_Event_Rate, Adjusted_Error (both in Evts/Yr)\n")
+        with open(propagated_rates_file, 'w') as f:
+            # ... (writing to file is unchanged) ...
+            f.write(f"# Propagated rates for Analysis Mode: {mode}\n")
+            f.write(f"# Accounts for a {downtime_prob*100:.0f}% single-station downtime probability.\n")
+            if snr_threshold is not None:
+                f.write(f"# Event triggers are filtered with SNR >= {snr_threshold}\n")
+            f.write("Station Combination, Adjusted_Event_Rate, Adjusted_Error (both in Evts/Yr)\n")
 
-    #         for n_coincidence in range(len(base_stations), 0, -1):
-    #             if n_coincidence > 1:
-    #                 f.write(f"\n# {n_coincidence}-Fold Coincidences (Adjusted):\n")
-    #             else:
-    #                 f.write(f"\n# 1-Fold (Single Station) Rates (Adjusted):\n")
+            for n_coincidence in range(len(base_stations), 0, -1):
+                if n_coincidence > 1:
+                    f.write(f"\n# {n_coincidence}-Fold Coincidences (Adjusted):\n")
+                else:
+                    f.write(f"\n# 1-Fold (Single Station) Rates (Adjusted):\n")
                 
-    #             all_possible_combos = sorted(list(itertools.combinations(base_stations, n_coincidence)))
+                all_possible_combos = sorted(list(itertools.combinations(base_stations, n_coincidence)))
                 
-    #             for combo_tuple in all_possible_combos:
-    #                 rate, error = final_adjusted_rates.get(combo_tuple, (0, 0))
-    #                 combo_str = "-".join(map(str, combo_tuple))
-    #                 f.write(f"{combo_str} : {rate:.5e}, {error:.5e}\n")
+                for combo_tuple in all_possible_combos:
+                    rate, error = final_adjusted_rates.get(combo_tuple, (0, 0))
+                    combo_str = "-".join(map(str, combo_tuple))
+                    f.write(f"{combo_str} : {rate:.5e}, {error:.5e}\n")
 
-    # ic(f"\n{'='*20} All Analyses Complete {'='*20}")
-    # quit()
+    ic(f"\n{'='*20} All Analyses Complete {'='*20}")
+    quit()
 
     # Skip for now
     if False:
