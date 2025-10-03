@@ -142,7 +142,7 @@ def check_angle_cut(event_details, zenith_margin_deg=20.0, azimuth_margin_deg=45
 
     return False # No agreeing pair found
 
-def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.2, min_failing_stations=2, debug_print=True):
+def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.1, min_failing_stations=2, debug_print=False):
     """
     Checks if a coincidence event passes the FFT cut.
     For station 18 triggers, calculates the fraction that the largest FFT value
