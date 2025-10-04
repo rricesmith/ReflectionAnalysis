@@ -197,6 +197,7 @@ def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.1, min_
     
     if debug_print:
         print(f"Event {event_id}: Station 18 FFT Analysis")
+        print(f"  Found {len(traces_list)} triggers in station 18")
     
     # Analyze each trigger in station 18
     for trigger_idx, traces_for_trigger in enumerate(traces_list):
@@ -1163,6 +1164,7 @@ if __name__ == '__main__':
                     ic(f"Applying FFT cuts to {len(events_passing_time_cut)} events that passed time cut")
                     
                     num_passing_overall = 0; num_failing_overall = 0
+                    fft_applied_count = 0
                     for event_id, event_details in events_data_dict.items():
                         if isinstance(event_details, dict):
                             # Get existing cut results or create new ones
@@ -1178,6 +1180,7 @@ if __name__ == '__main__':
                             # Apply FFT cut only if time cut passed
                             if time_cut_passed:
                                 fft_cut_passed = check_fft_cut(event_details, event_id, debug_events=specific_events_to_plot)
+                                fft_applied_count += 1
                             else:
                                 fft_cut_passed = False  # If time cut failed, FFT cut is irrelevant
                             
@@ -1200,6 +1203,7 @@ if __name__ == '__main__':
                             num_failing_overall += 1
                 
                 ic(f"After recalculating time and FFT cuts: {num_passing_overall} events passed, {num_failing_overall} events failed")
+                ic(f"FFT cuts applied to {fft_applied_count} events")
                 
                 # Print summary of FFT cut results for debugging
                 fft_passing = sum(1 for v in events_data_dict.values() if isinstance(v, dict) and v.get('cut_results', {}).get('fft_cut_passed', False))
@@ -1269,6 +1273,7 @@ if __name__ == '__main__':
                         ic(f"Applying FFT cuts to {len(events_passing_chi_angle_time)} events that passed chi/angle/time cuts")
                 
                 # Step 4: Update all events with final cut results
+                fft_applied_count = 0
                 for event_id, event_details in events_data_dict.items():
                     if isinstance(event_details, dict) and 'cut_results' in event_details:
                         # Update time cut result
@@ -1279,6 +1284,7 @@ if __name__ == '__main__':
                             event_details['cut_results']['angle_cut_passed'] and 
                             event_details['cut_results']['time_cut_passed']):
                             event_details['cut_results']['fft_cut_passed'] = check_fft_cut(event_details, event_id, debug_events=specific_events_to_plot)
+                            fft_applied_count += 1
                         else:
                             event_details['cut_results']['fft_cut_passed'] = False
                         
@@ -1293,6 +1299,7 @@ if __name__ == '__main__':
                         num_failing_overall += 1
                 
                 ic(f"After all cuts: {num_passing_overall} events passed, {num_failing_overall} events failed")
+                ic(f"FFT cuts applied to {fft_applied_count} events")
                 
                 # Print summary of each cut type for debugging
                 chi_passing = sum(1 for v in events_data_dict.values() if isinstance(v, dict) and v.get('cut_results', {}).get('chi_cut_passed', False))
