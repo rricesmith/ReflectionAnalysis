@@ -142,7 +142,7 @@ def check_angle_cut(event_details, zenith_margin_deg=20.0, azimuth_margin_deg=45
 
     return False # No agreeing pair found
 
-def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.1, min_failing_stations=2, debug_print=False, debug_events=None):
+def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.1, min_failing_stations=2, debug_print=True):
     """
     Checks if a coincidence event passes the FFT cut.
     For station 18 triggers, calculates the fraction that the largest FFT value
@@ -167,8 +167,6 @@ def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.1, min_
         event_id = event_details.get('event_id', 'Unknown')
     
     # Enable debug printing if this event is in the debug list
-    if debug_events is not None and event_id in debug_events:
-        debug_print = True
     stations_above_threshold = 0
     station_18_found = False
     
@@ -1173,7 +1171,7 @@ if __name__ == '__main__':
                             time_cut_passed = time_cut_results.get(event_id, False)
                             
                             # Apply FFT cut to ALL events in passing_cuts dataset
-                            fft_cut_passed = check_fft_cut(event_details, event_id, debug_events=specific_events_to_plot)
+                            fft_cut_passed = check_fft_cut(event_details, event_id)
                             fft_applied_count += 1
                             
                             # Update cut results
@@ -1285,7 +1283,7 @@ if __name__ == '__main__':
                         if (event_details['cut_results']['chi_cut_passed'] and 
                             event_details['cut_results']['angle_cut_passed'] and 
                             event_details['cut_results']['time_cut_passed']):
-                            event_details['cut_results']['fft_cut_passed'] = check_fft_cut(event_details, event_id, debug_events=specific_events_to_plot)
+                            event_details['cut_results']['fft_cut_passed'] = check_fft_cut(event_details, event_id)
                             fft_applied_count += 1
                         else:
                             event_details['cut_results']['fft_cut_passed'] = False
