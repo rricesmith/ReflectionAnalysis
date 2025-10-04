@@ -142,7 +142,7 @@ def check_angle_cut(event_details, zenith_margin_deg=20.0, azimuth_margin_deg=45
 
     return False # No agreeing pair found
 
-def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.2, min_failing_stations=2, debug_print=False, debug_events=None):
+def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.1, min_failing_stations=2, debug_print=False, debug_events=None):
     """
     Checks if a coincidence event passes the FFT cut.
     For station 18 triggers, calculates the fraction that the largest FFT value
@@ -264,7 +264,7 @@ def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.2, min_
     
     return passes_fft_cut
 
-def check_time_cut(events_dict, time_threshold_hours=1.0):
+def check_time_cut(events_dict, time_threshold_hours=24.0):
     """
     Checks if coincidence events are isolated in time (not within time_threshold_hours of each other).
     Returns a dictionary with event IDs as keys and boolean values indicating if they pass the time cut.
