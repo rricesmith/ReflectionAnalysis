@@ -142,20 +142,19 @@ def check_angle_cut(event_details, zenith_margin_deg=20.0, azimuth_margin_deg=45
 
     return False # No agreeing pair found
 
-def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.1, min_failing_stations=2, debug_print=True):
+def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.1, min_failing_traces=2, debug_print=True):
     """
     Checks if a coincidence event passes the FFT cut.
     For station 18 triggers, calculates the fraction that the largest FFT value
-    is of the total FFT for each channel, and fails the event if enough stations
+    is of the total FFT for each channel, and fails the event if enough traces
     exceed the threshold.
     
     Args:
         event_details: Event data dictionary
         event_id: Event ID for logging purposes (optional)
-        max_fraction_threshold: Maximum allowed fraction for largest FFT value (default 0.2)
-        min_failing_stations: Minimum number of stations above threshold to fail event (default 2)
-        debug_print: Whether to print debug information for each event (default False)
-        debug_events: List of event IDs to print debug info for (overrides debug_print if provided)
+        max_fraction_threshold: Maximum allowed fraction for largest FFT value (default 0.1)
+        min_failing_traces: Minimum number of traces above threshold to fail event (default 2)
+        debug_print: Whether to print debug information for each event (default True)
     
     Returns:
         bool: True if event passes FFT cut, False otherwise
@@ -166,8 +165,7 @@ def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.1, min_
     if event_id is None:
         event_id = event_details.get('event_id', 'Unknown')
     
-    # Enable debug printing if this event is in the debug list
-    stations_above_threshold = 0
+    traces_above_threshold = 0
     station_18_found = False
     
     # Check if station 18 is present (check both string and integer keys)
@@ -243,10 +241,11 @@ def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.1, min_
                     print(f"  Error calculating FFT for channel {ch_idx}: {e}")
                 channel_fractions.append(np.nan)
         
-        # Check if any channel exceeds threshold
+        # Check if any channel in this trace exceeds threshold
         valid_fractions = [f for f in channel_fractions if not np.isnan(f)]
-        if valid_fractions and any(f > max_fraction_threshold for f in valid_fractions):
-            stations_above_threshold += 1
+        for fraction in valid_fractions:
+            if fraction > max_fraction_threshold:
+                traces_above_threshold += 1
         
         if debug_print:
             fraction_str = ", ".join([f"{f:.4f}" if not np.isnan(f) else "NaN" for f in channel_fractions])
@@ -255,10 +254,10 @@ def check_fft_cut(event_details, event_id=None, max_fraction_threshold=0.1, min_
             print(f"  Trigger {trigger_idx + 1}: Exceeds threshold ({max_fraction_threshold}): {exceeds_threshold}")
     
     # Determine if event passes FFT cut
-    passes_fft_cut = stations_above_threshold < min_failing_stations
+    passes_fft_cut = traces_above_threshold < min_failing_traces
     
     if debug_print:
-        print(f"Event {event_id}: Stations above threshold: {stations_above_threshold}, Passes FFT cut: {passes_fft_cut}")
+        print(f"Event {event_id}: Traces above threshold: {traces_above_threshold}, Passes FFT cut: {passes_fft_cut}")
     
     return passes_fft_cut
 
@@ -1209,8 +1208,6 @@ if __name__ == '__main__':
                 ic(f"  Overall: {num_passing_overall}/{total_events_valid} events pass ALL cuts")
             
             else:
-                ic("BAD LOOP")
-                quit()
                 # For non-passing_cuts datasets, apply chi/angle cuts first, then time cut, then FFT cut
                 num_passing_overall = 0; num_failing_overall = 0
                 
