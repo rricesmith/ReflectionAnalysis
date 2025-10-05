@@ -351,50 +351,13 @@ def plot_failed_cuts_2d_differences(zenith_diffs_list, azimuth_diffs_list, weigh
     azi_diff_1 = np.rad2deg(azimuth_diffs_list[0]) if np.max(np.abs(azimuth_diffs_list[0])) < np.pi else azimuth_diffs_list[0]
     azi_diff_2 = np.rad2deg(azimuth_diffs_list[1]) if np.max(np.abs(azimuth_diffs_list[1])) < np.pi else azimuth_diffs_list[1]
     
-    # Determine axis assignment for refl required case
-    direct_stations = [13, 14, 15, 17, 18, 19, 30]
-    reflected_stations = [113, 114, 115, 117, 118, 119, 130]
-    
-    # Check if this is the refl required case (contains both direct and reflected stations)
-    is_refl_required = any(stn in reflected_stations for stn in station_ids_list)
-    
-    if is_refl_required and len(station_ids_list) >= 2:
-        # For refl required: ensure direct station on x-axis, reflected on y-axis
-        station_1_is_direct = station_ids_list[0] in direct_stations
-        station_2_is_direct = station_ids_list[1] in direct_stations
-        
-        if station_1_is_direct and not station_2_is_direct:
-            # Station 1 is direct, Station 2 is reflected - keep as is
-            zen_x, zen_y = zen_diff_1, zen_diff_2
-            azi_x, azi_y = azi_diff_1, azi_diff_2
-            x_label_zen = f'Direct Station ({station_ids_list[0]}): True - Reconstructed Zenith (deg)'
-            y_label_zen = f'Reflected Station ({station_ids_list[1]}): True - Reconstructed Zenith (deg)'
-            x_label_azi = f'Direct Station ({station_ids_list[0]}): True - Reconstructed Azimuth (deg)'
-            y_label_azi = f'Reflected Station ({station_ids_list[1]}): True - Reconstructed Azimuth (deg)'
-        elif station_2_is_direct and not station_1_is_direct:
-            # Station 2 is direct, Station 1 is reflected - swap
-            zen_x, zen_y = zen_diff_2, zen_diff_1
-            azi_x, azi_y = azi_diff_2, azi_diff_1
-            x_label_zen = f'Direct Station ({station_ids_list[1]}): True - Reconstructed Zenith (deg)'
-            y_label_zen = f'Reflected Station ({station_ids_list[0]}): True - Reconstructed Zenith (deg)'
-            x_label_azi = f'Direct Station ({station_ids_list[1]}): True - Reconstructed Azimuth (deg)'
-            y_label_azi = f'Reflected Station ({station_ids_list[0]}): True - Reconstructed Azimuth (deg)'
-        else:
-            # Both same type, use default ordering
-            zen_x, zen_y = zen_diff_1, zen_diff_2
-            azi_x, azi_y = azi_diff_1, azi_diff_2
-            x_label_zen = f'Station {station_ids_list[0]}: True - Reconstructed Zenith (deg)'
-            y_label_zen = f'Station {station_ids_list[1]}: True - Reconstructed Zenith (deg)'
-            x_label_azi = f'Station {station_ids_list[0]}: True - Reconstructed Azimuth (deg)'
-            y_label_azi = f'Station {station_ids_list[1]}: True - Reconstructed Azimuth (deg)'
-    else:
-        # Direct only case or default
-        zen_x, zen_y = zen_diff_1, zen_diff_2
-        azi_x, azi_y = azi_diff_1, azi_diff_2
-        x_label_zen = f'Station {station_ids_list[0]}: True - Reconstructed Zenith (deg)'
-        y_label_zen = f'Station {station_ids_list[1]}: True - Reconstructed Zenith (deg)'
-        x_label_azi = f'Station {station_ids_list[0]}: True - Reconstructed Azimuth (deg)'
-        y_label_azi = f'Station {station_ids_list[1]}: True - Reconstructed Azimuth (deg)'
+    # Use default ordering without axis assignment requirements
+    zen_x, zen_y = zen_diff_1, zen_diff_2
+    azi_x, azi_y = azi_diff_1, azi_diff_2
+    x_label_zen = f'Station {station_ids_list[0]}: True - Reconstructed Zenith (deg)'
+    y_label_zen = f'Station {station_ids_list[1]}: True - Reconstructed Zenith (deg)'
+    x_label_azi = f'Station {station_ids_list[0]}: True - Reconstructed Azimuth (deg)'
+    y_label_azi = f'Station {station_ids_list[1]}: True - Reconstructed Azimuth (deg)'
     
     # Zenith difference 2D histogram
     zen_bins = np.linspace(-90, 90, 31)
@@ -447,7 +410,7 @@ def plot_failed_cuts_2d_differences(zenith_diffs_list, azimuth_diffs_list, weigh
     plt.close(fig)
 
 
-def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_diffs_list, weights_list, title, savename_base):
+def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_diffs_list, weights_list, title, savename_base, zen_cut=20, azi_cut=45):
     """
     Create 2D histograms with SNR on x-axis (log scale 3-100) and absolute True-Recon differences on y-axis
     """
@@ -474,26 +437,42 @@ def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_dif
     zen_bins = np.linspace(0, max(zen_diff_flat)*1.1, 21)
     hist_zen, _, _ = np.histogram2d(snr_flat, zen_diff_flat, bins=(snr_bins, zen_bins), weights=weights_flat)
     
+    # Mask zero values to make them white
+    hist_zen_masked = np.ma.masked_where(hist_zen.T == 0, hist_zen.T)
+    
     X_zen, Y_zen = np.meshgrid(snr_bins, zen_bins)
-    pcm_zen = ax[0].pcolormesh(X_zen, Y_zen, hist_zen.T, cmap='viridis')
+    pcm_zen = ax[0].pcolormesh(X_zen, Y_zen, hist_zen_masked, cmap='viridis')
     ax[0].set_xlabel('SNR')
     ax[0].set_ylabel('|True - Reconstructed Zenith| (deg)')
     ax[0].set_title('SNR vs Absolute Zenith Difference')
     ax[0].set_xscale('log')
     ax[0].grid(True, alpha=0.3)
+    
+    # Add horizontal line for zenith cut
+    ax[0].axhline(zen_cut, color='red', linestyle='--', linewidth=2, alpha=0.8, label=f'Zenith Cut: {zen_cut}°')
+    ax[0].legend()
+    
     fig.colorbar(pcm_zen, ax=ax[0], label='Weighted count')
     
     # SNR vs absolute azimuth difference
     azi_bins = np.linspace(0, max(azi_diff_flat)*1.1, 21)
     hist_azi, _, _ = np.histogram2d(snr_flat, azi_diff_flat, bins=(snr_bins, azi_bins), weights=weights_flat)
     
+    # Mask zero values to make them white
+    hist_azi_masked = np.ma.masked_where(hist_azi.T == 0, hist_azi.T)
+    
     X_azi, Y_azi = np.meshgrid(snr_bins, azi_bins)
-    pcm_azi = ax[1].pcolormesh(X_azi, Y_azi, hist_azi.T, cmap='viridis')
+    pcm_azi = ax[1].pcolormesh(X_azi, Y_azi, hist_azi_masked, cmap='viridis')
     ax[1].set_xlabel('SNR')
     ax[1].set_ylabel('|True - Reconstructed Azimuth| (deg)')
     ax[1].set_title('SNR vs Absolute Azimuth Difference')
     ax[1].set_xscale('log')
     ax[1].grid(True, alpha=0.3)
+    
+    # Add horizontal line for azimuth cut
+    ax[1].axhline(azi_cut, color='red', linestyle='--', linewidth=2, alpha=0.8, label=f'Azimuth Cut: {azi_cut}°')
+    ax[1].legend()
+    
     fig.colorbar(pcm_azi, ax=ax[1], label='Weighted count')
     
     plt.suptitle(title, y=1.02)
