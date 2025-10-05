@@ -328,10 +328,12 @@ def plot_smallest_differences_with_cuts(smallest_diff_zen, smallest_diff_azi, di
     plt.close(fig)
 
 
-def plot_failed_cuts_2d_differences(zenith_diffs_list, azimuth_diffs_list, weights_list, title, savename_base):
+def plot_failed_cuts_2d_differences(zenith_diffs_list, azimuth_diffs_list, weights_list, title, savename_base, 
+                                    station_ids_list, zen_cut=20, azi_cut=45):
     """
     Create 2D histograms of True-Reconstructed differences between two stations for failed cut events
     zenith_diffs_list and azimuth_diffs_list should be lists of length 2 containing the differences for each station
+    station_ids_list should be the list of station IDs to determine axis assignment
     """
     if len(zenith_diffs_list) != 2 or len(azimuth_diffs_list) != 2:
         ic("Error: Need exactly 2 stations for 2D difference plots")
@@ -349,28 +351,93 @@ def plot_failed_cuts_2d_differences(zenith_diffs_list, azimuth_diffs_list, weigh
     azi_diff_1 = np.rad2deg(azimuth_diffs_list[0]) if np.max(np.abs(azimuth_diffs_list[0])) < np.pi else azimuth_diffs_list[0]
     azi_diff_2 = np.rad2deg(azimuth_diffs_list[1]) if np.max(np.abs(azimuth_diffs_list[1])) < np.pi else azimuth_diffs_list[1]
     
+    # Determine axis assignment for refl required case
+    direct_stations = [13, 14, 15, 17, 18, 19, 30]
+    reflected_stations = [113, 114, 115, 117, 118, 119, 130]
+    
+    # Check if this is the refl required case (contains both direct and reflected stations)
+    is_refl_required = any(stn in reflected_stations for stn in station_ids_list)
+    
+    if is_refl_required and len(station_ids_list) >= 2:
+        # For refl required: ensure direct station on x-axis, reflected on y-axis
+        station_1_is_direct = station_ids_list[0] in direct_stations
+        station_2_is_direct = station_ids_list[1] in direct_stations
+        
+        if station_1_is_direct and not station_2_is_direct:
+            # Station 1 is direct, Station 2 is reflected - keep as is
+            zen_x, zen_y = zen_diff_1, zen_diff_2
+            azi_x, azi_y = azi_diff_1, azi_diff_2
+            x_label_zen = f'Direct Station ({station_ids_list[0]}): True - Reconstructed Zenith (deg)'
+            y_label_zen = f'Reflected Station ({station_ids_list[1]}): True - Reconstructed Zenith (deg)'
+            x_label_azi = f'Direct Station ({station_ids_list[0]}): True - Reconstructed Azimuth (deg)'
+            y_label_azi = f'Reflected Station ({station_ids_list[1]}): True - Reconstructed Azimuth (deg)'
+        elif station_2_is_direct and not station_1_is_direct:
+            # Station 2 is direct, Station 1 is reflected - swap
+            zen_x, zen_y = zen_diff_2, zen_diff_1
+            azi_x, azi_y = azi_diff_2, azi_diff_1
+            x_label_zen = f'Direct Station ({station_ids_list[1]}): True - Reconstructed Zenith (deg)'
+            y_label_zen = f'Reflected Station ({station_ids_list[0]}): True - Reconstructed Zenith (deg)'
+            x_label_azi = f'Direct Station ({station_ids_list[1]}): True - Reconstructed Azimuth (deg)'
+            y_label_azi = f'Reflected Station ({station_ids_list[0]}): True - Reconstructed Azimuth (deg)'
+        else:
+            # Both same type, use default ordering
+            zen_x, zen_y = zen_diff_1, zen_diff_2
+            azi_x, azi_y = azi_diff_1, azi_diff_2
+            x_label_zen = f'Station {station_ids_list[0]}: True - Reconstructed Zenith (deg)'
+            y_label_zen = f'Station {station_ids_list[1]}: True - Reconstructed Zenith (deg)'
+            x_label_azi = f'Station {station_ids_list[0]}: True - Reconstructed Azimuth (deg)'
+            y_label_azi = f'Station {station_ids_list[1]}: True - Reconstructed Azimuth (deg)'
+    else:
+        # Direct only case or default
+        zen_x, zen_y = zen_diff_1, zen_diff_2
+        azi_x, azi_y = azi_diff_1, azi_diff_2
+        x_label_zen = f'Station {station_ids_list[0]}: True - Reconstructed Zenith (deg)'
+        y_label_zen = f'Station {station_ids_list[1]}: True - Reconstructed Zenith (deg)'
+        x_label_azi = f'Station {station_ids_list[0]}: True - Reconstructed Azimuth (deg)'
+        y_label_azi = f'Station {station_ids_list[1]}: True - Reconstructed Azimuth (deg)'
+    
     # Zenith difference 2D histogram
     zen_bins = np.linspace(-90, 90, 31)
-    hist_zen, _, _ = np.histogram2d(zen_diff_1, zen_diff_2, bins=(zen_bins, zen_bins), weights=weights_list)
+    hist_zen, _, _ = np.histogram2d(zen_x, zen_y, bins=(zen_bins, zen_bins), weights=weights_list)
+    
+    # Mask zero values to make them white
+    hist_zen_masked = np.ma.masked_where(hist_zen.T == 0, hist_zen.T)
     
     X_zen, Y_zen = np.meshgrid(zen_bins, zen_bins)
-    pcm_zen = ax[0].pcolormesh(X_zen, Y_zen, hist_zen.T, cmap='viridis')
-    ax[0].set_xlabel('Station 1: True - Reconstructed Zenith (deg)')
-    ax[0].set_ylabel('Station 2: True - Reconstructed Zenith (deg)')
+    pcm_zen = ax[0].pcolormesh(X_zen, Y_zen, hist_zen_masked, cmap='viridis')
+    ax[0].set_xlabel(x_label_zen)
+    ax[0].set_ylabel(y_label_zen)
     ax[0].set_title('Zenith Differences')
     ax[0].grid(True, alpha=0.3)
+    
+    # Add diagonal cut lines for zenith (y = x ± zen_cut)
+    x_range = np.linspace(-90, 90, 100)
+    ax[0].plot(x_range, x_range + zen_cut, 'r--', linewidth=2, alpha=0.8, label=f'Cut: |y-x| = {zen_cut}°')
+    ax[0].plot(x_range, x_range - zen_cut, 'r--', linewidth=2, alpha=0.8)
+    ax[0].legend()
+    
     fig.colorbar(pcm_zen, ax=ax[0], label='Weighted count')
     
     # Azimuth difference 2D histogram
     azi_bins = np.linspace(-180, 180, 31)
-    hist_azi, _, _ = np.histogram2d(azi_diff_1, azi_diff_2, bins=(azi_bins, azi_bins), weights=weights_list)
+    hist_azi, _, _ = np.histogram2d(azi_x, azi_y, bins=(azi_bins, azi_bins), weights=weights_list)
+    
+    # Mask zero values to make them white
+    hist_azi_masked = np.ma.masked_where(hist_azi.T == 0, hist_azi.T)
     
     X_azi, Y_azi = np.meshgrid(azi_bins, azi_bins)
-    pcm_azi = ax[1].pcolormesh(X_azi, Y_azi, hist_azi.T, cmap='viridis')
-    ax[1].set_xlabel('Station 1: True - Reconstructed Azimuth (deg)')
-    ax[1].set_ylabel('Station 2: True - Reconstructed Azimuth (deg)')
+    pcm_azi = ax[1].pcolormesh(X_azi, Y_azi, hist_azi_masked, cmap='viridis')
+    ax[1].set_xlabel(x_label_azi)
+    ax[1].set_ylabel(y_label_azi)
     ax[1].set_title('Azimuth Differences')
     ax[1].grid(True, alpha=0.3)
+    
+    # Add diagonal cut lines for azimuth (y = x ± azi_cut)
+    x_range_azi = np.linspace(-180, 180, 100)
+    ax[1].plot(x_range_azi, x_range_azi + azi_cut, 'r--', linewidth=2, alpha=0.8, label=f'Cut: |y-x| = {azi_cut}°')
+    ax[1].plot(x_range_azi, x_range_azi - azi_cut, 'r--', linewidth=2, alpha=0.8)
+    ax[1].legend()
+    
     fig.colorbar(pcm_azi, ax=ax[1], label='Weighted count')
     
     plt.suptitle(title, y=1.02)
@@ -492,6 +559,7 @@ def getFailedCutEventsData(HRAEventList, weight_name, n, station_ids, bad_statio
     failed_azimuth_diffs = [[], []]  # List for each of the 2 stations
     failed_snr = [[], []]  # SNR for each of the 2 stations
     failed_weights = []
+    failed_station_ids = []  # Track which stations are used for axis assignment
     
     for event in HRAEventList:
         if not event.hasCoincidence(num=n, bad_stations=bad_stations):
@@ -538,6 +606,10 @@ def getFailedCutEventsData(HRAEventList, weight_name, n, station_ids, bad_statio
         fails_azi_cut = azi_diff_deg >= azi_cut
         
         if fails_zen_cut or fails_azi_cut:
+            # Store station IDs for first event (they should be consistent for axis assignment)
+            if len(failed_station_ids) == 0:
+                failed_station_ids = triggered_stations.copy()
+            
             # Calculate true vs reconstructed differences for each station
             true_zenith = event.getAngles()[0]
             true_azimuth = event.getAngles()[1]
@@ -572,7 +644,7 @@ def getFailedCutEventsData(HRAEventList, weight_name, n, station_ids, bad_statio
     
     ic(f"Found {len(failed_weights)} events that fail cuts for {weight_name}")
     
-    return failed_zenith_diffs, failed_azimuth_diffs, failed_snr, failed_weights
+    return failed_zenith_diffs, failed_azimuth_diffs, failed_snr, failed_weights, failed_station_ids
 
 
 def load_HRA_data():
@@ -653,7 +725,7 @@ if __name__ == "__main__":
         
         # Add new plots for failed cuts (n=2 case only)
         if i == 2:
-            failed_zen_diffs, failed_azi_diffs, failed_snr, failed_weights = \
+            failed_zen_diffs, failed_azi_diffs, failed_snr, failed_weights, failed_station_ids = \
                 getFailedCutEventsData(HRAeventList, weight_name, i, station_ids, bad_stations)
             
             if failed_weights is not None and len(failed_weights) > 0:
@@ -661,7 +733,7 @@ if __name__ == "__main__":
                 failed_title = f'Failed Cuts Analysis - n={i} Stations, Refl Required'
                 failed_savename_2d = f'{coincidence_save_folder}failed_cuts_{weight_name}_reflreq_2d_diffs.png'
                 plot_failed_cuts_2d_differences(failed_zen_diffs, failed_azi_diffs, failed_weights, 
-                                               failed_title, failed_savename_2d)
+                                               failed_title, failed_savename_2d, failed_station_ids)
                 
                 # Create SNR vs angle difference plots
                 failed_savename_snr = f'{coincidence_save_folder}failed_cuts_{weight_name}_reflreq_snr_vs_diffs.png'
@@ -701,7 +773,7 @@ if __name__ == "__main__":
         
         # Add new plots for failed cuts (n=2 case only)
         if i == 2:
-            failed_zen_diffs, failed_azi_diffs, failed_snr, failed_weights = \
+            failed_zen_diffs, failed_azi_diffs, failed_snr, failed_weights, failed_station_ids = \
                 getFailedCutEventsData(HRAeventList, weight_name, i, station_ids, bad_stations)
             
             if failed_weights is not None and len(failed_weights) > 0:
@@ -709,7 +781,7 @@ if __name__ == "__main__":
                 failed_title = f'Failed Cuts Analysis - n={i} Stations, Direct Only'
                 failed_savename_2d = f'{coincidence_save_folder}failed_cuts_{weight_name}_directonly_2d_diffs.png'
                 plot_failed_cuts_2d_differences(failed_zen_diffs, failed_azi_diffs, failed_weights, 
-                                               failed_title, failed_savename_2d)
+                                               failed_title, failed_savename_2d, failed_station_ids)
                 
                 # Create SNR vs angle difference plots
                 failed_savename_snr = f'{coincidence_save_folder}failed_cuts_{weight_name}_directonly_snr_vs_diffs.png'
