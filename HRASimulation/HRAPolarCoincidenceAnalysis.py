@@ -329,7 +329,7 @@ def plot_smallest_differences_with_cuts(smallest_diff_zen, smallest_diff_azi, di
 
 
 def plot_failed_cuts_2d_differences(zenith_diffs_list, azimuth_diffs_list, weights_list, title, savename_base, 
-                                    station_ids_list, zen_cut=20, azi_cut=45):
+                                    zen_cut=20, azi_cut=45):
     """
     Create 2D histograms of True-Reconstructed differences between two stations for failed cut events
     zenith_diffs_list and azimuth_diffs_list should be lists of length 2 containing the differences for each station
@@ -354,10 +354,10 @@ def plot_failed_cuts_2d_differences(zenith_diffs_list, azimuth_diffs_list, weigh
     # Use default ordering without axis assignment requirements
     zen_x, zen_y = zen_diff_1, zen_diff_2
     azi_x, azi_y = azi_diff_1, azi_diff_2
-    x_label_zen = f'Station {station_ids_list[0]}: True - Reconstructed Zenith (deg)'
-    y_label_zen = f'Station {station_ids_list[1]}: True - Reconstructed Zenith (deg)'
-    x_label_azi = f'Station {station_ids_list[0]}: True - Reconstructed Azimuth (deg)'
-    y_label_azi = f'Station {station_ids_list[1]}: True - Reconstructed Azimuth (deg)'
+    x_label_zen = f'True - Reconstructed Zenith (deg)'
+    y_label_zen = f'True - Reconstructed Zenith (deg)'
+    x_label_azi = f'True - Reconstructed Azimuth (deg)'
+    y_label_azi = f'True - Reconstructed Azimuth (deg)'
     
     # Zenith difference 2D histogram
     zen_bins = np.linspace(-90, 90, 31)
@@ -410,9 +410,11 @@ def plot_failed_cuts_2d_differences(zenith_diffs_list, azimuth_diffs_list, weigh
     plt.close(fig)
 
 
-def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_diffs_list, weights_list, title, savename_base, zen_cut=20, azi_cut=45):
+def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_diffs_list, weights_list, title, savename_base, 
+                                        recon_zenith_list=None, recon_azimuth_list=None, zen_cut=20, azi_cut=45):
     """
     Create 2D histograms with SNR on x-axis (log scale 3-100) and absolute True-Recon differences on y-axis
+    Also overlay scatter plots showing reconstructed angle differences between stations
     """
     if len(zenith_diffs_list) == 0 or len(snr_list) == 0:
         ic("No failed cut events found for SNR plots")
@@ -442,6 +444,40 @@ def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_dif
     
     X_zen, Y_zen = np.meshgrid(snr_bins, zen_bins)
     pcm_zen = ax[0].pcolormesh(X_zen, Y_zen, hist_zen_masked, cmap='viridis')
+    
+    # Add scatter overlay for zenith - difference in reconstructed values between stations
+    # For each event, plot two points with same y-value (absolute reconstructed difference) but different x-values (SNRs)
+    if recon_zenith_list is not None:
+        scatter_snr_zen_1 = []
+        scatter_snr_zen_2 = []
+        scatter_recon_diff_zen = []
+        scatter_weights_zen = []
+        
+        # Process each event (both stations have same weight, so we can use first station's weight)
+        for i in range(len(weights_list)):
+            # Get the absolute difference between reconstructed zenith angles for this event
+            recon_zen_1 = np.rad2deg(recon_zenith_list[0][i]) if np.max(np.abs(recon_zenith_list[0])) < np.pi else recon_zenith_list[0][i]
+            recon_zen_2 = np.rad2deg(recon_zenith_list[1][i]) if np.max(np.abs(recon_zenith_list[1])) < np.pi else recon_zenith_list[1][i]
+            recon_zen_diff = np.abs(recon_zen_1 - recon_zen_2)
+            
+            scatter_snr_zen_1.append(snr_list[0][i])
+            scatter_snr_zen_2.append(snr_list[1][i])
+            scatter_recon_diff_zen.append(recon_zen_diff)
+            scatter_recon_diff_zen.append(recon_zen_diff)  # Same y-value for both points
+            scatter_weights_zen.append(weights_list[i])
+            scatter_weights_zen.append(weights_list[i])  # Same weight for both points
+        
+        # Combine SNR values for scatter plot
+        scatter_snr_zen = np.concatenate([scatter_snr_zen_1, scatter_snr_zen_2])
+        
+        # Create scatter plot overlay with different colormap (plasma for contrast with viridis)
+        if len(scatter_snr_zen) > 0:
+            scatter_zen = ax[0].scatter(scatter_snr_zen, scatter_recon_diff_zen, c=scatter_weights_zen, 
+                                      cmap='plasma', alpha=0.7, s=15, edgecolors='white', linewidth=0.3, label='Reconstructed Difference')
+            # Add a separate colorbar for scatter points
+            cbar_scatter_zen = fig.colorbar(scatter_zen, ax=ax[0], pad=0.1)
+            cbar_scatter_zen.set_label('Event weight (scatter)', rotation=270, labelpad=15)
+    
     ax[0].set_xlabel('SNR')
     ax[0].set_ylabel('|True - Reconstructed Zenith| (deg)')
     ax[0].set_title('SNR vs Absolute Zenith Difference')
@@ -452,7 +488,7 @@ def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_dif
     ax[0].axhline(zen_cut, color='red', linestyle='--', linewidth=2, alpha=0.8, label=f'Zenith Cut: {zen_cut}°')
     ax[0].legend()
     
-    fig.colorbar(pcm_zen, ax=ax[0], label='Weighted count')
+    fig.colorbar(pcm_zen, ax=ax[0], label='Weighted count (histogram)')
     
     # SNR vs absolute azimuth difference
     azi_bins = np.linspace(0, max(azi_diff_flat)*1.1, 21)
@@ -463,6 +499,42 @@ def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_dif
     
     X_azi, Y_azi = np.meshgrid(snr_bins, azi_bins)
     pcm_azi = ax[1].pcolormesh(X_azi, Y_azi, hist_azi_masked, cmap='viridis')
+    
+    # Add scatter overlay for azimuth - difference in reconstructed values between stations
+    if recon_azimuth_list is not None:
+        scatter_snr_azi_1 = []
+        scatter_snr_azi_2 = []
+        scatter_recon_diff_azi = []
+        scatter_weights_azi = []
+        
+        # Process each event
+        for i in range(len(weights_list)):
+            # Get the absolute difference between reconstructed azimuth angles for this event
+            recon_azi_1 = np.rad2deg(recon_azimuth_list[0][i]) if np.max(np.abs(recon_azimuth_list[0])) < np.pi else recon_azimuth_list[0][i]
+            recon_azi_2 = np.rad2deg(recon_azimuth_list[1][i]) if np.max(np.abs(recon_azimuth_list[1])) < np.pi else recon_azimuth_list[1][i]
+            recon_azi_diff = np.abs(recon_azi_1 - recon_azi_2)
+            # Handle azimuth wrap-around
+            if recon_azi_diff > 180:
+                recon_azi_diff = 360 - recon_azi_diff
+            
+            scatter_snr_azi_1.append(snr_list[0][i])
+            scatter_snr_azi_2.append(snr_list[1][i])
+            scatter_recon_diff_azi.append(recon_azi_diff)
+            scatter_recon_diff_azi.append(recon_azi_diff)  # Same y-value for both points
+            scatter_weights_azi.append(weights_list[i])
+            scatter_weights_azi.append(weights_list[i])  # Same weight for both points
+        
+        # Combine SNR values for scatter plot
+        scatter_snr_azi = np.concatenate([scatter_snr_azi_1, scatter_snr_azi_2])
+        
+        # Create scatter plot overlay
+        if len(scatter_snr_azi) > 0:
+            scatter_azi = ax[1].scatter(scatter_snr_azi, scatter_recon_diff_azi, c=scatter_weights_azi, 
+                                      cmap='plasma', alpha=0.7, s=15, edgecolors='white', linewidth=0.3)
+            # Add a separate colorbar for scatter points
+            cbar_scatter_azi = fig.colorbar(scatter_azi, ax=ax[1], pad=0.1)
+            cbar_scatter_azi.set_label('Event weight (scatter)', rotation=270, labelpad=15)
+    
     ax[1].set_xlabel('SNR')
     ax[1].set_ylabel('|True - Reconstructed Azimuth| (deg)')
     ax[1].set_title('SNR vs Absolute Azimuth Difference')
@@ -473,7 +545,7 @@ def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_dif
     ax[1].axhline(azi_cut, color='red', linestyle='--', linewidth=2, alpha=0.8, label=f'Azimuth Cut: {azi_cut}°')
     ax[1].legend()
     
-    fig.colorbar(pcm_azi, ax=ax[1], label='Weighted count')
+    fig.colorbar(pcm_azi, ax=ax[1], label='Weighted count (histogram)')
     
     plt.suptitle(title, y=1.02)
     plt.tight_layout()
@@ -537,8 +609,9 @@ def getFailedCutEventsData(HRAEventList, weight_name, n, station_ids, bad_statio
     failed_zenith_diffs = [[], []]  # List for each of the 2 stations
     failed_azimuth_diffs = [[], []]  # List for each of the 2 stations
     failed_snr = [[], []]  # SNR for each of the 2 stations
+    failed_recon_zenith = [[], []]  # Reconstructed zenith for each station
+    failed_recon_azimuth = [[], []]  # Reconstructed azimuth for each station
     failed_weights = []
-    failed_station_ids = []  # Track which stations are used for axis assignment
     
     for event in HRAEventList:
         if not event.hasCoincidence(num=n, bad_stations=bad_stations):
@@ -585,9 +658,6 @@ def getFailedCutEventsData(HRAEventList, weight_name, n, station_ids, bad_statio
         fails_azi_cut = azi_diff_deg >= azi_cut
         
         if fails_zen_cut or fails_azi_cut:
-            # Store station IDs for first event (they should be consistent for axis assignment)
-            if len(failed_station_ids) == 0:
-                failed_station_ids = triggered_stations.copy()
             
             # Calculate true vs reconstructed differences for each station
             true_zenith = event.getAngles()[0]
@@ -610,6 +680,8 @@ def getFailedCutEventsData(HRAEventList, weight_name, n, station_ids, bad_statio
                 failed_zenith_diffs[i].append(zen_diff_true_recon)
                 failed_azimuth_diffs[i].append(azi_diff_true_recon)
                 failed_snr[i].append(station_snrs[i])
+                failed_recon_zenith[i].append(recon_zens[i])
+                failed_recon_azimuth[i].append(recon_azis[i])
             
             # Add weight for this event
             failed_weights.append(event.getWeight(weight_name))
@@ -619,11 +691,13 @@ def getFailedCutEventsData(HRAEventList, weight_name, n, station_ids, bad_statio
         failed_zenith_diffs[i] = np.array(failed_zenith_diffs[i])
         failed_azimuth_diffs[i] = np.array(failed_azimuth_diffs[i])
         failed_snr[i] = np.array(failed_snr[i])
+        failed_recon_zenith[i] = np.array(failed_recon_zenith[i])
+        failed_recon_azimuth[i] = np.array(failed_recon_azimuth[i])
     failed_weights = np.array(failed_weights)
     
     ic(f"Found {len(failed_weights)} events that fail cuts for {weight_name}")
     
-    return failed_zenith_diffs, failed_azimuth_diffs, failed_snr, failed_weights, failed_station_ids
+    return failed_zenith_diffs, failed_azimuth_diffs, failed_snr, failed_weights, failed_recon_zenith, failed_recon_azimuth
 
 
 def load_HRA_data():
@@ -704,20 +778,21 @@ if __name__ == "__main__":
         
         # Add new plots for failed cuts (n=2 case only)
         if i == 2:
-            failed_zen_diffs, failed_azi_diffs, failed_snr, failed_weights, failed_station_ids = \
+            failed_zen_diffs, failed_azi_diffs, failed_snr, failed_weights, failed_recon_zen, failed_recon_azi = \
                 getFailedCutEventsData(HRAeventList, weight_name, i, station_ids, bad_stations)
-            
+
             if failed_weights is not None and len(failed_weights) > 0:
                 # Create 2D histograms of True-Reconstructed differences between stations
                 failed_title = f'Failed Cuts Analysis - n={i} Stations, Refl Required'
                 failed_savename_2d = f'{coincidence_save_folder}failed_cuts_{weight_name}_reflreq_2d_diffs.png'
                 plot_failed_cuts_2d_differences(failed_zen_diffs, failed_azi_diffs, failed_weights, 
-                                               failed_title, failed_savename_2d, failed_station_ids)
+                                               failed_title, failed_savename_2d)
                 
                 # Create SNR vs angle difference plots
                 failed_savename_snr = f'{coincidence_save_folder}failed_cuts_{weight_name}_reflreq_snr_vs_diffs.png'
                 plot_failed_cuts_snr_vs_differences(failed_snr, failed_zen_diffs, failed_azi_diffs, 
-                                                   failed_weights, failed_title, failed_savename_snr)
+                                                   failed_weights, failed_title, failed_savename_snr,
+                                                   failed_recon_zen, failed_recon_azi)
                 
                 ic(f"Completed failed cuts analysis for {weight_name}")
         
@@ -752,20 +827,21 @@ if __name__ == "__main__":
         
         # Add new plots for failed cuts (n=2 case only)
         if i == 2:
-            failed_zen_diffs, failed_azi_diffs, failed_snr, failed_weights, failed_station_ids = \
+            failed_zen_diffs, failed_azi_diffs, failed_snr, failed_weights, failed_recon_zen, failed_recon_azi = \
                 getFailedCutEventsData(HRAeventList, weight_name, i, station_ids, bad_stations)
-            
+
             if failed_weights is not None and len(failed_weights) > 0:
                 # Create 2D histograms of True-Reconstructed differences between stations
                 failed_title = f'Failed Cuts Analysis - n={i} Stations, Direct Only'
                 failed_savename_2d = f'{coincidence_save_folder}failed_cuts_{weight_name}_directonly_2d_diffs.png'
                 plot_failed_cuts_2d_differences(failed_zen_diffs, failed_azi_diffs, failed_weights, 
-                                               failed_title, failed_savename_2d, failed_station_ids)
+                                               failed_title, failed_savename_2d)
                 
                 # Create SNR vs angle difference plots
                 failed_savename_snr = f'{coincidence_save_folder}failed_cuts_{weight_name}_directonly_snr_vs_diffs.png'
                 plot_failed_cuts_snr_vs_differences(failed_snr, failed_zen_diffs, failed_azi_diffs, 
-                                                   failed_weights, failed_title, failed_savename_snr)
+                                                   failed_weights, failed_title, failed_savename_snr,
+                                                   failed_recon_zen, failed_recon_azi)
                 
                 ic(f"Completed failed cuts analysis for {weight_name}")
 
