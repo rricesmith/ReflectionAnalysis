@@ -456,8 +456,8 @@ def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_dif
         # Process each event (both stations have same weight, so we can use first station's weight)
         for i in range(len(weights_list)):
             # Get the absolute difference between reconstructed zenith angles for this event
-            recon_zen_1 = np.rad2deg(recon_zenith_list[0][i]) if np.max(np.abs(recon_zenith_list[0])) < np.pi else recon_zenith_list[0][i]
-            recon_zen_2 = np.rad2deg(recon_zenith_list[1][i]) if np.max(np.abs(recon_zenith_list[1])) < np.pi else recon_zenith_list[1][i]
+            recon_zen_1 = np.rad2deg(recon_zenith_list[0][i])
+            recon_zen_2 = np.rad2deg(recon_zenith_list[1][i])
             recon_zen_diff = np.abs(recon_zen_1 - recon_zen_2)
             
             scatter_snr_zen_1.append(snr_list[0][i])
@@ -473,7 +473,7 @@ def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_dif
         # Create scatter plot overlay with different colormap (plasma for contrast with viridis)
         if len(scatter_snr_zen) > 0:
             scatter_zen = ax[0].scatter(scatter_snr_zen, scatter_recon_diff_zen, c=scatter_weights_zen, 
-                                      cmap='plasma', alpha=0.7, s=15, edgecolors='white', linewidth=0.3, label='Reconstructed Difference')
+                                      cmap='plasma', alpha=0.7, s=15, edgecolors='white', linewidth=0.3, label='Recon Difference')
             # Add a separate colorbar for scatter points
             cbar_scatter_zen = fig.colorbar(scatter_zen, ax=ax[0], pad=0.1)
             cbar_scatter_zen.set_label('Event weight (scatter)', rotation=270, labelpad=15)
@@ -510,8 +510,8 @@ def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_dif
         # Process each event
         for i in range(len(weights_list)):
             # Get the absolute difference between reconstructed azimuth angles for this event
-            recon_azi_1 = np.rad2deg(recon_azimuth_list[0][i]) if np.max(np.abs(recon_azimuth_list[0])) < np.pi else recon_azimuth_list[0][i]
-            recon_azi_2 = np.rad2deg(recon_azimuth_list[1][i]) if np.max(np.abs(recon_azimuth_list[1])) < np.pi else recon_azimuth_list[1][i]
+            recon_azi_1 = np.rad2deg(recon_azimuth_list[0][i])
+            recon_azi_2 = np.rad2deg(recon_azimuth_list[1][i])
             recon_azi_diff = np.abs(recon_azi_1 - recon_azi_2)
             # Handle azimuth wrap-around
             if recon_azi_diff > 180:
@@ -530,10 +530,10 @@ def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_dif
         # Create scatter plot overlay
         if len(scatter_snr_azi) > 0:
             scatter_azi = ax[1].scatter(scatter_snr_azi, scatter_recon_diff_azi, c=scatter_weights_azi, 
-                                      cmap='plasma', alpha=0.7, s=15, edgecolors='white', linewidth=0.3)
+                                      cmap='plasma', alpha=0.7, s=15, edgecolors='white', linewidth=0.3, label='Recon Difference')
             # Add a separate colorbar for scatter points
-            cbar_scatter_azi = fig.colorbar(scatter_azi, ax=ax[1], pad=0.1)
-            cbar_scatter_azi.set_label('Event weight (scatter)', rotation=270, labelpad=15)
+            # cbar_scatter_azi = fig.colorbar(scatter_azi, ax=ax[1], pad=0.1)
+            # cbar_scatter_azi.set_label('Event weight (scatter)', rotation=270, labelpad=15)
     
     ax[1].set_xlabel('SNR')
     ax[1].set_ylabel('|True - Reconstructed Azimuth| (deg)')
