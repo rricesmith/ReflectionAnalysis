@@ -475,8 +475,8 @@ def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_dif
             scatter_zen = ax[0].scatter(scatter_snr_zen, scatter_recon_diff_zen, c=scatter_weights_zen, 
                                       cmap='plasma', alpha=0.7, s=15, edgecolors='white', linewidth=0.3, label='Recon Difference')
             # Add a separate colorbar for scatter points
-            cbar_scatter_zen = fig.colorbar(scatter_zen, ax=ax[0], pad=0.1)
-            cbar_scatter_zen.set_label('Event weight (scatter)', rotation=270, labelpad=15)
+            # cbar_scatter_zen = fig.colorbar(scatter_zen, ax=ax[0], pad=0.1)
+            # cbar_scatter_zen.set_label('Event weight (scatter)', rotation=270, labelpad=15)
     
     ax[0].set_xlabel('SNR')
     ax[0].set_ylabel('|True - Reconstructed Zenith| (deg)')
