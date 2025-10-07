@@ -554,6 +554,188 @@ def plot_failed_cuts_snr_vs_differences(snr_list, zenith_diffs_list, azimuth_dif
     plt.close(fig)
 
 
+def getWeightedReconstructedAngles(HRAEventList, weight_name, n, station_ids, bad_stations):
+    """
+    Get reconstructed angles and weights for triggered events, splitting weights evenly between triggered stations
+    """
+    recon_zenith_list = []
+    recon_azimuth_list = []
+    weights_list = []
+    
+    for event in HRAEventList:
+        if not event.hasCoincidence(num=n, bad_stations=bad_stations):
+            continue
+        
+        # Get stations that triggered for this event
+        triggered_stations = []
+        for station_id in station_ids:
+            if event.hasTriggered(station_id):
+                triggered_stations.append(station_id)
+        
+        if len(triggered_stations) == 0:
+            continue
+        
+        # Weight split evenly between triggered stations
+        weight_per_station = event.getWeight(weight_name) / len(triggered_stations)
+        
+        # Add reconstructed angles for each triggered station
+        for station_id in triggered_stations:
+            if station_id in event.recon_zenith and station_id in event.recon_azimuth:
+                if event.recon_zenith[station_id] is not None and event.recon_azimuth[station_id] is not None:
+                    recon_zenith_list.append(event.recon_zenith[station_id])
+                    recon_azimuth_list.append(event.recon_azimuth[station_id])
+                    weights_list.append(weight_per_station)
+    
+    recon_zenith = np.array(recon_zenith_list)
+    recon_azimuth = np.array(recon_azimuth_list)
+    weights = np.array(weights_list)
+    
+    ic(f'Got {len(recon_zenith)} reconstructed angles for {weight_name} with stations {station_ids}')
+    return recon_zenith, recon_azimuth, weights
+
+
+def plot_weighted_reconstructed_histograms(recon_zenith, recon_azimuth, weights, title, savename):
+    """
+    Create pair of histograms for reconstructed zenith and azimuth with weights applied
+    """
+    if len(recon_zenith) == 0:
+        ic("No reconstructed angles found for histogram")
+        return
+    
+    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(12, 5))
+    
+    # Convert to degrees if in radians
+    zen_deg = np.rad2deg(recon_zenith) if np.max(recon_zenith) < np.pi else recon_zenith
+    azi_deg = np.rad2deg(recon_azimuth) if np.max(recon_azimuth) < 2*np.pi else recon_azimuth
+    
+    # Reconstructed zenith histogram
+    zen_bins = np.linspace(0, 90, 31)
+    ax[0].hist(zen_deg, bins=zen_bins, weights=weights, alpha=0.7, edgecolor='black')
+    ax[0].set_xlabel('Reconstructed Zenith (deg)')
+    ax[0].set_ylabel('Weighted count')
+    ax[0].set_title('Reconstructed Zenith Distribution')
+    ax[0].grid(True, alpha=0.3)
+    
+    # Reconstructed azimuth histogram
+    azi_bins = np.linspace(0, 360, 37)
+    ax[1].hist(azi_deg, bins=azi_bins, weights=weights, alpha=0.7, edgecolor='black')
+    ax[1].set_xlabel('Reconstructed Azimuth (deg)')
+    ax[1].set_ylabel('Weighted count')
+    ax[1].set_title('Reconstructed Azimuth Distribution')
+    ax[1].grid(True, alpha=0.3)
+    
+    plt.suptitle(title, y=1.02)
+    plt.tight_layout()
+    fig.savefig(savename, bbox_inches='tight')
+    ic(f'Saved {savename}')
+    plt.close(fig)
+
+
+def plot_orthogonal_snr_vs_snr(HRAEventList, weight_name, n, station_ids, bad_stations, 
+                              title, savename, zen_cut=20, azi_cut=45):
+    """
+    Create 2D histogram of orthogonal SNR pairs for events that fail zenith/azimuth cuts
+    """
+    snr_1_list = []
+    snr_2_list = []
+    weights_list = []
+    
+    for event in HRAEventList:
+        if not event.hasCoincidence(num=n, bad_stations=bad_stations):
+            continue
+        
+        # Get stations that triggered for this event
+        triggered_stations = []
+        for station_id in station_ids:
+            if event.hasTriggered(station_id):
+                triggered_stations.append(station_id)
+        
+        # Only process if exactly 2 stations triggered (for cut analysis)
+        if len(triggered_stations) != 2:
+            continue
+        
+        # Get reconstructed angles for both stations to check cuts
+        recon_zens = []
+        recon_azis = []
+        
+        for station_id in triggered_stations:
+            if station_id in event.recon_zenith and station_id in event.recon_azimuth:
+                if event.recon_zenith[station_id] is not None and event.recon_azimuth[station_id] is not None:
+                    recon_zens.append(event.recon_zenith[station_id])
+                    recon_azis.append(event.recon_azimuth[station_id])
+        
+        # Need exactly 2 valid reconstructions to check cuts
+        if len(recon_zens) != 2:
+            continue
+        
+        # Calculate smallest differences
+        zen_diff = abs(recon_zens[0] - recon_zens[1])
+        azi_diff = abs(recon_azis[0] - recon_azis[1])
+        # Handle azimuth wrap-around
+        if azi_diff > np.pi:
+            azi_diff = 2 * np.pi - azi_diff
+        
+        # Convert to degrees for cut check
+        zen_diff_deg = np.rad2deg(zen_diff)
+        azi_diff_deg = np.rad2deg(azi_diff)
+        
+        # Check if event fails cuts
+        fails_zen_cut = zen_diff_deg >= zen_cut
+        fails_azi_cut = azi_diff_deg >= azi_cut
+        
+        if fails_zen_cut or fails_azi_cut:
+            # Get orthogonal SNR pairs for both triggered stations
+            for station_id in triggered_stations:
+                orthogonal_snr = event.getOrthogonalSNR(station_id)
+                if orthogonal_snr is not None:
+                    # Sort the SNR pair before adding
+                    sorted_snr = sorted(orthogonal_snr)
+                    snr_1_list.append(sorted_snr[0])
+                    snr_2_list.append(sorted_snr[1])
+                    # Weight split between the two stations, then between the two SNR pairs
+                    weights_list.append(event.getWeight(weight_name) / (2 * 2))  # 2 stations * 2 SNR pairs per station
+    
+    if len(snr_1_list) == 0:
+        ic("No events with orthogonal SNR data found for failed cuts")
+        return
+    
+    snr_1 = np.array(snr_1_list)
+    snr_2 = np.array(snr_2_list)
+    weights = np.array(weights_list)
+    
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(8, 8))
+    
+    # Create 2D histogram with log scale bins
+    snr_bins = np.logspace(np.log10(3), np.log10(100), 26)
+    hist, _, _ = np.histogram2d(snr_1, snr_2, bins=(snr_bins, snr_bins), weights=weights)
+    
+    # Mask zero values to make them white
+    hist_masked = np.ma.masked_where(hist.T == 0, hist.T)
+    
+    X, Y = np.meshgrid(snr_bins, snr_bins)
+    pcm = ax.pcolormesh(X, Y, hist_masked, cmap='viridis')
+    
+    ax.set_xlabel('Lower Orthogonal SNR')
+    ax.set_ylabel('Higher Orthogonal SNR')
+    ax.set_title(title)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.grid(True, alpha=0.3)
+    
+    # Add diagonal line for reference
+    diagonal_range = np.logspace(np.log10(3), np.log10(100), 100)
+    ax.plot(diagonal_range, diagonal_range, 'r--', linewidth=2, alpha=0.8, label='SNR₁ = SNR₂')
+    ax.legend()
+    
+    fig.colorbar(pcm, ax=ax, label='Weighted count')
+    
+    plt.tight_layout()
+    fig.savefig(savename, bbox_inches='tight')
+    ic(f'Saved {savename} with {len(snr_1)} SNR pairs')
+    plt.close(fig)
+
+
 def histCoincidenceAngles(zenith, recon_zenith, azimuth, recon_azimuth, weights, 
                          smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights,
                          title, savename_base, colorbar_label='Weighted count'):
@@ -776,6 +958,13 @@ if __name__ == "__main__":
                             smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights,
                             title, savename_base)
         
+        # Add new reconstructed angle histograms
+        recon_zen, recon_azi, recon_weights = getWeightedReconstructedAngles(HRAeventList, weight_name, i, station_ids, bad_stations)
+        if len(recon_zen) > 0:
+            recon_title = f'Weighted Reconstructed Angles - n={i} Stations, Refl Required'
+            recon_savename = f'{coincidence_save_folder}weighted_recon_{weight_name}_reflreq.png'
+            plot_weighted_reconstructed_histograms(recon_zen, recon_azi, recon_weights, recon_title, recon_savename)
+        
         # Add new plots for failed cuts (n=2 case only)
         if i == 2:
             failed_zen_diffs, failed_azi_diffs, failed_snr, failed_weights, failed_recon_zen, failed_recon_azi = \
@@ -793,6 +982,12 @@ if __name__ == "__main__":
                 plot_failed_cuts_snr_vs_differences(failed_snr, failed_zen_diffs, failed_azi_diffs, 
                                                    failed_weights, failed_title, failed_savename_snr,
                                                    failed_recon_zen, failed_recon_azi)
+                
+                # Create orthogonal SNR vs SNR plot for failed cuts
+                snr_title = f'Orthogonal SNR Analysis - Failed Cuts, n={i} Stations, Refl Required'
+                snr_savename = f'{coincidence_save_folder}orthogonal_snr_{weight_name}_reflreq_failed_cuts.png'
+                plot_orthogonal_snr_vs_snr(HRAeventList, weight_name, i, station_ids, bad_stations,
+                                         snr_title, snr_savename)
                 
                 ic(f"Completed failed cuts analysis for {weight_name}")
         
@@ -825,6 +1020,13 @@ if __name__ == "__main__":
                             smallest_diff_recon_zen, smallest_diff_recon_azi, diff_weights,
                             title, savename_base)
         
+        # Add new reconstructed angle histograms
+        recon_zen, recon_azi, recon_weights = getWeightedReconstructedAngles(HRAeventList, weight_name, i, station_ids, bad_stations)
+        if len(recon_zen) > 0:
+            recon_title = f'Weighted Reconstructed Angles - n={i} Stations, Direct Only'
+            recon_savename = f'{coincidence_save_folder}weighted_recon_{weight_name}_directonly.png'
+            plot_weighted_reconstructed_histograms(recon_zen, recon_azi, recon_weights, recon_title, recon_savename)
+        
         # Add new plots for failed cuts (n=2 case only)
         if i == 2:
             failed_zen_diffs, failed_azi_diffs, failed_snr, failed_weights, failed_recon_zen, failed_recon_azi = \
@@ -842,6 +1044,12 @@ if __name__ == "__main__":
                 plot_failed_cuts_snr_vs_differences(failed_snr, failed_zen_diffs, failed_azi_diffs, 
                                                    failed_weights, failed_title, failed_savename_snr,
                                                    failed_recon_zen, failed_recon_azi)
+                
+                # Create orthogonal SNR vs SNR plot for failed cuts
+                snr_title = f'Orthogonal SNR Analysis - Failed Cuts, n={i} Stations, Direct Only'
+                snr_savename = f'{coincidence_save_folder}orthogonal_snr_{weight_name}_directonly_failed_cuts.png'
+                plot_orthogonal_snr_vs_snr(HRAeventList, weight_name, i, station_ids, bad_stations,
+                                         snr_title, snr_savename)
                 
                 ic(f"Completed failed cuts analysis for {weight_name}")
 
@@ -889,6 +1097,49 @@ if __name__ == "__main__":
         ic("Completed summed analysis - direct only")
     else:
         ic("No events found for summed coincidences - direct only")
+
+    
+    # Add analysis for "backlobe only" stations (same as direct but with different name)
+    ic("Starting backlobe only analysis")
+    backlobe_stations = [13, 14, 15, 17, 18, 19, 30]
+    station_ids = backlobe_stations
+    bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
+    trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations)
+    
+    for i in trigger_rate_coincidence:
+        if i < 2:
+            continue
+        weight_name = f'{i}_coincidence_norefl'
+        
+        # Get weighted reconstructed angles
+        recon_zen, recon_azi, recon_weights = getWeightedReconstructedAngles(HRAeventList, weight_name, i, station_ids, bad_stations)
+        if len(recon_zen) > 0:
+            recon_title = f'Weighted Reconstructed Angles - n={i} Stations, Backlobe Only'
+            recon_savename = f'{coincidence_save_folder}weighted_recon_{weight_name}_backlobeonly.png'
+            plot_weighted_reconstructed_histograms(recon_zen, recon_azi, recon_weights, recon_title, recon_savename)
+            ic(f"Completed backlobe only weighted reconstruction for n={i}")
+    
+    
+    # Add analysis for "reflected only" stations
+    ic("Starting reflected only analysis")
+    reflected_only_stations = [113, 114, 115, 117, 118, 119, 130]
+    station_ids = reflected_only_stations
+    bad_stations = [32, 52, 13, 14, 15, 17, 18, 19, 30, 132, 152]
+    trigger_rate_coincidence = getCoincidencesTriggerRates(HRAeventList, bad_stations)
+    
+    for i in trigger_rate_coincidence:
+        if i < 2:
+            continue
+        # Use reflected weight name
+        weight_name = f'{i}_coincidence_wrefl'
+        
+        # Get weighted reconstructed angles
+        recon_zen, recon_azi, recon_weights = getWeightedReconstructedAngles(HRAeventList, weight_name, i, station_ids, bad_stations)
+        if len(recon_zen) > 0:
+            recon_title = f'Weighted Reconstructed Angles - n={i} Stations, Reflected Only'
+            recon_savename = f'{coincidence_save_folder}weighted_recon_{weight_name}_reflectedonly.png'
+            plot_weighted_reconstructed_histograms(recon_zen, recon_azi, recon_weights, recon_title, recon_savename)
+            ic(f"Completed reflected only weighted reconstruction for n={i}")
 
 
 

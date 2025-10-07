@@ -33,6 +33,7 @@ class HRAevent:
         self.azimuth = sim_shower[shp.azimuth]
 
         self.SNR = {} # Dictionary of SNR values for each station
+        self.pairSNR = {} # Dictionary of SNR values but calculated for each channel, saved as orthogonal pairs [[0, 2], [1, 3]]
         self.Chi = {}
 
         self.recon_zenith = {}
@@ -91,6 +92,11 @@ class HRAevent:
                 traces.append(channel.get_trace())
             self.SNR[station.get_id()] = calcSNR(traces, Vrms)
 
+            SNRs = []
+            for t in traces:
+                SNRs.append(calcSNR([t], Vrms))
+            self.pairSNR[station.get_id()] = np.array([[SNRs[0], SNRs[2]], [SNRs[1], SNRs[3]]])
+
             # Calculate the chi
             sampling_rate = station.get_channel(LPDA_channels[0]).get_sampling_rate()
             self.Chi[station.get_id()] = {}
@@ -146,6 +152,20 @@ class HRAevent:
         else:
             return None
         
+    def getPairSNR(self, station_id):
+        if station_id in self.pairSNR:
+            return self.pairSNR[station_id]
+        else:
+            return None
+        
+    def getOrthogonalSNR(self, station_id):
+        # Return the two averages of the two orthogonal pairs of SNRs
+        if station_id in self.pairSNR:
+            pair_snr = self.pairSNR[station_id]
+            return np.array([np.mean(pair_snr[0]), np.mean(pair_snr[1])])
+        else:
+            return None
+
     def getChi(self, station_id, key=None):
         if station_id in self.Chi:
             if key is None:
