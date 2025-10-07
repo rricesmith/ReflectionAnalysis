@@ -34,7 +34,10 @@ def calcSNR(traces, Vrms):
         SNRs.append(p2p/(2*Vrms))
 
     SNRs.sort(reverse=True)
-    SNR = (SNRs[0] + SNRs[1]) / 2
+    if len(traces) > 1:
+        SNR = (SNRs[0] + SNRs[1]) / 2
+    else:
+        SNR = SNRs[0]
     return SNR
 
 def getVrms(station_id):
