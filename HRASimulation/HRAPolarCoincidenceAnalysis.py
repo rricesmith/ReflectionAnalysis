@@ -726,7 +726,7 @@ def plot_orthogonal_snr_vs_snr(HRAEventList, weight_name, n, station_ids, bad_st
     fig, ax = plt.subplots(figsize=(8, 8))
     
     # Create 2D histogram with log scale bins for ALL events
-    snr_bins = np.logspace(np.log10(3), np.log10(100), 26)
+    snr_bins = np.logspace(np.log10(2), np.log10(100), 26)
     hist, _, _ = np.histogram2d(all_snr_1, all_snr_2, bins=(snr_bins, snr_bins), weights=all_weights)
     
     # Mask zero values to make them white
@@ -770,6 +770,61 @@ def plot_orthogonal_snr_vs_snr(HRAEventList, weight_name, n, station_ids, bad_st
     plt.tight_layout()
     fig.savefig(savename, bbox_inches='tight')
     ic(f'Saved {savename} with {len(all_snr_1)} total SNR pairs and {len(failed_snr_1_list)} failed cut events')
+    plt.close(fig)
+    
+    # Create SNR ratio histogram
+    ratio_title = f'{title} - SNR Ratio Distribution'
+    ratio_savename = savename.replace('.png', '_snr_ratios.png')
+    failed_snr_1_array = np.array(failed_snr_1_list) if len(failed_snr_1_list) > 0 else np.array([])
+    failed_snr_2_array = np.array(failed_snr_2_list) if len(failed_snr_2_list) > 0 else np.array([])
+    failed_weights_array = np.array(failed_weights_list) if len(failed_weights_list) > 0 else np.array([])
+    
+    plot_snr_ratio_histogram(all_snr_1, all_snr_2, all_weights, 
+                            failed_snr_1_array, failed_snr_2_array, failed_weights_array,
+                            ratio_title, ratio_savename)
+
+
+def plot_snr_ratio_histogram(all_snr_1, all_snr_2, all_weights, failed_snr_1, failed_snr_2, failed_weights, title, savename):
+    """
+    Create 1D histogram of SNR ratios (Higher/Lower) for all events and failed cut events
+    """
+    # Calculate ratios for all events
+    all_ratios = all_snr_2 / all_snr_1  # Higher / Lower
+    
+    # Calculate ratios for failed cut events
+    failed_ratios = failed_snr_2 / failed_snr_1 if len(failed_snr_1) > 0 else np.array([])
+    
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Create bins from 1.0 to maximum ratio
+    max_ratio = max(np.max(all_ratios), np.max(failed_ratios) if len(failed_ratios) > 0 else 1.0)
+    ratio_bins = np.linspace(1.0, max_ratio * 1.1, 50)
+    
+    # Plot histogram for all events as line
+    hist_all, bin_edges = np.histogram(all_ratios, bins=ratio_bins, weights=all_weights)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    ax.plot(bin_centers, hist_all, linewidth=2, label=f'All Triggers (n={len(all_ratios)})', 
+            color='blue', alpha=0.8)
+    
+    # Plot histogram for failed cut events as line (if any exist)
+    if len(failed_ratios) > 0:
+        hist_failed, _ = np.histogram(failed_ratios, bins=ratio_bins, weights=failed_weights)
+        ax.plot(bin_centers, hist_failed, linewidth=2, label=f'Failing Angle Cuts (n={len(failed_ratios)})', 
+                color='red', alpha=0.8, linestyle='--')
+    
+    ax.set_xlabel('SNR Ratio (Higher / Lower)')
+    ax.set_ylabel('Weighted Count')
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    
+    # Add vertical line at ratio = 1 for reference
+    ax.axvline(1.0, color='black', linestyle=':', alpha=0.5, label='Equal SNR')
+    
+    plt.tight_layout()
+    fig.savefig(savename, bbox_inches='tight')
+    ic(f'Saved {savename} with ratios: all={len(all_ratios)}, failed={len(failed_ratios)}')
     plt.close(fig)
 
 
