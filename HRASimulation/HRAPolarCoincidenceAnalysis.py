@@ -613,15 +613,15 @@ def plot_weighted_reconstructed_histograms(recon_zenith, recon_azimuth, weights,
     ax[0].hist(zen_deg, bins=zen_bins, weights=weights, alpha=0.7, edgecolor='black')
     ax[0].set_xlabel('Reconstructed Zenith (deg)')
     ax[0].set_ylabel('Weighted count')
-    ax[0].set_title('Reconstructed Zenith Distribution')
+    # ax[0].set_title('Reconstructed Zenith Distribution')
     ax[0].grid(True, alpha=0.3)
     
     # Reconstructed azimuth histogram
-    azi_bins = np.linspace(0, 360, 37)
+    azi_bins = np.linspace(0, 360, 19)
     ax[1].hist(azi_deg, bins=azi_bins, weights=weights, alpha=0.7, edgecolor='black')
     ax[1].set_xlabel('Reconstructed Azimuth (deg)')
     ax[1].set_ylabel('Weighted count')
-    ax[1].set_title('Reconstructed Azimuth Distribution')
+    # ax[1].set_title('Reconstructed Azimuth Distribution')
     ax[1].grid(True, alpha=0.3)
     
     plt.suptitle(title, y=1.02)
@@ -634,11 +634,17 @@ def plot_weighted_reconstructed_histograms(recon_zenith, recon_azimuth, weights,
 def plot_orthogonal_snr_vs_snr(HRAEventList, weight_name, n, station_ids, bad_stations, 
                               title, savename, zen_cut=20, azi_cut=45):
     """
-    Create 2D histogram of orthogonal SNR pairs for events that fail zenith/azimuth cuts
+    Create 2D histogram of orthogonal SNR pairs for all events, with failed cuts overlaid as scatter
     """
-    snr_1_list = []
-    snr_2_list = []
-    weights_list = []
+    # Lists for all events
+    all_snr_1_list = []
+    all_snr_2_list = []
+    all_weights_list = []
+    
+    # Lists for failed cut events  
+    failed_snr_1_list = []
+    failed_snr_2_list = []
+    failed_weights_list = []
     
     for event in HRAEventList:
         if not event.hasCoincidence(num=n, bad_stations=bad_stations):
@@ -683,38 +689,67 @@ def plot_orthogonal_snr_vs_snr(HRAEventList, weight_name, n, station_ids, bad_st
         fails_zen_cut = zen_diff_deg >= zen_cut
         fails_azi_cut = azi_diff_deg >= azi_cut
         
+        # Get orthogonal SNR pairs for both triggered stations (for all events)
+        event_snr_1_list = []
+        event_snr_2_list = []
+        for station_id in triggered_stations:
+            orthogonal_snr = event.getOrthogonalSNR(station_id)
+            if orthogonal_snr is not None:
+                # Sort the SNR pair before adding
+                sorted_snr = sorted(orthogonal_snr)
+                event_snr_1_list.append(sorted_snr[0])
+                event_snr_2_list.append(sorted_snr[1])
+        
+        # Add to all events lists
+        for i in range(len(event_snr_1_list)):
+            all_snr_1_list.append(event_snr_1_list[i])
+            all_snr_2_list.append(event_snr_2_list[i])
+            # Weight split between the two stations, then between the two SNR pairs
+            all_weights_list.append(event.getWeight(weight_name) / (2 * 2))  # 2 stations * 2 SNR pairs per station
+        
+        # Add to failed events lists if it fails cuts
         if fails_zen_cut or fails_azi_cut:
-            # Get orthogonal SNR pairs for both triggered stations
-            for station_id in triggered_stations:
-                orthogonal_snr = event.getOrthogonalSNR(station_id)
-                if orthogonal_snr is not None:
-                    # Sort the SNR pair before adding
-                    sorted_snr = sorted(orthogonal_snr)
-                    snr_1_list.append(sorted_snr[0])
-                    snr_2_list.append(sorted_snr[1])
-                    # Weight split between the two stations, then between the two SNR pairs
-                    weights_list.append(event.getWeight(weight_name) / (2 * 2))  # 2 stations * 2 SNR pairs per station
+            for i in range(len(event_snr_1_list)):
+                failed_snr_1_list.append(event_snr_1_list[i])
+                failed_snr_2_list.append(event_snr_2_list[i])
+                failed_weights_list.append(event.getWeight(weight_name) / (2 * 2))
     
-    if len(snr_1_list) == 0:
-        ic("No events with orthogonal SNR data found for failed cuts")
+    if len(all_snr_1_list) == 0:
+        ic("No events with orthogonal SNR data found")
         return
     
-    snr_1 = np.array(snr_1_list)
-    snr_2 = np.array(snr_2_list)
-    weights = np.array(weights_list)
+    all_snr_1 = np.array(all_snr_1_list)
+    all_snr_2 = np.array(all_snr_2_list)
+    all_weights = np.array(all_weights_list)
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(8, 8))
     
-    # Create 2D histogram with log scale bins
+    # Create 2D histogram with log scale bins for ALL events
     snr_bins = np.logspace(np.log10(3), np.log10(100), 26)
-    hist, _, _ = np.histogram2d(snr_1, snr_2, bins=(snr_bins, snr_bins), weights=weights)
+    hist, _, _ = np.histogram2d(all_snr_1, all_snr_2, bins=(snr_bins, snr_bins), weights=all_weights)
     
     # Mask zero values to make them white
     hist_masked = np.ma.masked_where(hist.T == 0, hist.T)
     
     X, Y = np.meshgrid(snr_bins, snr_bins)
     pcm = ax.pcolormesh(X, Y, hist_masked, cmap='viridis')
+    
+    # Add scatter plot for failed cut events if any exist
+    if len(failed_snr_1_list) > 0:
+        failed_snr_1 = np.array(failed_snr_1_list)
+        failed_snr_2 = np.array(failed_snr_2_list)
+        failed_weights = np.array(failed_weights_list)
+        
+        scatter = ax.scatter(failed_snr_1, failed_snr_2, c=failed_weights, 
+                           cmap='plasma', alpha=0.7, s=20, edgecolors='white', 
+                           linewidth=0.5, label='Failing angle cuts')
+        
+        # Add colorbar for scatter plot
+        cbar_scatter = fig.colorbar(scatter, ax=ax, pad=0.02, shrink=0.8, aspect=30)
+        cbar_scatter.set_label('Event Weight (Scatter)', rotation=270, labelpad=15)
+        
+        ic(f'Added {len(failed_snr_1)} failed cut events as scatter')
     
     ax.set_xlabel('Lower Orthogonal SNR')
     ax.set_ylabel('Higher Orthogonal SNR')
@@ -728,11 +763,13 @@ def plot_orthogonal_snr_vs_snr(HRAEventList, weight_name, n, station_ids, bad_st
     ax.plot(diagonal_range, diagonal_range, 'r--', linewidth=2, alpha=0.8, label='SNR₁ = SNR₂')
     ax.legend()
     
-    fig.colorbar(pcm, ax=ax, label='Weighted count')
+    # Add colorbar for histogram with updated label
+    cbar_hist = fig.colorbar(pcm, ax=ax, pad=0.15, shrink=0.8, aspect=30)
+    cbar_hist.set_label('Weighted Counts All Triggers', rotation=270, labelpad=15)
     
     plt.tight_layout()
     fig.savefig(savename, bbox_inches='tight')
-    ic(f'Saved {savename} with {len(snr_1)} SNR pairs')
+    ic(f'Saved {savename} with {len(all_snr_1)} total SNR pairs and {len(failed_snr_1_list)} failed cut events')
     plt.close(fig)
 
 
