@@ -1,0 +1,352 @@
+#!/usr/bin/env python3
+"""Produce quick-look plots for single-station RCR simulations.
+
+This script reads the NumPy event summaries written by
+``RCRSimulation/S01_RCRSim.py`` and generates:
+
+* Effective area per energy/zenith bin and the zenith-summed projection
+* Event-rate equivalents using the Auger parameterisation
+* Weighted histograms of reconstructed station zenith and azimuth angles
+
+The implementation borrows the binning and rate-calculation ideas from
+``SimpleFootprintSimulation/Stn51RateCalc.py`` but adapts them for the
+single-station workflow (trigger fraction derived from all saved events,
+per-event weights derived from the event-rate map, etc.).
+"""
+
+from __future__ import annotations
+
+import argparse
+import configparser
+import math
+from pathlib import Path
+from typing import Iterable, Sequence
+
+import astrotools.auger as auger
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Ensure the RCRSimEvent class used during pickling is importable
+from RCRSimulation.S01_RCRSim import RCRSimEvent
+
+
+DEFAULT_CONFIG = Path("RCRSimulation/config.ini")
+DEFAULT_OUTPUT_SUBDIR = "simple_plots"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate quick plots from RCR simulation outputs.")
+    parser.add_argument(
+        "--config",
+        default=str(DEFAULT_CONFIG),
+        help=f"Path to configuration file (default: {DEFAULT_CONFIG}).",
+    )
+    parser.add_argument(
+        "--events",
+        help="Explicit path to an _RCReventList.npy file. If omitted, the newest file in the configured numpy folder is used.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        help="Override the plot output directory (defaults to save_folder/simple_plots).",
+    )
+    parser.add_argument(
+        "--energy-min",
+        type=float,
+        default=16.0,
+        help="Lower edge of log10(E/eV) binning (default: 16.0).",
+    )
+    parser.add_argument(
+        "--energy-max",
+        type=float,
+        default=19.0,
+        help="Upper edge of log10(E/eV) binning (default: 19.0).",
+    )
+    parser.add_argument(
+        "--energy-step",
+        type=float,
+        default=0.1,
+        help="Step size for log10(E/eV) bins (default: 0.1).",
+    )
+    parser.add_argument(
+        "--sin2-step",
+        type=float,
+        default=0.1,
+        help="Bin width in sin^2(zenith) used for zenith binning (default: 0.1).",
+    )
+    parser.add_argument(
+        "--azimuth-bins",
+        type=int,
+        default=36,
+        help="Number of bins for the azimuth histogram (default: 36).",
+    )
+    parser.add_argument(
+        "--zenith-hist-bins",
+        type=int,
+        default=18,
+        help="Number of bins for the zenith histogram between 0° and 90° (default: 18).",
+    )
+    return parser.parse_args()
+
+
+def read_config(config_path: Path) -> configparser.ConfigParser:
+    config = configparser.ConfigParser()
+    if not config.read(config_path):
+        raise FileNotFoundError(f"Failed to read configuration file at {config_path}")
+    return config
+
+
+def resolve_event_file(args: argparse.Namespace, config: configparser.ConfigParser) -> Path:
+    if args.events:
+        event_path = Path(args.events).expanduser()
+        if not event_path.exists():
+            raise FileNotFoundError(f"Specified event file not found: {event_path}")
+        return event_path
+
+    numpy_folder = Path(config["FOLDERS"]["numpy_folder"]).expanduser()
+    if not numpy_folder.exists():
+        raise FileNotFoundError(f"Configured numpy_folder does not exist: {numpy_folder}")
+
+    candidates = sorted(numpy_folder.glob("*_RCReventList.npy"))
+    if not candidates:
+        raise FileNotFoundError(f"No *_RCReventList.npy files found in {numpy_folder}")
+    return candidates[-1]
+
+
+def ensure_output_dir(args: argparse.Namespace, config: configparser.ConfigParser) -> Path:
+    if args.output_dir:
+        output_dir = Path(args.output_dir).expanduser()
+    else:
+        base = Path(config["FOLDERS"]["save_folder"]).expanduser()
+        output_dir = base / DEFAULT_OUTPUT_SUBDIR
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def load_events(event_path: Path) -> Sequence[RCRSimEvent]:
+    data = np.load(event_path, allow_pickle=True)
+    # np.load returns an ndarray of dtype object. Convert to a list for iteration.
+    events = data.tolist() if isinstance(data, np.ndarray) else list(data)
+    if not events:
+        raise ValueError(f"No events found in {event_path}")
+    return events
+
+
+def energy_zenith_arrays(events: Sequence[RCRSimEvent]) -> dict[str, np.ndarray]:
+    energies = np.array([float(evt.energy_eV) for evt in events], dtype=float)
+    zenith_deg = np.array([float(evt.zenith_deg) for evt in events], dtype=float)
+    azimuth_deg = np.array([float(evt.azimuth_deg) for evt in events], dtype=float)
+    triggered = np.array([bool(getattr(evt, "triggered", False)) for evt in events], dtype=bool)
+    stn_zenith = np.array([_safe_float(getattr(evt, "stn_zenith", None)) for evt in events], dtype=float)
+    stn_azimuth = np.array([_safe_float(getattr(evt, "stn_azimuth", None)) for evt in events], dtype=float)
+    return {
+        "energies": energies,
+        "log_energy": np.log10(energies),
+        "zenith_deg": zenith_deg,
+        "sin2_zenith": np.sin(np.deg2rad(zenith_deg)) ** 2,
+        "triggered": triggered,
+        "stn_zenith": stn_zenith,
+        "stn_azimuth": stn_azimuth,
+    }
+
+
+def _safe_float(value) -> float:
+    try:
+        return float(value) if value is not None else math.nan
+    except (TypeError, ValueError):
+        return math.nan
+
+
+def build_bins(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    if args.energy_max <= args.energy_min:
+        raise ValueError("energy_max must be greater than energy_min")
+    if args.energy_step <= 0:
+        raise ValueError("energy_step must be positive")
+    energy_bins = np.arange(args.energy_min, args.energy_max + args.energy_step, args.energy_step)
+    if len(energy_bins) < 2:
+        raise ValueError("Energy bin definition results in fewer than two edges")
+
+    if args.sin2_step <= 0 or args.sin2_step > 1:
+        raise ValueError("sin2_step must be in the interval (0, 1]")
+    sin2_bins = np.arange(0.0, 1.0 + args.sin2_step, args.sin2_step)
+    sin2_bins[-1] = 1.0  # ensure the last edge is exactly 1
+
+    angle_bins = np.rad2deg(np.arcsin(np.sqrt(np.clip(sin2_bins, 0.0, 1.0))))
+    return energy_bins, sin2_bins, angle_bins
+
+
+def bin_events(log_energy: np.ndarray, sin2_zenith: np.ndarray, triggered: np.ndarray,
+               energy_bins: np.ndarray, sin2_bins: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    nz = len(sin2_bins) - 1
+    ne = len(energy_bins) - 1
+    n_total = np.zeros((nz, ne), dtype=int)
+    n_trigger = np.zeros((nz, ne), dtype=int)
+
+    e_idx = np.digitize(log_energy, energy_bins) - 1
+    z_idx = np.digitize(sin2_zenith, sin2_bins) - 1
+
+    valid = (e_idx >= 0) & (e_idx < ne) & (z_idx >= 0) & (z_idx < nz)
+    if not np.any(valid):
+        raise ValueError("No events fall inside the chosen energy/zenith bins.")
+
+    np.add.at(n_total, (z_idx[valid], e_idx[valid]), 1)
+    trig_valid = valid & triggered
+    np.add.at(n_trigger, (z_idx[trig_valid], e_idx[trig_valid]), 1)
+
+    total_counts = n_total.astype(float)
+    trigger_fraction = np.divide(n_trigger, total_counts, out=np.zeros_like(total_counts), where=total_counts > 0)
+
+    return n_total, n_trigger, trigger_fraction, (z_idx, e_idx, valid)
+
+
+def effective_area(trigger_fraction: np.ndarray, distance_km: float) -> np.ndarray:
+    if distance_km <= 0:
+        raise ValueError("distance_km must be positive to compute an effective area")
+    simulation_area = math.pi * distance_km ** 2  # km^2
+    return trigger_fraction * simulation_area
+
+
+def event_rate(aeff: np.ndarray, energy_bins: np.ndarray, angle_bins_deg: np.ndarray) -> np.ndarray:
+    nz, ne = aeff.shape
+    rate = np.zeros_like(aeff, dtype=float)
+    for iz in range(nz):
+        z_low = angle_bins_deg[iz]
+        z_high = angle_bins_deg[iz + 1]
+        for ie in range(ne):
+            area = aeff[iz, ie]
+            if area <= 0:
+                continue
+            e_low = energy_bins[ie]
+            e_high = energy_bins[ie + 1]
+            high_flux = auger.event_rate(e_low, e_high, zmax=z_high, area=area)
+            low_flux = auger.event_rate(e_low, e_high, zmax=z_low, area=area)
+            value = max(high_flux - low_flux, 0.0)
+            rate[iz, ie] = value
+    return rate
+
+
+def per_event_weights(rate_per_bin: np.ndarray, n_trigger: np.ndarray) -> np.ndarray:
+    with np.errstate(divide="ignore", invalid="ignore"):
+        weights = np.divide(rate_per_bin, n_trigger, out=np.zeros_like(rate_per_bin), where=n_trigger > 0)
+    return weights
+
+
+def plot_effective_area(energy_bins: np.ndarray, angle_bins_deg: np.ndarray, aeff: np.ndarray, output_dir: Path) -> None:
+    centers = 0.5 * (energy_bins[:-1] + energy_bins[1:])
+
+    plt.figure(figsize=(8, 5))
+    for iz in range(aeff.shape[0]):
+        label = f"{angle_bins_deg[iz]:.1f}-{angle_bins_deg[iz + 1]:.1f}°"
+        plt.step(centers, aeff[iz], where="mid", linewidth=1.2, label=label)
+    summed = aeff.sum(axis=0)
+    plt.step(centers, summed, where="mid", linewidth=2.0, label="Sum", linestyle="--", color="k")
+    plt.xlabel(r"log$_{10}$(E / eV)")
+    plt.ylabel(r"Effective area [km$^2$]")
+    plt.yscale("log")
+    plt.grid(alpha=0.3)
+    plt.legend(fontsize=8)
+    plt.tight_layout()
+    plt.savefig(output_dir / "aeff_by_zenith.png", dpi=200)
+    plt.close()
+
+
+def plot_event_rate(energy_bins: np.ndarray, angle_bins_deg: np.ndarray, rate: np.ndarray, output_dir: Path) -> None:
+    centers = 0.5 * (energy_bins[:-1] + energy_bins[1:])
+
+    plt.figure(figsize=(8, 5))
+    for iz in range(rate.shape[0]):
+        row_total = rate[iz].sum()
+        label = f"{angle_bins_deg[iz]:.1f}-{angle_bins_deg[iz + 1]:.1f}° ({row_total:.2f} yr$^{-1}$)"
+        plt.step(centers, rate[iz], where="mid", linewidth=1.2, label=label)
+    summed = rate.sum(axis=0)
+    total_rate = summed.sum()
+    plt.step(centers, summed, where="mid", linewidth=2.0, label=f"Sum ({total_rate:.2f} yr$^{-1}$)", linestyle="--", color="k")
+    plt.xlabel(r"log$_{10}$(E / eV)")
+    plt.ylabel("Event rate [yr$^{-1}$]")
+    plt.yscale("log")
+    plt.grid(alpha=0.3)
+    plt.legend(fontsize=8)
+    plt.tight_layout()
+    plt.savefig(output_dir / "event_rate_by_zenith.png", dpi=200)
+    plt.close()
+
+
+def plot_weighted_histograms(stn_zenith: np.ndarray, stn_azimuth: np.ndarray, weights: np.ndarray,
+                              angle_bins_deg: np.ndarray, azimuth_bins: int, zenith_hist_bins: int,
+                              output_dir: Path) -> None:
+    triggered_mask = (~np.isnan(stn_zenith)) & (~np.isnan(weights)) & (weights > 0)
+    zenith_values = stn_zenith[triggered_mask]
+    zenith_weights = weights[triggered_mask]
+
+    if zenith_values.size:
+        zenith_edges = np.linspace(0.0, 90.0, zenith_hist_bins + 1)
+        plt.figure(figsize=(8, 4.5))
+        plt.hist(zenith_values, bins=zenith_edges, weights=zenith_weights, histtype="step", linewidth=1.8)
+        plt.xlabel("Reconstructed zenith [deg]")
+        plt.ylabel("Weighted count [yr$^{-1}$]")
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(output_dir / "triggered_zenith_distribution.png", dpi=200)
+        plt.close()
+
+    azimuth_mask = (~np.isnan(stn_azimuth)) & (~np.isnan(weights)) & (weights > 0)
+    azimuth_values = stn_azimuth[azimuth_mask]
+    azimuth_weights = weights[azimuth_mask]
+
+    if azimuth_values.size:
+        azimuth_edges = np.linspace(0.0, 360.0, azimuth_bins + 1)
+        plt.figure(figsize=(8, 4.5))
+        plt.hist(azimuth_values, bins=azimuth_edges, weights=azimuth_weights, histtype="step", linewidth=1.8)
+        plt.xlabel("Reconstructed azimuth [deg]")
+        plt.ylabel("Weighted count [yr$^{-1}$]")
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(output_dir / "triggered_azimuth_distribution.png", dpi=200)
+        plt.close()
+
+
+def main() -> None:
+    args = parse_args()
+    config = read_config(Path(args.config).expanduser())
+
+    event_path = resolve_event_file(args, config)
+    output_dir = ensure_output_dir(args, config)
+
+    events = load_events(event_path)
+    arrays = energy_zenith_arrays(events)
+
+    energy_bins, sin2_bins, angle_bins_deg = build_bins(args)
+    n_total, n_trigger, trigger_fraction, (z_idx, e_idx, valid_mask) = bin_events(
+        arrays["log_energy"], arrays["sin2_zenith"], arrays["triggered"], energy_bins, sin2_bins
+    )
+
+    distance_km = config.getfloat("SIMULATION", "distance_km", fallback=12.0)
+    aeff = effective_area(trigger_fraction, distance_km)
+    rate = event_rate(aeff, energy_bins, angle_bins_deg)
+
+    plot_effective_area(energy_bins, angle_bins_deg, aeff, output_dir)
+    plot_event_rate(energy_bins, angle_bins_deg, rate, output_dir)
+
+    weight_map = per_event_weights(rate, n_trigger)
+    per_event_weight = np.zeros(len(events), dtype=float)
+    trig_mask = valid_mask & arrays["triggered"]
+    trig_indices = np.where(trig_mask)[0]
+    if trig_indices.size:
+        trig_z = z_idx[trig_indices]
+        trig_e = e_idx[trig_indices]
+        per_event_weight[trig_indices] = weight_map[trig_z, trig_e]
+
+    plot_weighted_histograms(
+        arrays["stn_zenith"],
+        arrays["stn_azimuth"],
+        per_event_weight,
+        angle_bins_deg,
+        args.azimuth_bins,
+        args.zenith_hist_bins,
+        output_dir,
+    )
+
+    print(f"Saved plots to {output_dir}")
+
+
+if __name__ == "__main__":
+    main()

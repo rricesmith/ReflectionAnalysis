@@ -129,7 +129,7 @@ parser.add_argument('--min_file', type=int, default=0, help='Minimum file number
 parser.add_argument('--max_file', type=int, default=-1, help='Maximum file number to use, -1 means use all files')
 parser.add_argument('--sim_amp', type=bool, default=True, help='Include amplifier in simulation')
 parser.add_argument('--amp_type', type=str, default='200', help='Amplifier type')
-parser.add_argument('--add_noise', default=False, help='Include noise in simulation')
+parser.add_argument('--add_noise', default=False, help='Include noise in simulation', type=bool)
 parser.add_argument('--distance', default=5, help='Maximum diameter/edge to throw over in km')
 parser.add_argument('--depthLayer', default=576, help='Depth of layer to simulate; 576 for MB, or 300, 500, or 800 for SP')
 parser.add_argument('--dB', default=40, help='Reflectivity of layer to use. Default 40, but MB has 0')
@@ -145,7 +145,7 @@ amp_type = args.amp_type
 add_noise = args.add_noise
 distance = float(args.distance) * 1000  # Convert to meters
 depthLayer = int(args.depthLayer)
-dB = float(args.depthLayer)
+dB = float(args.dB)
 
 # Get files for simulation
 input_files = pullFilesForSimulation(loc, min_file, max_file)
@@ -194,7 +194,7 @@ channelResampler = NuRadioReco.modules.channelResampler.channelResampler()
 channelResampler.begin()
 
 triggerTimeAdjuster = NuRadioReco.modules.triggerTimeAdjuster.triggerTimeAdjuster()
-triggerTimeAdjuster.begin(trigger_name=f'direct_LPDA_2of4_3.5sigma')
+triggerTimeAdjuster.begin(trigger_name=f'refl_LPDA_2of4_3.5sigma')
 
 
 eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
@@ -250,19 +250,33 @@ for evt, iE, x, y in readCoREAS.run(detector=det, ray_type='by_depth', layer_dep
         highLowThreshold.run(evt, station, det, threshold_high=threshold_high_3_5, 
                             threshold_low=threshold_low_3_5,
                             coinc_window = 40*units.ns,
-                            triggered_channels=refl_LPDA_channels,
+                            triggered_channels=direct_LPDA_channels,
                             number_concidences=2,
                             trigger_name=f'direct_LPDA_2of4_3.5sigma')
 
+        highLowThreshold.run(evt, station, det, threshold_high=threshold_high_3_5, 
+                            threshold_low=threshold_low_3_5,
+                            coinc_window = 40*units.ns,
+                            triggered_channels=refl_LPDA_channels,
+                            number_concidences=2,
+                            trigger_name=f'refl_LPDA_2of4_3.5sigma')
 
-        if station.has_triggered(f'direct_LPDA_2of4_3.5sigma'):
+
+        if station.has_triggered(f'direct_LPDA_2of4_3.5sigma') or station.has_triggered(f'refl_LPDA_2of4_3.5sigma'):
+
+            highLowThreshold.run(evt, station, det, threshold_high=threshold_high_4_4, 
+                                threshold_low=threshold_low_4_4,
+                                coinc_window = 40*units.ns,
+                                triggered_channels=direct_LPDA_channels,
+                                number_concidences=2,
+                                trigger_name=f'direct_LPDA_2of4_4.4sigma')
 
             highLowThreshold.run(evt, station, det, threshold_high=threshold_high_4_4, 
                                 threshold_low=threshold_low_4_4,
                                 coinc_window = 40*units.ns,
                                 triggered_channels=refl_LPDA_channels,
                                 number_concidences=2,
-                                trigger_name=f'direct_LPDA_2of4_4.4sigma')
+                                trigger_name=f'refl_LPDA_2of4_4.4sigma')
 
 
             # fig, axs = plt.subplots(2, 4, figsize=(12, 6))

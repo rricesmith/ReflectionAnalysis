@@ -679,7 +679,7 @@ def plot_single_master_event(event_id, event_details, output_dir, dataset_name, 
         for station_id_str_calc, station_data_calc in event_details.get("stations", {}).items():
             all_traces_for_st = station_data_calc.get("Traces", [])
             for traces_for_one_trig in all_traces_for_st:
-                if traces_for_one_trig is not None and np.asarray(traces_for_one_trig).any():
+                if traces_for_one_trig is not None and np.asarray(traces_for_one_trig).any(): 
                     padded_tr = (list(traces_for_one_trig) + [None]*num_trace_channels)[:num_trace_channels]
                     for tr_arr in padded_tr: 
                         if tr_arr is not None and hasattr(tr_arr, "__len__") and len(tr_arr) > 0:
