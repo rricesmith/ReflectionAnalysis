@@ -25,6 +25,7 @@ from typing import Iterable, Sequence
 import astrotools.auger as auger
 import matplotlib.pyplot as plt
 import numpy as np
+from icecream import ic
 
 # Ensure the RCRSimEvent class used during pickling is importable
 from RCRSimulation.S01_RCRSim import RCRSimEvent
@@ -201,7 +202,8 @@ def bin_events(log_energy: np.ndarray, sin2_zenith: np.ndarray, triggered: np.nd
 def effective_area(trigger_fraction: np.ndarray, distance_km: float) -> np.ndarray:
     if distance_km <= 0:
         raise ValueError("distance_km must be positive to compute an effective area")
-    simulation_area = math.pi * distance_km ** 2  # km^2
+    simulation_area = math.pi * (distance_km / 2) ** 2  # km^2
+    ic(simulation_area, trigger_fraction)
     return trigger_fraction * simulation_area
 
 
