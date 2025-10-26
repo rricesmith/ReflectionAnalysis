@@ -315,7 +315,7 @@ def resolve_output_paths(output_name: str, folders: Dict[str, Path]) -> Dict[str
     nur_path = base_path.with_suffix(".nur")
 
     numpy_folder = folders["numpy_folder"]
-    numpy_filename = base_path.with_suffix("_RCReventList.npy").name
+    numpy_filename = f"{base_path.stem}_RCReventList.npy"
     numpy_path = numpy_folder / numpy_filename
 
     return {
