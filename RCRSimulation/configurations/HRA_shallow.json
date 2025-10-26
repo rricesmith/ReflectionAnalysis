@@ -42,7 +42,7 @@
             "channel_id": 2,
             "commission_time": "{TinyDate}:2017-11-01T00:00:00",
             "decommission_time": "{TinyDate}:2038-01-01T00:00:00",
-            "station_id": 1
+            "station_id": 11
         },
         "3": {
             "adc_n_samples": 256,
@@ -64,7 +64,7 @@
             "channel_id": 2,
             "commission_time": "{TinyDate}:2017-11-01T00:00:00",
             "decommission_time": "{TinyDate}:2038-01-01T00:00:00",
-            "station_id": 1
+            "station_id": 11
         },
         "4": {
             "adc_n_samples": 256,
@@ -86,7 +86,7 @@
             "channel_id": 3,
             "commission_time": "{TinyDate}:2017-11-01T00:00:00",
             "decommission_time": "{TinyDate}:2038-01-01T00:00:00",
-            "station_id": 1
+            "station_id": 11
         }
     },
     "stations": {
@@ -97,7 +97,7 @@
             "pos_easting": 0,
             "pos_northing": 0,
             "pos_site": "mooresbay",
-            "station_id": 1
+            "station_id": 11
         }
     }
 }
