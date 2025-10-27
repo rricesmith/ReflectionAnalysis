@@ -411,6 +411,73 @@ def plot_weighted_histograms(
         plt.close()
 
 
+def plot_trigger_scatter(
+    energies: np.ndarray,
+    zenith_deg: np.ndarray,
+    triggered: np.ndarray,
+    output_dir: Path,
+) -> None:
+    if energies.size == 0:
+        return
+
+    event_view = np.rec.fromarrays([energies, zenith_deg], names="energy,zenith")
+    unique_events, inverse = np.unique(event_view, return_inverse=True)
+    total_counts = np.bincount(inverse, minlength=len(unique_events))
+    trigger_counts = np.bincount(inverse, weights=triggered.astype(float), minlength=len(unique_events))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        trigger_fraction = np.divide(
+            trigger_counts,
+            total_counts,
+            out=np.zeros_like(trigger_counts, dtype=float),
+            where=total_counts > 0,
+        )
+
+    x_values = np.log10(unique_events.energy)
+    y_values = unique_events.zenith
+    has_triggers = trigger_counts > 0
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    legend_handles: list = []
+
+    if np.any(~has_triggers):
+        no_trig = ax.scatter(
+            x_values[~has_triggers],
+            y_values[~has_triggers],
+            facecolors="none",
+            edgecolors="tab:gray",
+            linewidths=1.0,
+            s=45,
+            label="No triggers",
+        )
+        legend_handles.append(no_trig)
+
+    if np.any(has_triggers):
+        triggered_scatter = ax.scatter(
+            x_values[has_triggers],
+            y_values[has_triggers],
+            c=trigger_fraction[has_triggers],
+            cmap="viridis",
+            vmin=0.0,
+            vmax=1.0,
+            s=60,
+            label="Triggered",
+        )
+        legend_handles.append(triggered_scatter)
+        cbar = plt.colorbar(triggered_scatter, ax=ax)
+        cbar.set_label("Trigger fraction")
+
+    ax.set_xlabel(r"log$_{10}$(E / eV)")
+    ax.set_ylabel("Zenith [deg]")
+    ax.set_ylim(0.0, 90.0)
+    ax.grid(alpha=0.3)
+    if legend_handles:
+        ax.legend(handles=legend_handles, loc="upper right")
+
+    plt.tight_layout()
+    plt.savefig(output_dir / "trigger_fraction_scatter.png", dpi=200)
+    plt.close()
+
+
 def main() -> None:
     args = parse_args()
     config = read_config(Path(args.config).expanduser())
@@ -451,6 +518,7 @@ def main() -> None:
         args.zenith_hist_bins,
         output_dir,
     )
+    plot_trigger_scatter(arrays["energies"], arrays["zenith_deg"], arrays["triggered"], output_dir)
 
     print(f"Saved plots to {output_dir}")
 
