@@ -143,6 +143,7 @@ def energy_zenith_arrays(events: Sequence[RCRSimEvent]) -> dict[str, np.ndarray]
         "energies": energies,
         "log_energy": np.log10(energies),
         "zenith_deg": zenith_deg,
+        "azimuth_deg": azimuth_deg,
         "sin2_zenith": np.sin(np.deg2rad(zenith_deg)) ** 2,
         "triggered": triggered,
         "stn_zenith": stn_zenith,
@@ -272,11 +273,115 @@ def plot_event_rate(energy_bins: np.ndarray, angle_bins_deg: np.ndarray, rate: n
     plt.close()
 
 
-def plot_weighted_histograms(stn_zenith: np.ndarray, stn_azimuth: np.ndarray, weights: np.ndarray,
-                              angle_bins_deg: np.ndarray, azimuth_bins: int, zenith_hist_bins: int,
-                              output_dir: Path) -> None:
-    triggered_mask = (~np.isnan(stn_zenith)) & (~np.isnan(weights)) & (weights > 0)
-    zenith_values = stn_zenith[triggered_mask]
+def plot_trigger_counts(
+    energy_bins: np.ndarray,
+    angle_bins_deg: np.ndarray,
+    n_total: np.ndarray,
+    n_trigger: np.ndarray,
+    output_dir: Path,
+) -> None:
+    centers = 0.5 * (energy_bins[:-1] + energy_bins[1:])
+    fig, ax_counts = plt.subplots(figsize=(8, 5))
+
+    prop_cycle = plt.rcParams.get("axes.prop_cycle")
+    colors = prop_cycle.by_key().get("color", []) if prop_cycle else []
+
+    nz = n_total.shape[0]
+    for iz in range(nz):
+        color = colors[iz % len(colors)] if colors else None
+        z_label = f"{angle_bins_deg[iz]:.1f}-{angle_bins_deg[iz + 1]:.1f}°"
+        counts = n_total[iz].astype(float)
+        triggers = n_trigger[iz].astype(float)
+        if not np.any(counts):
+            continue
+        ax_counts.step(centers, counts, where="mid", linewidth=1.2, label=f"{z_label} throws", color=color)
+        ax_counts.step(
+            centers,
+            triggers,
+            where="mid",
+            linewidth=1.2,
+            linestyle="--",
+            label=f"{z_label} triggers",
+            color=color,
+        )
+
+    total_counts = n_total.sum(axis=0).astype(float)
+    total_triggers = n_trigger.sum(axis=0).astype(float)
+    if np.any(total_counts):
+        ax_counts.step(
+            centers,
+            total_counts,
+            where="mid",
+            linewidth=2.0,
+            color="k",
+            label="Sum throws",
+        )
+        ax_counts.step(
+            centers,
+            total_triggers,
+            where="mid",
+            linewidth=2.0,
+            linestyle="--",
+            color="k",
+            label="Sum triggers",
+        )
+
+    ax_counts.set_xlabel(r"log$_{10}$(E / eV)")
+    ax_counts.set_ylabel("Event counts")
+    ax_counts.grid(alpha=0.3)
+
+    ax_fraction = ax_counts.twinx()
+    with np.errstate(divide="ignore", invalid="ignore"):
+        overall_fraction = np.divide(
+            total_triggers,
+            total_counts,
+            out=np.zeros_like(total_triggers, dtype=float),
+            where=total_counts > 0,
+        )
+
+    if np.any(total_counts):
+        widths = energy_bins[1:] - energy_bins[:-1]
+        ax_fraction.bar(
+            centers,
+            overall_fraction,
+            width=widths * 0.8,
+            color="tab:orange",
+            alpha=0.35,
+            label="Trigger fraction (sum)",
+            align="center",
+        )
+
+    ax_fraction.set_ylabel("Trigger fraction")
+    ax_fraction.set_ylim(0.0, 1.05)
+
+    handles_counts, labels_counts = ax_counts.get_legend_handles_labels()
+    handles_fraction, labels_fraction = ax_fraction.get_legend_handles_labels()
+    if handles_fraction:
+        ax_counts.legend(
+            handles_counts + handles_fraction,
+            labels_counts + labels_fraction,
+            fontsize=8,
+            loc="upper left",
+            ncol=2,
+        )
+    else:
+        ax_counts.legend(fontsize=8, loc="upper left", ncol=2)
+
+    plt.tight_layout()
+    plt.savefig(output_dir / "trigger_counts_and_fraction.png", dpi=200)
+    plt.close()
+
+
+def plot_weighted_histograms(
+    zenith_deg: np.ndarray,
+    azimuth_deg: np.ndarray,
+    weights: np.ndarray,
+    azimuth_bins: int,
+    zenith_hist_bins: int,
+    output_dir: Path,
+) -> None:
+    triggered_mask = (~np.isnan(zenith_deg)) & (~np.isnan(weights)) & (weights > 0)
+    zenith_values = zenith_deg[triggered_mask]
     zenith_weights = weights[triggered_mask]
 
     if zenith_values.size:
@@ -290,8 +395,8 @@ def plot_weighted_histograms(stn_zenith: np.ndarray, stn_azimuth: np.ndarray, we
         plt.savefig(output_dir / "triggered_zenith_distribution.png", dpi=200)
         plt.close()
 
-    azimuth_mask = (~np.isnan(stn_azimuth)) & (~np.isnan(weights)) & (weights > 0)
-    azimuth_values = stn_azimuth[azimuth_mask]
+    azimuth_mask = (~np.isnan(azimuth_deg)) & (~np.isnan(weights)) & (weights > 0)
+    azimuth_values = azimuth_deg[azimuth_mask]
     azimuth_weights = weights[azimuth_mask]
 
     if azimuth_values.size:
@@ -324,6 +429,7 @@ def main() -> None:
     distance_km = config.getfloat("SIMULATION", "distance_km", fallback=12.0)
     aeff = effective_area(trigger_fraction, distance_km)
     rate = event_rate(aeff, energy_bins, angle_bins_deg)
+    plot_trigger_counts(energy_bins, angle_bins_deg, n_total, n_trigger, output_dir)
 
     plot_effective_area(energy_bins, angle_bins_deg, aeff, output_dir)
     plot_event_rate(energy_bins, angle_bins_deg, rate, output_dir)
@@ -338,10 +444,9 @@ def main() -> None:
         per_event_weight[trig_indices] = weight_map[trig_z, trig_e]
 
     plot_weighted_histograms(
-        arrays["stn_zenith"],
-        arrays["stn_azimuth"],
+        arrays["zenith_deg"],
+        arrays["azimuth_deg"],
         per_event_weight,
-        angle_bins_deg,
         args.azimuth_bins,
         args.zenith_hist_bins,
         output_dir,
