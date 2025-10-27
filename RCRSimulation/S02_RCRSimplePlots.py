@@ -18,9 +18,10 @@ from __future__ import annotations
 
 import argparse
 import configparser
+import glob
 import math
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 import astrotools.auger as auger
 import matplotlib.pyplot as plt
@@ -44,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--events",
-        help="Explicit path to an _RCReventList.npy file. If omitted, the newest file in the configured numpy folder is used.",
+        help="Path to an _RCReventList.npy file, directory, or glob pattern. If omitted, all files in the configured numpy folder are used.",
     )
     parser.add_argument(
         "--output-dir",
@@ -96,12 +97,21 @@ def read_config(config_path: Path) -> configparser.ConfigParser:
     return config
 
 
-def resolve_event_file(args: argparse.Namespace, config: configparser.ConfigParser) -> Path:
+def resolve_event_files(args: argparse.Namespace, config: configparser.ConfigParser) -> list[Path]:
     if args.events:
-        event_path = Path(args.events).expanduser()
-        if not event_path.exists():
-            raise FileNotFoundError(f"Specified event file not found: {event_path}")
-        return event_path
+        event_arg = Path(args.events).expanduser()
+        if event_arg.exists():
+            if event_arg.is_file():
+                return [event_arg]
+            if event_arg.is_dir():
+                files = sorted(event_arg.glob("*_RCReventList.npy"))
+                if not files:
+                    raise FileNotFoundError(f"No *_RCReventList.npy files found in directory {event_arg}")
+                return files
+        matches = sorted(Path(p) for p in glob.glob(str(event_arg)))
+        if matches:
+            return matches
+        raise FileNotFoundError(f"Specified event path not found: {event_arg}")
 
     numpy_folder = Path(config["FOLDERS"]["numpy_folder"]).expanduser()
     if not numpy_folder.exists():
@@ -110,7 +120,7 @@ def resolve_event_file(args: argparse.Namespace, config: configparser.ConfigPars
     candidates = sorted(numpy_folder.glob("*_RCReventList.npy"))
     if not candidates:
         raise FileNotFoundError(f"No *_RCReventList.npy files found in {numpy_folder}")
-    return candidates[-1]
+    return candidates
 
 
 def ensure_output_dir(args: argparse.Namespace, config: configparser.ConfigParser) -> Path:
@@ -123,13 +133,17 @@ def ensure_output_dir(args: argparse.Namespace, config: configparser.ConfigParse
     return output_dir
 
 
-def load_events(event_path: Path) -> Sequence[RCRSimEvent]:
-    data = np.load(event_path, allow_pickle=True)
-    # np.load returns an ndarray of dtype object. Convert to a list for iteration.
-    events = data.tolist() if isinstance(data, np.ndarray) else list(data)
-    if not events:
-        raise ValueError(f"No events found in {event_path}")
-    return events
+def load_events(event_paths: Sequence[Path]) -> Sequence[RCRSimEvent]:
+    aggregated: list[RCRSimEvent] = []
+    for event_path in event_paths:
+        data = np.load(event_path, allow_pickle=True)
+        records = data.tolist() if isinstance(data, np.ndarray) else list(data)
+        if not records:
+            continue
+        aggregated.extend(records)
+    if not aggregated:
+        raise ValueError("No events found in the provided files")
+    return aggregated
 
 
 def energy_zenith_arrays(events: Sequence[RCRSimEvent]) -> dict[str, np.ndarray]:
@@ -482,10 +496,11 @@ def main() -> None:
     args = parse_args()
     config = read_config(Path(args.config).expanduser())
 
-    event_path = resolve_event_file(args, config)
+    event_paths = resolve_event_files(args, config)
     output_dir = ensure_output_dir(args, config)
 
-    events = load_events(event_path)
+    events = load_events(event_paths)
+    print(f"Loaded {len(events)} events from {len(event_paths)} file(s).")
     arrays = energy_zenith_arrays(events)
 
     energy_bins, sin2_bins, angle_bins_deg = build_bins(args)
