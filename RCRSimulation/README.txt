@@ -14,7 +14,9 @@ Files
 	station/site defaults, CoREAS file ranges, trigger sigmas, attenuation model,
 	output folders, detector configuration directories, and batch submission
 	settings. The `config_dir` entry points to the directory tree that stores
-	station-specific detector JSON files.
+	station-specific detector JSON files. Set `debug = true` to emit detailed
+	per-run logs under the folder configured by `log_folder` (defaults to
+	`RCRSimulation/logs/`).
 * `S01_RCRSim.py` – Simulation entry point. Reads the config (or command line
 	overrides), loads the appropriate detector geometry, and runs NuRadioReco to
 	produce a `.nur` file plus a compact NumPy event summary for the chosen
@@ -45,6 +47,14 @@ Typical Usage
 Outputs land in the folders configured under `[FOLDERS]`, with `.nur` files and
 NumPy summaries organized by station and file range. Generated plots or
 follow-up analyses can use the same folder structure.
+
+Debug Logs
+----------
+
+Enabling `debug = true` in `config.ini` writes a timestamped text report to
+`log_folder`. Each report captures the resolved simulation configuration,
+derived trigger thresholds and noise estimates, and trigger statistics grouped
+by energy, zenith, and azimuth for the simulated events.
 
 
 

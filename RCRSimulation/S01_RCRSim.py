@@ -15,7 +15,7 @@ import datetime
 import logging
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Dict, Iterable, List, Sequence
+from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 import numpy as np
 
@@ -30,7 +30,6 @@ import NuRadioReco.modules.trigger.highLowThreshold
 import NuRadioReco.modules.triggerTimeAdjuster
 import NuRadioReco.modules.ARIANNA.hardwareResponseIncorporator
 import NuRadioReco.modules.correlationDirectionFitter
-import NuRadioReco.modules.io.coreas.simulationSelector
 import NuRadioReco.modules.io.eventWriter
 
 from NuRadioReco.framework.parameters import eventParameters as evtp
@@ -341,6 +340,136 @@ def build_thresholds(post_amp_vrms: Dict[int, float], sigmas: List[float]) -> Di
     return thresholds
 
 
+def summarize_events(events: Sequence[RCRSimEvent]) -> Dict[Tuple[str, str, str], Dict[str, int]]:
+    summary: Dict[Tuple[str, str, str], Dict[str, int]] = {}
+    for event in events:
+        energy_label = f"{event.energy_eV:.6e}" if event.energy_eV is not None else "n/a"
+        zenith_label = f"{event.zenith_deg:.3f}" if event.zenith_deg is not None else "n/a"
+        azimuth_label = f"{event.azimuth_deg:.3f}" if event.azimuth_deg is not None else "n/a"
+        key = (energy_label, zenith_label, azimuth_label)
+        entry = summary.setdefault(key, {"count": 0, "triggered": 0})
+        entry["count"] += 1
+        if event.triggered:
+            entry["triggered"] += 1
+    return summary
+
+
+def write_debug_log(
+    settings: Dict[str, Any],
+    output_paths: Dict[str, Path],
+    thresholds: Dict[str, Dict[str, Dict[int, float]]] | None,
+    noise_stats: Dict[str, Dict[int, float]],
+    events: Sequence[RCRSimEvent],
+    run_time_s: float,
+) -> None:
+    log_folder: Path = settings["log_folder"]
+    log_folder.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = log_folder / f"{output_paths['base'].stem}_{timestamp}_debug.txt"
+
+    total_events = len(events)
+    triggered_total = sum(1 for event in events if event.triggered)
+    global_rate = triggered_total / total_events if total_events else 0.0
+
+    summary_map = summarize_events(events)
+
+    lines: List[str] = []
+    lines.append("RCR Simulation Debug Log")
+    lines.append("========================")
+    lines.append(f"Generated: {datetime.datetime.now().isoformat(timespec='seconds')}")
+    lines.append(f"Output base: {output_paths['base']}")
+    lines.append(f"readCoREAS runtime (s): {run_time_s:.2f}")
+    lines.append("")
+
+    lines.append("[Configuration]")
+    config_keys = [
+        "station_type",
+        "site",
+        "propagation",
+        "station_id",
+        "n_cores",
+        "distance_km",
+        "min_file",
+        "max_file",
+        "seed",
+        "attenuation_model",
+        "layer_depth_m",
+        "trigger_sigma",
+        "noise_sigma",
+        "add_noise",
+        "detector_config",
+        "output_folder",
+        "numpy_folder",
+        "save_folder",
+        "run_directory",
+        "debug",
+        "log_folder",
+    ]
+    for key in config_keys:
+        if key not in settings:
+            continue
+        value = settings[key]
+        value_repr = str(value)
+        lines.append(f"{key}: {value_repr}")
+    lines.append("")
+
+    lines.append("[Simulation Values]")
+    lines.append(f"Primary channels: {', '.join(str(ch) for ch in PRIMARY_CHANNELS)}")
+    lines.append(f"Primary trigger sigma: {settings['trigger_sigma']}")
+    lines.append(f"Noise trigger sigma: {settings['noise_sigma']}")
+    lines.append(f"Coincidence window (ns): {COINCIDENCE_WINDOW / units.ns:.3f}")
+
+    pre_amp_vrms = noise_stats.get("pre_amp_vrms", {}) or {}
+    post_amp_vrms = noise_stats.get("post_amp_vrms", {}) or {}
+    if pre_amp_vrms:
+        lines.append("Pre-amplifier Vrms per channel (V):")
+        for ch in sorted(pre_amp_vrms):
+            lines.append(f"  ch{ch}: {pre_amp_vrms[ch]:.6g}")
+    if post_amp_vrms:
+        lines.append("Post-amplifier Vrms per channel (V):")
+        for ch in sorted(post_amp_vrms):
+            lines.append(f"  ch{ch}: {post_amp_vrms[ch]:.6g}")
+
+    if thresholds:
+        for sigma_key in sorted(thresholds.keys(), key=lambda s: float(s)):
+            sigma_data = thresholds[sigma_key]
+            lines.append(f"Thresholds for {sigma_key} sigma (V):")
+            lines.append("  High:")
+            for ch in sorted(sigma_data["high"]):
+                lines.append(f"    ch{ch}: {sigma_data['high'][ch]:.6g}")
+            lines.append("  Low:")
+            for ch in sorted(sigma_data["low"]):
+                lines.append(f"    ch{ch}: {sigma_data['low'][ch]:.6g}")
+    else:
+        lines.append("Thresholds were not computed (no events processed).")
+
+    lines.append("")
+    lines.append("[Event Summary]")
+    lines.append(f"Total events processed: {total_events}")
+    lines.append(f"Total events triggered: {triggered_total}")
+    lines.append(f"Global trigger rate: {global_rate:.2%}")
+
+    if summary_map:
+        lines.append("Grouped by energy/zenith/azimuth:")
+        for key in sorted(summary_map.keys()):
+            energy_label, zenith_label, azimuth_label = key
+            entry = summary_map[key]
+            rate = entry["triggered"] / entry["count"] if entry["count"] else 0.0
+            lines.append(
+                "  Energy="
+                f"{energy_label} eV; Zenith={zenith_label} deg; Azimuth={azimuth_label} deg -> "
+                f"{entry['count']} events, {entry['triggered']} triggered ({rate:.2%})"
+            )
+    else:
+        lines.append("No events were processed in this run.")
+
+    lines.append("")
+
+    log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    LOGGER.info("Wrote debug log to %s", log_path)
+
+
 def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -> None:
     station_id = settings["station_id"]
     trigger_sigma: float = settings["trigger_sigma"]
@@ -366,8 +495,6 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     det = detector.Detector(str(settings["detector_config"]), "json")
     det.update(datetime.datetime(2018, 10, 1))
 
-    simulationSelector = NuRadioReco.modules.io.coreas.simulationSelector.simulationSelector()
-    simulationSelector.begin()
 
     efieldToVoltageConverter = NuRadioReco.modules.efieldToVoltageConverter.efieldToVoltageConverter()
     efieldToVoltageConverter.begin(debug=False)
@@ -431,7 +558,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
             LOGGER.warning("Station %s not present in event %s, skipping.", station_id, evt.get_id())
             continue
 
-        eventTypeIdentifier.run(evt, station, mode="forced", forced_event_type="cosmic_ray")
+        eventTypeIdentifier.run(evt, station, mode="forced", forced_event_type="neutrino")
         efieldToVoltageConverter.run(evt, station, det)
         channelResampler.run(evt, station, det, 2 * units.GHz)
 
