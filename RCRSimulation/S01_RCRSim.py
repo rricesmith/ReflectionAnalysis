@@ -665,7 +665,13 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         eventWriter.run(evt)
 
     nevents = eventWriter.end()
-    run_time_s = readCoREAS.end()
+    run_time = readCoREAS.end()
+    if isinstance(run_time, datetime.timedelta):
+        run_time_s = run_time.total_seconds()
+    elif run_time is None:
+        run_time_s = 0.0
+    else:
+        run_time_s = float(run_time)
     LOGGER.info("Processed %s events. readCoREAS runtime: %.2fs", nevents, run_time_s)
 
     npy_array = np.array(events, dtype=object)
