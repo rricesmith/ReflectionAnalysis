@@ -259,6 +259,8 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
     else:
         add_noise = parse_bool(cfg_sim.get("add_noise", "false"))
 
+    debug_enabled = parse_bool(cfg_sim.get("debug", "false"))
+
     sim_config_dir = config.get("SIMULATION", "config_dir", fallback=None)
     folder_config_dir = config.get("FOLDERS", "config_dir", fallback=None)
     detector_config_root = folder_config_dir or sim_config_dir or cfg_paths.get(
@@ -283,6 +285,9 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
     save_folder = Path(cfg_paths.get("save_folder", "RCRSimulation/plots")).expanduser()
 
     run_directory = Path(cfg_paths.get("run_directory", "run/RCRSimulation")).expanduser()
+    log_folder = Path(
+        cfg_paths.get("log_folder", "RCRSimulation/logs")
+    ).expanduser()
 
     return {
         "station_type": station_type,
@@ -296,14 +301,16 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         "seed": seed,
         "attenuation_model": attenuation_model,
         "layer_depth_m": layer_depth,
-    "trigger_sigma": trigger_sigma,
-    "noise_sigma": NOISE_TRIGGER_SIGMA,
+        "trigger_sigma": trigger_sigma,
+        "noise_sigma": NOISE_TRIGGER_SIGMA,
         "add_noise": add_noise,
         "detector_config": detector_config,
         "output_folder": output_folder,
         "numpy_folder": numpy_folder,
         "save_folder": save_folder,
         "run_directory": run_directory,
+        "debug": debug_enabled,
+        "log_folder": log_folder,
     }
 
 
@@ -478,6 +485,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     site: str = settings["site"]
     propagation: str = settings["propagation"]
     distance_km: float = settings["distance_km"]
+    debug_enabled: bool = bool(settings.get("debug"))
 
     LOGGER.info(
         "Starting simulation for station %s (%s, %s, propagation=%s, sigma=%.2f)",
@@ -540,6 +548,8 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
     events: List[RCRSimEvent] = []
     thresholds: Dict[str, Dict[str, Dict[int, float]]] | None = None
+    pre_amp_vrms: Dict[int, float] | None = None
+    post_amp_vrms: Dict[int, float] | None = None
 
     for evt, event_idx, coreas_x, coreas_y in readCoREAS.run(
         detector=det,
@@ -659,6 +669,20 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     np.save(output_paths["numpy"], npy_array, allow_pickle=True)
     LOGGER.info("Saved %d event summaries to %s", len(events), output_paths["numpy"])
 
+    if debug_enabled:
+        noise_stats = {
+            "pre_amp_vrms": pre_amp_vrms or {},
+            "post_amp_vrms": post_amp_vrms or {},
+        }
+        write_debug_log(
+            settings,
+            output_paths,
+            thresholds,
+            noise_stats,
+            events,
+            run_time_s,
+        )
+
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
@@ -674,11 +698,14 @@ def main() -> None:
 
     settings = merge_settings(args, config)
 
-    ensure_directories([
+    required_dirs = [
         settings["output_folder"],
         settings["numpy_folder"],
         settings["save_folder"],
-    ])
+    ]
+    if settings.get("debug"):
+        required_dirs.append(settings["log_folder"])
+    ensure_directories(required_dirs)
 
     output_paths = resolve_output_paths(args.output_name, settings)
 
