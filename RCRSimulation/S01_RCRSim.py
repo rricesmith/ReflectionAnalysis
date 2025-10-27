@@ -571,7 +571,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
             LOGGER.warning("Station %s not present in event %s, skipping.", station_id, evt.get_id())
             continue
 
-        eventTypeIdentifier.run(evt, station, mode="forced", forced_event_type="neutrino")
+        eventTypeIdentifier.run(evt, station, mode="forced", forced_event_type="cosmic ray")
         efieldToVoltageConverter.run(evt, station, det)
         channelResampler.run(evt, station, det, 2 * units.GHz)
 
@@ -632,18 +632,19 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
             triggerTimeAdjuster.run(evt, station, det)
             channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
-            # correlationDirectionFitter.run(
-            #     evt,
-            #     station,
-            #     det,
-            #     n_index=1.35,
-            #     ZenLim=[0 * units.deg, 180 * units.deg],
-            #     channel_pairs=((PRIMARY_CHANNELS[0], PRIMARY_CHANNELS[2]), (PRIMARY_CHANNELS[1], PRIMARY_CHANNELS[3])),
-            # )
-            # stn_zenith = station.get_parameter(stnp.zenith)
-            # stn_azimuth = station.get_parameter(stnp.azimuth)
+            triggered = station.has_triggered(final_trigger)
+            if triggered:
+                # correlationDirectionFitter.run(
+                #     evt,
+                #     station,
+                #     det,
+                #     n_index=1.35,
+                #     ZenLim=[0 * units.deg, 180 * units.deg],
+                #     channel_pairs=((PRIMARY_CHANNELS[0], PRIMARY_CHANNELS[2]), (PRIMARY_CHANNELS[1], PRIMARY_CHANNELS[3])),
+                # )
+                # stn_zenith = station.get_parameter(stnp.zenith)
+                # stn_azimuth = station.get_parameter(stnp.azimuth)
 
-            triggered = station.has_trigger(final_trigger)
 
         sim_shower = evt.get_sim_shower(0)
         events.append(
