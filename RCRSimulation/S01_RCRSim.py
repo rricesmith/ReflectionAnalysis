@@ -498,7 +498,10 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
     input_files = pullFilesForSimulation(site, settings["min_file"], settings["max_file"])
     if not input_files:
-        raise RuntimeError(f"No CoREAS input files found for site '{site}' with the provided range.")
+        # Some selections will have no files, return with no error
+        LOGGER.warning("No CoREAS input files found for site '%s' with the provided range.", site)
+        return
+
 
     det = detector.Detector(str(settings["detector_config"]), "json")
     det.update(datetime.datetime(2018, 10, 1))
@@ -629,16 +632,16 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
             triggerTimeAdjuster.run(evt, station, det)
             channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
-            correlationDirectionFitter.run(
-                evt,
-                station,
-                det,
-                n_index=1.35,
-                ZenLim=[0 * units.deg, 180 * units.deg],
-                channel_pairs=((PRIMARY_CHANNELS[0], PRIMARY_CHANNELS[2]), (PRIMARY_CHANNELS[1], PRIMARY_CHANNELS[3])),
-            )
-            stn_zenith = station.get_parameter(stnp.zenith)
-            stn_azimuth = station.get_parameter(stnp.azimuth)
+            # correlationDirectionFitter.run(
+            #     evt,
+            #     station,
+            #     det,
+            #     n_index=1.35,
+            #     ZenLim=[0 * units.deg, 180 * units.deg],
+            #     channel_pairs=((PRIMARY_CHANNELS[0], PRIMARY_CHANNELS[2]), (PRIMARY_CHANNELS[1], PRIMARY_CHANNELS[3])),
+            # )
+            # stn_zenith = station.get_parameter(stnp.zenith)
+            # stn_azimuth = station.get_parameter(stnp.azimuth)
 
             triggered = station.has_trigger(final_trigger)
 
