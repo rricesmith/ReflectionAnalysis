@@ -40,7 +40,7 @@ def main() -> None:
     site = sim_cfg.get("site", "MB")
     propagation = sim_cfg.get("propagation_mode", "direct")
     if propagation == "reflected":
-        station_id = config.getint("SIMULATION", "station_id_reflected", fallback=11)
+        station_id = config.getint("SIMULATION", "station_id_reflected", fallback=1)
     else:
         station_id = config.getint("SIMULATION", "station_id_direct", fallback=1)
 
