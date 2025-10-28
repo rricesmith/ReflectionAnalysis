@@ -499,8 +499,8 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     input_files = pullFilesForSimulation(site, settings["min_file"], settings["max_file"])
     if not input_files:
         # Some selections will have no files, return with no error
-        LOGGER.warning("No CoREAS input files found for site '%s' with the provided range.", site)
-        return
+        LOGGER.warning("Quitting, No CoREAS input files found for site '%s' with the provided range.", site)
+        quit()
 
 
     det = detector.Detector(str(settings["detector_config"]), "json")
