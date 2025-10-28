@@ -216,7 +216,7 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
     cfg_paths = config["FOLDERS"] if "FOLDERS" in config else {}
 
     propagation = args.propagation or cfg_sim.get("propagation_mode", "direct")
-    if propagation not in {"direct", "reflected"}:
+    if propagation not in {"direct", "reflected", "by_depth"}:
         raise ValueError(f"Unsupported propagation mode '{propagation}'.")
 
     station_type = args.station_type or cfg_sim.get("station_type", "HRA")
