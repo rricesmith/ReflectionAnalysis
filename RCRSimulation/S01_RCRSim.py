@@ -13,6 +13,7 @@ import argparse
 import configparser
 import datetime
 import logging
+import math
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
@@ -49,6 +50,153 @@ DEFAULT_CONFIG_PATH = Path("RCRSimulation/config.ini")
 COINCIDENCE_WINDOW = 40 * units.ns
 NOISE_TRIGGER_SIGMA = 2.0
 PRIMARY_CHANNELS = [0, 1, 2, 3]
+GEN2_FILTER_RIPPLE = 0.1
+
+
+def layer_depth_to_label(layer_depth: float | None) -> str:
+    """Translate a numeric layer depth to the config filename label."""
+    if layer_depth is None:
+        return "surface"
+    if isinstance(layer_depth, float) and not math.isfinite(layer_depth):
+        return "surface"
+    if abs(layer_depth) < 1e-3:
+        return "surface"
+    depth_m = abs(layer_depth)
+    if math.isclose(depth_m, round(depth_m)):
+        depth_m = int(round(depth_m))
+        return f"{depth_m}m"
+    return f"{depth_m:g}m"
+
+
+def parse_layer_depth_value(raw_value: str | float | None, default: float) -> float:
+    """Convert layer depth config entries to a float, supporting 'surface'."""
+    if raw_value is None:
+        return default
+    if isinstance(raw_value, (int, float)):
+        return float(raw_value)
+    text = str(raw_value).strip()
+    if not text:
+        return default
+    lowered = text.lower()
+    if lowered in {"surface", "surf"}:
+        return 0.0
+    try:
+        return float(text)
+    except ValueError as exc:
+        raise ValueError(f"Unsupported layer depth value '{raw_value}'.") from exc
+
+
+def build_gen2_filter_config(
+    det_obj: detector.Detector,
+    station_id: int,
+    station_depth: str,
+) -> Dict[str, Dict[int, object]]:
+    """Construct per-channel band-pass settings for Gen2 stations."""
+    channel_ids = sorted(det_obj.get_channel_ids(station_id))
+    if not channel_ids:
+        return {"passband_low": {}, "passband_high": {}, "filter_type": {}, "order_low": {}, "order_high": {}}
+
+    passband_low: Dict[int, Tuple[float, float]] = {}
+    passband_high: Dict[int, Tuple[float, float]] = {}
+    filter_type: Dict[int, str] = {}
+    order_low: Dict[int, int] = {}
+    order_high: Dict[int, int] = {}
+
+    shallow_candidates = [ch for ch in channel_ids if ch <= 3]
+    pa_candidates = [ch for ch in channel_ids if ch not in shallow_candidates]
+
+    def apply_shallow_filters(channels: Iterable[int]) -> None:
+        for ch in channels:
+            passband_low[ch] = (1 * units.MHz, 1000 * units.MHz)
+            passband_high[ch] = (0.08 * units.GHz, 800 * units.GHz)
+            filter_type[ch] = "butter"
+            order_low[ch] = 10
+            order_high[ch] = 5
+
+    def apply_deep_filters(channels: Iterable[int]) -> None:
+        for ch in channels:
+            passband_low[ch] = (0 * units.MHz, 1000 * units.MHz)
+            passband_high[ch] = (96 * units.MHz, 100 * units.GHz)
+            filter_type[ch] = "cheby1"
+            order_low[ch] = 7
+            order_high[ch] = 4
+
+    if station_depth.lower() == "deep":
+        if shallow_candidates:
+            apply_shallow_filters(shallow_candidates)
+        if pa_candidates:
+            apply_deep_filters(pa_candidates)
+    else:
+        target_channels = shallow_candidates if shallow_candidates else channel_ids
+        apply_shallow_filters(target_channels)
+
+    return {
+        "passband_low": passband_low,
+        "passband_high": passband_high,
+        "filter_type": filter_type,
+        "order_low": order_low,
+        "order_high": order_high,
+    }
+
+
+def apply_gen2_filters(
+    bandpass_module: NuRadioReco.modules.channelBandPassFilter.channelBandPassFilter,
+    evt,
+    station,
+    det,
+    config: Dict[str, Dict[int, object]],
+) -> None:
+    if not config["passband_low"]:
+        return
+    bandpass_module.run(
+        evt,
+        station,
+        det,
+        passband=config["passband_low"],
+        filter_type=config["filter_type"],
+        order=config["order_low"],
+        rp=GEN2_FILTER_RIPPLE,
+    )
+    bandpass_module.run(
+        evt,
+        station,
+        det,
+        passband=config["passband_high"],
+        filter_type=config["filter_type"],
+        order=config["order_high"],
+        rp=GEN2_FILTER_RIPPLE,
+    )
+
+
+def resolve_trigger_channels(
+    det_obj: detector.Detector,
+    station_id: int,
+    station_type: str,
+    station_depth: str,
+) -> List[int]:
+    """Determine which channels participate in the primary trigger."""
+    if station_type.lower() != "gen2":
+        return list(PRIMARY_CHANNELS)
+
+    channel_ids = sorted(det_obj.get_channel_ids(station_id))
+    if not channel_ids:
+        raise ValueError(f"No channels found for station {station_id} in detector configuration.")
+
+    depth_value = station_depth.lower()
+
+    if depth_value == "deep":
+        pa_candidates = [ch for ch in channel_ids if ch >= 4]
+        if len(pa_candidates) >= 4:
+            return pa_candidates[:4]
+        if len(channel_ids) >= 4:
+            return channel_ids[-4:]
+        return channel_ids
+
+    # Shallow configuration: prioritise the first LPDA-style channels
+    shallow_candidates = [ch for ch in channel_ids if ch < 4]
+    if len(shallow_candidates) >= 4:
+        return shallow_candidates[:4]
+    return channel_ids[:4]
 
 
 @dataclass
@@ -87,6 +235,11 @@ def parse_args() -> argparse.Namespace:
         help=f"Path to the configuration file (default: {DEFAULT_CONFIG_PATH}).",
     )
     parser.add_argument("--station-type", choices=["HRA", "SP", "Gen2"], help="Override station type.")
+    parser.add_argument(
+        "--station-depth",
+        choices=["deep", "shallow"],
+        help="Select the station configuration depth variant (deep or shallow).",
+    )
     parser.add_argument("--site", choices=["MB", "SP"], help="Override site selection.")
     parser.add_argument(
         "--propagation",
@@ -160,13 +313,24 @@ def _select_detector_config(candidates: Sequence[Path], station_type: str, site:
     return candidates[0]
 
 
-def detector_config_from_path(path: Path, station_type: str, site: str) -> Path:
+def detector_config_from_path(
+    path: Path,
+    station_type: str,
+    site: str,
+    depth_variant: str | None = None,
+    layer_label: str | None = None,
+) -> Path:
     path = path.expanduser()
     if not path.exists():
         raise FileNotFoundError(f"Detector configuration path not found: {path}")
 
     if path.is_file():
         return path
+
+    station_norm = station_type.lower()
+    depth_norm = depth_variant.lower() if depth_variant else None
+    layer_norm = layer_label.lower() if layer_label else None
+    site_norm = site.lower()
 
     search_roots: List[Path] = [path]
     for variant in {station_type, station_type.lower(), station_type.upper()}:
@@ -175,6 +339,16 @@ def detector_config_from_path(path: Path, station_type: str, site: str) -> Path:
         search_roots.append(path / site / variant)
     for variant in {site, site.lower(), site.upper()}:
         search_roots.append(path / variant)
+    if depth_variant:
+        for variant in {depth_variant, depth_variant.lower(), depth_variant.upper()}:
+            search_roots.append(path / variant)
+            search_roots.append(path / station_type / variant)
+    if layer_label:
+        for variant in {layer_label, layer_label.lower(), layer_label.upper()}:
+            search_roots.append(path / variant)
+            search_roots.append(path / station_type / variant)
+            if depth_variant:
+                search_roots.append(path / variant / depth_variant)
 
     seen_roots: set[Path] = set()
     candidates: List[Path] = []
@@ -207,6 +381,35 @@ def detector_config_from_path(path: Path, station_type: str, site: str) -> Path:
                     seen_files.add(candidate)
                     candidates.append(candidate)
 
+    priority_patterns: List[str] = []
+
+    def add_pattern(pattern: str | None) -> None:
+        if pattern and pattern not in priority_patterns:
+            priority_patterns.append(pattern)
+
+    if depth_norm and layer_norm:
+        add_pattern(f"{station_norm}_{depth_norm}_{layer_norm}")
+        add_pattern(f"{station_norm}-{depth_norm}-{layer_norm}")
+        add_pattern(f"{station_norm}{depth_norm}{layer_norm}")
+    if depth_norm:
+        add_pattern(f"{station_norm}_{depth_norm}")
+        add_pattern(f"{station_norm}-{depth_norm}")
+        add_pattern(f"{station_norm}{depth_norm}")
+    if layer_norm:
+        add_pattern(f"{station_norm}_{layer_norm}")
+    add_pattern(f"{station_norm}_{site_norm}")
+    add_pattern(f"{station_norm}{site_norm}")
+    if layer_norm:
+        add_pattern(layer_norm)
+    add_pattern(site_norm)
+    add_pattern(station_norm)
+
+    for pattern in priority_patterns:
+        for candidate in candidates:
+            candidate_name = candidate.stem.lower()
+            if pattern and pattern in candidate_name:
+                return candidate
+
     match = _select_detector_config(candidates, station_type, site)
     if match is None:
         raise FileNotFoundError(
@@ -225,6 +428,13 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
 
     station_type = args.station_type or cfg_sim.get("station_type", "HRA")
     site = args.site or cfg_sim.get("site", "MB")
+
+    station_depth = args.station_depth or cfg_sim.get("station_depth", "shallow")
+    if station_depth is None:
+        station_depth = "shallow"
+    station_depth = str(station_depth).strip().lower()
+    if station_depth not in {"deep", "shallow"}:
+        raise ValueError(f"Unsupported station depth variant '{station_depth}'.")
 
     station_id = args.station_id
     if station_id is None:
@@ -251,15 +461,35 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
     if attenuation_model and attenuation_model.lower() in {"none", "null"}:
         attenuation_model = None
 
-    layer_depth = args.layer_depth if args.layer_depth is not None else config.getfloat("SIMULATION", "layer_depth_m", fallback=-576.0)
+    if args.layer_depth is not None:
+        layer_depth = float(args.layer_depth)
+    else:
+        raw_layer_depth = cfg_sim.get("layer_depth_m", None)
+        layer_depth = parse_layer_depth_value(raw_layer_depth, default=-576.0)
+    layer_label = layer_depth_to_label(layer_depth)
 
-    trigger_sigma_key = f"trigger_sigma_{station_type}".lower()
+    trigger_sigma = None
+    trigger_sigma_key_used = None
     if args.trigger_sigma is not None:
         trigger_sigma = float(args.trigger_sigma)
+        trigger_sigma_key_used = "cli"
     else:
-        if not config.has_option("SIMULATION", trigger_sigma_key):
-            raise KeyError(f"Missing configuration entry '{trigger_sigma_key}' in [SIMULATION] section.")
-        trigger_sigma = config.getfloat("SIMULATION", trigger_sigma_key)
+        candidate_trigger_keys: List[str] = []
+        if station_depth:
+            candidate_trigger_keys.append(f"trigger_sigma_{station_type}_{station_depth}")
+        candidate_trigger_keys.append(f"trigger_sigma_{station_type}")
+
+        for key in candidate_trigger_keys:
+            if config.has_option("SIMULATION", key):
+                trigger_sigma = config.getfloat("SIMULATION", key)
+                trigger_sigma_key_used = key
+                break
+
+        if trigger_sigma is None:
+            raise KeyError(
+                "Missing configuration entry for trigger sigma. Tried keys: "
+                + ", ".join(candidate_trigger_keys)
+            )
 
     if args.force_noise_on:
         add_noise = True
@@ -277,9 +507,13 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
     )
 
     if args.detector_config:
-        detector_config = detector_config_from_path(Path(args.detector_config), station_type, site)
+        detector_config = detector_config_from_path(
+            Path(args.detector_config), station_type, site, station_depth, layer_label
+        )
     else:
-        detector_config = detector_config_from_path(Path(detector_config_root), station_type, site)
+        detector_config = detector_config_from_path(
+            Path(detector_config_root), station_type, site, station_depth, layer_label
+        )
 
     output_folder = (
         Path(args.output_folder)
@@ -301,6 +535,7 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
     return {
         "station_type": station_type,
         "site": site,
+        "station_depth": station_depth,
         "propagation": propagation,
         "station_id": station_id,
         "n_cores": n_cores,
@@ -310,7 +545,9 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         "seed": seed,
         "attenuation_model": attenuation_model,
         "layer_depth_m": layer_depth,
+        "layer_descriptor": layer_label,
         "trigger_sigma": trigger_sigma,
+    "trigger_sigma_key": trigger_sigma_key_used,
         "noise_sigma": NOISE_TRIGGER_SIGMA,
         "add_noise": add_noise,
         "detector_config": detector_config,
@@ -402,6 +639,7 @@ def write_debug_log(
     config_keys = [
         "station_type",
         "site",
+        "station_depth",
         "propagation",
         "station_id",
         "n_cores",
@@ -411,7 +649,9 @@ def write_debug_log(
         "seed",
         "attenuation_model",
         "layer_depth_m",
+        "layer_descriptor",
         "trigger_sigma",
+    "trigger_sigma_key",
         "noise_sigma",
         "add_noise",
         "detector_config",
@@ -431,7 +671,8 @@ def write_debug_log(
     lines.append("")
 
     lines.append("[Simulation Values]")
-    lines.append(f"Primary channels: {', '.join(str(ch) for ch in PRIMARY_CHANNELS)}")
+    trigger_channels = settings.get("trigger_channels", PRIMARY_CHANNELS)
+    lines.append(f"Primary channels: {', '.join(str(ch) for ch in trigger_channels)}")
     lines.append(f"Primary trigger sigma: {settings['trigger_sigma']}")
     lines.append(f"Noise trigger sigma: {settings['noise_sigma']}")
     lines.append(f"Coincidence window (ns): {COINCIDENCE_WINDOW / units.ns:.3f}")
@@ -495,11 +736,14 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     propagation: str = settings["propagation"]
     distance_km: float = settings["distance_km"]
     debug_enabled: bool = bool(settings.get("debug"))
+    station_type: str = settings["station_type"]
+    station_depth: str = settings["station_depth"]
+    is_gen2 = station_type.lower() == "gen2"
 
     LOGGER.info(
         "Starting simulation for station %s (%s, %s, propagation=%s, sigma=%.2f)",
         station_id,
-        settings["station_type"],
+        station_type,
         site,
         propagation,
         trigger_sigma,
@@ -515,17 +759,28 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     det = detector.Detector(str(settings["detector_config"]), "json")
     det.update(datetime.datetime(2018, 10, 1))
 
+    configured_trigger_channels = resolve_trigger_channels(det, station_id, station_type, station_depth)
+    settings["trigger_channels"] = configured_trigger_channels
+
 
     efieldToVoltageConverter = NuRadioReco.modules.efieldToVoltageConverter.efieldToVoltageConverter()
     efieldToVoltageConverter.begin(debug=False)
 
-    hardwareResponseIncorporator = NuRadioReco.modules.ARIANNA.hardwareResponseIncorporator.hardwareResponseIncorporator()
+    hardwareResponseIncorporator = None
+    if not is_gen2:
+        hardwareResponseIncorporator = (
+            NuRadioReco.modules.ARIANNA.hardwareResponseIncorporator.hardwareResponseIncorporator()
+        )
 
     channelGenericNoiseAdder = NuRadioReco.modules.channelGenericNoiseAdder.channelGenericNoiseAdder()
     channelGenericNoiseAdder.begin()
 
     channelBandPassFilter = NuRadioReco.modules.channelBandPassFilter.channelBandPassFilter()
     channelBandPassFilter.begin()
+
+    gen2_filter_config: Dict[str, Dict[int, object]] | None = None
+    if is_gen2:
+        gen2_filter_config = build_gen2_filter_config(det, station_id, station_depth)
 
     eventTypeIdentifier = NuRadioReco.modules.eventTypeIdentifier.eventTypeIdentifier()
     channelStopFilter = NuRadioReco.modules.channelStopFilter.channelStopFilter()
@@ -562,6 +817,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     thresholds: Dict[str, Dict[str, Dict[int, float]]] | None = None
     pre_amp_vrms: Dict[int, float] | None = None
     post_amp_vrms: Dict[int, float] | None = None
+    active_trigger_channels: List[int] | None = None
 
     for evt, event_idx, coreas_x, coreas_y in readCoREAS.run(
         detector=det,
@@ -584,21 +840,50 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         efieldToVoltageConverter.run(evt, station, det)
         channelResampler.run(evt, station, det, 2 * units.GHz)
 
+        if gen2_filter_config is not None:
+            apply_gen2_filters(channelBandPassFilter, evt, station, det, gen2_filter_config)
+
         if thresholds is None:
-            pre_amp_vrms, post_amp_vrms = calculateNoisePerChannel(
-                det,
-                station=station,
-                amp=True,
-                hardwareResponseIncorporator=hardwareResponseIncorporator,
-                channelBandPassFilter=channelBandPassFilter,
-            )
+            if is_gen2:
+                pre_amp_vrms, post_amp_vrms = calculateNoisePerChannel(
+                    det,
+                    station=station,
+                    amp=False,
+                    channelBandPassFilter=channelBandPassFilter,
+                )
+            else:
+                pre_amp_vrms, post_amp_vrms = calculateNoisePerChannel(
+                    det,
+                    station=station,
+                    amp=True,
+                    hardwareResponseIncorporator=hardwareResponseIncorporator,
+                    channelBandPassFilter=channelBandPassFilter,
+                )
             thresholds = build_thresholds(post_amp_vrms, [trigger_sigma, noise_sigma])
             LOGGER.info("Computed noise thresholds for station %s", station_id)
             LOGGER.debug("Thresholds: %s", thresholds)
 
-        hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
+            configured_channels = settings.get("trigger_channels", list(PRIMARY_CHANNELS))
+            available_channels = [ch for ch in configured_channels if ch in post_amp_vrms]
+            if not available_channels:
+                available_channels = sorted(post_amp_vrms.keys())
+                LOGGER.warning(
+                    "No overlap between configured trigger channels %s and available noise channels; using %s instead.",
+                    configured_channels,
+                    available_channels,
+                )
+            active_trigger_channels = available_channels
+            settings["trigger_channels"] = available_channels
 
-        base_channels = PRIMARY_CHANNELS
+        if active_trigger_channels is None:
+            active_trigger_channels = settings.get("trigger_channels", list(PRIMARY_CHANNELS))
+        if not active_trigger_channels:
+            raise RuntimeError("No trigger channels available for high/low threshold evaluation.")
+
+        if hardwareResponseIncorporator is not None:
+            hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
+        
+        base_channels = active_trigger_channels
 
         noise_key = format_sigma_value(noise_sigma)
         final_key = format_sigma_value(trigger_sigma)
@@ -623,9 +908,11 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
         if station.has_triggered(trigger_name=noise_trigger):
             if add_noise:
-                hardwareResponseIncorporator.run(evt, station, det, sim_to_data=False)
+                if hardwareResponseIncorporator is not None:
+                    hardwareResponseIncorporator.run(evt, station, det, sim_to_data=False)
                 channelGenericNoiseAdder.run(evt, station, det, type="rayleigh", amplitude=pre_amp_vrms)
-                hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
+                if hardwareResponseIncorporator is not None:
+                    hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
 
             highLowThreshold.run(
                 evt,

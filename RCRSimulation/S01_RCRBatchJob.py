@@ -38,6 +38,9 @@ def main() -> None:
 
     station_type = sim_cfg.get("station_type", "HRA")
     site = sim_cfg.get("site", "MB")
+    station_depth = sim_cfg.get("station_depth", "shallow").strip().lower()
+    if station_depth not in {"deep", "shallow"}:
+        raise ValueError(f"Unsupported station depth variant '{station_depth}'.")
     propagation = sim_cfg.get("propagation_mode", "direct")
     if propagation == "reflected":
         station_id = config.getint("SIMULATION", "station_id_reflected", fallback=1)
@@ -69,7 +72,10 @@ def main() -> None:
 
     file_ranges = _chunk_file_range(min_file, max_file, job_count)
 
-    print(f"Submitting {len(file_ranges)} jobs for station {station_id} ({station_type}, {site}, {propagation}).")
+    print(
+        f"Submitting {len(file_ranges)} jobs for station {station_id} "
+        f"({station_type}, {site}, {station_depth}, {propagation})."
+    )
 
     for idx, (lower_file, upper_file) in enumerate(file_ranges):
         output_label = f"{station_type}_{site}_{propagation}_stn{station_id}_files{lower_file}-{upper_file if upper_file != -1 else 'all'}_{n_cores}cores"
@@ -87,6 +93,8 @@ def main() -> None:
             site,
             "--propagation",
             propagation,
+            "--station-depth",
+            station_depth,
             "--station-id",
             str(station_id),
             "--n-cores",

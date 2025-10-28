@@ -62,6 +62,37 @@ def pullFilesForSimulation(sim_type, min_file=0, max_file=-1):
             if os.path.exists(file):
                 input_files.append(file)
             i += 1
+    elif sim_type == 'IceTop':
+        num_icetop=10 
+        icetop_sin=-1
+        if min_energy < 16.0:
+            print(f'Setting IceTop min energy to 16.0 log10eV')
+            min_energy = 16.0
+        if max_energy == -1 or max_energy > 18.5:
+            print(f'Setting IceTop max energy to 18.5 log10eV')
+            max_energy = 18.5
+
+        i = min_energy
+        while i < max_energy:
+            #Currently just iterating through all sin's equally. Can separate sin bins if needed
+            if icetop_sin == -1:
+                sin2Val = np.arange(0, 1.01, 0.1)
+            else:
+                sin2Val = [icetop_sin]
+            for sin2 in sin2Val:
+                num_in_bin = 0
+                folder = f'../../../../../dfs8/sbarwick_lab/arianna/SIM/southpole/IceTop/lgE_{i:.1f}/sin2_{sin2:.1f}/'
+                for (dirpath, dirnames, filenames) in os.walk(folder):
+                    for file in filenames:
+                        if num_in_bin == num_icetop:
+                            continue
+                        if not 'highlevel' in file:
+                            file = os.path.join(folder, file)
+                            input_files.append(file)
+                            num_in_bin += 1
+            i += 0.1
+
+        return input_files
 
     return input_files
 
