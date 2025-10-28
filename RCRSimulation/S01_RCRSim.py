@@ -240,7 +240,7 @@ def parse_args() -> argparse.Namespace:
         choices=["deep", "shallow"],
         help="Select the station configuration depth variant (deep or shallow).",
     )
-    parser.add_argument("--site", choices=["MB", "SP"], help="Override site selection.")
+    parser.add_argument("--site", choices=["MB", "SP", "IceTop"], help="Override site selection.")
     parser.add_argument(
         "--propagation",
         choices=["direct", "reflected", "by_depth"],
