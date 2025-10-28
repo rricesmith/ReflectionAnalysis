@@ -253,6 +253,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-file", type=int, help="Minimum CoREAS file index to include.")
     parser.add_argument("--max-file", type=int, help="Maximum CoREAS file index (inclusive).")
     parser.add_argument("--seed", type=int, help="Random seed supplied to readCoREAS.")
+    parser.add_argument("--energy-min", type=float, help="Lower log10(E/eV) edge for IceTop selections.")
+    parser.add_argument("--energy-max", type=float, help="Upper log10(E/eV) edge for IceTop selections.")
+    parser.add_argument("--sin2", type=float, help="sin^2(zenith) bin value for IceTop selections.")
+    parser.add_argument("--num-icetop", type=int, help="Number of IceTop footprints to include per bin.")
     parser.add_argument("--attenuation-model", help="Override attenuation model string.")
     parser.add_argument("--layer-depth", type=float, help="Layer depth in metres (negative for below surface).")
     parser.add_argument(
@@ -457,6 +461,28 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
     max_file = args.max_file if args.max_file is not None else config.getint("SIMULATION", "max_file", fallback=1000)
     seed = args.seed if args.seed is not None else config.getint("SIMULATION", "seed", fallback=0)
 
+    site_lower = site.lower()
+    if site_lower == "icetop":
+        energy_min = args.energy_min if args.energy_min is not None else config.getfloat(
+            "SIMULATION", "energy_min", fallback=16.0
+        )
+        energy_max = args.energy_max if args.energy_max is not None else config.getfloat(
+            "SIMULATION", "energy_max", fallback=18.6
+        )
+        sin2_value = args.sin2 if args.sin2 is not None else config.getfloat("SIMULATION", "sin2", fallback=0.0)
+        num_icetop = args.num_icetop if args.num_icetop is not None else config.getint(
+            "SIMULATION", "num_icetop", fallback=10
+        )
+
+        if energy_max <= energy_min:
+            raise ValueError("IceTop energy_max must be greater than energy_min.")
+        if not 0.0 <= sin2_value <= 1.0:
+            raise ValueError("IceTop sin2 must be within [0, 1].")
+        energy_settings = (energy_min, energy_max, sin2_value, num_icetop)
+    else:
+        energy_settings = (None, None, None, None)
+    energy_min, energy_max, sin2_value, num_icetop = energy_settings
+
     attenuation_model = args.attenuation_model or cfg_sim.get("attenuation_model", "MB_freq")
     if attenuation_model and attenuation_model.lower() in {"none", "null"}:
         attenuation_model = None
@@ -551,6 +577,10 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         "noise_sigma": NOISE_TRIGGER_SIGMA,
         "add_noise": add_noise,
         "detector_config": detector_config,
+    "energy_min": energy_min,
+    "energy_max": energy_max,
+    "sin2": sin2_value,
+    "num_icetop": num_icetop,
         "output_folder": output_folder,
         "numpy_folder": numpy_folder,
         "save_folder": save_folder,
@@ -652,6 +682,10 @@ def write_debug_log(
         "layer_descriptor",
         "trigger_sigma",
     "trigger_sigma_key",
+    "energy_min",
+    "energy_max",
+    "sin2",
+    "num_icetop",
         "noise_sigma",
         "add_noise",
         "detector_config",
@@ -749,7 +783,21 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         trigger_sigma,
     )
 
-    input_files = pullFilesForSimulation(site, settings["min_file"], settings["max_file"])
+    site_lower = site.lower()
+    if site_lower == "icetop":
+        energy_range = (settings["energy_min"], settings["energy_max"])
+        sin2_value = settings["sin2"]
+        num_icetop = settings["num_icetop"] or 10
+        input_files = pullFilesForSimulation(
+            site,
+            settings["min_file"],
+            settings["max_file"],
+            energy_range=energy_range,
+            sin2_value=sin2_value,
+            num_icetop=num_icetop,
+        )
+    else:
+        input_files = pullFilesForSimulation(site, settings["min_file"], settings["max_file"])
     if not input_files:
         # Some selections will have no files, return with no error
         LOGGER.warning("Quitting, No CoREAS input files found for site '%s' with the provided range.", site)

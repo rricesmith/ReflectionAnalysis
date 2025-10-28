@@ -4,6 +4,8 @@ import math
 import configparser
 from pathlib import Path
 
+import numpy as np
+
 import A00_SlurmUtil
 
 CONFIG_PATH = Path("RCRSimulation/config.ini")
@@ -69,6 +71,98 @@ def main() -> None:
 
     output_folder.mkdir(parents=True, exist_ok=True)
     run_directory.mkdir(parents=True, exist_ok=True)
+
+    site_lower = site.strip().lower()
+
+    if site_lower == "icetop":
+        energy_min = config.getfloat("SIMULATION", "energy_min", fallback=16.0)
+        energy_max = config.getfloat("SIMULATION", "energy_max", fallback=18.6)
+        energy_step = config.getfloat("SIMULATION", "energy_step", fallback=0.1)
+        sin2_min = config.getfloat("SIMULATION", "sin2_min", fallback=0.0)
+        sin2_max = config.getfloat("SIMULATION", "sin2_max", fallback=1.0)
+        sin2_step = config.getfloat("SIMULATION", "sin2_step", fallback=0.1)
+        num_icetop = config.getint("SIMULATION", "num_icetop", fallback=10)
+
+        energy_values = np.arange(energy_min, energy_max, energy_step)
+        if not energy_values.size:
+            energy_values = np.array([energy_min])
+        sin2_values = np.arange(sin2_min, sin2_max + 0.5 * sin2_step, sin2_step)
+        sin2_values = np.clip(sin2_values, 0.0, 1.0)
+        if not sin2_values.size:
+            sin2_values = np.array([0.0])
+
+        jobs: list[tuple[float, float, float]] = []
+        for energy in energy_values:
+            energy_low = float(np.round(energy, 5))
+            energy_high = float(np.round(min(energy + energy_step, energy_max), 5))
+            for sin2 in sin2_values:
+                sin2_val = float(np.round(sin2, 5))
+                jobs.append((energy_low, energy_high, sin2_val))
+
+        print(
+            f"Submitting {len(jobs)} IceTop jobs for station {station_id} "
+            f"({station_type}, {site}, {station_depth}, {propagation})."
+        )
+
+        for idx, (energy_low, energy_high, sin2_val) in enumerate(jobs):
+            seed_value = seed_base + idx
+            output_label = (
+                f"{station_type}_{site}_{propagation}_stn{station_id}_"
+                f"E{energy_low:.1f}-{energy_high:.1f}_sin2_{sin2_val:.1f}_{n_cores}cores"
+            )
+
+            cmd_parts = [
+                "python",
+                COMMAND_PATH,
+                output_label,
+                "--config",
+                str(CONFIG_PATH),
+                "--station-type",
+                station_type,
+                "--site",
+                site,
+                "--propagation",
+                propagation,
+                "--station-depth",
+                station_depth,
+                "--station-id",
+                str(station_id),
+                "--n-cores",
+                str(n_cores),
+                "--distance-km",
+                f"{distance_km}",
+                "--energy-min",
+                f"{energy_low}",
+                "--energy-max",
+                f"{energy_high}",
+                "--sin2",
+                f"{sin2_val}",
+                "--num-icetop",
+                str(num_icetop),
+                "--seed",
+                str(seed_value),
+            ]
+
+            if add_noise:
+                cmd_parts.append("--add-noise")
+            else:
+                cmd_parts.append("--no-noise")
+
+            cmd_parts.extend(["--detector-config", str(detector_config_path)])
+
+            command = " ".join(cmd_parts)
+            job_name = (
+                f"RCR_{station_id}_E{energy_low:.1f}-{energy_high:.1f}_sin2_{sin2_val:.1f}"
+            )
+
+            A00_SlurmUtil.makeAndRunJob(
+                command,
+                job_name,
+                runDirectory=str(run_directory),
+                partition=partition,
+            )
+
+        return
 
     file_ranges = _chunk_file_range(min_file, max_file, job_count)
 
