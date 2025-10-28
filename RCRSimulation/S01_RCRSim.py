@@ -612,7 +612,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         stn_zenith = None
         stn_azimuth = None
 
-        if station.get_trigger(noise_trigger).has_triggered():
+        if station.has_triggered(trigger_name=noise_trigger):
             if add_noise:
                 hardwareResponseIncorporator.run(evt, station, det, sim_to_data=False)
                 channelGenericNoiseAdder.run(evt, station, det, type="rayleigh", amplitude=pre_amp_vrms)
@@ -632,7 +632,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
             triggerTimeAdjuster.run(evt, station, det)
             channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
-            triggered = station.get_trigger(final_trigger).has_triggered()
+            triggered = station.has_triggered(trigger_name=final_trigger)
             # if triggered:
                 # correlationDirectionFitter.run(
                 #     evt,
