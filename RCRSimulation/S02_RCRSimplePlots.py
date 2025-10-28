@@ -60,8 +60,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--energy-max",
         type=float,
-        default=19.0,
-        help="Upper edge of log10(E/eV) binning (default: 19.0).",
+        default=20.0,
+        help="Upper edge of log10(E/eV) binning (default: 20.0).",
     )
     parser.add_argument(
         "--energy-step",
@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sin2-step",
         type=float,
-        default=0.1,
+        default=0.2,
         help="Bin width in sin^2(zenith) used for zenith binning (default: 0.1).",
     )
     parser.add_argument(
