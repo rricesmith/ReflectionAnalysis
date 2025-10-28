@@ -88,7 +88,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--station-type", choices=["HRA", "SP", "Gen2"], help="Override station type.")
     parser.add_argument("--site", choices=["MB", "SP"], help="Override site selection.")
-    parser.add_argument("--propagation", choices=["direct", "reflected"], help="Override propagation mode.")
+    parser.add_argument(
+        "--propagation",
+        choices=["direct", "reflected", "by_depth"],
+        help="Override propagation mode.",
+    )
     parser.add_argument("--station-id", type=int, help="Explicit station id to simulate.")
     parser.add_argument("--detector-config", help="Path to detector JSON to load.")
     parser.add_argument("--n-cores", type=int, help="Number of cores to throw per run.")
@@ -224,11 +228,16 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
 
     station_id = args.station_id
     if station_id is None:
-        key = "station_id_direct" if propagation == "direct" else "station_id_reflected"
-        if key in cfg_sim:
-            station_id = config.getint("SIMULATION", key)
-        elif "station_id" in cfg_sim:
-            station_id = config.getint("SIMULATION", "station_id")
+        propagation_key_map = {
+            "direct": ["station_id_direct"],
+            "reflected": ["station_id_reflected"],
+            "by_depth": ["station_id_by_depth", "station_id_reflected", "station_id_direct"],
+        }
+        candidate_keys = propagation_key_map.get(propagation, []) + ["station_id"]
+        for key in candidate_keys:
+            if key and config.has_option("SIMULATION", key):
+                station_id = config.getint("SIMULATION", key)
+                break
     if station_id is None:
         raise ValueError("Station id must be provided via config or --station-id argument.")
 
