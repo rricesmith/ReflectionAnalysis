@@ -76,7 +76,7 @@ def main() -> None:
 
     if site_lower == "icetop":
         energy_min = config.getfloat("SIMULATION", "energy_min", fallback=16.0)
-        energy_max = config.getfloat("SIMULATION", "energy_max", fallback=18.6)
+        energy_max = config.getfloat("SIMULATION", "energy_max", fallback=18.5)
         energy_step = config.getfloat("SIMULATION", "energy_step", fallback=0.1)
         sin2_min = config.getfloat("SIMULATION", "sin2_min", fallback=0.0)
         sin2_max = config.getfloat("SIMULATION", "sin2_max", fallback=1.0)
