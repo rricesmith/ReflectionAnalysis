@@ -153,7 +153,7 @@ def main() -> None:
             cmd_parts.extend(["--detector-config", str(detector_config_path)])
 
             command = " ".join(cmd_parts)
-            job_name = f"RCR_{station_id}_E{energy_low:.1f}-{energy_high:.1f}_sin2_{sin2_label}"
+            job_name = f"RCR_{station_id}_E{energy_low:.1f}-{energy_high:.1f}_sin2_{sin2_val}"
 
             A00_SlurmUtil.makeAndRunJob(
                 command,
