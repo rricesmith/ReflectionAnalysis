@@ -20,6 +20,7 @@ import argparse
 import configparser
 import glob
 import math
+import re
 from pathlib import Path
 from typing import Sequence
 
@@ -34,6 +35,91 @@ from RCRSimulation.S01_RCRSim import RCRSimEvent
 
 DEFAULT_CONFIG = Path("RCRSimulation/config.ini")
 DEFAULT_OUTPUT_SUBDIR = "simple_plots"
+
+
+def sanitize_component(value: str | None) -> str:
+    text = "unknown" if value is None else str(value).strip()
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", text)
+    return cleaned or "unknown"
+
+
+def _format_layer_depth_values(raw_value: str | None) -> tuple[str, str]:
+    if raw_value is None:
+        return "unknown", "layer-unknown"
+
+    raw_text = str(raw_value).strip()
+    if not raw_text:
+        return "unknown", "layer-unknown"
+
+    try:
+        depth_value = float(raw_text)
+    except ValueError:
+        text_label = raw_text
+        slug_label = f"layer-{sanitize_component(raw_text)}"
+        return text_label, slug_label
+
+    if math.isfinite(depth_value):
+        if math.isclose(depth_value, round(depth_value)):
+            depth_value = int(round(depth_value))
+        text_label = f"{depth_value} m"
+        slug_core = str(depth_value).replace("+", "")
+        slug_label = f"layer_{slug_core}m"
+    else:
+        text_label = raw_text
+        slug_label = f"layer-{sanitize_component(raw_text)}"
+    return text_label, slug_label
+
+
+def extract_plot_metadata(config: configparser.ConfigParser) -> dict[str, str]:
+    sim_section = config["SIMULATION"] if config.has_section("SIMULATION") else {}
+
+    station_type = sim_section.get("station_type", "unknown") if sim_section else "unknown"
+    site = sim_section.get("site", "unknown") if sim_section else "unknown"
+    station_depth = sim_section.get("station_depth", "unknown") if sim_section else "unknown"
+    layer_raw = None
+    if sim_section:
+        layer_raw = sim_section.get("layer_depth_m", sim_section.get("layer_depth", None))
+
+    layer_text, layer_slug = _format_layer_depth_values(layer_raw)
+
+    annotation_lines = [
+        f"Station: {station_type}",
+        f"Site: {site}",
+        f"Station depth: {station_depth}",
+        f"Layer depth: {layer_text}",
+    ]
+    annotation_text = "\n".join(annotation_lines)
+
+    filename_suffix = "_".join(
+        sanitize_component(component)
+        for component in (station_type, site, station_depth, layer_slug)
+        if component
+    )
+
+    return {
+        "station_type": station_type,
+        "site": site,
+        "station_depth": station_depth,
+        "layer_depth_text": layer_text,
+        "layer_depth_slug": layer_slug,
+        "annotation_text": annotation_text,
+        "filename_suffix": filename_suffix,
+    }
+
+
+def annotate_axes(ax: plt.Axes, annotation: str) -> None:
+    if not annotation:
+        return
+    ax.text(
+        0.02,
+        0.98,
+        annotation,
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontsize=8,
+        bbox={"facecolor": "white", "alpha": 0.7, "edgecolor": "none", "boxstyle": "round,pad=0.3"},
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -247,44 +333,70 @@ def per_event_weights(rate_per_bin: np.ndarray, n_trigger: np.ndarray) -> np.nda
     return weights
 
 
-def plot_effective_area(energy_bins: np.ndarray, angle_bins_deg: np.ndarray, aeff: np.ndarray, output_dir: Path) -> None:
+def plot_effective_area(
+    energy_bins: np.ndarray,
+    angle_bins_deg: np.ndarray,
+    aeff: np.ndarray,
+    output_dir: Path,
+    filename_suffix: str,
+    annotation_text: str,
+) -> None:
     centers = 0.5 * (energy_bins[:-1] + energy_bins[1:])
 
-    plt.figure(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(8, 5))
     for iz in range(aeff.shape[0]):
         label = f"{angle_bins_deg[iz]:.1f}-{angle_bins_deg[iz + 1]:.1f}°"
-        plt.step(centers, aeff[iz], where="mid", linewidth=1.2, label=label)
+        ax.step(centers, aeff[iz], where="mid", linewidth=1.2, label=label)
     summed = aeff.sum(axis=0)
-    plt.step(centers, summed, where="mid", linewidth=2.0, label="Sum", linestyle="--", color="k")
-    plt.xlabel(r"log$_{10}$(E / eV)")
-    plt.ylabel(r"Effective area [km$^2$]")
-    plt.yscale("log")
-    plt.grid(alpha=0.3)
-    plt.legend(fontsize=8)
-    plt.tight_layout()
-    plt.savefig(output_dir / "aeff_by_zenith.png", dpi=200)
-    plt.close()
+    ax.step(centers, summed, where="mid", linewidth=2.0, label="Sum", linestyle="--", color="k")
+    ax.set_xlabel(r"log$_{10}$(E / eV)")
+    ax.set_ylabel(r"Effective area [km$^2$]")
+    ax.set_yscale("log")
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=8)
+    annotate_axes(ax, annotation_text)
+    fig.tight_layout()
+    output_path = output_dir / f"aeff_by_zenith_{filename_suffix}.png"
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
 
 
-def plot_event_rate(energy_bins: np.ndarray, angle_bins_deg: np.ndarray, rate: np.ndarray, output_dir: Path) -> None:
+def plot_event_rate(
+    energy_bins: np.ndarray,
+    angle_bins_deg: np.ndarray,
+    rate: np.ndarray,
+    output_dir: Path,
+    filename_suffix: str,
+    annotation_text: str,
+) -> None:
     centers = 0.5 * (energy_bins[:-1] + energy_bins[1:])
 
-    plt.figure(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(8, 5))
     for iz in range(rate.shape[0]):
         row_total = rate[iz].sum()
         label = f"{angle_bins_deg[iz]:.1f}-{angle_bins_deg[iz + 1]:.1f}° ({row_total:.2f} yr$^{-1}$)"
-        plt.step(centers, rate[iz], where="mid", linewidth=1.2, label=label)
+        ax.step(centers, rate[iz], where="mid", linewidth=1.2, label=label)
     summed = rate.sum(axis=0)
     total_rate = summed.sum()
-    plt.step(centers, summed, where="mid", linewidth=2.0, label=f"Sum ({total_rate:.2f} yr$^{-1}$)", linestyle="--", color="k")
-    plt.xlabel(r"log$_{10}$(E / eV)")
-    plt.ylabel("Event rate [yr$^{-1}$]")
-    plt.yscale("log")
-    plt.grid(alpha=0.3)
-    plt.legend(fontsize=8)
-    plt.tight_layout()
-    plt.savefig(output_dir / "event_rate_by_zenith.png", dpi=200)
-    plt.close()
+    ax.step(
+        centers,
+        summed,
+        where="mid",
+        linewidth=2.0,
+        label=f"Sum ({total_rate:.2f} yr$^{-1}$)",
+        linestyle="--",
+        color="k",
+    )
+    ax.set_xlabel(r"log$_{10}$(E / eV)")
+    ax.set_ylabel("Event rate [yr$^{-1}$]")
+    ax.set_yscale("log")
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=8)
+    annotate_axes(ax, annotation_text)
+    fig.tight_layout()
+    output_path = output_dir / f"event_rate_by_zenith_{filename_suffix}.png"
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
 
 
 def plot_trigger_counts(
@@ -293,6 +405,8 @@ def plot_trigger_counts(
     n_total: np.ndarray,
     n_trigger: np.ndarray,
     output_dir: Path,
+    filename_suffix: str,
+    annotation_text: str,
 ) -> None:
     centers = 0.5 * (energy_bins[:-1] + energy_bins[1:])
     fig, ax_counts = plt.subplots(figsize=(8, 5))
@@ -381,9 +495,11 @@ def plot_trigger_counts(
     else:
         ax_counts.legend(fontsize=8, loc="upper left", ncol=2)
 
-    plt.tight_layout()
-    plt.savefig(output_dir / "trigger_counts_and_fraction.png", dpi=200)
-    plt.close()
+    annotate_axes(ax_counts, annotation_text)
+    fig.tight_layout()
+    output_path = output_dir / f"trigger_counts_and_fraction_{filename_suffix}.png"
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
 
 
 def plot_weighted_histograms(
@@ -393,6 +509,8 @@ def plot_weighted_histograms(
     azimuth_bins: int,
     zenith_hist_bins: int,
     output_dir: Path,
+    filename_suffix: str,
+    annotation_text: str,
 ) -> None:
     triggered_mask = (~np.isnan(zenith_deg)) & (~np.isnan(weights)) & (weights > 0)
     zenith_values = zenith_deg[triggered_mask]
@@ -400,14 +518,16 @@ def plot_weighted_histograms(
 
     if zenith_values.size:
         zenith_edges = np.linspace(0.0, 90.0, zenith_hist_bins + 1)
-        plt.figure(figsize=(8, 4.5))
-        plt.hist(zenith_values, bins=zenith_edges, weights=zenith_weights, histtype="step", linewidth=1.8)
-        plt.xlabel("Reconstructed zenith [deg]")
-        plt.ylabel("Weighted count [yr$^{-1}$]")
-        plt.grid(alpha=0.3)
-        plt.tight_layout()
-        plt.savefig(output_dir / "triggered_zenith_distribution.png", dpi=200)
-        plt.close()
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+        ax.hist(zenith_values, bins=zenith_edges, weights=zenith_weights, histtype="step", linewidth=1.8)
+        ax.set_xlabel("Reconstructed zenith [deg]")
+        ax.set_ylabel("Weighted count [yr$^{-1}$]")
+        ax.grid(alpha=0.3)
+        annotate_axes(ax, annotation_text)
+        fig.tight_layout()
+        output_path = output_dir / f"triggered_zenith_distribution_{filename_suffix}.png"
+        fig.savefig(output_path, dpi=200)
+        plt.close(fig)
 
     azimuth_mask = (~np.isnan(azimuth_deg)) & (~np.isnan(weights)) & (weights > 0)
     azimuth_values = azimuth_deg[azimuth_mask]
@@ -415,14 +535,16 @@ def plot_weighted_histograms(
 
     if azimuth_values.size:
         azimuth_edges = np.linspace(0.0, 360.0, azimuth_bins + 1)
-        plt.figure(figsize=(8, 4.5))
-        plt.hist(azimuth_values, bins=azimuth_edges, weights=azimuth_weights, histtype="step", linewidth=1.8)
-        plt.xlabel("Reconstructed azimuth [deg]")
-        plt.ylabel("Weighted count [yr$^{-1}$]")
-        plt.grid(alpha=0.3)
-        plt.tight_layout()
-        plt.savefig(output_dir / "triggered_azimuth_distribution.png", dpi=200)
-        plt.close()
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+        ax.hist(azimuth_values, bins=azimuth_edges, weights=azimuth_weights, histtype="step", linewidth=1.8)
+        ax.set_xlabel("Reconstructed azimuth [deg]")
+        ax.set_ylabel("Weighted count [yr$^{-1}$]")
+        ax.grid(alpha=0.3)
+        annotate_axes(ax, annotation_text)
+        fig.tight_layout()
+        output_path = output_dir / f"triggered_azimuth_distribution_{filename_suffix}.png"
+        fig.savefig(output_path, dpi=200)
+        plt.close(fig)
 
 
 def plot_trigger_scatter(
@@ -430,6 +552,8 @@ def plot_trigger_scatter(
     zenith_deg: np.ndarray,
     triggered: np.ndarray,
     output_dir: Path,
+    filename_suffix: str,
+    annotation_text: str,
 ) -> None:
     if energies.size == 0:
         return
@@ -487,14 +611,20 @@ def plot_trigger_scatter(
     if legend_handles:
         ax.legend(handles=legend_handles, loc="upper right")
 
-    plt.tight_layout()
-    plt.savefig(output_dir / "trigger_fraction_scatter.png", dpi=200)
-    plt.close()
+    annotate_axes(ax, annotation_text)
+    fig.tight_layout()
+    output_path = output_dir / f"trigger_fraction_scatter_{filename_suffix}.png"
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
 
 
 def main() -> None:
     args = parse_args()
     config = read_config(Path(args.config).expanduser())
+
+    plot_metadata = extract_plot_metadata(config)
+    filename_suffix = plot_metadata["filename_suffix"]
+    annotation_text = plot_metadata["annotation_text"]
 
     event_paths = resolve_event_files(args, config)
     output_dir = ensure_output_dir(args, config)
@@ -511,10 +641,18 @@ def main() -> None:
     distance_km = config.getfloat("SIMULATION", "distance_km", fallback=12.0)
     aeff = effective_area(trigger_fraction, distance_km)
     rate = event_rate(aeff, energy_bins, angle_bins_deg)
-    plot_trigger_counts(energy_bins, angle_bins_deg, n_total, n_trigger, output_dir)
+    plot_trigger_counts(
+        energy_bins,
+        angle_bins_deg,
+        n_total,
+        n_trigger,
+        output_dir,
+        filename_suffix,
+        annotation_text,
+    )
 
-    plot_effective_area(energy_bins, angle_bins_deg, aeff, output_dir)
-    plot_event_rate(energy_bins, angle_bins_deg, rate, output_dir)
+    plot_effective_area(energy_bins, angle_bins_deg, aeff, output_dir, filename_suffix, annotation_text)
+    plot_event_rate(energy_bins, angle_bins_deg, rate, output_dir, filename_suffix, annotation_text)
 
     weight_map = per_event_weights(rate, n_trigger)
     per_event_weight = np.zeros(len(events), dtype=float)
@@ -532,8 +670,17 @@ def main() -> None:
         args.azimuth_bins,
         args.zenith_hist_bins,
         output_dir,
+        filename_suffix,
+        annotation_text,
     )
-    plot_trigger_scatter(arrays["energies"], arrays["zenith_deg"], arrays["triggered"], output_dir)
+    plot_trigger_scatter(
+        arrays["energies"],
+        arrays["zenith_deg"],
+        arrays["triggered"],
+        output_dir,
+        filename_suffix,
+        annotation_text,
+    )
 
     print(f"Saved plots to {output_dir}")
 
