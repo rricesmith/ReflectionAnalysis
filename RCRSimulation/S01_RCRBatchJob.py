@@ -104,13 +104,17 @@ def main() -> None:
             f"({station_type}, {site}, {station_depth}, {propagation})."
         )
 
-
+        def _format_bin(value: float) -> str:
+            text = f"{value:.3f}"
+            text = text.rstrip("0").rstrip(".")
+            return text if text else "0"
 
         for idx, (energy_low, energy_high, sin2_val) in enumerate(jobs):
             seed_value = seed_base + idx
+            sin2_label = _format_bin(sin2_val)
             output_label = (
                 f"{station_type}_{site}_{propagation}_stn{station_id}_"
-                f"E{energy_low:.1f}-{energy_high:.1f}_sin2_{sin2_val}_{n_cores}cores"
+                f"E{energy_low:.1f}-{energy_high:.1f}_sin2_{sin2_label}_{n_cores}cores"
             )
 
             cmd_parts = [
@@ -153,7 +157,7 @@ def main() -> None:
             cmd_parts.extend(["--detector-config", str(detector_config_path)])
 
             command = " ".join(cmd_parts)
-            job_name = f"RCR_{station_id}_E{energy_low:.1f}-{energy_high:.1f}_sin2_{sin2_val}"
+            job_name = f"RCR_{station_id}_E{energy_low:.1f}-{energy_high:.1f}_sin2_{sin2_label}"
 
             A00_SlurmUtil.makeAndRunJob(
                 command,

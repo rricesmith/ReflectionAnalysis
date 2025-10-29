@@ -591,13 +591,25 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
 
 
 def resolve_output_paths(output_name: str, folders: Dict[str, Path]) -> Dict[str, Path]:
-    base_path = Path(output_name)
-    if base_path.parent == Path("."):
-        base_path = folders["output_folder"] / base_path.name
-    nur_path = base_path.with_suffix(".nur")
+    raw_path = Path(output_name)
+    if raw_path.is_absolute() or raw_path.parent != Path("."):
+        resolved_path = raw_path
+    else:
+        resolved_path = folders["output_folder"] / raw_path.name
+    resolved_path = resolved_path.expanduser()
+
+    if resolved_path.suffix.lower() == ".nur":
+        base_dir = resolved_path.parent
+        base_name = resolved_path.stem
+    else:
+        base_dir = resolved_path.parent
+        base_name = resolved_path.name
+
+    base_path = base_dir / base_name
+    nur_path = base_dir / f"{base_name}.nur"
 
     numpy_folder = folders["numpy_folder"]
-    numpy_filename = f"{base_path.stem}_RCReventList.npy"
+    numpy_filename = f"{base_name}_RCReventList.npy"
     numpy_path = numpy_folder / numpy_filename
 
     return {
@@ -649,7 +661,8 @@ def write_debug_log(
     log_folder.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_path = log_folder / f"{output_paths['base'].stem}_{timestamp}_debug.txt"
+    base_label = output_paths["base"].name
+    log_path = log_folder / f"{base_label}_{timestamp}_debug.txt"
 
     total_events = len(events)
     triggered_total = sum(1 for event in events if event.triggered)
