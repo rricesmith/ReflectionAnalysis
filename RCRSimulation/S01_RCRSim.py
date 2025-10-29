@@ -14,6 +14,7 @@ import configparser
 import datetime
 import logging
 import math
+import re
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
@@ -84,6 +85,43 @@ def parse_layer_depth_value(raw_value: str | float | None, default: float) -> fl
         return float(text)
     except ValueError as exc:
         raise ValueError(f"Unsupported layer depth value '{raw_value}'.") from exc
+
+
+def sanitize_filename_component(value: str | float | int) -> str:
+    text = str(value).strip()
+    if not text:
+        return "unknown"
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", text)
+    return cleaned or "unknown"
+
+
+def parse_layer_db_value(raw_value: str | float | None, default: float) -> float:
+    if raw_value is None:
+        return default
+    if isinstance(raw_value, (int, float)):
+        return float(raw_value)
+    text = str(raw_value).strip()
+    if not text:
+        return default
+    lowered = text.lower()
+    if lowered in {"none", "null"}:
+        return default
+    try:
+        return float(text)
+    except ValueError as exc:
+        raise ValueError(f"Invalid layer_dB value: {raw_value}") from exc
+
+
+def format_layer_db_metadata(layer_db: float | None) -> tuple[str, str]:
+    try:
+        numeric = float(layer_db)
+    except (TypeError, ValueError):
+        return "unknown", "unknown"
+    if not math.isfinite(numeric):
+        return "unknown", "unknown"
+    text = f"{numeric:g}"
+    slug = sanitize_filename_component(f"{text}dB")
+    return text, slug or "unknown"
 
 
 def build_gen2_filter_config(
@@ -213,6 +251,7 @@ class RCRSimEvent:
     stn_zenith: float | None = None
     stn_azimuth: float | None = None
     trigger_sigma: float = 0.0
+    layer_dB: float | None = None
     triggered: bool = False
 
     def as_dict(self) -> Dict[str, object]:
@@ -259,6 +298,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-icetop", type=int, help="Number of IceTop footprints to include per bin.")
     parser.add_argument("--attenuation-model", help="Override attenuation model string.")
     parser.add_argument("--layer-depth", type=float, help="Layer depth in metres (negative for below surface).")
+    parser.add_argument(
+        "--layer-db",
+        type=float,
+        help="Relative power loss in the reflective layer in dB.",
+    )
     parser.add_argument(
         "--trigger-sigma",
         type=float,
@@ -494,6 +538,13 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         layer_depth = parse_layer_depth_value(raw_layer_depth, default=-576.0)
     layer_label = layer_depth_to_label(layer_depth)
 
+    if args.layer_db is not None:
+        layer_db = float(args.layer_db)
+    else:
+        raw_layer_db = cfg_sim.get("layer_dB", None)
+        layer_db = parse_layer_db_value(raw_layer_db, default=0.0)
+    layer_db_text, layer_db_tag = format_layer_db_metadata(layer_db)
+
     trigger_sigma = None
     trigger_sigma_key_used = None
     if args.trigger_sigma is not None:
@@ -572,15 +623,18 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         "attenuation_model": attenuation_model,
         "layer_depth_m": layer_depth,
         "layer_descriptor": layer_label,
+        "layer_dB": layer_db,
+        "layer_dB_text": layer_db_text,
+        "layer_dB_tag": layer_db_tag,
         "trigger_sigma": trigger_sigma,
-    "trigger_sigma_key": trigger_sigma_key_used,
+        "trigger_sigma_key": trigger_sigma_key_used,
         "noise_sigma": NOISE_TRIGGER_SIGMA,
         "add_noise": add_noise,
         "detector_config": detector_config,
-    "energy_min": energy_min,
-    "energy_max": energy_max,
-    "sin2": sin2_value,
-    "num_icetop": num_icetop,
+        "energy_min": energy_min,
+        "energy_max": energy_max,
+        "sin2": sin2_value,
+        "num_icetop": num_icetop,
         "output_folder": output_folder,
         "numpy_folder": numpy_folder,
         "save_folder": save_folder,
@@ -590,7 +644,7 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
     }
 
 
-def resolve_output_paths(output_name: str, folders: Dict[str, Path]) -> Dict[str, Path]:
+def resolve_output_paths(output_name: str, folders: Dict[str, Any]) -> Dict[str, Path]:
     raw_path = Path(output_name)
     if raw_path.is_absolute() or raw_path.parent != Path("."):
         resolved_path = raw_path
@@ -604,6 +658,15 @@ def resolve_output_paths(output_name: str, folders: Dict[str, Path]) -> Dict[str
     else:
         base_dir = resolved_path.parent
         base_name = resolved_path.name
+
+    layer_db_tag = folders.get("layer_dB_tag")
+    if (
+        layer_db_tag
+        and layer_db_tag != "unknown"
+        and isinstance(base_name, str)
+        and layer_db_tag not in base_name
+    ):
+        base_name = f"{base_name}_{layer_db_tag}"
 
     base_path = base_dir / base_name
     nur_path = base_dir / f"{base_name}.nur"
@@ -693,6 +756,9 @@ def write_debug_log(
         "attenuation_model",
         "layer_depth_m",
         "layer_descriptor",
+        "layer_dB",
+        "layer_dB_text",
+        "layer_dB_tag",
         "trigger_sigma",
     "trigger_sigma_key",
     "energy_min",
@@ -786,14 +852,16 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     station_type: str = settings["station_type"]
     station_depth: str = settings["station_depth"]
     is_gen2 = station_type.lower() == "gen2"
+    layer_db_text = settings.get("layer_dB_text", "unknown")
 
     LOGGER.info(
-        "Starting simulation for station %s (%s, %s, propagation=%s, sigma=%.2f)",
+        "Starting simulation for station %s (%s, %s, propagation=%s, sigma=%.2f, layer_dB=%s dB)",
         station_id,
         station_type,
         site,
         propagation,
         trigger_sigma,
+        layer_db_text,
     )
 
     site_lower = site.lower()
@@ -884,7 +952,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         detector=det,
         ray_type=propagation,
         layer_depth=settings["layer_depth_m"] * units.m,
-        layer_dB=0,
+        layer_dB=settings["layer_dB"],
         attenuation_model=settings["attenuation_model"],
         output_mode=2,
     ):
@@ -1016,6 +1084,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                 stn_zenith=stn_zenith / units.deg if stn_zenith is not None else None,
                 stn_azimuth=stn_azimuth / units.deg if stn_azimuth is not None else None,
                 trigger_sigma=trigger_sigma,
+                layer_dB=settings.get("layer_dB"),
                 triggered=triggered,
             )
         )

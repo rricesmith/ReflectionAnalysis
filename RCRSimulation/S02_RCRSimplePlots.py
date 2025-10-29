@@ -70,6 +70,30 @@ def _format_layer_depth_values(raw_value: str | None) -> tuple[str, str]:
     return text_label, slug_label
 
 
+def _format_layer_db_values(raw_value: str | None) -> tuple[str, str]:
+    if raw_value is None:
+        return "unknown", "unknown"
+
+    raw_text = str(raw_value).strip()
+    if not raw_text:
+        return "unknown", "unknown"
+
+    try:
+        db_value = float(raw_text)
+    except ValueError:
+        text_label = raw_text
+        slug_label = sanitize_component(f"{raw_text}dB")
+        return text_label, slug_label or "unknown"
+
+    if math.isfinite(db_value):
+        text_label = f"{db_value:g}"
+        slug_label = sanitize_component(f"{text_label}dB")
+    else:
+        text_label = raw_text
+        slug_label = sanitize_component(raw_text)
+    return text_label, slug_label or "unknown"
+
+
 def extract_plot_metadata(config: configparser.ConfigParser) -> dict[str, str]:
     sim_section = config["SIMULATION"] if config.has_section("SIMULATION") else {}
 
@@ -80,7 +104,10 @@ def extract_plot_metadata(config: configparser.ConfigParser) -> dict[str, str]:
     if sim_section:
         layer_raw = sim_section.get("layer_depth_m", sim_section.get("layer_depth", None))
 
+    layer_db_raw = sim_section.get("layer_dB") if sim_section else None
+
     layer_text, layer_slug = _format_layer_depth_values(layer_raw)
+    layer_db_text, layer_db_slug = _format_layer_db_values(layer_db_raw)
 
     annotation_lines = [
         f"Station: {station_type}",
@@ -88,11 +115,15 @@ def extract_plot_metadata(config: configparser.ConfigParser) -> dict[str, str]:
         f"Station depth: {station_depth}",
         f"Layer depth: {layer_text}",
     ]
+    if layer_db_text == "unknown":
+        annotation_lines.append("Layer loss: unknown")
+    else:
+        annotation_lines.append(f"Layer loss: {layer_db_text} dB")
     annotation_text = "\n".join(annotation_lines)
 
     filename_suffix = "_".join(
         sanitize_component(component)
-        for component in (station_type, site, station_depth, layer_slug)
+        for component in (station_type, site, station_depth, layer_slug, layer_db_slug)
         if component
     )
 
@@ -102,6 +133,8 @@ def extract_plot_metadata(config: configparser.ConfigParser) -> dict[str, str]:
         "station_depth": station_depth,
         "layer_depth_text": layer_text,
         "layer_depth_slug": layer_slug,
+        "layer_dB_text": layer_db_text,
+        "layer_dB_slug": layer_db_slug,
         "annotation_text": annotation_text,
         "filename_suffix": filename_suffix,
     }
@@ -183,7 +216,11 @@ def read_config(config_path: Path) -> configparser.ConfigParser:
     return config
 
 
-def resolve_event_files(args: argparse.Namespace, config: configparser.ConfigParser) -> list[Path]:
+def resolve_event_files(
+    args: argparse.Namespace,
+    config: configparser.ConfigParser,
+    layer_db_token: str | None = None,
+) -> list[Path]:
     if args.events:
         event_arg = Path(args.events).expanduser()
         if event_arg.exists():
@@ -204,6 +241,13 @@ def resolve_event_files(args: argparse.Namespace, config: configparser.ConfigPar
         raise FileNotFoundError(f"Configured numpy_folder does not exist: {numpy_folder}")
 
     candidates = sorted(numpy_folder.glob("*_RCReventList.npy"))
+    if layer_db_token and layer_db_token != "unknown":
+        filtered = [path for path in candidates if layer_db_token in path.stem]
+        if not filtered:
+            raise FileNotFoundError(
+                f"No *_RCReventList.npy files matching layer_dB token '{layer_db_token}' found in {numpy_folder}"
+            )
+        return filtered
     if not candidates:
         raise FileNotFoundError(f"No *_RCReventList.npy files found in {numpy_folder}")
     return candidates
@@ -626,7 +670,8 @@ def main() -> None:
     filename_suffix = plot_metadata["filename_suffix"]
     annotation_text = plot_metadata["annotation_text"]
 
-    event_paths = resolve_event_files(args, config)
+    layer_db_token = plot_metadata.get("layer_dB_slug")
+    event_paths = resolve_event_files(args, config, layer_db_token=layer_db_token)
     output_dir = ensure_output_dir(args, config)
 
     events = load_events(event_paths)
