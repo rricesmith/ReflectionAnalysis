@@ -361,6 +361,51 @@ def _select_detector_config(candidates: Sequence[Path], station_type: str, site:
     return candidates[0]
 
 
+def _resolve_detector_config_root(
+    base_path: Path,
+    station_type: str,
+    site: str,
+    depth_variant: str | None,
+    layer_label: str | None,
+) -> Path:
+    base_path = base_path.expanduser()
+
+    if base_path.is_file():
+        return detector_config_from_path(base_path, station_type, site, depth_variant, layer_label)
+
+    site_key = (site or "").strip().lower()
+    if site_key and base_path.name.lower() == site_key:
+        return detector_config_from_path(base_path, station_type, site, depth_variant, layer_label)
+
+    candidate_roots: List[Path] = []
+    if site_key:
+        variants = [site, site.lower(), site.upper()]
+        seen: set[str] = set()
+        for variant in variants:
+            if not variant:
+                continue
+            norm = variant.lower()
+            if norm in seen:
+                continue
+            seen.add(norm)
+            candidate_roots.append(base_path / variant)
+    candidate_roots.append(base_path)
+
+    last_error: FileNotFoundError | None = None
+    for candidate in candidate_roots:
+        try:
+            return detector_config_from_path(candidate, station_type, site, depth_variant, layer_label)
+        except FileNotFoundError as exc:
+            last_error = exc
+            continue
+
+    if last_error is not None:
+        raise last_error
+    raise FileNotFoundError(
+        f"Could not locate detector configuration under {base_path} for station type '{station_type}'"
+    )
+
+
 def detector_config_from_path(
     path: Path,
     station_type: str,
@@ -380,7 +425,16 @@ def detector_config_from_path(
     layer_norm = layer_label.lower() if layer_label else None
     site_norm = site.lower()
 
-    search_roots: List[Path] = [path]
+    search_roots: List[Path] = []
+    path_is_site = path.name.lower() == site_norm
+    if not path_is_site:
+        for variant in {site, site.lower(), site.upper()}:
+            if variant:
+                candidate = path / variant
+                if candidate not in search_roots:
+                    search_roots.append(candidate)
+    if path not in search_roots:
+        search_roots.append(path)
     for variant in {station_type, station_type.lower(), station_type.upper()}:
         search_roots.append(path / variant)
         search_roots.append(path / variant / site)
@@ -579,17 +633,24 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
 
     sim_config_dir = config.get("SIMULATION", "config_dir", fallback=None)
     folder_config_dir = config.get("FOLDERS", "config_dir", fallback=None)
-    detector_config_root = folder_config_dir or sim_config_dir or cfg_paths.get(
+    detector_config_root_raw = folder_config_dir or sim_config_dir or cfg_paths.get(
         "detector_config_dir", "RCRSimulation/configurations"
     )
+    detector_config_root_path = Path(detector_config_root_raw).expanduser()
 
     if args.detector_config:
-        detector_config = detector_config_from_path(
-            Path(args.detector_config), station_type, site, station_depth, layer_label
-        )
+        detector_config_arg = Path(args.detector_config).expanduser()
+        if detector_config_arg.suffix.lower() in {".json", ".yaml", ".yml", ".ini"}:
+            detector_config = detector_config_from_path(
+                detector_config_arg, station_type, site, station_depth, layer_label
+            )
+        else:
+            detector_config = _resolve_detector_config_root(
+                detector_config_arg, station_type, site, station_depth, layer_label
+            )
     else:
-        detector_config = detector_config_from_path(
-            Path(detector_config_root), station_type, site, station_depth, layer_label
+        detector_config = _resolve_detector_config_root(
+            detector_config_root_path, station_type, site, station_depth, layer_label
         )
 
     output_folder = (
