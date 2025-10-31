@@ -43,71 +43,111 @@ def sanitize_component(value: str | None) -> str:
     return cleaned or "unknown"
 
 
-def _normalize_tokens(tokens: Sequence[str] | None) -> list[str]:
-    normalized: list[str] = []
-    if not tokens:
-        return normalized
-    for token in tokens:
-        if not token:
-            continue
-        token_norm = str(token).strip().lower()
-        if not token_norm or token_norm == "unknown":
-            continue
-        if token_norm not in normalized:
-            normalized.append(token_norm)
-    return normalized
+def _normalize_propagation(value: str | None) -> str:
+    if not value:
+        return "unknown"
+    lowered = value.strip().lower().replace("-", "_").replace(" ", "_")
+    mapping = {
+        "direct": "direct",
+        "reflected": "reflected",
+        "by_depth": "by_depth",
+        "bydepth": "by_depth",
+    }
+    return mapping.get(lowered, lowered or "unknown")
 
 
-def _select_files_by_tokens(paths: Sequence[Path], normalized_tokens: Sequence[str]) -> list[Path]:
-    if not paths:
-        return []
+def _resolve_station_id_from_config(config: configparser.ConfigParser, propagation: str) -> int | None:
+    if not config.has_section("SIMULATION"):
+        return None
+    propagation_norm = _normalize_propagation(propagation)
+    candidate_keys: list[str] = []
+    if propagation_norm == "direct":
+        candidate_keys.extend(["station_id_direct", "station_id"])
+    elif propagation_norm == "reflected":
+        candidate_keys.extend(["station_id_reflected", "station_id"])
+    elif propagation_norm == "by_depth":
+        candidate_keys.extend([
+            "station_id_by_depth",
+            "station_id_reflected",
+            "station_id_direct",
+            "station_id",
+        ])
+    else:
+        candidate_keys.append("station_id")
 
-    grouped: dict[str, list[Path]] = {}
-    prefix_strings: dict[str, str] = {}
-    for path in paths:
-        stem = path.stem
-        prefix = stem.split("_RCReventList")[0]
-        grouped.setdefault(prefix, []).append(path)
-        prefix_strings[prefix] = prefix.lower()
+    for key in candidate_keys:
+        if config.has_option("SIMULATION", key):
+            try:
+                return config.getint("SIMULATION", key)
+            except ValueError:
+                continue
+    return None
 
-    if not normalized_tokens:
-        if len(grouped) == 1:
-            prefix = next(iter(grouped))
-            return sorted(grouped[prefix])
-        available = ", ".join(sorted(grouped)) or "<none>"
-        raise FileNotFoundError(
-            "Unable to determine matching event files: configuration lacks identifying tokens and "
-            f"multiple prefixes are present ({available})."
-        )
 
-    scores: dict[str, int] = {}
-    for prefix, lowered in prefix_strings.items():
-        scores[prefix] = sum(1 for token in normalized_tokens if token in lowered)
+def _build_annotation_text(metadata: dict[str, str | int]) -> str:
+    lines: list[str] = []
+    station_type = metadata.get("station_type", "unknown")
+    site = metadata.get("site", "unknown")
+    station_depth = metadata.get("station_depth", "unknown")
+    lines.append(f"Station: {station_type}")
+    lines.append(f"Site: {site}")
+    lines.append(f"Station depth: {station_depth}")
 
-    if not scores:
-        return []
+    layer_depth_text = metadata.get("layer_depth_text", "unknown")
+    lines.append(f"Layer depth: {layer_depth_text}")
 
-    max_score = max(scores.values())
-    if max_score <= 0:
-        candidates = ", ".join(sorted(grouped)) or "<none>"
-        expected = ", ".join(normalized_tokens)
-        raise FileNotFoundError(
-            "No *_RCReventList.npy files matched the expected tokens. "
-            f"Expected tokens: {expected}. Available prefixes: {candidates}."
-        )
+    layer_db_text = metadata.get("layer_dB_text", "unknown")
+    if layer_db_text == "unknown":
+        lines.append("Layer loss: unknown")
+    else:
+        lines.append(f"Layer loss: {layer_db_text} dB")
 
-    best_prefixes = [prefix for prefix, score in scores.items() if score == max_score]
-    if len(best_prefixes) > 1:
-        expected = ", ".join(normalized_tokens)
-        formatted = ", ".join(sorted(best_prefixes))
-        raise FileExistsError(
-            "Multiple event file prefixes match the expected tokens. "
-            f"Expected tokens: {expected}. Matching prefixes: {formatted}. "
-            "Pass --events to disambiguate."
-        )
+    propagation = metadata.get("propagation")
+    if propagation and propagation != "unknown":
+        lines.append(f"Propagation: {propagation}")
 
-    chosen_prefix = best_prefixes[0]
-    return sorted(grouped[chosen_prefix])
+    station_id = metadata.get("station_id")
+    if station_id is not None and station_id != "unknown":
+        lines.append(f"Station id: {station_id}")
+
+    file_range = metadata.get("file_range_text")
+    if file_range:
+        lines.append(f"Files: {file_range}")
+
+    cores_text = metadata.get("cores_text")
+    if cores_text:
+        lines.append(f"Cores: {cores_text}")
+
+    energy_bin = metadata.get("energy_bin_text")
+    if energy_bin:
+        lines.append(f"Energy bin: {energy_bin}")
+
+    sin2_text = metadata.get("sin2_text")
+    if sin2_text:
+        lines.append(f"sin^2 bin: {sin2_text}")
+
+    return "\n".join(lines)
+
+
+def _compose_filename_suffix(metadata: dict[str, str]) -> str:
+    preferred_order = [
+        "station_type_slug",
+        "site_slug",
+        "propagation_slug",
+        "station_depth_slug",
+        "station_id_slug",
+        "layer_depth_slug",
+        "layer_dB_slug",
+        "file_range_slug",
+        "energy_bin_slug",
+        "sin2_slug",
+    ]
+    parts: list[str] = []
+    for key in preferred_order:
+        value = metadata.get(key)
+        if value and value != "unknown" and value not in parts:
+            parts.append(value)
+    return "_".join(parts) if parts else "unknown"
 
 
 def _format_layer_depth_values(raw_value: str | None) -> tuple[str, str]:
@@ -161,12 +201,15 @@ def _format_layer_db_values(raw_value: str | None) -> tuple[str, str]:
     return text_label, slug_label or "unknown"
 
 
-def extract_plot_metadata(config: configparser.ConfigParser) -> dict[str, str]:
+def extract_plot_metadata(config: configparser.ConfigParser) -> dict[str, str | int]:
     sim_section = config["SIMULATION"] if config.has_section("SIMULATION") else {}
 
     station_type = sim_section.get("station_type", "unknown") if sim_section else "unknown"
     site = sim_section.get("site", "unknown") if sim_section else "unknown"
     station_depth = sim_section.get("station_depth", "unknown") if sim_section else "unknown"
+    propagation_cfg = sim_section.get("propagation_mode", "unknown") if sim_section else "unknown"
+    propagation = _normalize_propagation(propagation_cfg)
+
     layer_raw = None
     if sim_section:
         layer_raw = sim_section.get("layer_depth_m", sim_section.get("layer_depth", None))
@@ -179,39 +222,31 @@ def extract_plot_metadata(config: configparser.ConfigParser) -> dict[str, str]:
     station_type_slug = sanitize_component(station_type)
     site_slug = sanitize_component(site)
     station_depth_slug = sanitize_component(station_depth)
+    propagation_slug = sanitize_component(propagation)
 
-    annotation_lines = [
-        f"Station: {station_type}",
-        f"Site: {site}",
-        f"Station depth: {station_depth}",
-        f"Layer depth: {layer_text}",
-    ]
-    if layer_db_text == "unknown":
-        annotation_lines.append("Layer loss: unknown")
-    else:
-        annotation_lines.append(f"Layer loss: {layer_db_text} dB")
-    annotation_text = "\n".join(annotation_lines)
+    station_id = _resolve_station_id_from_config(config, propagation)
+    station_id_slug = sanitize_component(f"stn{station_id}") if station_id is not None else "unknown"
 
-    filename_suffix = "_".join(
-        sanitize_component(component)
-        for component in (station_type, site, station_depth, layer_slug, layer_db_slug)
-        if component
-    )
-
-    return {
+    metadata: dict[str, str | int] = {
         "station_type": station_type,
         "station_type_slug": station_type_slug,
         "site": site,
         "site_slug": site_slug,
         "station_depth": station_depth,
         "station_depth_slug": station_depth_slug,
+        "propagation": propagation,
+        "propagation_slug": propagation_slug,
+        "station_id": station_id if station_id is not None else "unknown",
+        "station_id_slug": station_id_slug,
         "layer_depth_text": layer_text,
         "layer_depth_slug": layer_slug,
         "layer_dB_text": layer_db_text,
         "layer_dB_slug": layer_db_slug,
-        "annotation_text": annotation_text,
-        "filename_suffix": filename_suffix,
     }
+
+    metadata["annotation_text"] = _build_annotation_text(metadata)
+    metadata["filename_suffix"] = _compose_filename_suffix(metadata)
+    return metadata
 
 
 def annotate_axes(ax: plt.Axes, annotation: str) -> None:
@@ -293,77 +328,223 @@ def read_config(config_path: Path) -> configparser.ConfigParser:
 def resolve_event_files(
     args: argparse.Namespace,
     config: configparser.ConfigParser,
-    layer_db_token: str | None = None,
-    required_tokens: Sequence[str] | None = None,
+    metadata: dict[str, str | int] | None = None,
 ) -> list[Path]:
-    tokens: list[str] = list(required_tokens or [])
-    if layer_db_token and layer_db_token.lower() != "unknown":
-        tokens.append(layer_db_token)
-    normalized_tokens = _normalize_tokens(tokens)
-
     if args.events:
         event_arg = Path(args.events).expanduser()
         if event_arg.exists():
             if event_arg.is_file():
-                selected = _select_files_by_tokens([event_arg], normalized_tokens)
-                if not selected:
-                    expected = ", ".join(normalized_tokens) or "<none>"
-                    raise FileNotFoundError(
-                        f"Specified event file {event_arg} does not match expected tokens ({expected})."
-                    )
-                return selected
+                return [event_arg]
             if event_arg.is_dir():
                 files = sorted(event_arg.glob("*_RCReventList.npy"))
                 if not files:
                     raise FileNotFoundError(f"No *_RCReventList.npy files found in directory {event_arg}")
-                selected = _select_files_by_tokens(files, normalized_tokens)
-                if not selected:
-                    expected = ", ".join(normalized_tokens) or "<none>"
-                    available = ", ".join(sorted({p.stem.split("_RCReventList")[0] for p in files})) or "<none>"
-                    raise FileNotFoundError(
-                        "No files in the provided directory matched the expected tokens. "
-                        f"Expected tokens: {expected}. Available prefixes: {available}."
-                    )
-                return selected
+                return files
         matches = sorted(Path(p) for p in glob.glob(str(event_arg)))
         if matches:
-            selected = _select_files_by_tokens(matches, normalized_tokens)
-            if not selected:
-                expected = ", ".join(normalized_tokens) or "<none>"
-                available = ", ".join(sorted({p.stem.split("_RCReventList")[0] for p in matches})) or "<none>"
-                raise FileNotFoundError(
-                    "Glob pattern matched files, but none satisfied the expected tokens. "
-                    f"Expected tokens: {expected}. Matching prefixes: {available}."
-                )
-            return selected
+            return matches
         raise FileNotFoundError(f"Specified event path not found: {event_arg}")
 
-    numpy_folder = Path(config["FOLDERS"]["numpy_folder"]).expanduser()
+    if config.has_option("FOLDERS", "numpy_folder"):
+        numpy_folder = Path(config.get("FOLDERS", "numpy_folder")).expanduser()
+    else:
+        numpy_folder = Path("RCRSimulation/output/numpy").expanduser()
     if not numpy_folder.exists():
         raise FileNotFoundError(f"Configured numpy_folder does not exist: {numpy_folder}")
 
     candidates = sorted(numpy_folder.glob("*_RCReventList.npy"))
     if not candidates:
         raise FileNotFoundError(f"No *_RCReventList.npy files found in {numpy_folder}")
-    selected = _select_files_by_tokens(candidates, normalized_tokens)
-    if not selected:
-        expected = ", ".join(normalized_tokens) or "<none>"
-        available = ", ".join(sorted({p.stem.split("_RCReventList")[0] for p in candidates})) or "<none>"
-        raise FileNotFoundError(
-            "Unable to identify event files that match the configuration tokens. "
-            f"Expected tokens: {expected}. Available prefixes: {available}."
-        )
-    return selected
+
+    if not metadata:
+        return candidates
+
+    markers: list[str] = []
+    for key in ("station_type_slug", "site_slug", "propagation_slug", "station_depth_slug"):
+        value = metadata.get(key) if isinstance(metadata, dict) else None
+        if isinstance(value, str) and value != "unknown":
+            markers.append(value.lower())
+
+    station_id_value = metadata.get("station_id") if isinstance(metadata, dict) else None
+    if station_id_value not in (None, "unknown"):
+        station_id_str = str(station_id_value)
+        if not station_id_str.lower().startswith("stn"):
+            station_id_str = f"stn{station_id_str}"
+        markers.append(sanitize_component(station_id_str).lower())
+
+    layer_db_slug = metadata.get("layer_dB_slug") if isinstance(metadata, dict) else None
+    if isinstance(layer_db_slug, str) and layer_db_slug not in {"", "unknown"}:
+        markers.append(layer_db_slug.lower())
+
+    if not markers:
+        return candidates
+
+    scored_candidates: list[tuple[int, Path]] = []
+    suffix = "_rcreventlist"
+    for candidate in candidates:
+        stem = candidate.stem.lower()
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+        score = sum(1 for marker in markers if marker and marker in stem)
+        scored_candidates.append((score, candidate))
+
+    if not scored_candidates:
+        return candidates
+
+    best_score = max(score for score, _ in scored_candidates)
+    if best_score == 0:
+        return candidates
+
+    filtered = [path for score, path in scored_candidates if score == best_score]
+    return filtered if filtered else candidates
 
 
 def ensure_output_dir(args: argparse.Namespace, config: configparser.ConfigParser) -> Path:
     if args.output_dir:
         output_dir = Path(args.output_dir).expanduser()
     else:
-        base = Path(config["FOLDERS"]["save_folder"]).expanduser()
+        if config.has_option("FOLDERS", "save_folder"):
+            base = Path(config.get("FOLDERS", "save_folder")).expanduser()
+        else:
+            base = Path("RCRSimulation/plots").expanduser()
         output_dir = base / DEFAULT_OUTPUT_SUBDIR
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
+
+
+def infer_run_metadata_from_filename(event_paths: Sequence[Path]) -> dict[str, str | int]:
+    if not event_paths:
+        return {}
+
+    first_path = event_paths[0]
+    stem = first_path.stem
+    suffix = "_RCReventList"
+    if stem.endswith(suffix):
+        stem = stem[: -len(suffix)]
+    base = stem.strip("_")
+    if not base:
+        return {}
+
+    base_lower = base.lower()
+    tokens = [token for token in base.split("_") if token]
+
+    metadata: dict[str, str | int] = {}
+    if tokens:
+        metadata["station_type"] = tokens[0]
+    if len(tokens) >= 2:
+        metadata["site"] = tokens[1]
+
+    if "reflected" in base_lower:
+        metadata["propagation"] = "reflected"
+    elif "direct" in base_lower:
+        metadata["propagation"] = "direct"
+    elif any(tag in base_lower for tag in ("by_depth", "bydepth", "by-depth")):
+        metadata["propagation"] = "by_depth"
+
+    station_id_match = re.search(r"stn(\d+)", base_lower)
+    if station_id_match:
+        station_id = int(station_id_match.group(1))
+        metadata["station_id"] = station_id
+        metadata["station_id_slug"] = sanitize_component(f"stn{station_id}")
+
+    files_match = re.search(r"files([A-Za-z0-9.+-]+)", base)
+    if files_match:
+        file_range = files_match.group(1)
+        metadata["file_range_text"] = file_range
+        metadata["file_range_slug"] = sanitize_component(f"files{file_range}")
+
+    energy_match = re.search(r"E([0-9.+-]+-[0-9.+-]+)", base)
+    if energy_match:
+        energy_raw = energy_match.group(1)
+        metadata["energy_bin_text"] = energy_raw.replace("-", " - ")
+        metadata["energy_bin_slug"] = sanitize_component(f"E{energy_raw}")
+
+    sin2_match = re.search(r"sin2[_-]?([0-9.+-]+)", base_lower)
+    if sin2_match:
+        sin2_raw = sin2_match.group(1)
+        metadata["sin2_text"] = sin2_raw
+        metadata["sin2_slug"] = sanitize_component(f"sin2_{sin2_raw}")
+
+    cores_match = re.search(r"(\d+)cores", base_lower)
+    if cores_match:
+        cores_raw = cores_match.group(1)
+        metadata["cores_text"] = cores_raw
+        metadata["cores_slug"] = sanitize_component(f"{cores_raw}cores")
+
+    db_match = re.search(r"([+-]?\d+(?:\.\d+)?)db", base_lower)
+    if db_match:
+        db_value = db_match.group(1)
+        metadata["layer_dB_text"] = db_value
+        metadata["layer_dB_slug"] = sanitize_component(f"{db_value}dB")
+
+    return metadata
+
+
+def _ensure_slug(merged: dict[str, str | int], key: str, slug_key: str, prefix: str = "") -> None:
+    value = merged.get(key)
+    if value in (None, "", "unknown"):
+        return
+    if isinstance(value, float) and math.isnan(value):
+        return
+    text = f"{prefix}{value}" if prefix else str(value)
+    slug_value = sanitize_component(text)
+    if slug_value:
+        merged[slug_key] = slug_value
+
+
+def merge_metadata_from_filename(
+    base_metadata: dict[str, str | int], filename_metadata: dict[str, str | int]
+) -> dict[str, str | int]:
+    if not filename_metadata:
+        return base_metadata
+
+    merged = dict(base_metadata)
+
+    for key, value in filename_metadata.items():
+        if value in (None, ""):
+            continue
+        if key.endswith("_slug") or key.endswith("_text"):
+            merged[key] = value
+            continue
+
+        existing = merged.get(key)
+        if existing not in (None, "unknown") and existing != value:
+            merged[f"config_{key}"] = existing
+
+        merged[key] = value
+
+    propagation_value = merged.get("propagation")
+    if propagation_value not in (None, "unknown"):
+        merged["propagation"] = _normalize_propagation(str(propagation_value))
+
+    station_id_value = merged.get("station_id")
+    if isinstance(station_id_value, str):
+        lower = station_id_value.lower()
+        if lower.startswith("stn") and lower[3:].isdigit():
+            merged["station_id"] = int(lower[3:])
+        elif station_id_value.isdigit():
+            merged["station_id"] = int(station_id_value)
+
+    _ensure_slug(merged, "station_type", "station_type_slug")
+    _ensure_slug(merged, "site", "site_slug")
+    _ensure_slug(merged, "propagation", "propagation_slug")
+    _ensure_slug(merged, "station_depth", "station_depth_slug")
+    _ensure_slug(merged, "station_id", "station_id_slug", prefix="stn")
+    if merged.get("layer_dB_text") not in (None, "unknown"):
+        merged["layer_dB_slug"] = sanitize_component(f"{merged['layer_dB_text']}dB")
+    _ensure_slug(merged, "layer_depth_text", "layer_depth_slug")
+    if merged.get("file_range_text"):
+        _ensure_slug(merged, "file_range_text", "file_range_slug", prefix="files")
+    if merged.get("energy_bin_text"):
+        _ensure_slug(merged, "energy_bin_text", "energy_bin_slug", prefix="E")
+    if merged.get("sin2_text"):
+        _ensure_slug(merged, "sin2_text", "sin2_slug", prefix="sin2_")
+    if merged.get("cores_text"):
+        _ensure_slug(merged, "cores_text", "cores_slug")
+
+    merged["annotation_text"] = _build_annotation_text(merged)
+    merged["filename_suffix"] = _compose_filename_suffix(merged)
+    return merged
 
 
 def load_events(event_paths: Sequence[Path]) -> Sequence[RCRSimEvent]:
@@ -770,24 +951,12 @@ def main() -> None:
     config = read_config(Path(args.config).expanduser())
 
     plot_metadata = extract_plot_metadata(config)
+    event_paths = resolve_event_files(args, config, metadata=plot_metadata)
+    filename_metadata = infer_run_metadata_from_filename(event_paths)
+    plot_metadata = merge_metadata_from_filename(plot_metadata, filename_metadata)
+
     filename_suffix = plot_metadata["filename_suffix"]
     annotation_text = plot_metadata["annotation_text"]
-
-    layer_db_token = plot_metadata.get("layer_dB_slug")
-    matching_tokens = [
-        plot_metadata.get("station_type_slug"),
-        plot_metadata.get("site_slug"),
-        plot_metadata.get("station_depth_slug"),
-        plot_metadata.get("layer_depth_slug"),
-        plot_metadata.get("layer_dB_slug"),
-        plot_metadata.get("filename_suffix"),
-    ]
-    event_paths = resolve_event_files(
-        args,
-        config,
-        layer_db_token=layer_db_token,
-        required_tokens=matching_tokens,
-    )
     output_dir = ensure_output_dir(args, config)
 
     events = load_events(event_paths)

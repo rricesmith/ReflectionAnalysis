@@ -53,3 +53,4 @@ DeepLearning/plots/Station_30/ChiSNR_Stn30.png
 plots/
 tempplots/
 .vscode/settings.json
+RCRSimulation/__pycache__/S02_RCRSimplePlots.cpython-311.pyc
