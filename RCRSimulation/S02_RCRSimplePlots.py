@@ -359,44 +359,46 @@ def resolve_event_files(
     if not metadata:
         return candidates
 
-    markers: list[str] = []
-    for key in ("station_type_slug", "site_slug", "propagation_slug", "station_depth_slug"):
-        value = metadata.get(key) if isinstance(metadata, dict) else None
-        if isinstance(value, str) and value != "unknown":
-            markers.append(value.lower())
+    def _marker_from_metadata(slug_key: str, fallback_key: str | None = None) -> str | None:
+        raw_value = metadata.get(slug_key)
+        if isinstance(raw_value, str) and raw_value not in {"", "unknown"}:
+            return raw_value.lower()
+        if fallback_key:
+            fallback_val = metadata.get(fallback_key)
+            if isinstance(fallback_val, str) and fallback_val not in {"", "unknown"}:
+                return sanitize_component(fallback_val).lower()
+        return None
 
-    station_id_value = metadata.get("station_id") if isinstance(metadata, dict) else None
-    if station_id_value not in (None, "unknown"):
-        station_id_str = str(station_id_value)
-        if not station_id_str.lower().startswith("stn"):
-            station_id_str = f"stn{station_id_str}"
-        markers.append(sanitize_component(station_id_str).lower())
+    required_markers = [
+        _marker_from_metadata("station_type_slug", "station_type"),
+        _marker_from_metadata("site_slug", "site"),
+        _marker_from_metadata("station_depth_slug", "station_depth"),
+        _marker_from_metadata("layer_depth_slug"),
+        _marker_from_metadata("layer_dB_slug"),
+    ]
 
-    layer_db_slug = metadata.get("layer_dB_slug") if isinstance(metadata, dict) else None
-    if isinstance(layer_db_slug, str) and layer_db_slug not in {"", "unknown"}:
-        markers.append(layer_db_slug.lower())
-
-    if not markers:
+    filtered_markers = [marker for marker in required_markers if marker]
+    if not filtered_markers:
         return candidates
 
-    scored_candidates: list[tuple[int, Path]] = []
     suffix = "_rcreventlist"
+    matching: list[Path] = []
     for candidate in candidates:
         stem = candidate.stem.lower()
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
-        score = sum(1 for marker in markers if marker and marker in stem)
-        scored_candidates.append((score, candidate))
+        if all(marker in stem for marker in filtered_markers):
+            matching.append(candidate)
 
-    if not scored_candidates:
-        return candidates
+    if not matching:
+        markers_text = ", ".join(filtered_markers)
+        available = ", ".join(path.stem for path in candidates) or "<none>"
+        raise FileNotFoundError(
+            "No *_RCReventList.npy files matched the required station/site/depth/layer tokens. "
+            f"Required markers: {markers_text}. Available stems: {available}."
+        )
 
-    best_score = max(score for score, _ in scored_candidates)
-    if best_score == 0:
-        return candidates
-
-    filtered = [path for score, path in scored_candidates if score == best_score]
-    return filtered if filtered else candidates
+    return matching
 
 
 def ensure_output_dir(args: argparse.Namespace, config: configparser.ConfigParser) -> Path:
