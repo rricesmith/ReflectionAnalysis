@@ -43,6 +43,73 @@ def sanitize_component(value: str | None) -> str:
     return cleaned or "unknown"
 
 
+def _normalize_tokens(tokens: Sequence[str] | None) -> list[str]:
+    normalized: list[str] = []
+    if not tokens:
+        return normalized
+    for token in tokens:
+        if not token:
+            continue
+        token_norm = str(token).strip().lower()
+        if not token_norm or token_norm == "unknown":
+            continue
+        if token_norm not in normalized:
+            normalized.append(token_norm)
+    return normalized
+
+
+def _select_files_by_tokens(paths: Sequence[Path], normalized_tokens: Sequence[str]) -> list[Path]:
+    if not paths:
+        return []
+
+    grouped: dict[str, list[Path]] = {}
+    prefix_strings: dict[str, str] = {}
+    for path in paths:
+        stem = path.stem
+        prefix = stem.split("_RCReventList")[0]
+        grouped.setdefault(prefix, []).append(path)
+        prefix_strings[prefix] = prefix.lower()
+
+    if not normalized_tokens:
+        if len(grouped) == 1:
+            prefix = next(iter(grouped))
+            return sorted(grouped[prefix])
+        available = ", ".join(sorted(grouped)) or "<none>"
+        raise FileNotFoundError(
+            "Unable to determine matching event files: configuration lacks identifying tokens and "
+            f"multiple prefixes are present ({available})."
+        )
+
+    scores: dict[str, int] = {}
+    for prefix, lowered in prefix_strings.items():
+        scores[prefix] = sum(1 for token in normalized_tokens if token in lowered)
+
+    if not scores:
+        return []
+
+    max_score = max(scores.values())
+    if max_score <= 0:
+        candidates = ", ".join(sorted(grouped)) or "<none>"
+        expected = ", ".join(normalized_tokens)
+        raise FileNotFoundError(
+            "No *_RCReventList.npy files matched the expected tokens. "
+            f"Expected tokens: {expected}. Available prefixes: {candidates}."
+        )
+
+    best_prefixes = [prefix for prefix, score in scores.items() if score == max_score]
+    if len(best_prefixes) > 1:
+        expected = ", ".join(normalized_tokens)
+        formatted = ", ".join(sorted(best_prefixes))
+        raise FileExistsError(
+            "Multiple event file prefixes match the expected tokens. "
+            f"Expected tokens: {expected}. Matching prefixes: {formatted}. "
+            "Pass --events to disambiguate."
+        )
+
+    chosen_prefix = best_prefixes[0]
+    return sorted(grouped[chosen_prefix])
+
+
 def _format_layer_depth_values(raw_value: str | None) -> tuple[str, str]:
     if raw_value is None:
         return "unknown", "layer-unknown"
@@ -55,7 +122,7 @@ def _format_layer_depth_values(raw_value: str | None) -> tuple[str, str]:
         depth_value = float(raw_text)
     except ValueError:
         text_label = raw_text
-        slug_label = f"layer-{sanitize_component(raw_text)}"
+        slug_label = sanitize_component(f"layer-{raw_text}")
         return text_label, slug_label
 
     if math.isfinite(depth_value):
@@ -63,10 +130,10 @@ def _format_layer_depth_values(raw_value: str | None) -> tuple[str, str]:
             depth_value = int(round(depth_value))
         text_label = f"{depth_value} m"
         slug_core = str(depth_value).replace("+", "")
-        slug_label = f"layer_{slug_core}m"
+        slug_label = sanitize_component(f"layer_{slug_core}m")
     else:
         text_label = raw_text
-        slug_label = f"layer-{sanitize_component(raw_text)}"
+        slug_label = sanitize_component(f"layer-{raw_text}")
     return text_label, slug_label
 
 
@@ -109,6 +176,10 @@ def extract_plot_metadata(config: configparser.ConfigParser) -> dict[str, str]:
     layer_text, layer_slug = _format_layer_depth_values(layer_raw)
     layer_db_text, layer_db_slug = _format_layer_db_values(layer_db_raw)
 
+    station_type_slug = sanitize_component(station_type)
+    site_slug = sanitize_component(site)
+    station_depth_slug = sanitize_component(station_depth)
+
     annotation_lines = [
         f"Station: {station_type}",
         f"Site: {site}",
@@ -129,8 +200,11 @@ def extract_plot_metadata(config: configparser.ConfigParser) -> dict[str, str]:
 
     return {
         "station_type": station_type,
+        "station_type_slug": station_type_slug,
         "site": site,
+        "site_slug": site_slug,
         "station_depth": station_depth,
+        "station_depth_slug": station_depth_slug,
         "layer_depth_text": layer_text,
         "layer_depth_slug": layer_slug,
         "layer_dB_text": layer_db_text,
@@ -220,20 +294,48 @@ def resolve_event_files(
     args: argparse.Namespace,
     config: configparser.ConfigParser,
     layer_db_token: str | None = None,
+    required_tokens: Sequence[str] | None = None,
 ) -> list[Path]:
+    tokens: list[str] = list(required_tokens or [])
+    if layer_db_token and layer_db_token.lower() != "unknown":
+        tokens.append(layer_db_token)
+    normalized_tokens = _normalize_tokens(tokens)
+
     if args.events:
         event_arg = Path(args.events).expanduser()
         if event_arg.exists():
             if event_arg.is_file():
-                return [event_arg]
+                selected = _select_files_by_tokens([event_arg], normalized_tokens)
+                if not selected:
+                    expected = ", ".join(normalized_tokens) or "<none>"
+                    raise FileNotFoundError(
+                        f"Specified event file {event_arg} does not match expected tokens ({expected})."
+                    )
+                return selected
             if event_arg.is_dir():
                 files = sorted(event_arg.glob("*_RCReventList.npy"))
                 if not files:
                     raise FileNotFoundError(f"No *_RCReventList.npy files found in directory {event_arg}")
-                return files
+                selected = _select_files_by_tokens(files, normalized_tokens)
+                if not selected:
+                    expected = ", ".join(normalized_tokens) or "<none>"
+                    available = ", ".join(sorted({p.stem.split("_RCReventList")[0] for p in files})) or "<none>"
+                    raise FileNotFoundError(
+                        "No files in the provided directory matched the expected tokens. "
+                        f"Expected tokens: {expected}. Available prefixes: {available}."
+                    )
+                return selected
         matches = sorted(Path(p) for p in glob.glob(str(event_arg)))
         if matches:
-            return matches
+            selected = _select_files_by_tokens(matches, normalized_tokens)
+            if not selected:
+                expected = ", ".join(normalized_tokens) or "<none>"
+                available = ", ".join(sorted({p.stem.split("_RCReventList")[0] for p in matches})) or "<none>"
+                raise FileNotFoundError(
+                    "Glob pattern matched files, but none satisfied the expected tokens. "
+                    f"Expected tokens: {expected}. Matching prefixes: {available}."
+                )
+            return selected
         raise FileNotFoundError(f"Specified event path not found: {event_arg}")
 
     numpy_folder = Path(config["FOLDERS"]["numpy_folder"]).expanduser()
@@ -241,16 +343,17 @@ def resolve_event_files(
         raise FileNotFoundError(f"Configured numpy_folder does not exist: {numpy_folder}")
 
     candidates = sorted(numpy_folder.glob("*_RCReventList.npy"))
-    if layer_db_token and layer_db_token != "unknown":
-        filtered = [path for path in candidates if layer_db_token in path.stem]
-        if not filtered:
-            raise FileNotFoundError(
-                f"No *_RCReventList.npy files matching layer_dB token '{layer_db_token}' found in {numpy_folder}"
-            )
-        return filtered
     if not candidates:
         raise FileNotFoundError(f"No *_RCReventList.npy files found in {numpy_folder}")
-    return candidates
+    selected = _select_files_by_tokens(candidates, normalized_tokens)
+    if not selected:
+        expected = ", ".join(normalized_tokens) or "<none>"
+        available = ", ".join(sorted({p.stem.split("_RCReventList")[0] for p in candidates})) or "<none>"
+        raise FileNotFoundError(
+            "Unable to identify event files that match the configuration tokens. "
+            f"Expected tokens: {expected}. Available prefixes: {available}."
+        )
+    return selected
 
 
 def ensure_output_dir(args: argparse.Namespace, config: configparser.ConfigParser) -> Path:
@@ -671,7 +774,20 @@ def main() -> None:
     annotation_text = plot_metadata["annotation_text"]
 
     layer_db_token = plot_metadata.get("layer_dB_slug")
-    event_paths = resolve_event_files(args, config, layer_db_token=layer_db_token)
+    matching_tokens = [
+        plot_metadata.get("station_type_slug"),
+        plot_metadata.get("site_slug"),
+        plot_metadata.get("station_depth_slug"),
+        plot_metadata.get("layer_depth_slug"),
+        plot_metadata.get("layer_dB_slug"),
+        plot_metadata.get("filename_suffix"),
+    ]
+    event_paths = resolve_event_files(
+        args,
+        config,
+        layer_db_token=layer_db_token,
+        required_tokens=matching_tokens,
+    )
     output_dir = ensure_output_dir(args, config)
 
     events = load_events(event_paths)
