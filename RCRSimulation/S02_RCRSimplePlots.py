@@ -372,15 +372,10 @@ def resolve_event_files(
     required_markers = [
         _marker_from_metadata("station_type_slug", "station_type"),
         _marker_from_metadata("site_slug", "site"),
-        _marker_from_metadata("station_depth_slug", "station_depth"),
-        _marker_from_metadata("layer_depth_slug"),
         _marker_from_metadata("layer_dB_slug"),
     ]
 
     filtered_markers = [marker for marker in required_markers if marker]
-    if not filtered_markers:
-        return candidates
-
     suffix = "_rcreventlist"
     matching: list[Path] = []
     for candidate in candidates:
@@ -390,15 +385,17 @@ def resolve_event_files(
         if all(marker in stem for marker in filtered_markers):
             matching.append(candidate)
 
-    if not matching:
+    if matching:
+        return matching
+
+    if filtered_markers:
         markers_text = ", ".join(filtered_markers)
         available = ", ".join(path.stem for path in candidates) or "<none>"
-        raise FileNotFoundError(
-            "No *_RCReventList.npy files matched the required station/site/depth/layer tokens. "
+        print(
+            "Warning: no *_RCReventList.npy files matched station/site/layer_dB markers. "
             f"Required markers: {markers_text}. Available stems: {available}."
         )
-
-    return matching
+    return candidates
 
 
 def ensure_output_dir(args: argparse.Namespace, config: configparser.ConfigParser) -> Path:
