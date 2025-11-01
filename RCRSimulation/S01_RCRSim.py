@@ -14,7 +14,6 @@ import configparser
 import datetime
 import logging
 import math
-import re
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
@@ -87,41 +86,6 @@ def parse_layer_depth_value(raw_value: str | float | None, default: float) -> fl
         raise ValueError(f"Unsupported layer depth value '{raw_value}'.") from exc
 
 
-def sanitize_filename_component(value: str | float | int) -> str:
-    text = str(value).strip()
-    if not text:
-        return "unknown"
-    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", text)
-    return cleaned or "unknown"
-
-
-def _slugify_filename_component(value: str | float | int | bool) -> str:
-    if isinstance(value, bool):
-        normalized = "true" if value else "false"
-    else:
-        normalized = str(value)
-    slug = sanitize_filename_component(normalized)
-    return slug.lower() if slug else "unknown"
-
-
-def _collect_output_tags(settings: Dict[str, Any]) -> list[str]:
-    tags: list[str] = []
-
-    def _append(raw: Any) -> None:
-        if raw in (None, "", "unknown"):
-            return
-        slug = _slugify_filename_component(raw)
-        if slug and slug != "unknown" and slug not in tags:
-            tags.append(slug)
-
-    _append(settings.get("station_type"))
-    _append(settings.get("site"))
-    _append(settings.get("station_depth"))
-    _append(settings.get("propagation"))
-    _append(settings.get("layer_depth_tag"))
-    _append(settings.get("layer_dB_tag"))
-    _append(settings.get("noise_tag"))
-    return tags
 
 
 def parse_layer_db_value(raw_value: str | float | None, default: float) -> float:
@@ -145,12 +109,11 @@ def format_layer_db_metadata(layer_db: float | None) -> tuple[str, str]:
     try:
         numeric = float(layer_db)
     except (TypeError, ValueError):
-        return "unknown", "unknown"
+        return "unknown", ""
     if not math.isfinite(numeric):
-        return "unknown", "unknown"
+        return "unknown", ""
     text = f"{numeric:g}"
-    slug = sanitize_filename_component(f"{text}dB").lower()
-    return text, slug or "unknown"
+    return text, f"{text}dB".lower()
 
 
 def build_gen2_filter_config(
@@ -174,7 +137,7 @@ def build_gen2_filter_config(
 
     def apply_shallow_filters(channels: Iterable[int]) -> None:
         for ch in channels:
-            passband_low[ch] = (1 * units.MHz, 1000 * units.MHz)
+            passband_low[ch] = (1 * units.MHz, 150 * units.MHz)
             passband_high[ch] = (0.08 * units.GHz, 800 * units.GHz)
             filter_type[ch] = "butter"
             order_low[ch] = 10
@@ -182,7 +145,7 @@ def build_gen2_filter_config(
 
     def apply_deep_filters(channels: Iterable[int]) -> None:
         for ch in channels:
-            passband_low[ch] = (0 * units.MHz, 1000 * units.MHz)
+            passband_low[ch] = (0 * units.MHz, 220 * units.MHz)
             passband_high[ch] = (96 * units.MHz, 100 * units.GHz)
             filter_type[ch] = "cheby1"
             order_low[ch] = 7
@@ -636,10 +599,10 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
             depth_value = int(round(layer_depth)) if math.isclose(layer_depth, round(layer_depth)) else layer_depth
             depth_text = f"{depth_value:g}"
             layer_depth_text = f"{depth_text} m"
-            layer_depth_tag = sanitize_filename_component(f"layer_{depth_text}m").lower()
+            layer_depth_tag = f"layer_{depth_text}m".lower()
     else:
         layer_depth_text = "unknown"
-        layer_depth_tag = "layer-unknown"
+        layer_depth_tag = "layer_unknown"
 
     trigger_sigma = None
     trigger_sigma_key_used = None
@@ -753,7 +716,19 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         "log_folder": log_folder,
     }
 
-    settings["filename_tags"] = _collect_output_tags(settings)
+    settings["filename_tags"] = [
+        str(value).lower()
+        for value in (
+            station_type,
+            site,
+            station_depth,
+            propagation,
+            layer_depth_tag,
+            settings.get("layer_dB_tag"),
+            noise_tag,
+        )
+        if value
+    ]
     return settings
 
 
@@ -772,28 +747,13 @@ def resolve_output_paths(output_name: str, folders: Dict[str, Any]) -> Dict[str,
         base_dir = resolved_path.parent
         base_name = resolved_path.name
 
-    tags = folders.get("filename_tags")
-    if not tags:
-        tags = _collect_output_tags(folders)
-        folders["filename_tags"] = tags
+    tags = [str(tag).lower() for tag in folders.get("filename_tags", []) if tag]
 
-    if isinstance(base_name, str):
-        existing_lower = base_name.lower()
-    else:
+    if not isinstance(base_name, str):
         base_name = str(base_name)
-        existing_lower = base_name.lower()
 
-    new_parts: list[str] = []
-    for tag in tags:
-        if not tag or tag == "unknown":
-            continue
-        if tag in existing_lower:
-            continue
-        new_parts.append(tag)
-        existing_lower += f"_{tag}"
-
-    if new_parts:
-        tag_suffix = "_".join(new_parts)
+    if tags:
+        tag_suffix = "_".join(tags)
         base_name = f"{base_name}_{tag_suffix}" if base_name else tag_suffix
 
     base_path = base_dir / base_name
