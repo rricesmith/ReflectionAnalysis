@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""Produce quick-look plots for single-station RCR simulations.
-
-This script reads the NumPy event summaries written by
-``RCRSimulation/S01_RCRSim.py`` and generates:
-
-* Effective area per energy/zenith bin and the zenith-summed projection
-* Event-rate equivalents using the Auger parameterisation
-* Weighted histograms of reconstructed station zenith and azimuth angles
-
-The implementation borrows the binning and rate-calculation ideas from
-``SimpleFootprintSimulation/Stn51RateCalc.py`` but adapts them for the
-single-station workflow (trigger fraction derived from all saved events,
-per-event weights derived from the event-rate map, etc.).
-"""
+"""Produce quick-look plots for single-station RCR simulations."""
 
 from __future__ import annotations
 
@@ -21,16 +8,13 @@ import configparser
 import glob
 import itertools
 import math
-import re
 from pathlib import Path
 from typing import Sequence
 
 import astrotools.auger as auger
 import matplotlib.pyplot as plt
 import numpy as np
-from icecream import ic
 
-# Ensure the RCRSimEvent class used during pickling is importable
 from RCRSimulation.S01_RCRSim import RCRSimEvent
 
 
@@ -45,221 +29,54 @@ LAYER_DB_VALUES = [1.7, 40, 45, 50]
 NOISE_OPTIONS = [True, False]
 
 
-def sanitize_component(value: str | None) -> str:
-    text = "unknown" if value is None else str(value).strip()
-    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", text)
-    return cleaned or "unknown"
-
-
-def _normalize_propagation(value: str | None) -> str:
-    if not value:
-        return "unknown"
-    lowered = value.strip().lower().replace("-", "_").replace(" ", "_")
-    mapping = {
-        "direct": "direct",
-        "reflected": "reflected",
-        "by_depth": "by_depth",
-        "bydepth": "by_depth",
-    }
-    return mapping.get(lowered, lowered or "unknown")
-
-
-def _resolve_station_id_from_config(config: configparser.ConfigParser, propagation: str) -> int | None:
-    if not config.has_section("SIMULATION"):
-        return None
-    propagation_norm = _normalize_propagation(propagation)
-    candidate_keys: list[str] = []
-    if propagation_norm == "direct":
-        candidate_keys.extend(["station_id_direct", "station_id"])
-    elif propagation_norm == "reflected":
-        candidate_keys.extend(["station_id_reflected", "station_id"])
-    elif propagation_norm == "by_depth":
-        candidate_keys.extend([
-            "station_id_by_depth",
-            "station_id_reflected",
-            "station_id_direct",
-            "station_id",
-        ])
+def build_permutation_details(
+    station_type: str,
+    site: str,
+    station_depth: str,
+    layer_depth_m: float,
+    layer_db: float,
+    add_noise: bool,
+) -> tuple[list[str], str, str, str]:
+    if math.isclose(layer_depth_m, 0.0, abs_tol=1e-6):
+        depth_tag = "layer_surface"
+        depth_text = "surface"
     else:
-        candidate_keys.append("station_id")
+        depth_value = int(round(layer_depth_m)) if math.isclose(layer_depth_m, round(layer_depth_m)) else layer_depth_m
+        depth_token = f"{depth_value:g}"
+        depth_tag = f"layer_{depth_token}m".lower()
+        depth_text = f"{depth_token} m"
 
-    for key in candidate_keys:
-        if config.has_option("SIMULATION", key):
-            try:
-                return config.getint("SIMULATION", key)
-            except ValueError:
-                continue
-    return None
+    db_value = int(round(layer_db)) if math.isclose(layer_db, round(layer_db)) else layer_db
+    db_text = f"{db_value:g}"
+    db_tag = f"{db_text}db".lower()
 
+    noise_text = "on" if add_noise else "off"
+    noise_tag = "noise_on" if add_noise else "noise_off"
 
-def _build_annotation_text(metadata: dict[str, str | int]) -> str:
-    lines: list[str] = []
-    station_type = metadata.get("station_type", "unknown")
-    site = metadata.get("site", "unknown")
-    station_depth = metadata.get("station_depth", "unknown")
-    lines.append(f"Station: {station_type}")
-    lines.append(f"Site: {site}")
-    lines.append(f"Station depth: {station_depth}")
-
-    layer_depth_text = metadata.get("layer_depth_text", "unknown")
-    lines.append(f"Layer depth: {layer_depth_text}")
-
-    layer_db_text = metadata.get("layer_dB_text", "unknown")
-    if layer_db_text == "unknown":
-        lines.append("Layer loss: unknown")
-    else:
-        lines.append(f"Layer loss: {layer_db_text} dB")
-
-    propagation = metadata.get("propagation")
-    if propagation and propagation != "unknown":
-        lines.append(f"Propagation: {propagation}")
-
-    station_id = metadata.get("station_id")
-    if station_id is not None and station_id != "unknown":
-        lines.append(f"Station id: {station_id}")
-
-    file_range = metadata.get("file_range_text")
-    if file_range:
-        lines.append(f"Files: {file_range}")
-
-    cores_text = metadata.get("cores_text")
-    if cores_text:
-        lines.append(f"Cores: {cores_text}")
-
-    energy_bin = metadata.get("energy_bin_text")
-    if energy_bin:
-        lines.append(f"Energy bin: {energy_bin}")
-
-    sin2_text = metadata.get("sin2_text")
-    if sin2_text:
-        lines.append(f"sin^2 bin: {sin2_text}")
-
-    noise_text = metadata.get("noise_text")
-    if noise_text:
-        lines.append(f"Noise: {noise_text}")
-
-    return "\n".join(lines)
-
-
-def _compose_filename_suffix(metadata: dict[str, str]) -> str:
-    preferred_order = [
-        "station_type_slug",
-        "site_slug",
-        "propagation_slug",
-        "station_depth_slug",
-        "station_id_slug",
-        "layer_depth_slug",
-        "layer_dB_slug",
-        "noise_slug",
-        "file_range_slug",
-        "energy_bin_slug",
-        "sin2_slug",
+    tags = [
+        station_type.lower(),
+        site.lower(),
+        station_depth.lower(),
+        depth_tag,
+        db_tag,
+        noise_tag,
     ]
-    parts: list[str] = []
-    for key in preferred_order:
-        value = metadata.get(key)
-        if value and value != "unknown" and value not in parts:
-            parts.append(value)
-    return "_".join(parts) if parts else "unknown"
+    filename_suffix = "_".join(tags)
 
-
-def _format_layer_depth_values(raw_value: str | None) -> tuple[str, str]:
-    if raw_value is None:
-        return "unknown", "layer-unknown"
-
-    raw_text = str(raw_value).strip()
-    if not raw_text:
-        return "unknown", "layer-unknown"
-
-    try:
-        depth_value = float(raw_text)
-    except ValueError:
-        text_label = raw_text
-        slug_label = sanitize_component(f"layer-{raw_text}")
-        return text_label, slug_label
-
-    if math.isfinite(depth_value):
-        if math.isclose(depth_value, round(depth_value)):
-            depth_value = int(round(depth_value))
-        text_label = f"{depth_value} m"
-        slug_core = str(depth_value).replace("+", "")
-        slug_label = sanitize_component(f"layer_{slug_core}m").lower()
-    else:
-        text_label = raw_text
-        slug_label = sanitize_component(f"layer-{raw_text}").lower()
-    return text_label, slug_label
-
-
-def _format_layer_db_values(raw_value: str | None) -> tuple[str, str]:
-    if raw_value is None:
-        return "unknown", "unknown"
-
-    raw_text = str(raw_value).strip()
-    if not raw_text:
-        return "unknown", "unknown"
-
-    try:
-        db_value = float(raw_text)
-    except ValueError:
-        text_label = raw_text
-        slug_label = sanitize_component(f"{raw_text}dB")
-        return text_label, slug_label or "unknown"
-
-    if math.isfinite(db_value):
-        text_label = f"{db_value:g}"
-        slug_label = sanitize_component(f"{text_label}dB").lower()
-    else:
-        text_label = raw_text
-        slug_label = sanitize_component(raw_text).lower()
-    return text_label, slug_label or "unknown"
-
-
-def extract_plot_metadata(config: configparser.ConfigParser) -> dict[str, str | int]:
-    sim_section = config["SIMULATION"] if config.has_section("SIMULATION") else {}
-
-    station_type = sim_section.get("station_type", "unknown") if sim_section else "unknown"
-    site = sim_section.get("site", "unknown") if sim_section else "unknown"
-    station_depth = sim_section.get("station_depth", "unknown") if sim_section else "unknown"
-    propagation_cfg = sim_section.get("propagation_mode", "unknown") if sim_section else "unknown"
-    propagation = _normalize_propagation(propagation_cfg)
-
-    layer_raw = None
-    if sim_section:
-        layer_raw = sim_section.get("layer_depth_m", sim_section.get("layer_depth", None))
-
-    layer_db_raw = sim_section.get("layer_dB") if sim_section else None
-
-    layer_text, layer_slug = _format_layer_depth_values(layer_raw)
-    layer_db_text, layer_db_slug = _format_layer_db_values(layer_db_raw)
-
-    station_type_slug = sanitize_component(station_type)
-    site_slug = sanitize_component(site)
-    station_depth_slug = sanitize_component(station_depth)
-    propagation_slug = sanitize_component(propagation)
-
-    station_id = _resolve_station_id_from_config(config, propagation)
-    station_id_slug = sanitize_component(f"stn{station_id}") if station_id is not None else "unknown"
-
-    metadata: dict[str, str | int] = {
-        "station_type": station_type,
-        "station_type_slug": station_type_slug,
-        "site": site,
-        "site_slug": site_slug,
-        "station_depth": station_depth,
-        "station_depth_slug": station_depth_slug,
-        "propagation": propagation,
-        "propagation_slug": propagation_slug,
-        "station_id": station_id if station_id is not None else "unknown",
-        "station_id_slug": station_id_slug,
-        "layer_depth_text": layer_text,
-        "layer_depth_slug": layer_slug,
-        "layer_dB_text": layer_db_text,
-        "layer_dB_slug": layer_db_slug,
-    }
-
-    metadata["annotation_text"] = _build_annotation_text(metadata)
-    metadata["filename_suffix"] = _compose_filename_suffix(metadata)
-    return metadata
+    annotation_lines = [
+        f"Station: {station_type}",
+        f"Site: {site}",
+        f"Station depth: {station_depth}",
+        f"Layer depth: {depth_text}",
+        f"Layer loss: {db_text} dB",
+        f"Noise: {noise_text}",
+    ]
+    annotation_text = "\n".join(annotation_lines)
+    label = (
+        f"{station_type} | {site} | {station_depth} | layer {depth_text} | "
+        f"{db_text} dB | noise {noise_text}"
+    )
+    return tags, annotation_text, label, filename_suffix
 
 
 def annotate_axes(ax: plt.Axes, annotation: str) -> None:
@@ -384,240 +201,6 @@ def ensure_output_dir(args: argparse.Namespace, config: configparser.ConfigParse
     return output_dir
 
 
-def _format_layer_depth_metadata(depth_m: float) -> tuple[str, str]:
-    if not math.isfinite(depth_m):
-        return "unknown", "layer-unknown"
-    if math.isclose(depth_m, 0.0, abs_tol=1e-6):
-        return "surface", "layer_surface"
-    depth_value = int(round(depth_m)) if math.isclose(depth_m, round(depth_m)) else depth_m
-    depth_text = f"{depth_value:g}"
-    text_label = f"{depth_text} m"
-    slug_label = sanitize_component(f"layer_{depth_text}m").lower()
-    return text_label, slug_label or "layer-unknown"
-
-
-def _format_layer_db_metadata(db_value: float) -> tuple[str, str]:
-    if db_value is None or (isinstance(db_value, float) and not math.isfinite(db_value)):
-        return "unknown", "unknown"
-    numeric = int(round(db_value)) if math.isclose(db_value, round(db_value)) else db_value
-    text_label = f"{numeric:g}"
-    slug_label = sanitize_component(f"{text_label}dB").lower()
-    return text_label, slug_label or "unknown"
-
-
-def _format_noise_metadata(add_noise: bool) -> tuple[str, str]:
-    return ("on" if add_noise else "off"), ("noise_on" if add_noise else "noise_off")
-
-
-def build_permutation_metadata(
-    station_type: str,
-    site: str,
-    station_depth: str,
-    layer_depth_m: float,
-    layer_db: float,
-    add_noise: bool,
-) -> dict[str, str | int | float | bool]:
-    layer_depth_text, layer_depth_slug = _format_layer_depth_metadata(layer_depth_m)
-    layer_db_text, layer_db_slug = _format_layer_db_metadata(layer_db)
-    noise_text, noise_slug = _format_noise_metadata(add_noise)
-
-    metadata: dict[str, str | int | float | bool] = {
-        "station_type": station_type,
-        "station_type_slug": sanitize_component(station_type).lower(),
-        "site": site,
-        "site_slug": sanitize_component(site).lower(),
-        "station_depth": station_depth,
-        "station_depth_slug": sanitize_component(station_depth).lower(),
-        "layer_depth_text": layer_depth_text,
-        "layer_depth_slug": layer_depth_slug,
-        "layer_dB_text": layer_db_text,
-        "layer_dB_slug": layer_db_slug,
-        "add_noise": add_noise,
-        "noise_text": noise_text,
-        "noise_slug": noise_slug,
-    }
-
-    metadata["annotation_text"] = _build_annotation_text(metadata)
-    metadata["filename_suffix"] = _compose_filename_suffix(metadata)
-    metadata["permutation_label"] = (
-        f"{station_type} | {site} | {station_depth} | {layer_depth_text} | "
-        f"{layer_db_text} dB | noise {noise_text}"
-    )
-    return metadata
-
-
-def permutation_markers(metadata: dict[str, str | int | float | bool]) -> list[str]:
-    keys = [
-        "station_type_slug",
-        "site_slug",
-        "station_depth_slug",
-        "layer_depth_slug",
-        "layer_dB_slug",
-        "noise_slug",
-    ]
-    markers: list[str] = []
-    for key in keys:
-        value = metadata.get(key)
-        if isinstance(value, str) and value not in {"", "unknown"}:
-            marker = value.lower()
-            if marker not in markers:
-                markers.append(marker)
-    return markers
-
-
-def path_matches_markers(path: Path, markers: Sequence[str]) -> bool:
-    if not markers:
-        return True
-    stem = path.stem.lower()
-    if stem.endswith("_rcreventlist"):
-        stem = stem[: -len("_rcreventlist")]
-    return all(marker in stem for marker in markers)
-
-
-def infer_run_metadata_from_filename(event_paths: Sequence[Path]) -> dict[str, str | int]:
-    if not event_paths:
-        return {}
-
-    first_path = event_paths[0]
-    stem = first_path.stem
-    suffix = "_RCReventList"
-    if stem.endswith(suffix):
-        stem = stem[: -len(suffix)]
-    base = stem.strip("_")
-    if not base:
-        return {}
-
-    base_lower = base.lower()
-    tokens = [token for token in base.split("_") if token]
-
-    metadata: dict[str, str | int] = {}
-    if tokens:
-        metadata["station_type"] = tokens[0]
-    if len(tokens) >= 2:
-        metadata["site"] = tokens[1]
-
-    if "reflected" in base_lower:
-        metadata["propagation"] = "reflected"
-    elif "direct" in base_lower:
-        metadata["propagation"] = "direct"
-    elif any(tag in base_lower for tag in ("by_depth", "bydepth", "by-depth")):
-        metadata["propagation"] = "by_depth"
-
-    station_id_match = re.search(r"stn(\d+)", base_lower)
-    if station_id_match:
-        station_id = int(station_id_match.group(1))
-        metadata["station_id"] = station_id
-        metadata["station_id_slug"] = sanitize_component(f"stn{station_id}")
-
-    files_match = re.search(r"files([A-Za-z0-9.+-]+)", base)
-    if files_match:
-        file_range = files_match.group(1)
-        metadata["file_range_text"] = file_range
-        metadata["file_range_slug"] = sanitize_component(f"files{file_range}")
-
-    energy_match = re.search(r"E([0-9.+-]+-[0-9.+-]+)", base)
-    if energy_match:
-        energy_raw = energy_match.group(1)
-        metadata["energy_bin_text"] = energy_raw.replace("-", " - ")
-        metadata["energy_bin_slug"] = sanitize_component(f"E{energy_raw}")
-
-    sin2_match = re.search(r"sin2[_-]?([0-9.+-]+)", base_lower)
-    if sin2_match:
-        sin2_raw = sin2_match.group(1)
-        metadata["sin2_text"] = sin2_raw
-        metadata["sin2_slug"] = sanitize_component(f"sin2_{sin2_raw}")
-
-    cores_match = re.search(r"(\d+)cores", base_lower)
-    if cores_match:
-        cores_raw = cores_match.group(1)
-        metadata["cores_text"] = cores_raw
-        metadata["cores_slug"] = sanitize_component(f"{cores_raw}cores")
-
-    db_match = re.search(r"([+-]?\d+(?:\.\d+)?)db", base_lower)
-    if db_match:
-        db_value = db_match.group(1)
-        metadata["layer_dB_text"] = db_value
-        metadata["layer_dB_slug"] = sanitize_component(f"{db_value}dB")
-
-    return metadata
-
-
-def _ensure_slug(merged: dict[str, str | int], key: str, slug_key: str, prefix: str = "") -> None:
-    value = merged.get(key)
-    if value in (None, "", "unknown"):
-        return
-    if isinstance(value, float) and math.isnan(value):
-        return
-    text = f"{prefix}{value}" if prefix else str(value)
-    slug_value = sanitize_component(text)
-    if slug_value:
-        merged[slug_key] = slug_value
-
-
-def merge_metadata_from_filename(
-    base_metadata: dict[str, str | int], filename_metadata: dict[str, str | int]
-) -> dict[str, str | int]:
-    if not filename_metadata:
-        return base_metadata
-
-    merged = dict(base_metadata)
-
-    for key, value in filename_metadata.items():
-        if value in (None, ""):
-            continue
-        if key.endswith("_slug") or key.endswith("_text"):
-            merged[key] = value
-            continue
-
-        existing = merged.get(key)
-        if existing not in (None, "unknown") and existing != value:
-            merged[f"config_{key}"] = existing
-
-        merged[key] = value
-
-    propagation_value = merged.get("propagation")
-    if propagation_value not in (None, "unknown"):
-        merged["propagation"] = _normalize_propagation(str(propagation_value))
-
-    station_id_value = merged.get("station_id")
-    if isinstance(station_id_value, str):
-        lower = station_id_value.lower()
-        if lower.startswith("stn") and lower[3:].isdigit():
-            merged["station_id"] = int(lower[3:])
-        elif station_id_value.isdigit():
-            merged["station_id"] = int(station_id_value)
-
-    _ensure_slug(merged, "station_type", "station_type_slug")
-    _ensure_slug(merged, "site", "site_slug")
-    _ensure_slug(merged, "propagation", "propagation_slug")
-    _ensure_slug(merged, "station_depth", "station_depth_slug")
-    _ensure_slug(merged, "station_id", "station_id_slug", prefix="stn")
-    if merged.get("layer_dB_text") not in (None, "unknown"):
-        merged["layer_dB_slug"] = sanitize_component(f"{merged['layer_dB_text']}dB").lower()
-    _ensure_slug(merged, "layer_depth_text", "layer_depth_slug")
-    if merged.get("file_range_text"):
-        _ensure_slug(merged, "file_range_text", "file_range_slug", prefix="files")
-    if merged.get("energy_bin_text"):
-        _ensure_slug(merged, "energy_bin_text", "energy_bin_slug", prefix="E")
-    if merged.get("sin2_text"):
-        _ensure_slug(merged, "sin2_text", "sin2_slug", prefix="sin2_")
-    if merged.get("cores_text"):
-        _ensure_slug(merged, "cores_text", "cores_slug")
-
-    if merged.get("noise_slug"):
-        merged["noise_slug"] = sanitize_component(merged["noise_slug"]).lower()
-    elif "add_noise" in merged:
-        noise_text, noise_slug = _format_noise_metadata(bool(merged["add_noise"]))
-        merged["noise_slug"] = noise_slug
-        merged.setdefault("noise_text", noise_text)
-    if "noise_text" not in merged and "add_noise" in merged:
-        merged["noise_text"] = "on" if bool(merged["add_noise"]) else "off"
-
-    merged["annotation_text"] = _build_annotation_text(merged)
-    merged["filename_suffix"] = _compose_filename_suffix(merged)
-    return merged
-
-
 def load_events(event_paths: Sequence[Path]) -> Sequence[RCRSimEvent]:
     aggregated: list[RCRSimEvent] = []
     for event_path in event_paths:
@@ -703,7 +286,6 @@ def effective_area(trigger_fraction: np.ndarray, distance_km: float) -> np.ndarr
     if distance_km <= 0:
         raise ValueError("distance_km must be positive to compute an effective area")
     simulation_area = math.pi * (distance_km / 2) ** 2  # km^2
-    ic(simulation_area, trigger_fraction)
     return trigger_fraction * simulation_area
 
 
@@ -1038,7 +620,7 @@ def main() -> None:
         LAYER_DB_VALUES,
         NOISE_OPTIONS,
     ):
-        base_metadata = build_permutation_metadata(
+        tags, annotation_text, label, filename_suffix = build_permutation_details(
             station_type,
             site,
             station_depth,
@@ -1046,18 +628,17 @@ def main() -> None:
             layer_db,
             add_noise,
         )
-        markers = permutation_markers(base_metadata)
-        matching_paths = [path for path in all_event_paths if path_matches_markers(path, markers)]
+
+        matching_paths = []
+        for path in all_event_paths:
+            stem = path.stem.lower()
+            if stem.endswith("_rcreventlist"):
+                stem = stem[:-len("_rcreventlist")]
+            if all(tag in stem for tag in tags):
+                matching_paths.append(path)
+
         if not matching_paths:
             continue
-
-        filename_metadata = infer_run_metadata_from_filename(matching_paths)
-        plot_metadata = merge_metadata_from_filename(base_metadata, filename_metadata)
-        plot_metadata.setdefault("permutation_label", base_metadata.get("permutation_label", "<unknown>"))
-        label = plot_metadata.get("permutation_label", "<unknown>")
-
-        filename_suffix = plot_metadata["filename_suffix"] or "unknown"
-        annotation_text = plot_metadata["annotation_text"]
 
         try:
             events = load_events(matching_paths)
@@ -1065,9 +646,7 @@ def main() -> None:
             print(f"Skipping {label}: {exc}")
             continue
 
-        print(
-            f"Loaded {len(events)} events from {len(matching_paths)} file(s) for {label}."
-        )
+        print(f"Loaded {len(events)} events from {len(matching_paths)} file(s) for {label}.")
         arrays = energy_zenith_arrays(events)
 
         try:
