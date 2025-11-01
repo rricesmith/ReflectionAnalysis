@@ -1060,7 +1060,10 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
         eventTypeIdentifier.run(evt, station, mode="forced", forced_event_type="cosmic ray")
         efieldToVoltageConverter.run(evt, station, det)
-        channelResampler.run(evt, station, det, 2 * units.GHz)
+        if is_gen2:
+            channelResampler.run(evt, station, det, 2.4 * units.GHz)
+        else:
+            channelResampler.run(evt, station, det, 2 * units.GHz)
 
         if gen2_filter_config is not None:
             apply_gen2_filters(channelBandPassFilter, evt, station, det, gen2_filter_config)
