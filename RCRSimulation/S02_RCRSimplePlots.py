@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import configparser
 import glob
+import itertools
 import math
 import re
 from pathlib import Path
@@ -35,6 +36,13 @@ from RCRSimulation.S01_RCRSim import RCRSimEvent
 
 DEFAULT_CONFIG = Path("RCRSimulation/config.ini")
 DEFAULT_OUTPUT_SUBDIR = "simple_plots"
+
+STATION_TYPES = ["HRA", "SP", "Gen2"]
+SITES = ["MB", "SP"]
+STATION_DEPTHS = ["shallow", "deep"]
+LAYER_DEPTHS_M = [-576, -300, -500, -830]
+LAYER_DB_VALUES = [1.7, 40, 45, 50]
+NOISE_OPTIONS = [True, False]
 
 
 def sanitize_component(value: str | None) -> str:
@@ -126,6 +134,10 @@ def _build_annotation_text(metadata: dict[str, str | int]) -> str:
     if sin2_text:
         lines.append(f"sin^2 bin: {sin2_text}")
 
+    noise_text = metadata.get("noise_text")
+    if noise_text:
+        lines.append(f"Noise: {noise_text}")
+
     return "\n".join(lines)
 
 
@@ -138,6 +150,7 @@ def _compose_filename_suffix(metadata: dict[str, str]) -> str:
         "station_id_slug",
         "layer_depth_slug",
         "layer_dB_slug",
+        "noise_slug",
         "file_range_slug",
         "energy_bin_slug",
         "sin2_slug",
@@ -170,10 +183,10 @@ def _format_layer_depth_values(raw_value: str | None) -> tuple[str, str]:
             depth_value = int(round(depth_value))
         text_label = f"{depth_value} m"
         slug_core = str(depth_value).replace("+", "")
-        slug_label = sanitize_component(f"layer_{slug_core}m")
+        slug_label = sanitize_component(f"layer_{slug_core}m").lower()
     else:
         text_label = raw_text
-        slug_label = sanitize_component(f"layer-{raw_text}")
+        slug_label = sanitize_component(f"layer-{raw_text}").lower()
     return text_label, slug_label
 
 
@@ -194,10 +207,10 @@ def _format_layer_db_values(raw_value: str | None) -> tuple[str, str]:
 
     if math.isfinite(db_value):
         text_label = f"{db_value:g}"
-        slug_label = sanitize_component(f"{text_label}dB")
+        slug_label = sanitize_component(f"{text_label}dB").lower()
     else:
         text_label = raw_text
-        slug_label = sanitize_component(raw_text)
+        slug_label = sanitize_component(raw_text).lower()
     return text_label, slug_label or "unknown"
 
 
@@ -328,7 +341,6 @@ def read_config(config_path: Path) -> configparser.ConfigParser:
 def resolve_event_files(
     args: argparse.Namespace,
     config: configparser.ConfigParser,
-    metadata: dict[str, str | int] | None = None,
 ) -> list[Path]:
     if args.events:
         event_arg = Path(args.events).expanduser()
@@ -356,45 +368,6 @@ def resolve_event_files(
     if not candidates:
         raise FileNotFoundError(f"No *_RCReventList.npy files found in {numpy_folder}")
 
-    if not metadata:
-        return candidates
-
-    def _marker_from_metadata(slug_key: str, fallback_key: str | None = None) -> str | None:
-        raw_value = metadata.get(slug_key)
-        if isinstance(raw_value, str) and raw_value not in {"", "unknown"}:
-            return raw_value.lower()
-        if fallback_key:
-            fallback_val = metadata.get(fallback_key)
-            if isinstance(fallback_val, str) and fallback_val not in {"", "unknown"}:
-                return sanitize_component(fallback_val).lower()
-        return None
-
-    required_markers = [
-        _marker_from_metadata("station_type_slug", "station_type"),
-        _marker_from_metadata("site_slug", "site"),
-        _marker_from_metadata("layer_dB_slug"),
-    ]
-
-    filtered_markers = [marker for marker in required_markers if marker]
-    suffix = "_rcreventlist"
-    matching: list[Path] = []
-    for candidate in candidates:
-        stem = candidate.stem.lower()
-        if stem.endswith(suffix):
-            stem = stem[: -len(suffix)]
-        if all(marker in stem for marker in filtered_markers):
-            matching.append(candidate)
-
-    if matching:
-        return matching
-
-    if filtered_markers:
-        markers_text = ", ".join(filtered_markers)
-        available = ", ".join(path.stem for path in candidates) or "<none>"
-        print(
-            "Warning: no *_RCReventList.npy files matched station/site/layer_dB markers. "
-            f"Required markers: {markers_text}. Available stems: {available}."
-        )
     return candidates
 
 
@@ -409,6 +382,96 @@ def ensure_output_dir(args: argparse.Namespace, config: configparser.ConfigParse
         output_dir = base / DEFAULT_OUTPUT_SUBDIR
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
+
+
+def _format_layer_depth_metadata(depth_m: float) -> tuple[str, str]:
+    if not math.isfinite(depth_m):
+        return "unknown", "layer-unknown"
+    if math.isclose(depth_m, 0.0, abs_tol=1e-6):
+        return "surface", "layer_surface"
+    depth_value = int(round(depth_m)) if math.isclose(depth_m, round(depth_m)) else depth_m
+    depth_text = f"{depth_value:g}"
+    text_label = f"{depth_text} m"
+    slug_label = sanitize_component(f"layer_{depth_text}m").lower()
+    return text_label, slug_label or "layer-unknown"
+
+
+def _format_layer_db_metadata(db_value: float) -> tuple[str, str]:
+    if db_value is None or (isinstance(db_value, float) and not math.isfinite(db_value)):
+        return "unknown", "unknown"
+    numeric = int(round(db_value)) if math.isclose(db_value, round(db_value)) else db_value
+    text_label = f"{numeric:g}"
+    slug_label = sanitize_component(f"{text_label}dB").lower()
+    return text_label, slug_label or "unknown"
+
+
+def _format_noise_metadata(add_noise: bool) -> tuple[str, str]:
+    return ("on" if add_noise else "off"), ("noise_on" if add_noise else "noise_off")
+
+
+def build_permutation_metadata(
+    station_type: str,
+    site: str,
+    station_depth: str,
+    layer_depth_m: float,
+    layer_db: float,
+    add_noise: bool,
+) -> dict[str, str | int | float | bool]:
+    layer_depth_text, layer_depth_slug = _format_layer_depth_metadata(layer_depth_m)
+    layer_db_text, layer_db_slug = _format_layer_db_metadata(layer_db)
+    noise_text, noise_slug = _format_noise_metadata(add_noise)
+
+    metadata: dict[str, str | int | float | bool] = {
+        "station_type": station_type,
+        "station_type_slug": sanitize_component(station_type).lower(),
+        "site": site,
+        "site_slug": sanitize_component(site).lower(),
+        "station_depth": station_depth,
+        "station_depth_slug": sanitize_component(station_depth).lower(),
+        "layer_depth_text": layer_depth_text,
+        "layer_depth_slug": layer_depth_slug,
+        "layer_dB_text": layer_db_text,
+        "layer_dB_slug": layer_db_slug,
+        "add_noise": add_noise,
+        "noise_text": noise_text,
+        "noise_slug": noise_slug,
+    }
+
+    metadata["annotation_text"] = _build_annotation_text(metadata)
+    metadata["filename_suffix"] = _compose_filename_suffix(metadata)
+    metadata["permutation_label"] = (
+        f"{station_type} | {site} | {station_depth} | {layer_depth_text} | "
+        f"{layer_db_text} dB | noise {noise_text}"
+    )
+    return metadata
+
+
+def permutation_markers(metadata: dict[str, str | int | float | bool]) -> list[str]:
+    keys = [
+        "station_type_slug",
+        "site_slug",
+        "station_depth_slug",
+        "layer_depth_slug",
+        "layer_dB_slug",
+        "noise_slug",
+    ]
+    markers: list[str] = []
+    for key in keys:
+        value = metadata.get(key)
+        if isinstance(value, str) and value not in {"", "unknown"}:
+            marker = value.lower()
+            if marker not in markers:
+                markers.append(marker)
+    return markers
+
+
+def path_matches_markers(path: Path, markers: Sequence[str]) -> bool:
+    if not markers:
+        return True
+    stem = path.stem.lower()
+    if stem.endswith("_rcreventlist"):
+        stem = stem[: -len("_rcreventlist")]
+    return all(marker in stem for marker in markers)
 
 
 def infer_run_metadata_from_filename(event_paths: Sequence[Path]) -> dict[str, str | int]:
@@ -530,7 +593,7 @@ def merge_metadata_from_filename(
     _ensure_slug(merged, "station_depth", "station_depth_slug")
     _ensure_slug(merged, "station_id", "station_id_slug", prefix="stn")
     if merged.get("layer_dB_text") not in (None, "unknown"):
-        merged["layer_dB_slug"] = sanitize_component(f"{merged['layer_dB_text']}dB")
+        merged["layer_dB_slug"] = sanitize_component(f"{merged['layer_dB_text']}dB").lower()
     _ensure_slug(merged, "layer_depth_text", "layer_depth_slug")
     if merged.get("file_range_text"):
         _ensure_slug(merged, "file_range_text", "file_range_slug", prefix="files")
@@ -540,6 +603,15 @@ def merge_metadata_from_filename(
         _ensure_slug(merged, "sin2_text", "sin2_slug", prefix="sin2_")
     if merged.get("cores_text"):
         _ensure_slug(merged, "cores_text", "cores_slug")
+
+    if merged.get("noise_slug"):
+        merged["noise_slug"] = sanitize_component(merged["noise_slug"]).lower()
+    elif "add_noise" in merged:
+        noise_text, noise_slug = _format_noise_metadata(bool(merged["add_noise"]))
+        merged["noise_slug"] = noise_slug
+        merged.setdefault("noise_text", noise_text)
+    if "noise_text" not in merged and "add_noise" in merged:
+        merged["noise_text"] = "on" if bool(merged["add_noise"]) else "off"
 
     merged["annotation_text"] = _build_annotation_text(merged)
     merged["filename_suffix"] = _compose_filename_suffix(merged)
@@ -949,69 +1021,114 @@ def main() -> None:
     args = parse_args()
     config = read_config(Path(args.config).expanduser())
 
-    plot_metadata = extract_plot_metadata(config)
-    event_paths = resolve_event_files(args, config, metadata=plot_metadata)
-    filename_metadata = infer_run_metadata_from_filename(event_paths)
-    plot_metadata = merge_metadata_from_filename(plot_metadata, filename_metadata)
+    all_event_paths = resolve_event_files(args, config)
+    if not all_event_paths:
+        raise FileNotFoundError("No *_RCReventList.npy files available for plotting.")
 
-    filename_suffix = plot_metadata["filename_suffix"]
-    annotation_text = plot_metadata["annotation_text"]
     output_dir = ensure_output_dir(args, config)
-
-    events = load_events(event_paths)
-    print(f"Loaded {len(events)} events from {len(event_paths)} file(s).")
-    arrays = energy_zenith_arrays(events)
-
     energy_bins, sin2_bins, angle_bins_deg = build_bins(args)
-    n_total, n_trigger, trigger_fraction, (z_idx, e_idx, valid_mask) = bin_events(
-        arrays["log_energy"], arrays["sin2_zenith"], arrays["triggered"], energy_bins, sin2_bins
-    )
-
     distance_km = config.getfloat("SIMULATION", "distance_km", fallback=12.0)
-    aeff = effective_area(trigger_fraction, distance_km)
-    rate = event_rate(aeff, energy_bins, angle_bins_deg)
-    plot_trigger_counts(
-        energy_bins,
-        angle_bins_deg,
-        n_total,
-        n_trigger,
-        output_dir,
-        filename_suffix,
-        annotation_text,
-    )
 
-    plot_effective_area(energy_bins, angle_bins_deg, aeff, output_dir, filename_suffix, annotation_text)
-    plot_event_rate(energy_bins, angle_bins_deg, rate, output_dir, filename_suffix, annotation_text)
+    processed_permutations = 0
+    for station_type, site, station_depth, layer_depth_m, layer_db, add_noise in itertools.product(
+        STATION_TYPES,
+        SITES,
+        STATION_DEPTHS,
+        LAYER_DEPTHS_M,
+        LAYER_DB_VALUES,
+        NOISE_OPTIONS,
+    ):
+        base_metadata = build_permutation_metadata(
+            station_type,
+            site,
+            station_depth,
+            layer_depth_m,
+            layer_db,
+            add_noise,
+        )
+        markers = permutation_markers(base_metadata)
+        matching_paths = [path for path in all_event_paths if path_matches_markers(path, markers)]
+        if not matching_paths:
+            continue
 
-    weight_map = per_event_weights(rate, n_trigger)
-    per_event_weight = np.zeros(len(events), dtype=float)
-    trig_mask = valid_mask & arrays["triggered"]
-    trig_indices = np.where(trig_mask)[0]
-    if trig_indices.size:
-        trig_z = z_idx[trig_indices]
-        trig_e = e_idx[trig_indices]
-        per_event_weight[trig_indices] = weight_map[trig_z, trig_e]
+        filename_metadata = infer_run_metadata_from_filename(matching_paths)
+        plot_metadata = merge_metadata_from_filename(base_metadata, filename_metadata)
+        plot_metadata.setdefault("permutation_label", base_metadata.get("permutation_label", "<unknown>"))
+        label = plot_metadata.get("permutation_label", "<unknown>")
 
-    plot_weighted_histograms(
-        arrays["zenith_deg"],
-        arrays["azimuth_deg"],
-        per_event_weight,
-        args.azimuth_bins,
-        args.zenith_hist_bins,
-        output_dir,
-        filename_suffix,
-        annotation_text,
-    )
-    plot_trigger_scatter(
-        arrays["energies"],
-        arrays["zenith_deg"],
-        arrays["triggered"],
-        output_dir,
-        filename_suffix,
-        annotation_text,
-    )
+        filename_suffix = plot_metadata["filename_suffix"] or "unknown"
+        annotation_text = plot_metadata["annotation_text"]
 
-    print(f"Saved plots to {output_dir}")
+        try:
+            events = load_events(matching_paths)
+        except ValueError as exc:
+            print(f"Skipping {label}: {exc}")
+            continue
+
+        print(
+            f"Loaded {len(events)} events from {len(matching_paths)} file(s) for {label}."
+        )
+        arrays = energy_zenith_arrays(events)
+
+        try:
+            n_total, n_trigger, trigger_fraction, (z_idx, e_idx, valid_mask) = bin_events(
+                arrays["log_energy"], arrays["sin2_zenith"], arrays["triggered"], energy_bins, sin2_bins
+            )
+        except ValueError as exc:
+            print(f"Skipping {label}: {exc}")
+            continue
+
+        aeff = effective_area(trigger_fraction, distance_km)
+        rate = event_rate(aeff, energy_bins, angle_bins_deg)
+
+        plot_trigger_counts(
+            energy_bins,
+            angle_bins_deg,
+            n_total,
+            n_trigger,
+            output_dir,
+            filename_suffix,
+            annotation_text,
+        )
+        plot_effective_area(energy_bins, angle_bins_deg, aeff, output_dir, filename_suffix, annotation_text)
+        plot_event_rate(energy_bins, angle_bins_deg, rate, output_dir, filename_suffix, annotation_text)
+
+        weight_map = per_event_weights(rate, n_trigger)
+        per_event_weight = np.zeros(len(events), dtype=float)
+        trig_mask = valid_mask & arrays["triggered"]
+        trig_indices = np.where(trig_mask)[0]
+        if trig_indices.size:
+            trig_z = z_idx[trig_indices]
+            trig_e = e_idx[trig_indices]
+            per_event_weight[trig_indices] = weight_map[trig_z, trig_e]
+
+        plot_weighted_histograms(
+            arrays["zenith_deg"],
+            arrays["azimuth_deg"],
+            per_event_weight,
+            args.azimuth_bins,
+            args.zenith_hist_bins,
+            output_dir,
+            filename_suffix,
+            annotation_text,
+        )
+        plot_trigger_scatter(
+            arrays["energies"],
+            arrays["zenith_deg"],
+            arrays["triggered"],
+            output_dir,
+            filename_suffix,
+            annotation_text,
+        )
+
+        processed_permutations += 1
+
+    if processed_permutations == 0:
+        print("No matching permutations found for available event files.")
+    else:
+        print(
+            f"Generated plots for {processed_permutations} permutation(s). Output directory: {output_dir}"
+        )
 
 
 if __name__ == "__main__":

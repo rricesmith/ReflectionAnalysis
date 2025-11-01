@@ -95,6 +95,35 @@ def sanitize_filename_component(value: str | float | int) -> str:
     return cleaned or "unknown"
 
 
+def _slugify_filename_component(value: str | float | int | bool) -> str:
+    if isinstance(value, bool):
+        normalized = "true" if value else "false"
+    else:
+        normalized = str(value)
+    slug = sanitize_filename_component(normalized)
+    return slug.lower() if slug else "unknown"
+
+
+def _collect_output_tags(settings: Dict[str, Any]) -> list[str]:
+    tags: list[str] = []
+
+    def _append(raw: Any) -> None:
+        if raw in (None, "", "unknown"):
+            return
+        slug = _slugify_filename_component(raw)
+        if slug and slug != "unknown" and slug not in tags:
+            tags.append(slug)
+
+    _append(settings.get("station_type"))
+    _append(settings.get("site"))
+    _append(settings.get("station_depth"))
+    _append(settings.get("propagation"))
+    _append(settings.get("layer_depth_tag"))
+    _append(settings.get("layer_dB_tag"))
+    _append(settings.get("noise_tag"))
+    return tags
+
+
 def parse_layer_db_value(raw_value: str | float | None, default: float) -> float:
     if raw_value is None:
         return default
@@ -120,7 +149,7 @@ def format_layer_db_metadata(layer_db: float | None) -> tuple[str, str]:
     if not math.isfinite(numeric):
         return "unknown", "unknown"
     text = f"{numeric:g}"
-    slug = sanitize_filename_component(f"{text}dB")
+    slug = sanitize_filename_component(f"{text}dB").lower()
     return text, slug or "unknown"
 
 
@@ -599,6 +628,19 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         layer_db = parse_layer_db_value(raw_layer_db, default=0.0)
     layer_db_text, layer_db_tag = format_layer_db_metadata(layer_db)
 
+    if math.isfinite(layer_depth):
+        if math.isclose(layer_depth, 0.0, abs_tol=1e-6):
+            layer_depth_text = "surface"
+            layer_depth_tag = "layer_surface"
+        else:
+            depth_value = int(round(layer_depth)) if math.isclose(layer_depth, round(layer_depth)) else layer_depth
+            depth_text = f"{depth_value:g}"
+            layer_depth_text = f"{depth_text} m"
+            layer_depth_tag = sanitize_filename_component(f"layer_{depth_text}m").lower()
+    else:
+        layer_depth_text = "unknown"
+        layer_depth_tag = "layer-unknown"
+
     trigger_sigma = None
     trigger_sigma_key_used = None
     if args.trigger_sigma is not None:
@@ -628,6 +670,9 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         add_noise = False
     else:
         add_noise = parse_bool(cfg_sim.get("add_noise", "false"))
+
+    noise_tag = "noise_on" if add_noise else "noise_off"
+    noise_text = "on" if add_noise else "off"
 
     debug_enabled = parse_bool(cfg_sim.get("debug", "false"))
 
@@ -670,7 +715,7 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         cfg_paths.get("log_folder", "RCRSimulation/logs")
     ).expanduser()
 
-    return {
+    settings = {
         "station_type": station_type,
         "site": site,
         "station_depth": station_depth,
@@ -684,6 +729,8 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         "attenuation_model": attenuation_model,
         "layer_depth_m": layer_depth,
         "layer_descriptor": layer_label,
+        "layer_depth_text": layer_depth_text,
+        "layer_depth_tag": layer_depth_tag,
         "layer_dB": layer_db,
         "layer_dB_text": layer_db_text,
         "layer_dB_tag": layer_db_tag,
@@ -691,6 +738,8 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         "trigger_sigma_key": trigger_sigma_key_used,
         "noise_sigma": NOISE_TRIGGER_SIGMA,
         "add_noise": add_noise,
+        "noise_tag": noise_tag,
+        "noise_text": noise_text,
         "detector_config": detector_config,
         "energy_min": energy_min,
         "energy_max": energy_max,
@@ -703,6 +752,9 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         "debug": debug_enabled,
         "log_folder": log_folder,
     }
+
+    settings["filename_tags"] = _collect_output_tags(settings)
+    return settings
 
 
 def resolve_output_paths(output_name: str, folders: Dict[str, Any]) -> Dict[str, Path]:
@@ -720,14 +772,29 @@ def resolve_output_paths(output_name: str, folders: Dict[str, Any]) -> Dict[str,
         base_dir = resolved_path.parent
         base_name = resolved_path.name
 
-    layer_db_tag = folders.get("layer_dB_tag")
-    if (
-        layer_db_tag
-        and layer_db_tag != "unknown"
-        and isinstance(base_name, str)
-        and layer_db_tag not in base_name
-    ):
-        base_name = f"{base_name}_{layer_db_tag}"
+    tags = folders.get("filename_tags")
+    if not tags:
+        tags = _collect_output_tags(folders)
+        folders["filename_tags"] = tags
+
+    if isinstance(base_name, str):
+        existing_lower = base_name.lower()
+    else:
+        base_name = str(base_name)
+        existing_lower = base_name.lower()
+
+    new_parts: list[str] = []
+    for tag in tags:
+        if not tag or tag == "unknown":
+            continue
+        if tag in existing_lower:
+            continue
+        new_parts.append(tag)
+        existing_lower += f"_{tag}"
+
+    if new_parts:
+        tag_suffix = "_".join(new_parts)
+        base_name = f"{base_name}_{tag_suffix}" if base_name else tag_suffix
 
     base_path = base_dir / base_name
     nur_path = base_dir / f"{base_name}.nur"
@@ -817,17 +884,21 @@ def write_debug_log(
         "attenuation_model",
         "layer_depth_m",
         "layer_descriptor",
+        "layer_depth_text",
+        "layer_depth_tag",
         "layer_dB",
         "layer_dB_text",
         "layer_dB_tag",
         "trigger_sigma",
-    "trigger_sigma_key",
-    "energy_min",
-    "energy_max",
-    "sin2",
-    "num_icetop",
+        "trigger_sigma_key",
+        "energy_min",
+        "energy_max",
+        "sin2",
+        "num_icetop",
         "noise_sigma",
         "add_noise",
+        "noise_text",
+        "noise_tag",
         "detector_config",
         "output_folder",
         "numpy_folder",
@@ -835,6 +906,7 @@ def write_debug_log(
         "run_directory",
         "debug",
         "log_folder",
+        "filename_tags",
     ]
     for key in config_keys:
         if key not in settings:
