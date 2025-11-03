@@ -40,7 +40,10 @@ from NuRadioReco.detector import detector
 
 import readCoREASStationGrid
 
-from SimpleFootprintSimulation.SimHelpers import pullFilesForSimulation, calculateNoisePerChannel
+from SimpleFootprintSimulation.SimHelpers import (
+    pullFilesForSimulation,
+    calculateNoisePerChannel
+)
 
 
 LOGGER = logging.getLogger("RCRSimulation")
@@ -1070,12 +1073,13 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
         if thresholds is None:
             if is_gen2:
-                pre_amp_vrms, post_amp_vrms = calculateNoisePerChannel(
-                    det,
-                    station=station,
-                    amp=False,
-                    channelBandPassFilter=channelBandPassFilter,
-                )
+                # use pre-calculated noise values for Gen2
+                GEN2_DEEP_NOISE = 5.627 * units.microV
+                GEN2_SHALLOW_NOISE = 3.789 * units.microV
+                if station_depth == "deep":
+                    pre_amp_vrms = {ch: GEN2_DEEP_NOISE for ch in PRIMARY_CHANNELS}
+                elif station_depth == "shallow":
+                    pre_amp_vrms = {ch: GEN2_SHALLOW_NOISE for ch in PRIMARY_CHANNELS}
             else:
                 pre_amp_vrms, post_amp_vrms = calculateNoisePerChannel(
                     det,
