@@ -146,10 +146,11 @@ class TDR_Simulation(simulation.simulation):
             bandwidth = np.trapz(np.abs(filt) ** 2, ff)
             # the Vrms scales with the squareroot of the bandwidth
             Vrms_per_channel_copy[station.get_id()][channel_id] *= (bandwidth / self._bandwidth_per_channel[station.get_id()][channel_id]) ** 0.5
-            if 0:
+            if 1:
                 print(f"channel {channel_id}: bandwidth = {bandwidth/units.MHz:.1f}MHz, new Vrms = {Vrms_per_channel_copy[station.get_id()][channel_id]/units.micro/units.V:.4g}muV")
                 tvrms = np.std(station.get_channel(channel_id).get_trace())
                 print(f"\trealized Vrms = {tvrms/units.micro/units.V:.4g}muV")
+                quit()
 
         
         
