@@ -150,7 +150,7 @@ class TDR_Simulation(simulation.simulation):
                 print(f"channel {channel_id}: bandwidth = {bandwidth/units.MHz:.1f}MHz, new Vrms = {Vrms_per_channel_copy[station.get_id()][channel_id]/units.micro/units.V:.4g}muV")
                 tvrms = np.std(station.get_channel(channel_id).get_trace())
                 print(f"\trealized Vrms = {tvrms/units.micro/units.V:.4g}muV")
-                quit()
+        quit()
 
         
         
