@@ -1074,8 +1074,8 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         if thresholds is None:
             if is_gen2:
                 # use pre-calculated noise values for Gen2
-                GEN2_DEEP_NOISE = 5.627 * units.muV
-                GEN2_SHALLOW_NOISE = 3.789 * units.muV
+                GEN2_DEEP_NOISE = 5.627 * units.micro * units.V
+                GEN2_SHALLOW_NOISE = 3.789 * units.micro * units.V
                 if station_depth == "deep":
                     pre_amp_vrms = {ch: GEN2_DEEP_NOISE for ch in PRIMARY_CHANNELS}
                 elif station_depth == "shallow":
