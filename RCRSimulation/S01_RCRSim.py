@@ -1078,8 +1078,10 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                 GEN2_SHALLOW_NOISE = 3.789 * units.micro * units.V
                 if station_depth == "deep":
                     pre_amp_vrms = {ch: GEN2_DEEP_NOISE for ch in PRIMARY_CHANNELS}
+                    post_amp_vrms = {ch: GEN2_DEEP_NOISE for ch in PRIMARY_CHANNELS}
                 elif station_depth == "shallow":
                     pre_amp_vrms = {ch: GEN2_SHALLOW_NOISE for ch in PRIMARY_CHANNELS}
+                    post_amp_vrms = {ch: GEN2_SHALLOW_NOISE for ch in PRIMARY_CHANNELS}
             else:
                 pre_amp_vrms, post_amp_vrms = calculateNoisePerChannel(
                     det,
