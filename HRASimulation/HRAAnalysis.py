@@ -985,10 +985,10 @@ if __name__ == "__main__":
                     f.write(f"{combo_str} : {rate:.5e}, {error:.5e}\n")
 
     ic(f"\n{'='*20} All Analyses Complete {'='*20}")
-    quit()
+    # quit()
 
     # Skip for now
-    if False:
+    if True:
         for station_id in direct_event_rate:
             imshowRate(direct_trigger_rate_dict[station_id], f'Direct Trigger Rate for Station {station_id}', f'{save_folder}direct_trigger_rate_{station_id}.png', colorbar_label='Trigger Rate')
             imshowRate(direct_event_rate[station_id], f'Direct Event Rate for Station {station_id}', f'{save_folder}direct_event_rate_{station_id}.png', colorbar_label=f'Evts/yr, Sum {np.nansum(direct_event_rate[station_id]):.3f}')
