@@ -297,12 +297,25 @@ def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bin
                 
                 if overlay['style'].get('color_by_weight'):
                     weights = overlay_data['weights']
+                    if weights.size == 0:
+                        continue
+                    valid_weight_mask = weights > 0
+                    if not np.any(valid_weight_mask):
+                        continue
+                    weights = weights[valid_weight_mask]
+                    x_data = x_data[valid_weight_mask]
+                    y_data = y_data[valid_weight_mask]
                     sort_indices = np.argsort(weights)
                     x_data, y_data, weights = x_data[sort_indices], y_data[sort_indices], weights[sort_indices]
-                    
+
+                    min_weight = weights.min()
+                    max_weight = weights.max()
+                    if min_weight == max_weight:
+                        max_weight *= 1.0001
+
                     # Enhanced weight visualization with better color mapping and size scaling
-                    norm = colors.LogNorm(vmin=weights.min(), vmax=weights.max())
-                    scatter = ax.scatter(x_data, y_data, c=weights, cmap='viridis', norm=norm, 
+                    norm = colors.LogNorm(vmin=min_weight, vmax=max_weight)
+                    scatter = ax.scatter(x_data, y_data, c=weights, cmap='viridis', norm=norm,
                                        alpha=overlay['style']['alpha'], s=overlay['style']['s'])
                     
                     # Add colorbar for weight visualization if this is the first overlay
@@ -335,6 +348,87 @@ def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bin
             ax.legend(handles=legend_elements, loc='upper left')
 
     return im
+
+
+def subset_data_by_mask(data_dict, mask):
+    """Return a shallow copy of data_dict filtered by boolean mask."""
+    return {key: data_dict[key][mask] for key in data_dict}
+
+
+def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_folder, date, rcr_cut_string):
+    """Create simulation-only comparison plots with and without RCR cuts."""
+    ic("Generating simulation-only comparison plots (no cuts)...")
+
+    base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Direct Sim (Hist)'}
+    reflected_overlay = {'data': sim_reflected, 'label': 'Reflected Sim (Weighted)', 'style': {'s': 12, 'alpha': 0.6, 'color_by_weight': True}}
+
+    fig_raw, axs_raw = plt.subplots(2, 2, figsize=(13, 15))
+    fig_raw.suptitle(f'Simulation Comparison: Direct vs Reflected (No Cuts)\n{rcr_cut_string}', fontsize=14)
+    im_raw = plot_2x2_grid(fig_raw, axs_raw, base_config, cuts, overlays=[reflected_overlay], hist_bins_dict=hist_bins)
+
+    direct_stats_rcr = calculate_cut_stats_table(sim_direct, cuts, True, "Direct Sim (RCR Cuts)", cut_type='rcr')
+    reflected_stats_rcr = calculate_cut_stats_table(sim_reflected, cuts, True, "Reflected Sim (RCR Cuts)", cut_type='rcr')
+    direct_stats_back = calculate_cut_stats_table(sim_direct, cuts, True, "Direct Sim (Backlobe Cuts)", cut_type='backlobe')
+    reflected_stats_back = calculate_cut_stats_table(sim_reflected, cuts, True, "Reflected Sim (Backlobe Cuts)", cut_type='backlobe')
+    stats_text_raw = f"{direct_stats_rcr}\n\n{reflected_stats_rcr}\n\n{direct_stats_back}\n\n{reflected_stats_back}"
+    fig_raw.text(0.5, 0.01, stats_text_raw, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+
+    if im_raw:
+        fig_raw.tight_layout(rect=[0, 0.18, 0.9, 0.95])
+        cbar_ax_raw = fig_raw.add_axes([0.91, 0.2, 0.02, 0.7])
+        fig_raw.colorbar(im_raw, cax=cbar_ax_raw, label='Direct Weighted Counts (Evts/Yr)')
+    else:
+        fig_raw.tight_layout(rect=[0, 0.18, 1, 0.95])
+    plt.savefig(f'{plot_folder}SimOnly_Direct_vs_Reflected_NoCuts_{date}.png')
+    plt.close(fig_raw)
+
+    ic("Generating simulation-only comparison plots (RCR all cuts)...")
+    direct_masks_rcr = get_all_cut_masks(sim_direct, cuts, cut_type='rcr')
+    reflected_masks_rcr = get_all_cut_masks(sim_reflected, cuts, cut_type='rcr')
+    direct_rcr_pass = subset_data_by_mask(sim_direct, direct_masks_rcr['all_cuts'])
+    reflected_rcr_pass = subset_data_by_mask(sim_reflected, reflected_masks_rcr['all_cuts'])
+
+    base_config_cuts = {'data': direct_rcr_pass, 'type': 'hist', 'label': 'Direct Sim (Hist, Pass All Cuts)'}
+    reflected_overlay_cuts = {
+        'data': reflected_rcr_pass,
+        'label': 'Reflected Sim (Weighted, Pass All Cuts)',
+        'style': {'s': 12, 'alpha': 0.6, 'color_by_weight': True}
+    }
+
+    fig_cut, axs_cut = plt.subplots(2, 2, figsize=(13, 15))
+    fig_cut.suptitle(f'Simulation Comparison: Direct vs Reflected (RCR All Cuts)\n{rcr_cut_string}', fontsize=14)
+    im_cut = plot_2x2_grid(fig_cut, axs_cut, base_config_cuts, cuts, overlays=[reflected_overlay_cuts], hist_bins_dict=hist_bins)
+
+    direct_total_weight = np.sum(sim_direct.get('weights', np.array([])))
+    direct_pass_weight = np.sum(direct_rcr_pass.get('weights', np.array([])))
+    direct_fraction = direct_pass_weight / direct_total_weight if direct_total_weight > 0 else 0.0
+    direct_pass_count = direct_rcr_pass.get('snr', np.array([])).size
+
+    reflected_total_weight = np.sum(sim_reflected.get('weights', np.array([])))
+    reflected_pass_weight = np.sum(reflected_rcr_pass.get('weights', np.array([])))
+    reflected_fraction = reflected_pass_weight / reflected_total_weight if reflected_total_weight > 0 else 0.0
+    reflected_pass_count = reflected_rcr_pass.get('snr', np.array([])).size
+
+    stats_text_cut = (
+        f"Direct Sim (Pass All RCR Cuts):\n"
+        f"- Total Weight: {direct_total_weight:>10.3e}\n"
+        f"- Weight After Cuts: {direct_pass_weight:>10.3e} ({direct_fraction:>.2%})\n"
+        f"- Events After Cuts: {direct_pass_count}\n\n"
+        f"Reflected Sim (Pass All RCR Cuts):\n"
+        f"- Total Weight: {reflected_total_weight:>10.3e}\n"
+        f"- Weight After Cuts: {reflected_pass_weight:>10.3e} ({reflected_fraction:>.2%})\n"
+        f"- Events After Cuts: {reflected_pass_count}"
+    )
+    fig_cut.text(0.5, 0.01, stats_text_cut, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+
+    if im_cut:
+        fig_cut.tight_layout(rect=[0, 0.18, 0.9, 0.95])
+        cbar_ax_cut = fig_cut.add_axes([0.91, 0.2, 0.02, 0.7])
+        fig_cut.colorbar(im_cut, cax=cbar_ax_cut, label='Direct Weighted Counts (Evts/Yr)')
+    else:
+        fig_cut.tight_layout(rect=[0, 0.18, 1, 0.95])
+    plt.savefig(f'{plot_folder}SimOnly_Direct_vs_Reflected_AllCuts_{date}.png')
+    plt.close(fig_cut)
 
 def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date):
     """
@@ -487,6 +581,8 @@ if __name__ == "__main__":
         'chi_vs_chi': [linear_bins, linear_bins], 'snr_vs_chidiff': [log_bins, diff_bins]
     }
     
+    plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_folder, date, rcr_cut_string)
+
     # --- Main Loop for Individual and Summed Stations ---
     all_stations_data = {key: [] for key in ['snr', 'Chi2016', 'ChiRCR']}
     all_stations_event_ids = []
