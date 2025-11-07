@@ -131,7 +131,7 @@ def parse_args() -> argparse.Namespace:
         "--sin2-step",
         type=float,
         default=0.2,
-        help="Bin width in sin^2(zenith) used for zenith binning (default: 0.1).",
+        help="Bin width in sin^2(zenith) used for zenith binning (default: 0.2).",
     )
     parser.add_argument(
         "--azimuth-bins",
@@ -254,7 +254,7 @@ def build_bins(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray, np.nda
     sin2_bins = np.arange(0.0, 1.0 + args.sin2_step, args.sin2_step)
     sin2_bins[-1] = 1.0  # ensure the last edge is exactly 1
 
-    angle_bins = np.rad2deg(np.sqrt(np.arcsin(np.clip(sin2_bins, 0.0, 1.0))))
+    angle_bins = np.rad2deg(np.arcsin(np.sqrt(np.clip(sin2_bins, 0.0, 1.0))))
     return energy_bins, sin2_bins, angle_bins
 
 
