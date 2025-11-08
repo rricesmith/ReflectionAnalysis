@@ -1,6 +1,6 @@
 """Convert Stn51 .nur files into plot and pickle summaries of their traces."""
 from __future__ import annotations
-
+import os
 import pickle
 from pathlib import Path
 from typing import Dict, List
@@ -17,9 +17,9 @@ STATION_ID = 51
 SOURCE_DIR = Path(
     "/dfs8/sbarwick_lab/ariannaproject/Tingwei_liu/CR_Template/CR_NoBL_Template_final/"
 )
-OUTPUT_ROOT = "TemplateTesting"
+OUTPUT_ROOT = "TemplateTesting/"
 PLOT_DIR = OUTPUT_ROOT + "plots/"
-PICKLE_DIR = OUTPUT_ROOT + "pickles"
+PICKLE_DIR = OUTPUT_ROOT + "pickles/"
 
 
 def _collect_events(nur_file: Path) -> List[Dict[str, object]]:
@@ -93,8 +93,9 @@ def _plot_events(events: List[Dict[str, object]], nur_file: Path, output_path: P
 
 
 def main() -> None:
-    PLOT_DIR.mkdir(parents=True, exist_ok=True)
-    PICKLE_DIR.mkdir(parents=True, exist_ok=True)
+    os.mkdir(OUTPUT_ROOT, exist_ok=True)
+    os.mkdir(PLOT_DIR, exist_ok=True)
+    os.mkdir(PICKLE_DIR, exist_ok=True)
 
     if not SOURCE_DIR.is_dir():
         raise FileNotFoundError(f"Source directory not found: {SOURCE_DIR}")
@@ -117,11 +118,11 @@ def main() -> None:
             "events": events,
         }
 
-        pickle_path = PICKLE_DIR / f"{nur_file.stem}.pkl"
-        with pickle_path.open("wb") as fout:
+        pickle_path = PICKLE_DIR + f"{nur_file.stem}.pkl"
+        with open(pickle_path, "wb") as fout:
             pickle.dump(pickle_payload, fout)
 
-        plot_path = PLOT_DIR / f"{nur_file.stem}.png"
+        plot_path = PLOT_DIR + f"{nur_file.stem}.png"
         _plot_events(events, nur_file, plot_path)
 
         print(f"  Saved {pickle_path.name} and {plot_path.name}")
