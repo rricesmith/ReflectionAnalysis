@@ -93,9 +93,9 @@ def _plot_events(events: List[Dict[str, object]], nur_file: Path, output_path: P
 
 
 def main() -> None:
-    os.mkdir(OUTPUT_ROOT, exist_ok=True)
-    os.mkdir(PLOT_DIR, exist_ok=True)
-    os.mkdir(PICKLE_DIR, exist_ok=True)
+    os.makedirs(OUTPUT_ROOT, exist_ok=True)
+    os.makedirs(PLOT_DIR, exist_ok=True)
+    os.makedirs(PICKLE_DIR, exist_ok=True)
 
     if not SOURCE_DIR.is_dir():
         raise FileNotFoundError(f"Source directory not found: {SOURCE_DIR}")
