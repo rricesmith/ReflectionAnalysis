@@ -18,8 +18,8 @@ SOURCE_DIR = Path(
     "/dfs8/sbarwick_lab/ariannaproject/Tingwei_liu/CR_Template/CR_NoBL_Template_final/"
 )
 OUTPUT_ROOT = "TemplateTesting"
-PLOT_DIR = OUTPUT_ROOT / "plots"
-PICKLE_DIR = OUTPUT_ROOT / "pickles"
+PLOT_DIR = OUTPUT_ROOT + "plots/"
+PICKLE_DIR = OUTPUT_ROOT + "pickles"
 
 
 def _collect_events(nur_file: Path) -> List[Dict[str, object]]:
