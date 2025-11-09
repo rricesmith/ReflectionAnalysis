@@ -67,8 +67,18 @@ def compute_station_chi_delta(event, station_id):
     return None
 
 
-def collect_pair_metrics(event_list, weight_name, sigma, sigma_52, scenario):
+def collect_pair_metrics(
+    event_list,
+    weight_name,
+    sigma,
+    sigma_52,
+    scenario,
+    direct_exclusions=None,
+    reflected_exclusions=None,
+):
     """Collect average SNR (x), Chi-difference spread (y), and weights for each station pair."""
+    direct_exclusions = set(direct_exclusions or [])
+    reflected_exclusions = set(reflected_exclusions or [])
     xs, ys, ws = [], [], []
 
     for event in event_list:
@@ -78,17 +88,21 @@ def collect_pair_metrics(event_list, weight_name, sigma, sigma_52, scenario):
         if event_weight is None or event_weight <= 0:
             continue
 
-        direct_ids = list(event.directTriggers(sigma=sigma, sigma_52=sigma_52))
-        reflected_ids = list(event.reflectedTriggers(sigma=sigma, sigma_52=sigma_52))
+        direct_ids = [
+            station
+            for station in event.directTriggers(sigma=sigma, sigma_52=sigma_52)
+            if isinstance(station, int) and station not in direct_exclusions
+        ]
+        reflected_ids = [
+            station
+            for station in event.reflectedTriggers(sigma=sigma, sigma_52=sigma_52)
+            if isinstance(station, int) and station not in reflected_exclusions
+        ]
 
         if scenario == "direct":
             candidate_pairs = list(itertools.combinations(direct_ids, 2))
-        elif scenario == "refl":
-            unique_ids = list(dict.fromkeys(direct_ids + reflected_ids))
-            candidate_pairs = [
-                combo for combo in itertools.combinations(unique_ids, 2)
-                if (combo[0] in reflected_ids) or (combo[1] in reflected_ids)
-            ]
+        elif scenario == "direct_reflected":
+            candidate_pairs = [(d, r) for d in direct_ids for r in reflected_ids]
         else:
             raise ValueError(f"Unknown scenario '{scenario}'")
 
@@ -131,12 +145,11 @@ def collect_pair_metrics(event_list, weight_name, sigma, sigma_52, scenario):
     return np.array([]), np.array([]), np.array([])
 
 
-def plot_scatter(direct_data, refl_data, output_path):
-    x_direct, y_direct, w_direct = direct_data
-    x_refl, y_refl, w_refl = refl_data
+def plot_single_scatter(data, cmap, marker, label, title, output_path):
+    x_vals, y_vals, weights = data
 
-    if x_direct.size == 0 and x_refl.size == 0:
-        ic("No coincidence pairs found; skipping plot.")
+    if x_vals.size == 0:
+        ic(f"No coincidence pairs found for '{label}'; skipping {output_path}.")
         return
 
     fig, ax = plt.subplots(figsize=(9, 6))
@@ -145,16 +158,9 @@ def plot_scatter(direct_data, refl_data, output_path):
     ax.set_xlabel('Average SNR')
     ax.set_ylabel('|Δ(ChiRCR - Chi2016)| between stations')
 
-    weight_concat = []
-    if w_direct.size > 0:
-        weight_concat.append(w_direct)
-    if w_refl.size > 0:
-        weight_concat.append(w_refl)
-    weight_concat = np.concatenate(weight_concat) if weight_concat else np.array([])
-
-    if weight_concat.size > 0:
-        w_min = np.min(weight_concat)
-        w_max = np.max(weight_concat)
+    if weights.size > 0:
+        w_min = np.min(weights)
+        w_max = np.max(weights)
         if w_max > w_min > 0:
             norm = colors.LogNorm(vmin=w_min, vmax=w_max)
         else:
@@ -162,52 +168,28 @@ def plot_scatter(direct_data, refl_data, output_path):
     else:
         norm = None
 
-    divider = make_axes_locatable(ax)
-    scatter_direct = None
-    scatter_refl = None
-
-    if x_refl.size > 0:
-        order = np.argsort(w_refl)
-        scatter_refl = ax.scatter(
-            x_refl[order],
-            y_refl[order],
-            c=w_refl[order],
-            cmap='Oranges',
-            norm=norm,
-            marker='^',
-            edgecolors='none',
-            alpha=0.9,
-            label='Pairs with reflection',
-        )
-
-    if x_direct.size > 0:
-        order = np.argsort(w_direct)
-        scatter_direct = ax.scatter(
-            x_direct[order],
-            y_direct[order],
-            c=w_direct[order],
-            cmap='Blues',
-            norm=norm,
-            marker='o',
-            edgecolors='none',
-            alpha=0.9,
-            label='Direct-only pairs',
-        )
-
-    if scatter_refl is not None:
-        cax_refl = divider.append_axes('right', size='3%', pad=0.05)
-        cbar_refl = fig.colorbar(scatter_refl, cax=cax_refl)
-        cbar_refl.set_label('Weight (Evts/Yr) — Reflection')
-
-    if scatter_direct is not None:
-        pad_direct = 0.35 if scatter_refl is not None else 0.05
-        cax_direct = divider.append_axes('right', size='3%', pad=pad_direct)
-        cbar_direct = fig.colorbar(scatter_direct, cax=cax_direct)
-        cbar_direct.set_label('Weight (Evts/Yr) — Direct')
+    order = np.argsort(weights) if weights.size > 0 else np.arange(x_vals.size)
+    points = ax.scatter(
+        x_vals[order],
+        y_vals[order],
+        c=weights[order] if weights.size > 0 else None,
+        cmap=cmap,
+        norm=norm,
+        marker=marker,
+        edgecolors='none',
+        alpha=0.9,
+        label=label,
+    )
 
     ax.legend(loc='upper left')
     ax.grid(True, which='both', linestyle='--', alpha=0.3)
-    ax.set_title('Chi Difference Spread vs Average SNR (2-Fold Coincidences)')
+    ax.set_title(title)
+
+    if weights.size > 0:
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes('right', size='3%', pad=0.08)
+        cbar = fig.colorbar(points, cax=cax)
+        cbar.set_label('Weight (Evts/Yr)')
 
     fig.tight_layout()
     fig.savefig(output_path)
@@ -255,6 +237,8 @@ if __name__ == "__main__":
     direct_bad_stations = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
     refl_bad_stations = [32, 52, 132, 152]
     reflected_stations = [113, 114, 115, 117, 118, 119, 130]
+    direct_exclusions = [32, 52]
+    reflected_exclusions = [132, 152]
 
     if ensure_coincidence_weight(
         hra_events,
@@ -286,20 +270,42 @@ if __name__ == "__main__":
         sigma=plot_sigma,
         sigma_52=sigma_52,
         scenario='direct',
+        direct_exclusions=direct_exclusions,
+        reflected_exclusions=reflected_exclusions,
     )
 
-    ic("Collecting reflection-required pair metrics...")
+    ic("Collecting direct-reflected pair metrics...")
     refl_data = collect_pair_metrics(
         hra_events,
         weight_name=refl_weight,
         sigma=plot_sigma,
         sigma_52=sigma_52,
-        scenario='refl',
+        scenario='direct_reflected',
+        direct_exclusions=direct_exclusions,
+        reflected_exclusions=reflected_exclusions,
     )
 
-    output_file = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter.png')
-    plot_scatter(direct_data, refl_data, output_file)
-    ic(f"Saved scatter plot to {output_file}")
+    direct_output = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter_direct.png')
+    plot_single_scatter(
+        direct_data,
+        cmap='Blues',
+        marker='o',
+        label='Direct-only pairs',
+        title='Chi Difference Spread vs Average SNR (Direct Pairs)',
+        output_path=direct_output,
+    )
+    ic(f"Saved direct pair scatter plot to {direct_output}")
+
+    refl_output = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter_direct_reflected.png')
+    plot_single_scatter(
+        refl_data,
+        cmap='Oranges',
+        marker='^',
+        label='Direct-reflected pairs',
+        title='Chi Difference Spread vs Average SNR (Direct-Reflected Pairs)',
+        output_path=refl_output,
+    )
+    ic(f"Saved direct-reflected pair scatter plot to {refl_output}")
 
     if weights_added:
         ic("New weights added; resaving HRA event list...")
