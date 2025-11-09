@@ -285,23 +285,55 @@ def compute_event_pair_summary(event_id, event_details, direct_exclusions, refle
     if len(station_metrics) < 2:
         return None
 
-    best_record = None
-    max_spread = -np.inf
+    pair_records = []
     for station_a, station_b in itertools.combinations(station_metrics, 2):
         delta_spread = abs(station_a['chi_delta'] - station_b['chi_delta'])
-        if delta_spread > max_spread:
-            max_spread = delta_spread
-            avg_snr = 0.5 * (station_a['snr'] + station_b['snr'])
-            best_record = {
-                'event_id': event_id,
-                'station_a': station_a,
-                'station_b': station_b,
-                'avg_snr': avg_snr,
-                'delta_spread': delta_spread,
-                'stations': station_metrics,
-            }
+        avg_snr = 0.5 * (station_a['snr'] + station_b['snr'])
+        pair_records.append({
+            'station_a': station_a,
+            'station_b': station_b,
+            'avg_snr': avg_snr,
+            'delta_spread': delta_spread,
+        })
 
-    return best_record
+    if not pair_records:
+        return None
+
+    max_pair = max(pair_records, key=lambda rec: rec['delta_spread'])
+    min_pair = min(pair_records, key=lambda rec: rec['delta_spread'])
+    event_avg_snr = float(np.mean([s['snr'] for s in station_metrics])) if station_metrics else None
+
+    summary = {
+        'event_id': event_id,
+        'station_a': max_pair['station_a'],
+        'station_b': max_pair['station_b'],
+        'avg_snr': max_pair['avg_snr'],
+        'delta_spread': max_pair['delta_spread'],
+        'stations': station_metrics,
+        'max_pair': max_pair,
+        'min_pair': min_pair,
+        'event_avg_snr': event_avg_snr,
+    }
+
+    return summary
+
+
+def resolve_event_anchor_snr(summary_record):
+    """Resolve a representative SNR for plotting validation events with station counts > 2."""
+    candidates = [
+        summary_record.get('event_avg_snr'),
+        summary_record.get('avg_snr'),
+        summary_record.get('max_pair', {}).get('avg_snr') if isinstance(summary_record.get('max_pair'), dict) else None,
+    ]
+
+    for candidate in candidates:
+        try:
+            value = float(candidate)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(value):
+            return value
+    return None
 
 
 def build_validation_pairs(events_dict, event_ids, direct_exclusions, reflected_exclusions):
@@ -332,10 +364,19 @@ def build_validation_pairs(events_dict, event_ids, direct_exclusions, reflected_
             continue
 
         summaries.append(summary)
-        ic(
-            f"Validation event {event_id}: stations {summary['station_a']['station_id']} & {summary['station_b']['station_id']} -> "
+        max_text = (
+            f"max pair {summary['station_a']['station_id']} & {summary['station_b']['station_id']} "
             f"avg SNR {summary['avg_snr']:.2f}, |Δ| {summary['delta_spread']:.3f}"
         )
+        min_pair = summary.get('min_pair')
+        if min_pair is not None:
+            min_text = (
+                f"min pair {min_pair['station_a']['station_id']} & {min_pair['station_b']['station_id']} "
+                f"avg SNR {min_pair['avg_snr']:.2f}, |Δ| {min_pair['delta_spread']:.3f}"
+            )
+            ic(f"Validation event {event_id}: {max_text}; {min_text}")
+        else:
+            ic(f"Validation event {event_id}: {max_text}")
 
     return summaries
 
@@ -354,19 +395,73 @@ def plot_validation_pairs(pairs, special_event_id, output_path, delta_cut):
     ax.grid(True, which='both', linestyle='--', alpha=0.3)
     ax.axhline(delta_cut, color='dimgray', linestyle='--', linewidth=1, label=f'Delta cut ({delta_cut})')
 
-    special_plotted = False
-    regular_plotted = False
+    category_plotted = set()
 
     for record in pairs:
-        is_special = record['event_id'] == special_event_id
-        marker = '*' if is_special else 'o'
-        color = 'crimson' if is_special else 'steelblue'
-        size = 160 if is_special else 80
+        num_stations = len(record.get('stations', []))
+        if num_stations > 2:
+            min_pair = record.get('min_pair')
+            max_pair = record.get('max_pair')
+            if min_pair is None or max_pair is None:
+                ic(f"Validation event {record['event_id']} missing min/max pair details; skipping range plot.")
+                continue
 
-        ax.scatter(record['avg_snr'], record['delta_spread'], marker=marker, c=color, s=size,
-                   edgecolors='none', alpha=0.85,
-                   label='Special event' if is_special and not special_plotted else (
-                       'Validation events' if not is_special and not regular_plotted else None))
+            x_anchor = resolve_event_anchor_snr(record)
+            if x_anchor is None:
+                ic(f"Validation event {record['event_id']} lacks a valid SNR reference; skipping range plot.")
+                continue
+
+            y_min = float(min_pair.get('delta_spread', 0.0))
+            y_max = float(max_pair.get('delta_spread', 0.0))
+            if y_min > y_max:
+                y_min, y_max = y_max, y_min
+            category = 'Validation n>2 (range)'
+            label = category if category not in category_plotted else None
+
+            scatter_vals = ax.scatter(
+                [x_anchor, x_anchor],
+                [y_min, y_max],
+                marker='o',
+                c='grey',
+                s=90,
+                edgecolors='none',
+                alpha=0.85,
+                label=label,
+            )
+            ax.vlines(x_anchor, y_min, y_max, colors='grey', linewidth=1.5, alpha=0.75)
+            ax.annotate(
+                str(record['event_id']),
+                (x_anchor, y_max),
+                textcoords='offset points',
+                xytext=(4, 6),
+                fontsize=9,
+            )
+
+            if label is not None:
+                category_plotted.add(category)
+            continue
+        elif record['event_id'] == special_event_id:
+            category = 'Validation special event'
+            marker = '*'
+            color = 'crimson'
+            size = 170
+        else:
+            category = 'Validation n≤2'
+            marker = 'o'
+            color = 'steelblue'
+            size = 110
+
+        label = category if category not in category_plotted else None
+        ax.scatter(
+            record['avg_snr'],
+            record['delta_spread'],
+            marker=marker,
+            c=color,
+            s=size,
+            edgecolors='none',
+            alpha=0.85,
+            label=label,
+        )
 
         ax.annotate(
             str(record['event_id']),
@@ -376,12 +471,10 @@ def plot_validation_pairs(pairs, special_event_id, output_path, delta_cut):
             fontsize=9,
         )
 
-        if is_special:
-            special_plotted = True
-        else:
-            regular_plotted = True
+        if label is not None:
+            category_plotted.add(category)
 
-    ax.set_title('Validation Event Chi Difference Spread (Max Pair)')
+    ax.set_title('Validation Event Chi Difference Spread (range shown for n>2)')
     ax.legend(loc='upper left')
 
     fig.tight_layout()
@@ -442,18 +535,172 @@ def plot_special_station_pairs(event_summary, special_station_id, output_path, d
     plt.close(fig)
     ic(f"Saved special station comparison plot to {output_path}")
 
-def plot_single_scatter(data, cmap, marker, label, title, output_path):
+
+def format_weight_label(base_label, kept_weight, total_weight, delta_cut):
+    """Format the legend label with the percentage of weight above the delta cut."""
+    if total_weight and total_weight > 0:
+        percentage = 100.0 * kept_weight / total_weight
+    else:
+        percentage = 0.0
+    return f"{base_label} (>Δ{delta_cut:.2f}: {percentage:.2f}% weight)"
+
+
+def plot_simulation_with_validation(
+    sim_data,
+    legend_label,
+    title,
+    output_path,
+    cmap,
+    marker,
+    delta_cut,
+    validation_pairs,
+    special_event_id,
+):
+    fig, ax, scatter_sim, cut_line = plot_single_scatter(
+        sim_data,
+        cmap=cmap,
+        marker=marker,
+        legend_label=legend_label,
+        title=title,
+        output_path=None,
+        delta_cut=delta_cut,
+        add_colorbar=True,
+        add_legend=False,
+    )
+
+    if fig is None or ax is None:
+        ic(f"Skipping validation overlay plot '{output_path}' due to empty simulation data.")
+        return
+
+    handles = []
+    labels = []
+    if scatter_sim is not None:
+        handles.append(scatter_sim)
+        labels.append(legend_label)
+    if cut_line is not None:
+        handles.append(cut_line)
+        labels.append(cut_line.get_label())
+
+    category_handles = {}
+    for record in validation_pairs:
+        num_stations = len(record.get('stations', []))
+        if num_stations > 2:
+            min_pair = record.get('min_pair')
+            max_pair = record.get('max_pair')
+            if min_pair is None or max_pair is None:
+                ic(f"Validation event {record['event_id']} missing min/max pair details; skipping range overlay.")
+                continue
+
+            x_anchor = resolve_event_anchor_snr(record)
+            if x_anchor is None:
+                ic(f"Validation event {record['event_id']} lacks a valid SNR reference; skipping range overlay.")
+                continue
+
+            y_min = float(min_pair.get('delta_spread', 0.0))
+            y_max = float(max_pair.get('delta_spread', 0.0))
+            if y_min > y_max:
+                y_min, y_max = y_max, y_min
+            category = 'Validation n>2 (range)'
+            label = category if category not in category_handles else None
+
+            scatter_val = ax.scatter(
+                [x_anchor, x_anchor],
+                [y_min, y_max],
+                marker='o',
+                c='grey',
+                s=80,
+                edgecolors='none',
+                alpha=0.9,
+                label=label,
+            )
+            ax.vlines(x_anchor, y_min, y_max, colors='grey', linewidth=1.5, alpha=0.75)
+            ax.annotate(
+                str(record['event_id']),
+                (x_anchor, y_max),
+                textcoords='offset points',
+                xytext=(4, 6),
+                fontsize=9,
+            )
+
+            if category not in category_handles and label is not None:
+                category_handles[category] = scatter_val
+                handles.append(scatter_val)
+                labels.append(category)
+            continue
+        elif record['event_id'] == special_event_id:
+            category = 'Validation special event'
+            color = 'crimson'
+            marker_v = '*'
+            size = 160
+        else:
+            category = 'Validation n≤2'
+            color = 'steelblue'
+            marker_v = 'o'
+            size = 100
+
+        label = category if category not in category_handles else None
+        scatter_val = ax.scatter(
+            record['avg_snr'],
+            record['delta_spread'],
+            marker=marker_v,
+            c=color,
+            s=size,
+            edgecolors='none',
+            alpha=0.9,
+            label=label,
+        )
+
+        ax.annotate(
+            str(record['event_id']),
+            (record['avg_snr'], record['delta_spread']),
+            textcoords='offset points',
+            xytext=(4, 6),
+            fontsize=9,
+        )
+
+        if category not in category_handles and label is not None:
+            category_handles[category] = scatter_val
+            handles.append(scatter_val)
+            labels.append(category)
+
+    ax.legend(handles, labels, loc='upper left')
+    fig.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
+    ic(f"Saved validation overlay scatter plot to {output_path}")
+
+def plot_single_scatter(
+    data,
+    cmap,
+    marker,
+    legend_label,
+    title,
+    output_path,
+    delta_cut,
+    ax=None,
+    add_colorbar=True,
+    add_legend=True,
+):
+    """Plot weighted simulation scatter with optional reuse of an existing axis."""
+
     x_vals, y_vals, weights = data
 
     if x_vals.size == 0:
-        ic(f"No coincidence pairs found for '{label}'; skipping {output_path}.")
-        return
+        ic(f"No coincidence pairs found for '{legend_label}'; skipping {output_path}.")
+        return None, None, None, None
 
-    fig, ax = plt.subplots(figsize=(9, 6))
+    own_fig = ax is None
+    if own_fig:
+        fig, ax = plt.subplots(figsize=(9, 6))
+    else:
+        fig = ax.figure
+
     ax.set_xscale('log')
     ax.set_xlim(3, 100)
     ax.set_xlabel('Average SNR')
     ax.set_ylabel('|Δ(ChiRCR - Chi2016)| between stations')
+    ax.grid(True, which='both', linestyle='--', alpha=0.3)
+    ax.set_title(title)
 
     if weights.size > 0:
         w_min = np.min(weights)
@@ -475,22 +722,37 @@ def plot_single_scatter(data, cmap, marker, label, title, output_path):
         marker=marker,
         edgecolors='none',
         alpha=0.9,
-        label=label,
+        label=legend_label,
     )
 
-    ax.legend(loc='upper left')
-    ax.grid(True, which='both', linestyle='--', alpha=0.3)
-    ax.set_title(title)
+    cut_line = None
+    if delta_cut is not None:
+        cut_line = ax.axhline(
+            delta_cut,
+            color='dimgray',
+            linestyle='--',
+            linewidth=1,
+            label=f'Δ cut ({delta_cut})',
+        )
 
-    if weights.size > 0:
+    if add_colorbar and weights.size > 0:
         divider = make_axes_locatable(ax)
         cax = divider.append_axes('right', size='3%', pad=0.08)
         cbar = fig.colorbar(points, cax=cax)
         cbar.set_label('Weight (Evts/Yr)')
 
-    fig.tight_layout()
-    fig.savefig(output_path)
-    plt.close(fig)
+    if add_legend:
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels, loc='upper left')
+
+    if own_fig:
+        fig.tight_layout()
+        if output_path is not None:
+            fig.savefig(output_path)
+            plt.close(fig)
+            return None, None, None, None
+
+    return fig, ax, points, cut_line
 
 
 def save_event_list(event_list, path):
@@ -569,8 +831,8 @@ if __name__ == "__main__":
         sigma=plot_sigma,
         sigma_52=sigma_52,
         scenario='direct',
-    direct_exclusions=direct_exclusions_set,
-    reflected_exclusions=reflected_exclusions_set,
+        direct_exclusions=direct_exclusions_set,
+        reflected_exclusions=reflected_exclusions_set,
     )
 
     ic("Collecting direct-reflected pair metrics...")
@@ -580,8 +842,8 @@ if __name__ == "__main__":
         sigma=plot_sigma,
         sigma_52=sigma_52,
         scenario='direct_reflected',
-    direct_exclusions=direct_exclusions_set,
-    reflected_exclusions=reflected_exclusions_set,
+        direct_exclusions=direct_exclusions_set,
+        reflected_exclusions=reflected_exclusions_set,
     )
 
     direct_filtered, direct_kept_weight, direct_total_weight = apply_delta_cut(direct_data, DELTA_CUT)
@@ -606,26 +868,36 @@ if __name__ == "__main__":
         ic("Direct-reflected pairs have zero total weight; skipping percentage report.")
 
     direct_output = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter_direct.png')
-    plot_single_scatter(
-        direct_filtered,
-        cmap='Blues',
-        marker='o',
-        label='Direct-only pairs',
-        title='Chi Difference Spread vs Average SNR (Direct Pairs)',
-        output_path=direct_output,
-    )
-    ic(f"Saved direct pair scatter plot to {direct_output}")
+    direct_label = format_weight_label('Direct-only pairs', direct_kept_weight, direct_total_weight, DELTA_CUT)
+    if direct_filtered[0].size > 0:
+        plot_single_scatter(
+            direct_filtered,
+            cmap='Blues',
+            marker='o',
+            legend_label=direct_label,
+            title='Chi Difference Spread vs Average SNR (Direct Pairs)',
+            output_path=direct_output,
+            delta_cut=DELTA_CUT,
+        )
+        ic(f"Saved direct pair scatter plot to {direct_output}")
+    else:
+        ic("No direct pairs exceed the delta cut; skipping direct scatter plot.")
 
     refl_output = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter_direct_reflected.png')
-    plot_single_scatter(
-        refl_filtered,
-        cmap='Oranges',
-        marker='^',
-        label='Direct-reflected pairs',
-        title='Chi Difference Spread vs Average SNR (Direct-Reflected Pairs)',
-        output_path=refl_output,
-    )
-    ic(f"Saved direct-reflected pair scatter plot to {refl_output}")
+    refl_label = format_weight_label('Direct-reflected pairs', refl_kept_weight, refl_total_weight, DELTA_CUT)
+    if refl_filtered[0].size > 0:
+        plot_single_scatter(
+            refl_filtered,
+            cmap='Oranges',
+            marker='^',
+            legend_label=refl_label,
+            title='Chi Difference Spread vs Average SNR (Direct-Reflected Pairs)',
+            output_path=refl_output,
+            delta_cut=DELTA_CUT,
+        )
+        ic(f"Saved direct-reflected pair scatter plot to {refl_output}")
+    else:
+        ic("No direct-reflected pairs exceed the delta cut; skipping reflected scatter plot.")
 
     validation_events, validation_path = load_validation_events(VALIDATION_PICKLE_NAME)
     if validation_events is not None:
@@ -644,6 +916,40 @@ if __name__ == "__main__":
                 validation_output,
                 DELTA_CUT,
             )
+
+            if direct_filtered[0].size > 0:
+                overlay_direct_output = os.path.join(
+                    snr_plot_folder,
+                    'snr_chi_diff_scatter_direct_with_validation.png',
+                )
+                plot_simulation_with_validation(
+                    direct_filtered,
+                    legend_label=direct_label,
+                    title='Chi Difference Spread vs Average SNR (Direct Pairs) — With Validation',
+                    output_path=overlay_direct_output,
+                    cmap='Blues',
+                    marker='o',
+                    delta_cut=DELTA_CUT,
+                    validation_pairs=validation_pairs,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                )
+
+            if refl_filtered[0].size > 0:
+                overlay_refl_output = os.path.join(
+                    snr_plot_folder,
+                    'snr_chi_diff_scatter_direct_reflected_with_validation.png',
+                )
+                plot_simulation_with_validation(
+                    refl_filtered,
+                    legend_label=refl_label,
+                    title='Chi Difference Spread vs Average SNR (Direct-Reflected Pairs) — With Validation',
+                    output_path=overlay_refl_output,
+                    cmap='Oranges',
+                    marker='^',
+                    delta_cut=DELTA_CUT,
+                    validation_pairs=validation_pairs,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                )
 
             special_summary = next(
                 (rec for rec in validation_pairs if rec['event_id'] == DEFAULT_VALIDATION_SPECIAL_EVENT_ID),
