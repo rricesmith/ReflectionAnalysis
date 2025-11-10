@@ -3,6 +3,7 @@ import itertools
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
+from matplotlib.lines import Line2D
 import configparser
 import h5py
 import pickle
@@ -168,6 +169,82 @@ def collect_pair_metrics(
     return np.array([]), np.array([]), np.array([])
 
 
+def collect_delta_plane_metrics(
+    event_list,
+    weight_name,
+    sigma,
+    sigma_52,
+    scenario,
+    direct_exclusions=None,
+    reflected_exclusions=None,
+):
+    """Collect ordered Chi delta pairs (max, min) with weights for each station pair."""
+    direct_exclusions = set(direct_exclusions or [])
+    reflected_exclusions = set(reflected_exclusions or [])
+    xs, ys, ws = [], [], []
+
+    for event in event_list:
+        if not event.hasWeight(weight_name, sigma=sigma):
+            continue
+        event_weight = event.getWeight(weight_name, sigma=sigma)
+        if event_weight is None or event_weight <= 0:
+            continue
+
+        direct_ids = [
+            station
+            for station in event.directTriggers(sigma=sigma, sigma_52=sigma_52)
+            if isinstance(station, int) and station not in direct_exclusions
+        ]
+        reflected_ids = [
+            station
+            for station in event.reflectedTriggers(sigma=sigma, sigma_52=sigma_52)
+            if isinstance(station, int) and station not in reflected_exclusions
+        ]
+
+        if scenario == "direct":
+            candidate_pairs = list(itertools.combinations(direct_ids, 2))
+        elif scenario == "direct_reflected":
+            candidate_pairs = [(d, r) for d in direct_ids for r in reflected_ids]
+        else:
+            raise ValueError(f"Unknown scenario '{scenario}'")
+
+        valid_pairs = []
+        for station_a, station_b in candidate_pairs:
+            snr_a = event.getSNR(station_a)
+            snr_b = event.getSNR(station_b)
+            if snr_a is None or snr_b is None:
+                continue
+            if np.isnan(snr_a) or np.isnan(snr_b):
+                continue
+
+            delta_a = compute_station_chi_delta(event, station_a)
+            delta_b = compute_station_chi_delta(event, station_b)
+            if delta_a is None or delta_b is None:
+                continue
+            if np.isnan(delta_a) or np.isnan(delta_b):
+                continue
+
+            larger = float(max(delta_a, delta_b))
+            smaller = float(min(delta_a, delta_b))
+            valid_pairs.append((larger, smaller))
+
+        if not valid_pairs:
+            continue
+
+        weight_per_pair = event_weight / len(valid_pairs)
+        if weight_per_pair <= 0:
+            continue
+
+        for larger, smaller in valid_pairs:
+            xs.append(larger)
+            ys.append(smaller)
+            ws.append(weight_per_pair)
+
+    if xs:
+        return np.array(xs), np.array(ys), np.array(ws)
+    return np.array([]), np.array([]), np.array([])
+
+
 def apply_delta_cut(data_tuple, delta_cut):
     """Filter pair data by delta cut and return kept/total weights."""
     x_vals, y_vals, weights = data_tuple
@@ -313,6 +390,7 @@ def compute_event_pair_summary(event_id, event_details, direct_exclusions, refle
         'max_pair': max_pair,
         'min_pair': min_pair,
         'event_avg_snr': event_avg_snr,
+        'pair_records': pair_records,
     }
 
     return summary
@@ -334,6 +412,25 @@ def resolve_event_anchor_snr(summary_record):
         if np.isfinite(value):
             return value
     return None
+
+
+def get_validation_plane_points(summary_record):
+    """Return ordered Chi delta pairs for a validation event summary."""
+    points = []
+    pair_records = summary_record.get('pair_records') or []
+    for pair in pair_records:
+        station_a = pair.get('station_a', {}) if isinstance(pair, dict) else {}
+        station_b = pair.get('station_b', {}) if isinstance(pair, dict) else {}
+        delta_a = station_a.get('chi_delta') if isinstance(station_a, dict) else None
+        delta_b = station_b.get('chi_delta') if isinstance(station_b, dict) else None
+        if delta_a is None or delta_b is None:
+            continue
+        if not (np.isfinite(delta_a) and np.isfinite(delta_b)):
+            continue
+        larger = float(max(delta_a, delta_b))
+        smaller = float(min(delta_a, delta_b))
+        points.append((larger, smaller))
+    return points
 
 
 def build_validation_pairs(events_dict, event_ids, direct_exclusions, reflected_exclusions):
@@ -669,6 +766,187 @@ def plot_simulation_with_validation(
     plt.close(fig)
     ic(f"Saved validation overlay scatter plot to {output_path}")
 
+
+def plot_delta_plane(
+    data,
+    cmap,
+    marker,
+    legend_label,
+    title,
+    output_path,
+    ax=None,
+    add_colorbar=True,
+    add_legend=True,
+):
+    """Plot Chi delta pairs as ordered coordinates (max, min)."""
+    x_vals, y_vals, weights = data
+
+    if x_vals.size == 0:
+        ic(f"No coincidence pairs found for '{legend_label}'; skipping {output_path}.")
+        return None, None, None, None
+
+    own_fig = ax is None
+    if own_fig:
+        fig, ax = plt.subplots(figsize=(9, 6))
+    else:
+        fig = ax.figure
+
+    ax.set_xlabel('Larger Δ(ChiRCR - Chi2016)')
+    ax.set_ylabel('Smaller Δ(ChiRCR - Chi2016)')
+    ax.set_title(title)
+    ax.grid(True, linestyle='--', alpha=0.3)
+
+    x_min, x_max = np.min(x_vals), np.max(x_vals)
+    y_min, y_max = np.min(y_vals), np.max(y_vals)
+    x_pad = 0.05 * (x_max - x_min) if x_max > x_min else 0.05 * max(1.0, abs(x_min) + abs(x_max))
+    y_pad = 0.05 * (y_max - y_min) if y_max > y_min else 0.05 * max(1.0, abs(y_min) + abs(y_max))
+    ax.set_xlim(x_min - x_pad, x_max + x_pad)
+    ax.set_ylim(y_min - y_pad, y_max + y_pad)
+    ax.set_aspect('equal', adjustable='box')
+
+    if weights.size > 0:
+        w_min = np.min(weights)
+        w_max = np.max(weights)
+        if w_max > w_min > 0:
+            norm = colors.LogNorm(vmin=w_min, vmax=w_max)
+        else:
+            norm = colors.Normalize(vmin=w_min, vmax=w_max)
+    else:
+        norm = None
+
+    order = np.argsort(weights) if weights.size > 0 else np.arange(x_vals.size)
+    points = ax.scatter(
+        x_vals[order],
+        y_vals[order],
+        c=weights[order] if weights.size > 0 else None,
+        cmap=cmap,
+        norm=norm,
+        marker=marker,
+        edgecolors='none',
+        alpha=0.9,
+        label=legend_label,
+    )
+
+    diag_line = ax.axline(
+        (0, 0),
+        slope=1.0,
+        color='dimgray',
+        linestyle='--',
+        linewidth=1,
+        label='y = x',
+    )
+
+    if add_colorbar and weights.size > 0:
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes('right', size='3%', pad=0.08)
+        cbar = fig.colorbar(points, cax=cax)
+        cbar.set_label('Weight (Evts/Yr)')
+
+    if add_legend:
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels, loc='upper left')
+
+    if own_fig:
+        fig.tight_layout()
+        if output_path is not None:
+            fig.savefig(output_path)
+            plt.close(fig)
+            return None, None, None, None
+
+    return fig, ax, points, diag_line
+
+
+def plot_delta_plane_with_validation(
+    sim_data,
+    legend_label,
+    title,
+    output_path,
+    cmap,
+    marker,
+    validation_pairs,
+    special_event_id,
+):
+    fig, ax, scatter_sim, diag_line = plot_delta_plane(
+        sim_data,
+        cmap=cmap,
+        marker=marker,
+        legend_label=legend_label,
+        title=title,
+        output_path=None,
+        add_colorbar=True,
+        add_legend=False,
+    )
+
+    if fig is None or ax is None:
+        ic(f"Skipping validation overlay plane plot '{output_path}' due to empty simulation data.")
+        return
+
+    handles = []
+    labels = []
+    if scatter_sim is not None:
+        handles.append(scatter_sim)
+        labels.append(legend_label)
+    if isinstance(diag_line, Line2D):
+        handles.append(diag_line)
+        labels.append(diag_line.get_label())
+
+    category_handles = {}
+    for record in validation_pairs:
+        points = get_validation_plane_points(record)
+        if not points:
+            continue
+
+        event_id = record.get('event_id')
+        num_stations = len(record.get('stations', []))
+        if event_id == special_event_id:
+            category = 'Validation special event'
+            color = 'crimson'
+            marker_v = '*'
+            size = 160
+        elif num_stations > 2:
+            category = 'Validation n>2'
+            color = 'grey'
+            marker_v = 'o'
+            size = 80
+        else:
+            category = 'Validation n≤2'
+            color = 'steelblue'
+            marker_v = 'o'
+            size = 100
+
+        xs, ys = zip(*points)
+        label = category if category not in category_handles else None
+        scatter_val = ax.scatter(
+            xs,
+            ys,
+            marker=marker_v,
+            c=color,
+            s=size,
+            edgecolors='none',
+            alpha=0.9,
+            label=label,
+        )
+
+        annotate_point = max(points, key=lambda pt: pt[0])
+        ax.annotate(
+            str(event_id),
+            annotate_point,
+            textcoords='offset points',
+            xytext=(4, 6),
+            fontsize=9,
+        )
+
+        if category not in category_handles and label is not None:
+            category_handles[category] = scatter_val
+            handles.append(scatter_val)
+            labels.append(category)
+
+    ax.legend(handles, labels, loc='upper left')
+    fig.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
+    ic(f"Saved validation overlay delta plane plot to {output_path}")
+
 def plot_single_scatter(
     data,
     cmap,
@@ -835,6 +1113,17 @@ if __name__ == "__main__":
         reflected_exclusions=reflected_exclusions_set,
     )
 
+    ic("Collecting direct-only delta plane metrics...")
+    direct_plane_data = collect_delta_plane_metrics(
+        hra_events,
+        weight_name=direct_weight,
+        sigma=plot_sigma,
+        sigma_52=sigma_52,
+        scenario='direct',
+        direct_exclusions=direct_exclusions_set,
+        reflected_exclusions=reflected_exclusions_set,
+    )
+
     ic("Collecting direct-reflected pair metrics...")
     refl_data = collect_pair_metrics(
         hra_events,
@@ -846,8 +1135,19 @@ if __name__ == "__main__":
         reflected_exclusions=reflected_exclusions_set,
     )
 
-    direct_filtered, direct_kept_weight, direct_total_weight = apply_delta_cut(direct_data, DELTA_CUT)
-    refl_filtered, refl_kept_weight, refl_total_weight = apply_delta_cut(refl_data, DELTA_CUT)
+    ic("Collecting direct-reflected delta plane metrics...")
+    refl_plane_data = collect_delta_plane_metrics(
+        hra_events,
+        weight_name=refl_weight,
+        sigma=plot_sigma,
+        sigma_52=sigma_52,
+        scenario='direct_reflected',
+        direct_exclusions=direct_exclusions_set,
+        reflected_exclusions=reflected_exclusions_set,
+    )
+
+    _, direct_kept_weight, direct_total_weight = apply_delta_cut(direct_data, DELTA_CUT)
+    _, refl_kept_weight, refl_total_weight = apply_delta_cut(refl_data, DELTA_CUT)
 
     if direct_total_weight > 0:
         direct_fraction = direct_kept_weight / direct_total_weight if direct_total_weight else 0.0
@@ -869,9 +1169,9 @@ if __name__ == "__main__":
 
     direct_output = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter_direct.png')
     direct_label = format_weight_label('Direct-only pairs', direct_kept_weight, direct_total_weight, DELTA_CUT)
-    if direct_filtered[0].size > 0:
+    if direct_data[0].size > 0:
         plot_single_scatter(
-            direct_filtered,
+            direct_data,
             cmap='Blues',
             marker='o',
             legend_label=direct_label,
@@ -881,13 +1181,13 @@ if __name__ == "__main__":
         )
         ic(f"Saved direct pair scatter plot to {direct_output}")
     else:
-        ic("No direct pairs exceed the delta cut; skipping direct scatter plot.")
+        ic("No direct pairs available for scatter plotting; skipping direct scatter plot.")
 
     refl_output = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter_direct_reflected.png')
     refl_label = format_weight_label('Direct-reflected pairs', refl_kept_weight, refl_total_weight, DELTA_CUT)
-    if refl_filtered[0].size > 0:
+    if refl_data[0].size > 0:
         plot_single_scatter(
-            refl_filtered,
+            refl_data,
             cmap='Oranges',
             marker='^',
             legend_label=refl_label,
@@ -897,7 +1197,35 @@ if __name__ == "__main__":
         )
         ic(f"Saved direct-reflected pair scatter plot to {refl_output}")
     else:
-        ic("No direct-reflected pairs exceed the delta cut; skipping reflected scatter plot.")
+        ic("No direct-reflected pairs available for scatter plotting; skipping reflected scatter plot.")
+
+    direct_plane_output = os.path.join(snr_plot_folder, 'chi_delta_plane_direct.png')
+    if direct_plane_data[0].size > 0:
+        plot_delta_plane(
+            direct_plane_data,
+            cmap='Blues',
+            marker='o',
+            legend_label='Direct-only pairs',
+            title='Chi Delta Plane (Direct Pairs)',
+            output_path=direct_plane_output,
+        )
+        ic(f"Saved direct pair delta plane plot to {direct_plane_output}")
+    else:
+        ic("No direct pairs available for delta plane plotting; skipping direct delta plane plot.")
+
+    refl_plane_output = os.path.join(snr_plot_folder, 'chi_delta_plane_direct_reflected.png')
+    if refl_plane_data[0].size > 0:
+        plot_delta_plane(
+            refl_plane_data,
+            cmap='Oranges',
+            marker='^',
+            legend_label='Direct-reflected pairs',
+            title='Chi Delta Plane (Direct-Reflected Pairs)',
+            output_path=refl_plane_output,
+        )
+        ic(f"Saved direct-reflected pair delta plane plot to {refl_plane_output}")
+    else:
+        ic("No direct-reflected pairs available for delta plane plotting; skipping reflected delta plane plot.")
 
     validation_events, validation_path = load_validation_events(VALIDATION_PICKLE_NAME)
     if validation_events is not None:
@@ -917,13 +1245,13 @@ if __name__ == "__main__":
                 DELTA_CUT,
             )
 
-            if direct_filtered[0].size > 0:
+            if direct_data[0].size > 0:
                 overlay_direct_output = os.path.join(
                     snr_plot_folder,
                     'snr_chi_diff_scatter_direct_with_validation.png',
                 )
                 plot_simulation_with_validation(
-                    direct_filtered,
+                    direct_data,
                     legend_label=direct_label,
                     title='Chi Difference Spread vs Average SNR (Direct Pairs) — With Validation',
                     output_path=overlay_direct_output,
@@ -934,19 +1262,51 @@ if __name__ == "__main__":
                     special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
                 )
 
-            if refl_filtered[0].size > 0:
+            if refl_data[0].size > 0:
                 overlay_refl_output = os.path.join(
                     snr_plot_folder,
                     'snr_chi_diff_scatter_direct_reflected_with_validation.png',
                 )
                 plot_simulation_with_validation(
-                    refl_filtered,
+                    refl_data,
                     legend_label=refl_label,
                     title='Chi Difference Spread vs Average SNR (Direct-Reflected Pairs) — With Validation',
                     output_path=overlay_refl_output,
                     cmap='Oranges',
                     marker='^',
                     delta_cut=DELTA_CUT,
+                    validation_pairs=validation_pairs,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                )
+
+            if direct_plane_data[0].size > 0:
+                overlay_direct_plane_output = os.path.join(
+                    snr_plot_folder,
+                    'chi_delta_plane_direct_with_validation.png',
+                )
+                plot_delta_plane_with_validation(
+                    direct_plane_data,
+                    legend_label='Direct-only pairs',
+                    title='Chi Delta Plane (Direct Pairs) — With Validation',
+                    output_path=overlay_direct_plane_output,
+                    cmap='Blues',
+                    marker='o',
+                    validation_pairs=validation_pairs,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                )
+
+            if refl_plane_data[0].size > 0:
+                overlay_refl_plane_output = os.path.join(
+                    snr_plot_folder,
+                    'chi_delta_plane_direct_reflected_with_validation.png',
+                )
+                plot_delta_plane_with_validation(
+                    refl_plane_data,
+                    legend_label='Direct-reflected pairs',
+                    title='Chi Delta Plane (Direct-Reflected Pairs) — With Validation',
+                    output_path=overlay_refl_plane_output,
+                    cmap='Oranges',
+                    marker='^',
                     validation_pairs=validation_pairs,
                     special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
                 )
