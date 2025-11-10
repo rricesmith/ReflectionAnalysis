@@ -3,12 +3,12 @@ import itertools
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
-from matplotlib.lines import Line2D
 import configparser
 import h5py
 import pickle
 from icecream import ic
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from HRASimulation.HRAEventObject import stns_100s, stns_200s
 
 from NuRadioReco.utilities import units
 from HRASimulation.S02_HRANurToNpy import loadHRAfromH5
@@ -36,7 +36,7 @@ DEFAULT_VALIDATION_PASSING_EVENT_IDS = [
 DEFAULT_VALIDATION_SPECIAL_EVENT_ID = 11230
 DEFAULT_VALIDATION_SPECIAL_STATION_ID = 13
 VALIDATION_PICKLE_NAME = "9.24.25_CoincidenceDatetimes_passing_cuts_with_all_params_recalcZenAzi_calcPol.pkl"
-DELTA_CUT = 0.15
+DELTA_CUT = 0.125
 
 def ensure_coincidence_weight(event_list, coincidence_level, weight_name, sigma, sigma_52,
                               bad_stations, max_distance, force_stations=None):
@@ -75,20 +75,6 @@ def ensure_coincidence_weight(event_list, coincidence_level, weight_name, sigma,
     )
     ic(f"Successfully calculated and added weights for '{weight_name}'.")
     return True
-
-
-def compute_station_chi_delta(event, station_id):
-    """Return ChiRCR - Chi2016 for a station, trying multiple key variants."""
-    chi_2016 = event.getChi(station_id, "Chi2016")
-    if chi_2016 is None or np.isnan(chi_2016):
-        return None
-
-    rcr_keys = ["ChiRCR", "ChiRCR100s", "ChiRCR200s", "RCR"]
-    for key in rcr_keys:
-        chi_rcr = event.getChi(station_id, key)
-        if chi_rcr is not None and not np.isnan(chi_rcr):
-            return chi_rcr - chi_2016
-    return None
 
 
 def collect_pair_metrics(
@@ -245,6 +231,74 @@ def collect_delta_plane_metrics(
     return np.array([]), np.array([]), np.array([])
 
 
+def compute_station_chi_delta(event, station_id):
+    """Return ChiRCR - Chi2016 for the requested station if available."""
+
+    def _safe_float(value):
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not np.isfinite(numeric):
+            return None
+        return numeric
+
+    station_chi = event.getChi(station_id)
+    if isinstance(station_chi, dict):
+        chi_dict = station_chi
+    else:
+        chi_dict = {}
+
+    def _extract_value(candidates):
+        # Exact key matches first
+        for key in candidates:
+            if key in chi_dict:
+                value = _safe_float(chi_dict[key])
+                if value is not None:
+                    return value
+
+        # Case-insensitive matches
+        lowered = {str(k).lower(): k for k in chi_dict}
+        for key in candidates:
+            lower_key = key.lower()
+            if lower_key in lowered:
+                value = _safe_float(chi_dict[lowered[lower_key]])
+                if value is not None:
+                    return value
+
+        # Substring matches for fallbacks
+        for existing_key, value in chi_dict.items():
+            key_lower = str(existing_key).lower()
+            if any(candidate.lower() in key_lower for candidate in candidates):
+                extracted = _safe_float(value)
+                if extracted is not None:
+                    return extracted
+
+        # Direct lookup via event accessor (covers default return of 0 when absent)
+        for key in candidates:
+            value = event.getChi(station_id, key)
+            extracted = _safe_float(value)
+            if extracted is not None:
+                return extracted
+
+        return None
+
+    if station_id in stns_100s:
+        rcr_candidates = ['ChiRCR100s', 'ChiRCR', 'ChiRCR200s', 'RCR']
+    elif station_id in stns_200s:
+        rcr_candidates = ['ChiRCR200s', 'ChiRCR', 'ChiRCR100s', 'RCR']
+    else:
+        rcr_candidates = ['ChiRCR', 'ChiRCR100s', 'ChiRCR200s', 'RCR']
+
+    chi_rcr = _extract_value(rcr_candidates)
+    chi_2016 = _extract_value(['Chi2016', '2016'])
+
+    if chi_rcr is None or chi_2016 is None:
+        return None
+
+    return chi_rcr - chi_2016
+
+
 def apply_delta_cut(data_tuple, delta_cut):
     """Filter pair data by delta cut and return kept/total weights."""
     x_vals, y_vals, weights = data_tuple
@@ -262,6 +316,49 @@ def apply_delta_cut(data_tuple, delta_cut):
 
     filtered_weights = weights[mask] if weights.size > 0 else weights
     return (x_vals[mask], y_vals[mask], filtered_weights), kept_weight, total_weight
+
+
+def apply_lower_left_cut(data_tuple):
+    """Remove points lying strictly in the lower-left quadrant (x < 0 and y < 0)."""
+    x_vals, y_vals, weights = data_tuple
+
+    if x_vals.size == 0:
+        return (x_vals, y_vals, weights), 0.0, 0.0
+
+    mask = ~((x_vals < 0) & (y_vals < 0))
+    if weights.size > 0:
+        kept_weight = float(np.sum(weights[mask]))
+        total_weight = float(np.sum(weights))
+    else:
+        kept_weight = float(np.count_nonzero(mask))
+        total_weight = float(len(x_vals))
+
+    filtered_weights = weights[mask] if weights.size > 0 else weights
+    return (x_vals[mask], y_vals[mask], filtered_weights), kept_weight, total_weight
+
+
+def format_plane_cut_label(base_label, kept_weight, total_weight):
+    """Create a legend label reporting the retained weight after the quadrant cut."""
+    if total_weight and total_weight > 0:
+        percentage = 100.0 * kept_weight / total_weight
+    else:
+        percentage = 0.0
+    return f"{base_label} (quadrant cut: {percentage:.2f}% weight)"
+
+
+def normalize_marker_sizes(weights, min_size=40.0, max_size=150.0):
+    """Scale marker sizes based on weights for combined scatter plots."""
+    if weights.size == 0 or not np.any(weights > 0):
+        return np.full_like(weights, fill_value=min_size, dtype=float)
+
+    w_min = float(np.min(weights[weights > 0]))
+    w_max = float(np.max(weights))
+    if w_max == w_min:
+        return np.full(weights.shape, (min_size + max_size) * 0.5)
+
+    normalized = (weights - w_min) / (w_max - w_min)
+    normalized = np.clip(normalized, 0.0, 1.0)
+    return min_size + normalized * (max_size - min_size)
 
 
 def find_file_recursive(filename, search_roots):
@@ -414,23 +511,66 @@ def resolve_event_anchor_snr(summary_record):
     return None
 
 
-def get_validation_plane_points(summary_record):
-    """Return ordered Chi delta pairs for a validation event summary."""
+def get_validation_plane_points(summary_record, exclude_lower_left=False):
+    """Return ordered Chi delta pairs and optional range line data for validation plotting."""
+    stations = summary_record.get('stations', []) if isinstance(summary_record, dict) else []
+    chi_values = [
+        float(s.get('chi_delta'))
+        for s in stations
+        if isinstance(s, dict) and s.get('chi_delta') is not None and np.isfinite(s.get('chi_delta'))
+    ]
+
+    def _filter_point(point):
+        return not (exclude_lower_left and point[0] < 0 and point[1] < 0)
+
     points = []
-    pair_records = summary_record.get('pair_records') or []
-    for pair in pair_records:
-        station_a = pair.get('station_a', {}) if isinstance(pair, dict) else {}
-        station_b = pair.get('station_b', {}) if isinstance(pair, dict) else {}
-        delta_a = station_a.get('chi_delta') if isinstance(station_a, dict) else None
-        delta_b = station_b.get('chi_delta') if isinstance(station_b, dict) else None
-        if delta_a is None or delta_b is None:
-            continue
-        if not (np.isfinite(delta_a) and np.isfinite(delta_b)):
-            continue
-        larger = float(max(delta_a, delta_b))
-        smaller = float(min(delta_a, delta_b))
-        points.append((larger, smaller))
-    return points
+    line_points = None
+
+    if len(chi_values) > 3:
+        chi_values_sorted = sorted(chi_values)
+        min_delta = chi_values_sorted[0]
+        max_delta = chi_values_sorted[-1]
+        mid_index = len(chi_values_sorted) // 2
+        if len(chi_values_sorted) % 2 == 0:
+            median_delta = chi_values_sorted[mid_index - 1]
+        else:
+            median_delta = chi_values_sorted[mid_index]
+
+        candidate_points = [
+            (float(max(max_delta, min_delta)), float(min(max_delta, min_delta))),
+            (float(max(median_delta, min_delta)), float(min(median_delta, min_delta))),
+        ]
+
+        for pt in candidate_points:
+            if _filter_point(pt) and pt not in points:
+                points.append(pt)
+
+        if len(points) >= 2:
+            line_points = (points[0], points[1])
+    else:
+        pair_records = summary_record.get('pair_records') or []
+        for pair in pair_records:
+            station_a = pair.get('station_a', {}) if isinstance(pair, dict) else {}
+            station_b = pair.get('station_b', {}) if isinstance(pair, dict) else {}
+            delta_a = station_a.get('chi_delta') if isinstance(station_a, dict) else None
+            delta_b = station_b.get('chi_delta') if isinstance(station_b, dict) else None
+            if delta_a is None or delta_b is None:
+                continue
+            if not (np.isfinite(delta_a) and np.isfinite(delta_b)):
+                continue
+            larger = float(max(delta_a, delta_b))
+            smaller = float(min(delta_a, delta_b))
+            point = (larger, smaller)
+            if _filter_point(point) and point not in points:
+                points.append(point)
+
+    annotation_point = max(points, key=lambda pt: pt[0]) if points else None
+
+    return {
+        'points': points,
+        'line_points': line_points,
+        'annotation_point': annotation_point,
+    }
 
 
 def build_validation_pairs(events_dict, event_ids, direct_exclusions, reflected_exclusions):
@@ -478,6 +618,106 @@ def build_validation_pairs(events_dict, event_ids, direct_exclusions, reflected_
     return summaries
 
 
+def add_validation_snr_points(
+    ax,
+    validation_pairs,
+    special_event_id,
+    category_handles=None,
+    handles=None,
+    labels=None,
+):
+    """Overlay validation markers on SNR-delta scatter axes."""
+    if category_handles is None:
+        category_handles = {}
+    if handles is None:
+        handles = []
+    if labels is None:
+        labels = []
+
+    for record in validation_pairs:
+        event_id = record.get('event_id')
+        num_stations = len(record.get('stations', []))
+
+        if num_stations > 2:
+            min_pair = record.get('min_pair')
+            max_pair = record.get('max_pair')
+            if min_pair is None or max_pair is None:
+                ic(f"Validation event {event_id} missing min/max pair details; skipping range plot.")
+                continue
+
+            x_anchor = resolve_event_anchor_snr(record)
+            if x_anchor is None:
+                ic(f"Validation event {event_id} lacks a valid SNR reference; skipping range plot.")
+                continue
+
+            y_min = float(min_pair.get('delta_spread', 0.0))
+            y_max = float(max_pair.get('delta_spread', 0.0))
+            if y_min > y_max:
+                y_min, y_max = y_max, y_min
+
+            category = 'Validation n>2 (range)'
+            label = category if category not in category_handles else None
+            scatter_val = ax.scatter(
+                [x_anchor, x_anchor],
+                [y_min, y_max],
+                marker='s',
+                c='forestgreen',
+                s=110,
+                edgecolors='none',
+                alpha=0.9,
+                label=label,
+                zorder=4,
+            )
+            ax.vlines(x_anchor, y_min, y_max, colors='grey', linewidth=1.5, alpha=0.75, zorder=3)
+            annotate_point = (x_anchor, y_max)
+        elif event_id == special_event_id:
+            category = 'Validation special event'
+            label = category if category not in category_handles else None
+            scatter_val = ax.scatter(
+                record['avg_snr'],
+                record['delta_spread'],
+                marker='*',
+                c='crimson',
+                s=170,
+                edgecolors='none',
+                alpha=0.9,
+                label=label,
+                zorder=5,
+            )
+            annotate_point = (record['avg_snr'], record['delta_spread'])
+        else:
+            category = 'Validation n≤2'
+            label = category if category not in category_handles else None
+            scatter_val = ax.scatter(
+                record['avg_snr'],
+                record['delta_spread'],
+                marker='s',
+                c='forestgreen',
+                s=130,
+                edgecolors='none',
+                alpha=0.9,
+                label=label,
+                zorder=4,
+            )
+            annotate_point = (record['avg_snr'], record['delta_spread'])
+
+        ax.annotate(
+            str(event_id),
+            annotate_point,
+            textcoords='offset points',
+            xytext=(4, 6),
+            fontsize=9,
+            zorder=6,
+        )
+
+        if category not in category_handles and label is not None:
+            category_handles[category] = scatter_val
+            handles.append(scatter_val)
+            labels.append(category)
+
+    return handles, labels, category_handles
+
+
 def plot_validation_pairs(pairs, special_event_id, output_path, delta_cut):
     """Plot validation pair metrics, highlighting the special event."""
     if not pairs:
@@ -492,87 +732,10 @@ def plot_validation_pairs(pairs, special_event_id, output_path, delta_cut):
     ax.grid(True, which='both', linestyle='--', alpha=0.3)
     ax.axhline(delta_cut, color='dimgray', linestyle='--', linewidth=1, label=f'Delta cut ({delta_cut})')
 
-    category_plotted = set()
-
-    for record in pairs:
-        num_stations = len(record.get('stations', []))
-        if num_stations > 2:
-            min_pair = record.get('min_pair')
-            max_pair = record.get('max_pair')
-            if min_pair is None or max_pair is None:
-                ic(f"Validation event {record['event_id']} missing min/max pair details; skipping range plot.")
-                continue
-
-            x_anchor = resolve_event_anchor_snr(record)
-            if x_anchor is None:
-                ic(f"Validation event {record['event_id']} lacks a valid SNR reference; skipping range plot.")
-                continue
-
-            y_min = float(min_pair.get('delta_spread', 0.0))
-            y_max = float(max_pair.get('delta_spread', 0.0))
-            if y_min > y_max:
-                y_min, y_max = y_max, y_min
-            category = 'Validation n>2 (range)'
-            label = category if category not in category_plotted else None
-
-            scatter_vals = ax.scatter(
-                [x_anchor, x_anchor],
-                [y_min, y_max],
-                marker='o',
-                c='grey',
-                s=90,
-                edgecolors='none',
-                alpha=0.85,
-                label=label,
-            )
-            ax.vlines(x_anchor, y_min, y_max, colors='grey', linewidth=1.5, alpha=0.75)
-            ax.annotate(
-                str(record['event_id']),
-                (x_anchor, y_max),
-                textcoords='offset points',
-                xytext=(4, 6),
-                fontsize=9,
-            )
-
-            if label is not None:
-                category_plotted.add(category)
-            continue
-        elif record['event_id'] == special_event_id:
-            category = 'Validation special event'
-            marker = '*'
-            color = 'crimson'
-            size = 170
-        else:
-            category = 'Validation n≤2'
-            marker = 'o'
-            color = 'steelblue'
-            size = 110
-
-        label = category if category not in category_plotted else None
-        ax.scatter(
-            record['avg_snr'],
-            record['delta_spread'],
-            marker=marker,
-            c=color,
-            s=size,
-            edgecolors='none',
-            alpha=0.85,
-            label=label,
-        )
-
-        ax.annotate(
-            str(record['event_id']),
-            (record['avg_snr'], record['delta_spread']),
-            textcoords='offset points',
-            xytext=(4, 6),
-            fontsize=9,
-        )
-
-        if label is not None:
-            category_plotted.add(category)
+    handles, labels, _ = add_validation_snr_points(ax, pairs, special_event_id)
 
     ax.set_title('Validation Event Chi Difference Spread (range shown for n>2)')
-    ax.legend(loc='upper left')
+    ax.legend(handles, labels, loc='upper left')
 
     fig.tight_layout()
     fig.savefig(output_path)
@@ -678,87 +841,13 @@ def plot_simulation_with_validation(
         handles.append(cut_line)
         labels.append(cut_line.get_label())
 
-    category_handles = {}
-    for record in validation_pairs:
-        num_stations = len(record.get('stations', []))
-        if num_stations > 2:
-            min_pair = record.get('min_pair')
-            max_pair = record.get('max_pair')
-            if min_pair is None or max_pair is None:
-                ic(f"Validation event {record['event_id']} missing min/max pair details; skipping range overlay.")
-                continue
-
-            x_anchor = resolve_event_anchor_snr(record)
-            if x_anchor is None:
-                ic(f"Validation event {record['event_id']} lacks a valid SNR reference; skipping range overlay.")
-                continue
-
-            y_min = float(min_pair.get('delta_spread', 0.0))
-            y_max = float(max_pair.get('delta_spread', 0.0))
-            if y_min > y_max:
-                y_min, y_max = y_max, y_min
-            category = 'Validation n>2 (range)'
-            label = category if category not in category_handles else None
-
-            scatter_val = ax.scatter(
-                [x_anchor, x_anchor],
-                [y_min, y_max],
-                marker='o',
-                c='grey',
-                s=80,
-                edgecolors='none',
-                alpha=0.9,
-                label=label,
-            )
-            ax.vlines(x_anchor, y_min, y_max, colors='grey', linewidth=1.5, alpha=0.75)
-            ax.annotate(
-                str(record['event_id']),
-                (x_anchor, y_max),
-                textcoords='offset points',
-                xytext=(4, 6),
-                fontsize=9,
-            )
-
-            if category not in category_handles and label is not None:
-                category_handles[category] = scatter_val
-                handles.append(scatter_val)
-                labels.append(category)
-            continue
-        elif record['event_id'] == special_event_id:
-            category = 'Validation special event'
-            color = 'crimson'
-            marker_v = '*'
-            size = 160
-        else:
-            category = 'Validation n≤2'
-            color = 'steelblue'
-            marker_v = 'o'
-            size = 100
-
-        label = category if category not in category_handles else None
-        scatter_val = ax.scatter(
-            record['avg_snr'],
-            record['delta_spread'],
-            marker=marker_v,
-            c=color,
-            s=size,
-            edgecolors='none',
-            alpha=0.9,
-            label=label,
-        )
-
-        ax.annotate(
-            str(record['event_id']),
-            (record['avg_snr'], record['delta_spread']),
-            textcoords='offset points',
-            xytext=(4, 6),
-            fontsize=9,
-        )
-
-        if category not in category_handles and label is not None:
-            category_handles[category] = scatter_val
-            handles.append(scatter_val)
-            labels.append(category)
+    handles, labels, _ = add_validation_snr_points(
+        ax,
+        validation_pairs,
+        special_event_id,
+        handles=handles,
+        labels=labels,
+    )
 
     ax.legend(handles, labels, loc='upper left')
     fig.tight_layout()
@@ -777,6 +866,7 @@ def plot_delta_plane(
     ax=None,
     add_colorbar=True,
     add_legend=True,
+    zorder=3,
 ):
     """Plot Chi delta pairs as ordered coordinates (max, min)."""
     x_vals, y_vals, weights = data
@@ -825,6 +915,7 @@ def plot_delta_plane(
         edgecolors='none',
         alpha=0.9,
         label=legend_label,
+        zorder=zorder,
     )
 
     if add_colorbar and weights.size > 0:
@@ -847,6 +938,96 @@ def plot_delta_plane(
     return fig, ax, points
 
 
+def add_validation_delta_plane_points(
+    ax,
+    validation_pairs,
+    special_event_id,
+    category_handles=None,
+    handles=None,
+    labels=None,
+    exclude_lower_left=False,
+):
+    """Overlay validation data onto a Chi delta plane axis."""
+    if category_handles is None:
+        category_handles = {}
+    if handles is None:
+        handles = []
+    if labels is None:
+        labels = []
+
+    for record in validation_pairs:
+        plane_data = get_validation_plane_points(record, exclude_lower_left=exclude_lower_left)
+        points = plane_data.get('points', [])
+        if not points:
+            continue
+
+        event_id = record.get('event_id')
+        num_stations = len(record.get('stations', []))
+        if event_id == special_event_id:
+            category = 'Validation special event'
+            color = 'crimson'
+            marker_v = '*'
+            size = 160
+            point_z = 5
+        elif num_stations > 3:
+            category = 'Validation n>3'
+            color = 'forestgreen'
+            marker_v = 's'
+            size = 120
+            point_z = 4
+        else:
+            category = 'Validation n≤3'
+            color = 'forestgreen'
+            marker_v = 's'
+            size = 120
+            point_z = 4
+
+        xs, ys = zip(*points)
+        label = category if category not in category_handles else None
+        scatter_val = ax.scatter(
+            xs,
+            ys,
+            marker=marker_v,
+            c=color,
+            s=size,
+            edgecolors='none',
+            alpha=0.95,
+            label=label,
+            zorder=point_z,
+        )
+
+        line_segment = plane_data.get('line_points')
+        if line_segment is not None and len(line_segment) == 2:
+            (x0, y0), (x1, y1) = line_segment
+            ax.plot(
+                [x0, x1],
+                [y0, y1],
+                color='grey',
+                linewidth=1.5,
+                alpha=0.75,
+                zorder=point_z - 1,
+            )
+
+        annotate_point = plane_data.get('annotation_point')
+        if annotate_point is None:
+            annotate_point = max(points, key=lambda pt: pt[0])
+        ax.annotate(
+            str(event_id),
+            annotate_point,
+            textcoords='offset points',
+            xytext=(4, 6),
+            fontsize=9,
+            zorder=point_z + 1,
+        )
+
+        if category not in category_handles and label is not None:
+            category_handles[category] = scatter_val
+            handles.append(scatter_val)
+            labels.append(category)
+
+    return handles, labels, category_handles
+
+
 def plot_delta_plane_with_validation(
     sim_data,
     legend_label,
@@ -856,7 +1037,9 @@ def plot_delta_plane_with_validation(
     marker,
     validation_pairs,
     special_event_id,
+    exclude_lower_left=False,
 ):
+    """Plot simulation delta plane data with validation overlays."""
     fig, ax, scatter_sim = plot_delta_plane(
         sim_data,
         cmap=cmap,
@@ -866,6 +1049,7 @@ def plot_delta_plane_with_validation(
         output_path=None,
         add_colorbar=True,
         add_legend=False,
+        zorder=1,
     )
 
     if fig is None or ax is None:
@@ -878,62 +1062,111 @@ def plot_delta_plane_with_validation(
         handles.append(scatter_sim)
         labels.append(legend_label)
 
-    category_handles = {}
-    for record in validation_pairs:
-        points = get_validation_plane_points(record)
-        if not points:
-            continue
-
-        event_id = record.get('event_id')
-        num_stations = len(record.get('stations', []))
-        if event_id == special_event_id:
-            category = 'Validation special event'
-            color = 'crimson'
-            marker_v = '*'
-            size = 160
-        elif num_stations > 2:
-            category = 'Validation n>2'
-            color = 'grey'
-            marker_v = 'o'
-            size = 80
-        else:
-            category = 'Validation n≤2'
-            color = 'steelblue'
-            marker_v = 'o'
-            size = 100
-
-        xs, ys = zip(*points)
-        label = category if category not in category_handles else None
-        scatter_val = ax.scatter(
-            xs,
-            ys,
-            marker=marker_v,
-            c=color,
-            s=size,
-            edgecolors='none',
-            alpha=0.9,
-            label=label,
-        )
-
-        annotate_point = max(points, key=lambda pt: pt[0])
-        ax.annotate(
-            str(event_id),
-            annotate_point,
-            textcoords='offset points',
-            xytext=(4, 6),
-            fontsize=9,
-        )
-
-        if category not in category_handles and label is not None:
-            category_handles[category] = scatter_val
-            handles.append(scatter_val)
-            labels.append(category)
+    handles, labels, _ = add_validation_delta_plane_points(
+        ax,
+        validation_pairs,
+        special_event_id,
+        handles=handles,
+        labels=labels,
+        exclude_lower_left=exclude_lower_left,
+    )
 
     ax.legend(handles, labels, loc='upper left')
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
     ic(f"Saved validation overlay delta plane plot to {output_path}")
+
+
+def plot_combined_delta_plane_with_validation(
+    direct_data,
+    direct_label,
+    refl_data,
+    refl_label,
+    title,
+    output_path,
+    validation_pairs,
+    special_event_id,
+    exclude_lower_left=False,
+):
+    """Plot both direct and direct-reflected delta planes with validation overlays."""
+    direct_x, direct_y, direct_w = direct_data
+    refl_x, refl_y, refl_w = refl_data
+
+    if direct_x.size == 0 and refl_x.size == 0:
+        ic(f"No delta plane data available for combined plot '{output_path}'.")
+        return
+
+    combined_x = np.concatenate([arr for arr in [direct_x, refl_x] if arr.size > 0])
+    combined_y = np.concatenate([arr for arr in [direct_y, refl_y] if arr.size > 0])
+
+    x_min = float(np.min(combined_x))
+    x_max = float(np.max(combined_x))
+    y_min = float(np.min(combined_y))
+    y_max = float(np.max(combined_y))
+
+    x_pad = 0.05 * (x_max - x_min) if x_max > x_min else 0.05 * max(1.0, abs(x_min) + abs(x_max))
+    y_pad = 0.05 * (y_max - y_min) if y_max > y_min else 0.05 * max(1.0, abs(y_min) + abs(y_max))
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+    ax.set_xlabel('Larger Δ(ChiRCR - Chi2016)')
+    ax.set_ylabel('Smaller Δ(ChiRCR - Chi2016)')
+    ax.set_title(title)
+    ax.grid(True, linestyle='--', alpha=0.3)
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_xlim(x_min - x_pad, x_max + x_pad)
+    ax.set_ylim(y_min - y_pad, y_max + y_pad)
+
+    handles = []
+    labels = []
+
+    if direct_x.size > 0:
+        sizes_direct = normalize_marker_sizes(direct_w)
+        scatter_direct = ax.scatter(
+            direct_x,
+            direct_y,
+            s=sizes_direct,
+            c='tab:blue',
+            alpha=0.6,
+            marker='o',
+            edgecolors='none',
+            label=direct_label,
+            zorder=1,
+        )
+        handles.append(scatter_direct)
+        labels.append(direct_label)
+
+    if refl_x.size > 0:
+        sizes_refl = normalize_marker_sizes(refl_w)
+        scatter_refl = ax.scatter(
+            refl_x,
+            refl_y,
+            s=sizes_refl,
+            c='tab:orange',
+            alpha=0.75,
+            marker='^',
+            edgecolors='none',
+            label=refl_label,
+            zorder=2,
+        )
+        handles.append(scatter_refl)
+        labels.append(refl_label)
+
+    handles, labels, _ = add_validation_delta_plane_points(
+        ax,
+        validation_pairs,
+        special_event_id,
+        handles=handles,
+        labels=labels,
+        exclude_lower_left=exclude_lower_left,
+    )
+
+    ax.legend(handles, labels, loc='upper left')
+    fig.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
+    ic(f"Saved combined delta plane plot to {output_path}")
+
 
 def plot_single_scatter(
     data,
@@ -1019,6 +1252,97 @@ def plot_single_scatter(
             return None, None, None, None
 
     return fig, ax, points, cut_line
+
+
+def plot_combined_snr_delta_with_validation(
+    direct_data,
+    direct_label,
+    refl_data,
+    refl_label,
+    output_path,
+    delta_cut,
+    validation_pairs,
+    special_event_id,
+):
+    """Create a combined SNR vs Δ scatter with validation overlays."""
+    direct_x, direct_y, direct_w = direct_data
+    refl_x, refl_y, refl_w = refl_data
+
+    if direct_x.size == 0 and refl_x.size == 0:
+        ic(f"No SNR-delta data available for combined plot '{output_path}'.")
+        return
+
+    combined_x = np.concatenate([arr for arr in [direct_x, refl_x] if arr.size > 0])
+    x_min = float(np.min(combined_x))
+    x_max = float(np.max(combined_x))
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+    ax.set_xscale('log')
+    ax.set_xlim(max(3.0, x_min * 0.95), max(100.0, x_max * 1.05))
+    ax.set_xlabel('Average SNR')
+    ax.set_ylabel('|Δ(ChiRCR - Chi2016)| between stations')
+    ax.grid(True, which='both', linestyle='--', alpha=0.3)
+    ax.set_title('Chi Difference Spread vs Average SNR — Combined Pairs with Validation')
+
+    handles = []
+    labels = []
+
+    if direct_x.size > 0:
+        sizes_direct = normalize_marker_sizes(direct_w)
+        scatter_direct = ax.scatter(
+            direct_x,
+            direct_y,
+            s=sizes_direct,
+            c='tab:blue',
+            alpha=0.6,
+            marker='o',
+            edgecolors='none',
+            label=direct_label,
+            zorder=1,
+        )
+        handles.append(scatter_direct)
+        labels.append(direct_label)
+
+    if refl_x.size > 0:
+        sizes_refl = normalize_marker_sizes(refl_w)
+        scatter_refl = ax.scatter(
+            refl_x,
+            refl_y,
+            s=sizes_refl,
+            c='tab:orange',
+            alpha=0.75,
+            marker='^',
+            edgecolors='none',
+            label=refl_label,
+            zorder=2,
+        )
+        handles.append(scatter_refl)
+        labels.append(refl_label)
+
+    cut_line = ax.axhline(
+        delta_cut,
+        color='dimgray',
+        linestyle='--',
+        linewidth=1,
+        label=f'Δ cut ({delta_cut})',
+        zorder=0,
+    )
+    handles.append(cut_line)
+    labels.append(cut_line.get_label())
+
+    handles, labels, _ = add_validation_snr_points(
+        ax,
+        validation_pairs,
+        special_event_id,
+        handles=handles,
+        labels=labels,
+    )
+
+    ax.legend(handles, labels, loc='upper left')
+    fig.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
+    ic(f"Saved combined SNR-delta plot to {output_path}")
 
 
 def save_event_list(event_list, path):
@@ -1134,6 +1458,9 @@ if __name__ == "__main__":
         reflected_exclusions=reflected_exclusions_set,
     )
 
+    direct_plane_cut, direct_plane_kept_weight, direct_plane_total_weight = apply_lower_left_cut(direct_plane_data)
+    refl_plane_cut, refl_plane_kept_weight, refl_plane_total_weight = apply_lower_left_cut(refl_plane_data)
+
     _, direct_kept_weight, direct_total_weight = apply_delta_cut(direct_data, DELTA_CUT)
     _, refl_kept_weight, refl_total_weight = apply_delta_cut(refl_data, DELTA_CUT)
 
@@ -1154,6 +1481,29 @@ if __name__ == "__main__":
         )
     else:
         ic("Direct-reflected pairs have zero total weight; skipping percentage report.")
+
+    if direct_plane_total_weight > 0:
+        direct_plane_fraction = direct_plane_kept_weight / direct_plane_total_weight if direct_plane_total_weight else 0.0
+        ic(
+            f"Direct delta-plane pairs outside lower-left quadrant: {direct_plane_fraction * 100:.2f}% of weight "
+            f"({direct_plane_kept_weight:.4e}/{direct_plane_total_weight:.4e})"
+        )
+    else:
+        ic("Direct delta-plane pairs have zero total weight; skipping quadrant cut report.")
+
+    if refl_plane_total_weight > 0:
+        refl_plane_fraction = refl_plane_kept_weight / refl_plane_total_weight if refl_plane_total_weight else 0.0
+        ic(
+            f"Direct-reflected delta-plane pairs outside lower-left quadrant: {refl_plane_fraction * 100:.2f}% of weight "
+            f"({refl_plane_kept_weight:.4e}/{refl_plane_total_weight:.4e})"
+        )
+    else:
+        ic("Direct-reflected delta-plane pairs have zero total weight; skipping quadrant cut report.")
+
+    direct_plane_label = 'Direct-only pairs'
+    refl_plane_label = 'Direct-reflected pairs'
+    direct_plane_cut_label = format_plane_cut_label(direct_plane_label, direct_plane_kept_weight, direct_plane_total_weight)
+    refl_plane_cut_label = format_plane_cut_label(refl_plane_label, refl_plane_kept_weight, refl_plane_total_weight)
 
     direct_output = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter_direct.png')
     direct_label = format_weight_label('Direct-only pairs', direct_kept_weight, direct_total_weight, DELTA_CUT)
@@ -1193,7 +1543,7 @@ if __name__ == "__main__":
             direct_plane_data,
             cmap='Blues',
             marker='o',
-            legend_label='Direct-only pairs',
+            legend_label=direct_plane_label,
             title='Chi Delta Plane (Direct Pairs)',
             output_path=direct_plane_output,
         )
@@ -1207,13 +1557,41 @@ if __name__ == "__main__":
             refl_plane_data,
             cmap='Oranges',
             marker='^',
-            legend_label='Direct-reflected pairs',
+            legend_label=refl_plane_label,
             title='Chi Delta Plane (Direct-Reflected Pairs)',
             output_path=refl_plane_output,
         )
         ic(f"Saved direct-reflected pair delta plane plot to {refl_plane_output}")
     else:
         ic("No direct-reflected pairs available for delta plane plotting; skipping reflected delta plane plot.")
+
+    direct_plane_cut_output = os.path.join(snr_plot_folder, 'chi_delta_plane_direct_cut.png')
+    if direct_plane_cut[0].size > 0:
+        plot_delta_plane(
+            direct_plane_cut,
+            cmap='Blues',
+            marker='o',
+            legend_label=direct_plane_cut_label,
+            title='Chi Delta Plane (Direct Pairs) — Quadrant Cut',
+            output_path=direct_plane_cut_output,
+        )
+        ic(f"Saved direct pair delta plane cut plot to {direct_plane_cut_output}")
+    else:
+        ic("No direct pairs remain after quadrant cut; skipping direct delta plane cut plot.")
+
+    refl_plane_cut_output = os.path.join(snr_plot_folder, 'chi_delta_plane_direct_reflected_cut.png')
+    if refl_plane_cut[0].size > 0:
+        plot_delta_plane(
+            refl_plane_cut,
+            cmap='Oranges',
+            marker='^',
+            legend_label=refl_plane_cut_label,
+            title='Chi Delta Plane (Direct-Reflected Pairs) — Quadrant Cut',
+            output_path=refl_plane_cut_output,
+        )
+        ic(f"Saved direct-reflected delta plane cut plot to {refl_plane_cut_output}")
+    else:
+        ic("No direct-reflected pairs remain after quadrant cut; skipping reflected delta plane cut plot.")
 
     validation_events, validation_path = load_validation_events(VALIDATION_PICKLE_NAME)
     if validation_events is not None:
@@ -1274,7 +1652,7 @@ if __name__ == "__main__":
                 )
                 plot_delta_plane_with_validation(
                     direct_plane_data,
-                    legend_label='Direct-only pairs',
+                    legend_label=direct_plane_label,
                     title='Chi Delta Plane (Direct Pairs) — With Validation',
                     output_path=overlay_direct_plane_output,
                     cmap='Blues',
@@ -1290,11 +1668,95 @@ if __name__ == "__main__":
                 )
                 plot_delta_plane_with_validation(
                     refl_plane_data,
-                    legend_label='Direct-reflected pairs',
+                    legend_label=refl_plane_label,
                     title='Chi Delta Plane (Direct-Reflected Pairs) — With Validation',
                     output_path=overlay_refl_plane_output,
                     cmap='Oranges',
                     marker='^',
+                    validation_pairs=validation_pairs,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                )
+
+            if direct_plane_cut[0].size > 0:
+                overlay_direct_plane_cut_output = os.path.join(
+                    snr_plot_folder,
+                    'chi_delta_plane_direct_with_validation_cut.png',
+                )
+                plot_delta_plane_with_validation(
+                    direct_plane_cut,
+                    legend_label=direct_plane_cut_label,
+                    title='Chi Delta Plane (Direct Pairs) — With Validation (Quadrant Cut)',
+                    output_path=overlay_direct_plane_cut_output,
+                    cmap='Blues',
+                    marker='o',
+                    validation_pairs=validation_pairs,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    exclude_lower_left=True,
+                )
+
+            if refl_plane_cut[0].size > 0:
+                overlay_refl_plane_cut_output = os.path.join(
+                    snr_plot_folder,
+                    'chi_delta_plane_direct_reflected_with_validation_cut.png',
+                )
+                plot_delta_plane_with_validation(
+                    refl_plane_cut,
+                    legend_label=refl_plane_cut_label,
+                    title='Chi Delta Plane (Direct-Reflected Pairs) — With Validation (Quadrant Cut)',
+                    output_path=overlay_refl_plane_cut_output,
+                    cmap='Oranges',
+                    marker='^',
+                    validation_pairs=validation_pairs,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    exclude_lower_left=True,
+                )
+
+            if direct_plane_data[0].size > 0 or refl_plane_data[0].size > 0:
+                combined_plane_output = os.path.join(
+                    snr_plot_folder,
+                    'chi_delta_plane_combined_with_validation.png',
+                )
+                plot_combined_delta_plane_with_validation(
+                    direct_plane_data,
+                    direct_plane_label,
+                    refl_plane_data,
+                    refl_plane_label,
+                    title='Chi Delta Plane — Combined Pairs with Validation',
+                    output_path=combined_plane_output,
+                    validation_pairs=validation_pairs,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    exclude_lower_left=False,
+                )
+
+            if direct_plane_cut[0].size > 0 or refl_plane_cut[0].size > 0:
+                combined_plane_cut_output = os.path.join(
+                    snr_plot_folder,
+                    'chi_delta_plane_combined_with_validation_cut.png',
+                )
+                plot_combined_delta_plane_with_validation(
+                    direct_plane_cut,
+                    direct_plane_cut_label,
+                    refl_plane_cut,
+                    refl_plane_cut_label,
+                    title='Chi Delta Plane — Combined Pairs with Validation (Quadrant Cut)',
+                    output_path=combined_plane_cut_output,
+                    validation_pairs=validation_pairs,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    exclude_lower_left=True,
+                )
+
+            if direct_data[0].size > 0 or refl_data[0].size > 0:
+                combined_snr_output = os.path.join(
+                    snr_plot_folder,
+                    'snr_chi_diff_scatter_combined_with_validation.png',
+                )
+                plot_combined_snr_delta_with_validation(
+                    direct_data,
+                    direct_label,
+                    refl_data,
+                    refl_label,
+                    combined_snr_output,
+                    delta_cut=DELTA_CUT,
                     validation_pairs=validation_pairs,
                     special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
                 )
