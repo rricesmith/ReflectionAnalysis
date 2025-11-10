@@ -827,15 +827,6 @@ def plot_delta_plane(
         label=legend_label,
     )
 
-    diag_line = ax.axline(
-        (0, 0),
-        slope=1.0,
-        color='dimgray',
-        linestyle='--',
-        linewidth=1,
-        label='y = x',
-    )
-
     if add_colorbar and weights.size > 0:
         divider = make_axes_locatable(ax)
         cax = divider.append_axes('right', size='3%', pad=0.08)
@@ -853,7 +844,7 @@ def plot_delta_plane(
             plt.close(fig)
             return None, None, None, None
 
-    return fig, ax, points, diag_line
+    return fig, ax, points
 
 
 def plot_delta_plane_with_validation(
@@ -866,7 +857,7 @@ def plot_delta_plane_with_validation(
     validation_pairs,
     special_event_id,
 ):
-    fig, ax, scatter_sim, diag_line = plot_delta_plane(
+    fig, ax, scatter_sim = plot_delta_plane(
         sim_data,
         cmap=cmap,
         marker=marker,
@@ -886,9 +877,6 @@ def plot_delta_plane_with_validation(
     if scatter_sim is not None:
         handles.append(scatter_sim)
         labels.append(legend_label)
-    if isinstance(diag_line, Line2D):
-        handles.append(diag_line)
-        labels.append(diag_line.get_label())
 
     category_handles = {}
     for record in validation_pairs:
