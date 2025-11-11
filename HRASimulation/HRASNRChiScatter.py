@@ -1146,7 +1146,7 @@ def plot_single_scatter(
     ax.set_xscale('log')
     ax.set_xlim(3, 100)
     ax.set_xlabel('Average SNR')
-    ax.set_ylabel('|Δ(ChiRCR - Chi2016)| between stations')
+    ax.set_ylabel('|ΔChi| between stations')
     ax.grid(True, which='both', linestyle='--', alpha=0.3)
     ax.set_title(title)
 
