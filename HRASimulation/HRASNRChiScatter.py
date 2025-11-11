@@ -985,7 +985,7 @@ def plot_delta_plane_with_validation(
     cmap,
     marker,
     validation_pairs,
-    special_event_id,
+    special_event_ids,
     exclude_lower_left=False,
 ):
     """Plot simulation delta plane data with validation overlays."""
@@ -1014,7 +1014,7 @@ def plot_delta_plane_with_validation(
     handles, labels, _ = add_validation_delta_plane_points(
         ax,
         validation_pairs,
-        special_event_id,
+        special_event_ids,
         handles=handles,
         labels=labels,
         exclude_lower_left=exclude_lower_left,
@@ -1035,7 +1035,7 @@ def plot_combined_delta_plane_with_validation(
     title,
     output_path,
     validation_pairs,
-    special_event_id,
+    special_event_ids,
     exclude_lower_left=False,
 ):
     """Plot both direct and direct-reflected delta planes with validation overlays."""
@@ -1104,7 +1104,7 @@ def plot_combined_delta_plane_with_validation(
     handles, labels, _ = add_validation_delta_plane_points(
         ax,
         validation_pairs,
-        special_event_id,
+        special_event_ids,
         handles=handles,
         labels=labels,
         exclude_lower_left=exclude_lower_left,
@@ -1211,7 +1211,7 @@ def plot_combined_snr_delta_with_validation(
     output_path,
     delta_cut,
     validation_pairs,
-    special_event_id,
+    special_event_ids,
 ):
     """Create a combined SNR vs Δ scatter with validation overlays."""
     direct_x, direct_y, direct_w = direct_data
@@ -1282,7 +1282,7 @@ def plot_combined_snr_delta_with_validation(
     handles, labels, _ = add_validation_snr_points(
         ax,
         validation_pairs,
-        special_event_id,
+        special_event_ids,
         handles=handles,
         labels=labels,
     )
