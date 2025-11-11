@@ -1574,7 +1574,7 @@ if __name__ == "__main__":
                     marker='o',
                     delta_cut=DELTA_CUT,
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
+                    special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                 )
 
             if refl_data[0].size > 0:
@@ -1591,7 +1591,7 @@ if __name__ == "__main__":
                     marker='^',
                     delta_cut=DELTA_CUT,
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
+                    special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                 )
 
             if direct_plane_data[0].size > 0:
@@ -1607,7 +1607,7 @@ if __name__ == "__main__":
                     cmap='Blues',
                     marker='o',
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
+                    special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                 )
 
             if refl_plane_data[0].size > 0:
@@ -1623,7 +1623,7 @@ if __name__ == "__main__":
                     cmap='Oranges',
                     marker='^',
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
+                    special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                 )
 
             if direct_plane_cut[0].size > 0:
@@ -1639,7 +1639,7 @@ if __name__ == "__main__":
                     cmap='Blues',
                     marker='o',
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
+                    special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                     exclude_lower_left=True,
                 )
 
@@ -1656,7 +1656,7 @@ if __name__ == "__main__":
                     cmap='Oranges',
                     marker='^',
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
+                    special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                     exclude_lower_left=True,
                 )
 
@@ -1673,7 +1673,7 @@ if __name__ == "__main__":
                     title='Chi Delta Plane — Combined Pairs with Validation',
                     output_path=combined_plane_output,
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
+                    special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                     exclude_lower_left=False,
                 )
 
@@ -1690,7 +1690,7 @@ if __name__ == "__main__":
                     title='Chi Delta Plane — Combined Pairs with Validation (Quadrant Cut)',
                     output_path=combined_plane_cut_output,
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
+                    special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                     exclude_lower_left=True,
                 )
 
@@ -1707,7 +1707,7 @@ if __name__ == "__main__":
                     combined_snr_output,
                     delta_cut=DELTA_CUT,
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
+                    special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                 )
 
             special_summary = next(
