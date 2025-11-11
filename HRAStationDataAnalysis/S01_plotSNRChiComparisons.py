@@ -71,6 +71,138 @@ def load_station_data(folder, date, station_id, data_name):
         
     return np.concatenate(data_arrays, axis=0)
 
+
+def load_coincidence_events(filepath, requested_event_ids):
+    """Load coincidence events from a pickle file for the requested IDs."""
+    if not os.path.exists(filepath):
+        ic(f"Warning: Coincidence file not found: {filepath}")
+        return {}
+
+    try:
+        with open(filepath, 'rb') as handle:
+            events_dict = pickle.load(handle)
+    except Exception as exc:  # pylint: disable=broad-except
+        ic(f"Error loading coincidence file {filepath}: {exc}")
+        return {}
+
+    coincidence_events = {}
+    for event_id in requested_event_ids:
+        event_obj = events_dict.get(event_id)
+        if event_obj is None:
+            event_obj = events_dict.get(str(event_id))
+        if event_obj is None:
+            ic(f"Warning: Coincidence event {event_id} not found in pickle data.")
+            continue
+        coincidence_events[event_id] = event_obj
+
+    ic(f"Loaded {len(coincidence_events)} coincidence events from alternate search.")
+    return coincidence_events
+
+
+def build_coincidence_station_overlays(coincidence_events, station_ids, highlight_event_ids):
+    """Prepare per-station coincidence overlays for plotting."""
+    station_set = set(station_ids)
+    highlight_set = set(highlight_event_ids)
+    overlays = {}
+
+    def _init_station_entry():
+        return {
+            'general': {'snr': [], 'Chi2016': [], 'ChiRCR': []},
+            'general_event_ids': set(),
+            'highlight': {'snr': [], 'Chi2016': [], 'ChiRCR': []},
+            'highlight_event_ids': set(),
+            'highlight_annotations': []
+        }
+
+    for station_id in station_set:
+        overlays[station_id] = _init_station_entry()
+
+    for event_id, event_details in coincidence_events.items():
+        stations_info = event_details.get('stations', {}) if isinstance(event_details, dict) else {}
+        for station_key, station_payload in stations_info.items():
+            try:
+                station_int = int(station_key)
+            except (TypeError, ValueError):
+                continue
+
+            if station_int not in overlays:
+                if station_int in station_set:
+                    overlays[station_int] = _init_station_entry()
+                else:
+                    continue
+
+            snr_vals = np.asarray(station_payload.get('SNR', []), dtype=float)
+            chi2016_vals = np.asarray(station_payload.get('Chi2016', []), dtype=float)
+            chircr_vals = np.asarray(station_payload.get('ChiRCR', []), dtype=float)
+
+            min_len = min(snr_vals.size, chi2016_vals.size, chircr_vals.size)
+            if min_len == 0:
+                continue
+
+            snr_vals = snr_vals[:min_len]
+            chi2016_vals = chi2016_vals[:min_len]
+            chircr_vals = chircr_vals[:min_len]
+
+            valid_mask = np.isfinite(snr_vals) & np.isfinite(chi2016_vals) & np.isfinite(chircr_vals)
+            if not np.any(valid_mask):
+                continue
+
+            snr_vals = snr_vals[valid_mask]
+            chi2016_vals = chi2016_vals[valid_mask]
+            chircr_vals = chircr_vals[valid_mask]
+
+            entry = overlays[station_int]
+            target_key = 'highlight' if event_id in highlight_set else 'general'
+
+            entry[target_key]['snr'].extend(snr_vals.tolist())
+            entry[target_key]['Chi2016'].extend(chi2016_vals.tolist())
+            entry[target_key]['ChiRCR'].extend(chircr_vals.tolist())
+
+            if target_key == 'highlight':
+                entry['highlight_event_ids'].add(event_id)
+                if snr_vals.size > 0:
+                    annotations = [f"St {station_int} (Evt {event_id})"] + [None] * (snr_vals.size - 1)
+                    entry['highlight_annotations'].extend(annotations)
+            else:
+                entry['general_event_ids'].add(event_id)
+
+    for entry in overlays.values():
+        for bucket in ('general', 'highlight'):
+            for key in ('snr', 'Chi2016', 'ChiRCR'):
+                entry[bucket][key] = np.asarray(entry[bucket][key], dtype=float)
+
+    return overlays
+
+
+def combine_coincidence_overlays(station_ids, overlays_map):
+    """Combine per-station overlays for summed-station plots."""
+    combined = {
+        'general': {'snr': [], 'Chi2016': [], 'ChiRCR': []},
+        'general_event_ids': set(),
+        'highlight': {'snr': [], 'Chi2016': [], 'ChiRCR': []},
+        'highlight_event_ids': set(),
+        'highlight_annotations': []
+    }
+
+    for station_id in station_ids:
+        station_overlay = overlays_map.get(station_id)
+        if not station_overlay:
+            continue
+
+        for bucket in ('general', 'highlight'):
+            for key in ('snr', 'Chi2016', 'ChiRCR'):
+                combined[bucket][key].extend(station_overlay[bucket][key].tolist())
+
+        combined['general_event_ids'].update(station_overlay.get('general_event_ids', set()))
+        combined['highlight_event_ids'].update(station_overlay.get('highlight_event_ids', set()))
+        combined['highlight_annotations'].extend(station_overlay.get('highlight_annotations', []))
+
+    for bucket in ('general', 'highlight'):
+        for key in ('snr', 'Chi2016', 'ChiRCR'):
+            combined[bucket][key] = np.asarray(combined[bucket][key], dtype=float)
+
+    return combined
+
 def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct_stations, reflected_stations, sigma=4.5):
     """
     Extracts SNR, Chi, and weights from the HRAevent list, separating them
@@ -324,7 +456,33 @@ def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bin
                         cbar.set_label('Event Weight', fontsize=8)
                         cbar.ax.tick_params(labelsize=7)
                 else:
-                    ax.scatter(x_data, y_data, **overlay['style'])
+                    scatter = ax.scatter(x_data, y_data, **overlay['style'])
+
+                    annotations = overlay.get('annotations')
+                    if annotations:
+                        offsets = overlay.get('annotation_offsets')
+                        default_offset = overlay.get('annotation_offset', (4, 4))
+                        annotation_color = overlay.get('annotation_color', overlay['style'].get('c', 'k'))
+                        annotation_fontsize = overlay.get('annotation_fontsize', 8)
+                        ha = overlay.get('annotation_ha', 'left')
+                        va = overlay.get('annotation_va', 'bottom')
+
+                        for idx, (x_val, y_val, label_text) in enumerate(zip(x_data, y_data, annotations)):
+                            if label_text is None:
+                                continue
+                            offset = default_offset
+                            if offsets and idx < len(offsets):
+                                offset = offsets[idx]
+                            ax.annotate(
+                                label_text,
+                                xy=(x_val, y_val),
+                                xytext=offset,
+                                textcoords='offset points',
+                                fontsize=annotation_fontsize,
+                                color=annotation_color,
+                                ha=ha,
+                                va=va
+                            )
 
         if cuts_dict:
             draw_cut_visuals(ax, key, cuts_dict, cut_type='rcr')  # For now, only show RCR cuts on main plots
@@ -344,7 +502,9 @@ def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bin
                         if overlay['style'].get('color_by_weight'):
                             legend_elements.append(Line2D([0], [0], marker='o', color='w', label=overlay['label'], markerfacecolor='blue', markersize=8, alpha=0.5))
                         else:
-                            legend_elements.append(Line2D([0], [0], marker=overlay['style'].get('marker', 'o'), color='w', label=overlay['label'], markerfacecolor=overlay['style']['c'], markersize=8))
+                            marker_face = overlay['style'].get('c', overlay['style'].get('color', 'gray'))
+                            marker_edge = overlay['style'].get('edgecolors', 'w')
+                            legend_elements.append(Line2D([0], [0], marker=overlay['style'].get('marker', 'o'), color='w', label=overlay['label'], markerfacecolor=marker_face, markeredgecolor=marker_edge, markersize=8))
             ax.legend(handles=legend_elements, loc='upper left')
 
     return im
@@ -430,7 +590,7 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     plt.savefig(f'{plot_folder}SimOnly_Direct_vs_Reflected_AllCuts_{date}.png')
     plt.close(fig_cut)
 
-def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date):
+def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=None):
     """
     Runs the full plotting and saving pipeline for a given station ID and its data.
     """
@@ -498,6 +658,37 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         }
     ]
 
+    coincidence_overlays = []
+    coinc_general_points = 0
+    coinc_highlight_points = 0
+    if coincidence_overlay:
+        general_data = coincidence_overlay.get('general')
+        highlight_data = coincidence_overlay.get('highlight')
+        highlight_annotations = coincidence_overlay.get('highlight_annotations', [])
+        general_event_ids = coincidence_overlay.get('general_event_ids', set())
+        highlight_event_ids = coincidence_overlay.get('highlight_event_ids', set())
+
+        if general_data is not None and general_data.get('snr', np.array([])).size > 0:
+            coinc_general_points = general_data['snr'].size
+            coincidence_overlays.append({
+                'data': general_data,
+                'label': f"Coincidences (Events={len(general_event_ids)}; Points={coinc_general_points})",
+                'style': {'marker': 'o', 's': 55, 'alpha': 0.9, 'c': 'gold', 'edgecolors': 'black', 'linewidths': 0.4}
+            })
+
+        if highlight_data is not None and highlight_data.get('snr', np.array([])).size > 0:
+            coinc_highlight_points = highlight_data['snr'].size
+            highlight_event_list = ', '.join(str(evt) for evt in sorted(highlight_event_ids)) if highlight_event_ids else 'None'
+            coincidence_overlays.append({
+                'data': highlight_data,
+                'label': f"Passing Coincidences (IDs: {highlight_event_list}; Points={coinc_highlight_points})",
+                'style': {'marker': '*', 's': 140, 'alpha': 0.95, 'c': 'darkorange', 'edgecolors': 'black', 'linewidths': 0.6},
+                'annotations': highlight_annotations,
+                'annotation_color': 'maroon',
+                'annotation_fontsize': 9,
+                'annotation_offset': (6, 6)
+            })
+
     fig1, axs1 = plt.subplots(2, 2, figsize=(12, 14))
     fig1.suptitle(f'Data: Chi Comparison for Station {station_id} on {date}\n{rcr_cut_string}', fontsize=14)
     plot_2x2_grid(fig1, axs1, base_data_config, cuts, overlays=data_overlays)
@@ -508,6 +699,16 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     fig1.tight_layout(rect=[0, 0.15, 1, 0.95])
     plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_Station{station_id}_{date}.png')
     plt.close(fig1)
+
+    if coincidence_overlays:
+        ic(f"Generating coincidence overlay plots for Station {station_id} (general={coinc_general_points}, highlight={coinc_highlight_points})")
+        fig1c, axs1c = plt.subplots(2, 2, figsize=(12, 14))
+        fig1c.suptitle(f'Data: Chi Comparison + Coincidences for Station {station_id} on {date}\n{rcr_cut_string}', fontsize=14)
+        plot_2x2_grid(fig1c, axs1c, base_data_config, cuts, overlays=data_overlays + coincidence_overlays)
+        fig1c.text(0.5, 0.01, stats_str, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+        fig1c.tight_layout(rect=[0, 0.15, 1, 0.95])
+        plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_Station{station_id}_{date}_Coincidences.png')
+        plt.close(fig1c)
 
     # --- Other Plots (Sim vs Data, etc.) ---
     sim_base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Direct Sim (Hist)'}
@@ -532,6 +733,23 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         fig_all.tight_layout(rect=[0, 0.18, 1, 0.95])
     plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_Station{station_id}_{date}.png')
     plt.close(fig_all)
+
+    if coincidence_overlays:
+        ic("Generating data over simulation plot with coincidence overlays...")
+        fig_allc, axs_allc = plt.subplots(2, 2, figsize=(13, 15))
+        fig_allc.suptitle(f'Data vs Composite Simulation + Coincidences - Station {station_id}\n{rcr_cut_string}', fontsize=14)
+        overlays_all_combined = [reflected_overlay_config, data_overlay_config] + coincidence_overlays
+        im_allc = plot_2x2_grid(fig_allc, axs_allc, sim_base_config, cuts, overlays=overlays_all_combined, hist_bins_dict=hist_bins)
+        fig_allc.text(0.5, 0.01, f"{direct_stats}\n\n{reflected_stats}", ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+
+        if im_allc:
+            fig_allc.tight_layout(rect=[0, 0.18, 0.9, 0.95])
+            cbar_ax_allc = fig_allc.add_axes([0.91, 0.2, 0.02, 0.7])
+            fig_allc.colorbar(im_allc, cax=cbar_ax_allc, label='Direct Weighted Counts (Evts/Yr)')
+        else:
+            fig_allc.tight_layout(rect=[0, 0.18, 1, 0.95])
+        plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_Station{station_id}_{date}_Coincidences.png')
+        plt.close(fig_allc)
 
 
 if __name__ == "__main__":
@@ -584,6 +802,30 @@ if __name__ == "__main__":
         'chi_vs_chi': [linear_bins, linear_bins], 'snr_vs_chidiff': [log_bins, diff_bins]
     }
     
+    coincidence_pickle_path = "/dfs8/sbarwick_lab/ariannaproject/rricesmi/numpy_arrays/station_data/9.24.25_CoincidenceDatetimes_passing_cuts_with_all_params_recalcZenAzi_calcPol.pkl"
+    requested_coincidence_event_ids = [
+        3047,
+        3432,
+        10195,
+        10231,
+        10273,
+        10284,
+        10444,
+        10449,
+        10466,
+        10471,
+        10554,
+        11197,
+        11220,
+        11230,
+        11236,
+        11243,
+    ]
+    highlight_coincidence_event_ids = [11230, 11243]
+
+    coincidence_events = load_coincidence_events(coincidence_pickle_path, requested_coincidence_event_ids)
+    coincidence_station_overlays = build_coincidence_station_overlays(coincidence_events, station_ids_to_process, highlight_coincidence_event_ids)
+
     plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_folder, date, rcr_cut_string)
 
     # --- Main Loop for Individual and Summed Stations ---
@@ -653,7 +895,8 @@ if __name__ == "__main__":
         all_stations_event_ids.append(station_event_ids)
         all_stations_unique_indices.append(final_indices)
         
-        run_analysis_for_station(station_id, station_data, station_event_ids, final_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date)
+        coincidence_overlay_for_station = coincidence_station_overlays.get(station_id)
+        run_analysis_for_station(station_id, station_data, station_event_ids, final_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=coincidence_overlay_for_station)
 
     # --- Run Analysis for Summed Stations ---
     if len(all_stations_data['snr']) > 1:
@@ -661,7 +904,8 @@ if __name__ == "__main__":
         summed_event_ids = np.concatenate(all_stations_event_ids)
         summed_unique_indices = np.concatenate(all_stations_unique_indices)
         summed_station_id = '+'.join(map(str, station_ids_to_process))
-        run_analysis_for_station(summed_station_id, summed_station_data, summed_event_ids, summed_unique_indices, total_pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date)
+        combined_coincidence_overlay = combine_coincidence_overlays(station_ids_to_process, coincidence_station_overlays)
+        run_analysis_for_station(summed_station_id, summed_station_data, summed_event_ids, summed_unique_indices, total_pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=combined_coincidence_overlay)
     else:
         ic("Not enough station data to perform a summed analysis.")
 
