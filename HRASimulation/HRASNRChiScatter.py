@@ -670,7 +670,7 @@ def add_validation_snr_points(
             ax.vlines(x_anchor, y_min, y_max, colors='grey', linewidth=1.5, alpha=0.75, zorder=3)
             annotate_point = (x_anchor, y_max)
         elif event_id in special_event_ids:
-            category = 'Validation special event'
+            category = 'Passing coincidence events'
             label = category if category not in category_handles else None
             scatter_val = ax.scatter(
                 record['avg_snr'],
@@ -685,7 +685,7 @@ def add_validation_snr_points(
             )
             annotate_point = (record['avg_snr'], record['delta_spread'])
         else:
-            category = 'Coincidence n≤2'
+            category = 'Coincidence n=2'
             label = category if category not in category_handles else None
             scatter_val = ax.scatter(
                 record['avg_snr'],
@@ -913,13 +913,13 @@ def add_validation_delta_plane_points(
         event_id = record.get('event_id')
         num_stations = len(record.get('stations', []))
         if event_id in special_event_ids:
-            category = 'Validation special event'
+            category = 'Passing coincidence events'
             color = 'crimson'
             marker_v = '*'
             size = 160
             point_z = 5
         elif num_stations > 3:
-            category = 'Validation n>3'
+            category = 'Coincidence n>3'
             color = 'forestgreen'
             marker_v = 's'
             size = 120
@@ -1455,7 +1455,7 @@ if __name__ == "__main__":
     refl_plane_cut_label = format_plane_cut_label(refl_plane_label, refl_plane_kept_weight, refl_plane_total_weight)
 
     direct_output = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter_direct.png')
-    direct_label = f'BL-only pairs, eff {direct_kept_weight/direct_total_weight:.2%}%'
+    direct_label = f'BL-only pairs, eff {direct_kept_weight/direct_total_weight:.2%}'
     if direct_data[0].size > 0:
         plot_single_scatter(
             direct_data,
@@ -1471,7 +1471,7 @@ if __name__ == "__main__":
         ic("No direct pairs available for scatter plotting; skipping direct scatter plot.")
 
     refl_output = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter_direct_reflected.png')
-    refl_label = f'BL-RCR pairs, eff {refl_kept_weight/refl_total_weight:.2%}%'   
+    refl_label = f'BL-RCR pairs, eff {refl_kept_weight/refl_total_weight:.2%}'   
     if refl_data[0].size > 0:
         plot_single_scatter(
             refl_data,
