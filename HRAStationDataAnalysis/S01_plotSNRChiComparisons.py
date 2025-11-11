@@ -565,10 +565,13 @@ if __name__ == "__main__":
     cuts = {
         'snr_max': 50,
         'chi_rcr_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
-        'chi_rcr_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]),  # More aggressive cut
-        'chi_diff_threshold': 0.08,
+        # 'chi_rcr_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]),  # More aggressive cut
+        'chi_rcr_line_chi': np.array([0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7]),  # Flat cut
+        # 'chi_diff_threshold': 0.08,
+        'chi_diff_threshold': -1.0,  # Disable Chi difference cut for now
         'chi_2016_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
-        'chi_2016_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]) # More aggressive cut
+        # 'chi_2016_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]) # More aggressive cut
+        'chi_2016_line_chi': np.array([0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7]) # Flat cut
     }
     rcr_cut_string = f"RCR Cuts: SNR < {cuts['snr_max']} & ChiRCR > SNR Line & ChiRCR - Chi2016 > {cuts['chi_diff_threshold']}"
     backlobe_cut_string = f"Backlobe Cuts: SNR < {cuts['snr_max']} & Chi2016 > SNR Line & ChiRCR - Chi2016 < -{cuts['chi_diff_threshold']}"
