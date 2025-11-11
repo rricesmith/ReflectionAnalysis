@@ -100,7 +100,7 @@ def _collect_sigma_events_in_file(
 			triggered_sigmas = [
 				sigma
 				for sigma in TRIGGER_SIGMAS
-				if station.has_triggered(f"primary_LPDA_2of4_{sigma}sigma")
+				if station.has_trigger(f"primary_LPDA_2of4_{sigma}sigma") and station.has_triggered(f"primary_LPDA_2of4_{sigma}sigma")
 			]
 
 			stations_data[station_id] = {
