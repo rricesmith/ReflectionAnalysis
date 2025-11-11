@@ -1229,7 +1229,7 @@ def plot_combined_snr_delta_with_validation(
     ax.set_xscale('log')
     ax.set_xlim(max(3.0, x_min * 0.95), max(100.0, x_max * 1.05))
     ax.set_xlabel('Average SNR')
-    ax.set_ylabel('|Δ(ChiRCR - Chi2016)| between stations')
+    ax.set_ylabel('|ΔChi| between stations')
     ax.grid(True, which='both', linestyle='--', alpha=0.3)
     ax.set_title('Chi Difference Spread vs Average SNR — Combined Pairs with Validation')
 
@@ -1287,7 +1287,7 @@ def plot_combined_snr_delta_with_validation(
         labels=labels,
     )
 
-    ax.legend(handles, labels, loc='upper left')
+    ax.legend(handles, labels, loc='upper right', fontsize=8)
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
@@ -1455,7 +1455,7 @@ if __name__ == "__main__":
     refl_plane_cut_label = format_plane_cut_label(refl_plane_label, refl_plane_kept_weight, refl_plane_total_weight)
 
     direct_output = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter_direct.png')
-    direct_label = format_weight_label('Direct-only pairs', direct_kept_weight, direct_total_weight, DELTA_CUT)
+    direct_label = f'BL-only pairs, eff {direct_kept_weight/direct_total_weight:.2%}%'
     if direct_data[0].size > 0:
         plot_single_scatter(
             direct_data,
@@ -1471,7 +1471,7 @@ if __name__ == "__main__":
         ic("No direct pairs available for scatter plotting; skipping direct scatter plot.")
 
     refl_output = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter_direct_reflected.png')
-    refl_label = format_weight_label('Direct-reflected pairs', refl_kept_weight, refl_total_weight, DELTA_CUT)
+    refl_label = f'BL-RCR pairs, eff {refl_kept_weight/refl_total_weight:.2%}%'   
     if refl_data[0].size > 0:
         plot_single_scatter(
             refl_data,
