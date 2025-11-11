@@ -33,10 +33,9 @@ DEFAULT_VALIDATION_PASSING_EVENT_IDS = [
     11236,
     11243,
 ]
-DEFAULT_VALIDATION_SPECIAL_EVENT_ID = 11230
-DEFAULT_VALIDATION_SPECIAL_STATION_ID = 13
+DEFAULT_VALIDATION_SPECIAL_EVENT_IDS = [11230, 11243]
 VALIDATION_PICKLE_NAME = "9.24.25_CoincidenceDatetimes_passing_cuts_with_all_params_recalcZenAzi_calcPol.pkl"
-DELTA_CUT = 0.125
+DELTA_CUT = 0.11
 
 def ensure_coincidence_weight(event_list, coincidence_level, weight_name, sigma, sigma_52,
                               bad_stations, max_distance, force_stations=None):
@@ -621,7 +620,7 @@ def build_validation_pairs(events_dict, event_ids, direct_exclusions, reflected_
 def add_validation_snr_points(
     ax,
     validation_pairs,
-    special_event_id,
+    special_event_ids,
     category_handles=None,
     handles=None,
     labels=None,
@@ -655,13 +654,13 @@ def add_validation_snr_points(
             if y_min > y_max:
                 y_min, y_max = y_max, y_min
 
-            category = 'Validation n>2 (range)'
+            category = 'Coincidence n>2'
             label = category if category not in category_handles else None
             scatter_val = ax.scatter(
                 [x_anchor, x_anchor],
                 [y_min, y_max],
                 marker='s',
-                c='forestgreen',
+                c='grey',
                 s=110,
                 edgecolors='none',
                 alpha=0.9,
@@ -670,7 +669,7 @@ def add_validation_snr_points(
             )
             ax.vlines(x_anchor, y_min, y_max, colors='grey', linewidth=1.5, alpha=0.75, zorder=3)
             annotate_point = (x_anchor, y_max)
-        elif event_id == special_event_id:
+        elif event_id in special_event_ids:
             category = 'Validation special event'
             label = category if category not in category_handles else None
             scatter_val = ax.scatter(
@@ -686,7 +685,7 @@ def add_validation_snr_points(
             )
             annotate_point = (record['avg_snr'], record['delta_spread'])
         else:
-            category = 'Validation n≤2'
+            category = 'Coincidence n≤2'
             label = category if category not in category_handles else None
             scatter_val = ax.scatter(
                 record['avg_snr'],
@@ -718,7 +717,7 @@ def add_validation_snr_points(
     return handles, labels, category_handles
 
 
-def plot_validation_pairs(pairs, special_event_id, output_path, delta_cut):
+def plot_validation_pairs(pairs, special_event_ids, output_path, delta_cut):
     """Plot validation pair metrics, highlighting the special event."""
     if not pairs:
         ic("No validation pairs available for plotting.")
@@ -732,7 +731,7 @@ def plot_validation_pairs(pairs, special_event_id, output_path, delta_cut):
     ax.grid(True, which='both', linestyle='--', alpha=0.3)
     ax.axhline(delta_cut, color='dimgray', linestyle='--', linewidth=1, label=f'Delta cut ({delta_cut})')
 
-    handles, labels, _ = add_validation_snr_points(ax, pairs, special_event_id)
+    handles, labels, _ = add_validation_snr_points(ax, pairs, special_event_ids)
 
     ax.set_title('Validation Event Chi Difference Spread (range shown for n>2)')
     ax.legend(handles, labels, loc='upper left')
@@ -743,57 +742,7 @@ def plot_validation_pairs(pairs, special_event_id, output_path, delta_cut):
     ic(f"Saved validation pair scatter plot to {output_path}")
 
 
-def plot_special_station_pairs(event_summary, special_station_id, output_path, delta_cut):
-    """Plot the delta spread between the special station and other stations for its event."""
-    stations = event_summary.get('stations', [])
-    special_station = next((s for s in stations if s['station_id'] == special_station_id), None)
-    if special_station is None:
-        ic(f"Special station {special_station_id} not found in event {event_summary.get('event_id')}.")
-        return
 
-    comparison_points = []
-    for station in stations:
-        if station['station_id'] == special_station_id:
-            continue
-        delta_spread = abs(special_station['chi_delta'] - station['chi_delta'])
-        avg_snr = 0.5 * (special_station['snr'] + station['snr'])
-        comparison_points.append((avg_snr, delta_spread, station['station_id']))
-        ic(
-            f"Special event {event_summary.get('event_id')} station {special_station_id} vs station {station['station_id']}: "
-            f"avg SNR {avg_snr:.2f}, |Δ| {delta_spread:.3f}"
-        )
-
-    if not comparison_points:
-        ic(f"No comparison stations available for special station {special_station_id} in event {event_summary.get('event_id')}")
-        return
-
-    fig, ax = plt.subplots(figsize=(9, 6))
-    ax.set_xscale('log')
-    ax.set_xlim(3, 100)
-    ax.set_xlabel('Average SNR (with station {})'.format(special_station_id))
-    ax.set_ylabel('|Δ(ChiRCR - Chi2016)| to station {}'.format(special_station_id))
-    ax.grid(True, which='both', linestyle='--', alpha=0.3)
-    ax.axhline(delta_cut, color='dimgray', linestyle='--', linewidth=1, label=f'Delta cut ({delta_cut})')
-
-    for avg_snr, delta_spread, other_station in comparison_points:
-        ax.scatter(avg_snr, delta_spread, marker='o', c='darkgreen', s=100, edgecolors='none', alpha=0.85)
-        ax.annotate(
-            f"St {other_station}",
-            (avg_snr, delta_spread),
-            textcoords='offset points',
-            xytext=(4, 6),
-            fontsize=9,
-        )
-
-    ax.set_title(
-        f"Event {event_summary.get('event_id')} - Station {special_station_id} Comparisons"
-    )
-    ax.legend(loc='upper left')
-
-    fig.tight_layout()
-    fig.savefig(output_path)
-    plt.close(fig)
-    ic(f"Saved special station comparison plot to {output_path}")
 
 
 def format_weight_label(base_label, kept_weight, total_weight, delta_cut):
@@ -814,7 +763,7 @@ def plot_simulation_with_validation(
     marker,
     delta_cut,
     validation_pairs,
-    special_event_id,
+    special_event_ids,
 ):
     fig, ax, scatter_sim, cut_line = plot_single_scatter(
         sim_data,
@@ -844,7 +793,7 @@ def plot_simulation_with_validation(
     handles, labels, _ = add_validation_snr_points(
         ax,
         validation_pairs,
-        special_event_id,
+        special_event_ids,
         handles=handles,
         labels=labels,
     )
@@ -941,7 +890,7 @@ def plot_delta_plane(
 def add_validation_delta_plane_points(
     ax,
     validation_pairs,
-    special_event_id,
+    special_event_ids,
     category_handles=None,
     handles=None,
     labels=None,
@@ -963,7 +912,7 @@ def add_validation_delta_plane_points(
 
         event_id = record.get('event_id')
         num_stations = len(record.get('stations', []))
-        if event_id == special_event_id:
+        if event_id in special_event_ids:
             category = 'Validation special event'
             color = 'crimson'
             marker_v = '*'
@@ -1161,7 +1110,7 @@ def plot_combined_delta_plane_with_validation(
         exclude_lower_left=exclude_lower_left,
     )
 
-    ax.legend(handles, labels, loc='upper left')
+    ax.legend(handles, labels, loc='upper right', fontsize=8)
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
@@ -1325,7 +1274,7 @@ def plot_combined_snr_delta_with_validation(
         linestyle='--',
         linewidth=1,
         label=f'Δ cut ({delta_cut})',
-        zorder=0,
+        zorder=3,
     )
     handles.append(cut_line)
     labels.append(cut_line.get_label())
@@ -1606,7 +1555,7 @@ if __name__ == "__main__":
             validation_output = os.path.join(snr_plot_folder, 'validation_event_pair_spread.png')
             plot_validation_pairs(
                 validation_pairs,
-                DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                 validation_output,
                 DELTA_CUT,
             )
@@ -1625,7 +1574,7 @@ if __name__ == "__main__":
                     marker='o',
                     delta_cut=DELTA_CUT,
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                 )
 
             if refl_data[0].size > 0:
@@ -1642,7 +1591,7 @@ if __name__ == "__main__":
                     marker='^',
                     delta_cut=DELTA_CUT,
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                 )
 
             if direct_plane_data[0].size > 0:
@@ -1658,7 +1607,7 @@ if __name__ == "__main__":
                     cmap='Blues',
                     marker='o',
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                 )
 
             if refl_plane_data[0].size > 0:
@@ -1674,7 +1623,7 @@ if __name__ == "__main__":
                     cmap='Oranges',
                     marker='^',
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                 )
 
             if direct_plane_cut[0].size > 0:
@@ -1690,7 +1639,7 @@ if __name__ == "__main__":
                     cmap='Blues',
                     marker='o',
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                     exclude_lower_left=True,
                 )
 
@@ -1707,7 +1656,7 @@ if __name__ == "__main__":
                     cmap='Oranges',
                     marker='^',
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                     exclude_lower_left=True,
                 )
 
@@ -1724,7 +1673,7 @@ if __name__ == "__main__":
                     title='Chi Delta Plane — Combined Pairs with Validation',
                     output_path=combined_plane_output,
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                     exclude_lower_left=False,
                 )
 
@@ -1741,7 +1690,7 @@ if __name__ == "__main__":
                     title='Chi Delta Plane — Combined Pairs with Validation (Quadrant Cut)',
                     output_path=combined_plane_cut_output,
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                     exclude_lower_left=True,
                 )
 
@@ -1758,29 +1707,14 @@ if __name__ == "__main__":
                     combined_snr_output,
                     delta_cut=DELTA_CUT,
                     validation_pairs=validation_pairs,
-                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_ID,
+                    special_event_id=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                 )
 
             special_summary = next(
-                (rec for rec in validation_pairs if rec['event_id'] == DEFAULT_VALIDATION_SPECIAL_EVENT_ID),
+                (rec for rec in validation_pairs if rec['event_id'] == DEFAULT_VALIDATION_SPECIAL_EVENT_IDS),
                 None,
             )
-            if special_summary is not None:
-                special_output = os.path.join(
-                    snr_plot_folder,
-                    f"validation_special_event_{DEFAULT_VALIDATION_SPECIAL_EVENT_ID}_station_{DEFAULT_VALIDATION_SPECIAL_STATION_ID}.png",
-                )
-                plot_special_station_pairs(
-                    special_summary,
-                    DEFAULT_VALIDATION_SPECIAL_STATION_ID,
-                    special_output,
-                    DELTA_CUT,
-                )
-            else:
-                ic(
-                    f"Special validation event {DEFAULT_VALIDATION_SPECIAL_EVENT_ID} not included in loaded summaries; "
-                    "skipping dedicated plot."
-                )
+
         else:
             ic("No validation pairs computed; skipping validation plots.")
     else:
