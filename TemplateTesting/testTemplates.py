@@ -27,9 +27,7 @@ from DeepLearning.D00_helperFunctions import loadMultipleTemplates
 
 RCR_SERIES: Tuple[str, ...] = ("100s", "200s")
 SIM_BL_PICKLE_ROOT = Path("TemplateTesting/BL/pickles")
-CR_PICKLE_ROOT = Path(
-	"/dfs8/sbarwick_lab/ariannaproject/Tingwei_liu/TemplateTesting/Nobacklobe/pickles/"
-)
+CR_ARCHIVE_ROOT = Path("TemplateTesting/CRs")
 PLOT_ROOT = Path("TemplateTesting/plots/templates")
 
 
@@ -48,6 +46,8 @@ def _ensure_dir(path: Path) -> None:
 
 def _ensure_1d(trace: np.ndarray) -> np.ndarray:
 	arr = np.array(trace, copy=True)
+	if arr.ndim == 0:
+		return arr.reshape(1)
 	if arr.ndim == 1:
 		return arr
 	reshaped = arr.reshape(arr.shape[0], -1)
@@ -72,6 +72,66 @@ def _select_trace_with_times(
 	if best_trace is None:
 		raise ValueError("No traces available in payload")
 	return best_trace, best_times
+
+
+def _coerce_channel_mapping(obj: object) -> Optional[Dict[int, np.ndarray]]:
+	if isinstance(obj, dict):
+		mapping: Dict[int, np.ndarray] = {}
+		for idx, (key, value) in enumerate(obj.items()):
+			try:
+				channel = int(key)
+			except (TypeError, ValueError):
+				channel = idx
+			mapping[channel] = np.array(value, copy=True)
+		return mapping or None
+	if isinstance(obj, np.ndarray):
+		if obj.dtype == object:
+			try:
+				return _coerce_channel_mapping(obj.item())
+			except ValueError:
+				return _coerce_channel_mapping(obj.tolist())
+		return None
+	if isinstance(obj, (list, tuple)):
+		mapping = {idx: np.array(value, copy=True) for idx, value in enumerate(obj)}
+		return mapping or None
+	return None
+
+
+def _extract_trace_from_objects(
+	traces_obj: object,
+	times_obj: Optional[object],
+) -> Optional[Tuple[np.ndarray, Optional[np.ndarray]]]:
+	channel_traces = _coerce_channel_mapping(traces_obj)
+	channel_times = _coerce_channel_mapping(times_obj) if times_obj is not None else None
+	if channel_traces is not None:
+		try:
+			trace_arr, time_arr = _select_trace_with_times(channel_traces, channel_times or {})
+		except ValueError:
+			pass
+		else:
+			if (
+				time_arr is None
+				and channel_times is None
+				and isinstance(times_obj, np.ndarray)
+				and times_obj.ndim == 1
+			):
+				time_arr = np.array(times_obj, copy=True)
+			return trace_arr, time_arr
+
+	arr = np.array(traces_obj, copy=True)
+	try:
+		trace_arr = _ensure_1d(arr)
+	except Exception:
+		return None
+
+	time_arr: Optional[np.ndarray] = None
+	if isinstance(times_obj, np.ndarray):
+		if times_obj.ndim == 1:
+			time_arr = np.array(times_obj, copy=True)
+		elif times_obj.ndim > 1:
+			time_arr = np.array(times_obj.reshape(times_obj.shape[0], -1)[0], copy=True)
+
+	return trace_arr, time_arr
 
 
 def _sanitize_identifier(identifier: str) -> str:
@@ -194,40 +254,86 @@ def load_data_bl_templates() -> List[TemplateRecord]:
 	return records
 
 
+def _iter_event_payloads(obj: object) -> Iterable[Dict[str, object]]:
+	if isinstance(obj, dict):
+		yield obj
+	elif isinstance(obj, (list, tuple)):
+		for item in obj:
+			yield from _iter_event_payloads(item)
+	elif isinstance(obj, np.ndarray):
+		if obj.dtype == object:
+			for item in obj.flat:
+				yield from _iter_event_payloads(item)
+		else:
+			# Non-object arrays do not carry event dictionaries.
+			return
+
+
 def load_cr_templates() -> List[TemplateRecord]:
-	cr_dir = CR_PICKLE_ROOT
+	cr_dir = CR_ARCHIVE_ROOT
 	if not cr_dir.is_dir():
-		raise FileNotFoundError(f"CR pickle directory not found: {cr_dir}")
+		raise FileNotFoundError(f"CR archive directory not found: {cr_dir}")
 
 	records: List[TemplateRecord] = []
-	for pickle_path in sorted(cr_dir.glob("*.pkl")):
-		with pickle_path.open("rb") as fin:
-			payload = pickle.load(fin)
+	for npz_path in sorted(cr_dir.glob("*.npz")):
+		with np.load(npz_path, allow_pickle=True) as npz_file:
+			event_payloads: List[Dict[str, object]] = []
+			if "events" in npz_file.files:
+				events_obj = npz_file["events"]
+				event_payloads.extend(_iter_event_payloads(events_obj))
 
-		events: Iterable[Dict[str, object]] = payload.get("events", [])  # type: ignore[assignment]
-		found_any = False
-		for event in events:
-			traces = event.get("traces", {})  # type: ignore[assignment]
-			times = event.get("times", {})  # type: ignore[assignment]
-			if not isinstance(traces, dict) or not traces:
-				continue
-			try:
-				trace, time = _select_trace_with_times(traces, times)  # type: ignore[arg-type]
-			except ValueError:
-				continue
-			identifier = f"{pickle_path.stem}_event{event.get('event_id', 'unknown')}"
-			records.append(
-				TemplateRecord(
-					template_type="CR",
-					identifier=identifier,
-					trace=trace,
-					time=time,
-					source=pickle_path,
+			if not event_payloads:
+				traces_obj: Optional[object] = None
+				times_obj: Optional[object] = None
+				if "traces" in npz_file.files:
+					traces_obj = npz_file["traces"]
+					if "times" in npz_file.files:
+						times_obj = npz_file["times"]
+				elif "trace" in npz_file.files:
+					traces_obj = npz_file["trace"]
+					if "time" in npz_file.files:
+						times_obj = npz_file["time"]
+
+				if traces_obj is not None:
+					extracted = _extract_trace_from_objects(traces_obj, times_obj)
+					if extracted is None:
+						print(f"No usable trace content in {npz_path}")
+						continue
+					trace_arr, time_arr = extracted
+					records.append(
+						TemplateRecord(
+							template_type="CR",
+							identifier=npz_path.stem,
+							trace=trace_arr,
+							time=time_arr,
+							source=npz_path,
+						)
+					)
+					continue
+
+			found_any = False
+			for event in event_payloads:
+				traces = event.get("traces", {})  # type: ignore[assignment]
+				times = event.get("times", {})  # type: ignore[assignment]
+				if not isinstance(traces, dict) or not traces:
+					continue
+				try:
+					trace, time = _select_trace_with_times(traces, times)  # type: ignore[arg-type]
+				except ValueError:
+					continue
+				identifier = f"{npz_path.stem}_event{event.get('event_id', 'unknown')}"
+				records.append(
+					TemplateRecord(
+						template_type="CR",
+						identifier=identifier,
+						trace=trace,
+						time=time,
+						source=npz_path,
+					)
 				)
-			)
-			found_any = True
-		if not found_any:
-			print(f"No usable events in {pickle_path}")
+				found_any = True
+			if not found_any:
+				print(f"No usable events in {npz_path}")
 
 	return records
 
