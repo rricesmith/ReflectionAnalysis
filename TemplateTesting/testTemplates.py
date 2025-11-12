@@ -154,7 +154,15 @@ def _plot_template(record: TemplateRecord, output_dir: Path) -> None:
 def load_rcr_templates() -> List[TemplateRecord]:
 	records: List[TemplateRecord] = []
 	for series in RCR_SERIES:
-		templates = loadMultipleTemplates(series, addSingle=True, bad=False)
+		print(f"Loading RCR series {series} via loadMultipleTemplates")
+		try:
+			templates = loadMultipleTemplates(series, addSingle=True, bad=False)
+		except Exception as exc:  # pragma: no cover - defensive logging
+			print(f"  Failed to load series {series}: {exc}")
+			continue
+		if not templates:
+			print(f"  No templates returned for series {series}")
+			continue
 		for key in sorted(templates):
 			trace = _ensure_1d(np.array(templates[key], copy=True))
 			identifier = f"{series}_{key}"
@@ -275,12 +283,18 @@ def load_cr_templates() -> List[TemplateRecord]:
 		raise FileNotFoundError(f"CR archive directory not found: {cr_dir}")
 
 	records: List[TemplateRecord] = []
-	for npz_path in sorted(cr_dir.glob("*.npz")):
+	archive_paths = sorted(cr_dir.glob("*.npz"))
+	if not archive_paths:
+		print(f"No .npz files found in {cr_dir}")
+	for npz_path in archive_paths:
+		print(f"Processing CR archive {npz_path.name}")
 		with np.load(npz_path, allow_pickle=True) as npz_file:
+			print(f"  Contents: {sorted(npz_file.files)}")
 			event_payloads: List[Dict[str, object]] = []
 			if "events" in npz_file.files:
 				events_obj = npz_file["events"]
 				event_payloads.extend(_iter_event_payloads(events_obj))
+				print(f"  Extracted {len(event_payloads)} event payloads")
 
 			if not event_payloads:
 				traces_obj: Optional[object] = None
@@ -297,7 +311,7 @@ def load_cr_templates() -> List[TemplateRecord]:
 				if traces_obj is not None:
 					extracted = _extract_trace_from_objects(traces_obj, times_obj)
 					if extracted is None:
-						print(f"No usable trace content in {npz_path}")
+						print("  No usable trace content in fallback data")
 						continue
 					trace_arr, time_arr = extracted
 					records.append(
@@ -309,6 +323,7 @@ def load_cr_templates() -> List[TemplateRecord]:
 							source=npz_path,
 						)
 					)
+					print("  Added fallback trace")
 					continue
 
 			found_any = False
@@ -316,10 +331,12 @@ def load_cr_templates() -> List[TemplateRecord]:
 				traces = event.get("traces", {})  # type: ignore[assignment]
 				times = event.get("times", {})  # type: ignore[assignment]
 				if not isinstance(traces, dict) or not traces:
+					print("    Event skipped: no trace dict")
 					continue
 				try:
 					trace, time = _select_trace_with_times(traces, times)  # type: ignore[arg-type]
 				except ValueError:
+					print("    Event skipped: trace selection failed")
 					continue
 				identifier = f"{npz_path.stem}_event{event.get('event_id', 'unknown')}"
 				records.append(
@@ -333,7 +350,7 @@ def load_cr_templates() -> List[TemplateRecord]:
 				)
 				found_any = True
 			if not found_any:
-				print(f"No usable events in {npz_path}")
+				print("  No usable events produced a template")
 
 	return records
 
