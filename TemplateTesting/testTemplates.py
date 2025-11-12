@@ -283,74 +283,114 @@ def load_cr_templates() -> List[TemplateRecord]:
 		raise FileNotFoundError(f"CR archive directory not found: {cr_dir}")
 
 	records: List[TemplateRecord] = []
-	archive_paths = sorted(cr_dir.glob("*.npz"))
+	archive_paths = sorted(cr_dir.glob("*.npz")) + sorted(cr_dir.glob("*.npy"))
 	if not archive_paths:
-		print(f"No .npz files found in {cr_dir}")
-	for npz_path in archive_paths:
-		print(f"Processing CR archive {npz_path.name}")
-		with np.load(npz_path, allow_pickle=True) as npz_file:
-			print(f"  Contents: {sorted(npz_file.files)}")
-			event_payloads: List[Dict[str, object]] = []
-			if "events" in npz_file.files:
-				events_obj = npz_file["events"]
-				event_payloads.extend(_iter_event_payloads(events_obj))
-				print(f"  Extracted {len(event_payloads)} event payloads")
+		print(f"No CR archive files (.npz/.npy) found in {cr_dir}")
+	for archive_path in archive_paths:
+		print(f"Processing CR archive {archive_path.name}")
+		if archive_path.suffix.lower() == ".npz":
+			with np.load(archive_path, allow_pickle=True) as npz_file:
+				print(f"  Contents: {sorted(npz_file.files)}")
+				event_payloads: List[Dict[str, object]] = []
+				if "events" in npz_file.files:
+					events_obj = npz_file["events"]
+					event_payloads.extend(_iter_event_payloads(events_obj))
+					print(f"  Extracted {len(event_payloads)} event payloads")
 
-			if not event_payloads:
-				traces_obj: Optional[object] = None
-				times_obj: Optional[object] = None
-				if "traces" in npz_file.files:
-					traces_obj = npz_file["traces"]
-					if "times" in npz_file.files:
-						times_obj = npz_file["times"]
-				elif "trace" in npz_file.files:
-					traces_obj = npz_file["trace"]
-					if "time" in npz_file.files:
-						times_obj = npz_file["time"]
+				if not event_payloads:
+					traces_obj: Optional[object] = None
+					times_obj: Optional[object] = None
+					if "traces" in npz_file.files:
+						traces_obj = npz_file["traces"]
+						if "times" in npz_file.files:
+							times_obj = npz_file["times"]
+					elif "trace" in npz_file.files:
+						traces_obj = npz_file["trace"]
+						if "time" in npz_file.files:
+							times_obj = npz_file["time"]
 
-				if traces_obj is not None:
-					extracted = _extract_trace_from_objects(traces_obj, times_obj)
-					if extracted is None:
-						print("  No usable trace content in fallback data")
+					if traces_obj is not None:
+						extracted = _extract_trace_from_objects(traces_obj, times_obj)
+						if extracted is None:
+							print("  No usable trace content in fallback data")
+							continue
+						trace_arr, time_arr = extracted
+						records.append(
+							TemplateRecord(
+								template_type="CR",
+								identifier=archive_path.stem,
+								trace=trace_arr,
+								time=time_arr,
+								source=archive_path,
+							)
+						)
+						print("  Added fallback trace")
 						continue
-					trace_arr, time_arr = extracted
+
+				found_any = False
+				for event in event_payloads:
+					traces = event.get("traces", {})  # type: ignore[assignment]
+					times = event.get("times", {})  # type: ignore[assignment]
+					if not isinstance(traces, dict) or not traces:
+						print("    Event skipped: no trace dict")
+						continue
+					try:
+						trace, time = _select_trace_with_times(traces, times)  # type: ignore[arg-type]
+					except ValueError:
+						print("    Event skipped: trace selection failed")
+						continue
+					identifier = f"{archive_path.stem}_event{event.get('event_id', 'unknown')}"
 					records.append(
 						TemplateRecord(
 							template_type="CR",
-							identifier=npz_path.stem,
-							trace=trace_arr,
-							time=time_arr,
-							source=npz_path,
+							identifier=identifier,
+							trace=trace,
+							time=time,
+							source=archive_path,
 						)
 					)
-					print("  Added fallback trace")
-					continue
+					found_any = True
+				if not found_any:
+					print("  No usable events produced a template")
+		else:
+			arr = np.load(archive_path, allow_pickle=True)
+			print(f"  Loaded array: dtype={arr.dtype}, shape={arr.shape}")
+			if arr.size == 0:
+				print("  Empty array; skipping")
+				continue
 
-			found_any = False
-			for event in event_payloads:
-				traces = event.get("traces", {})  # type: ignore[assignment]
-				times = event.get("times", {})  # type: ignore[assignment]
-				if not isinstance(traces, dict) or not traces:
-					print("    Event skipped: no trace dict")
-					continue
-				try:
-					trace, time = _select_trace_with_times(traces, times)  # type: ignore[arg-type]
-				except ValueError:
-					print("    Event skipped: trace selection failed")
-					continue
-				identifier = f"{npz_path.stem}_event{event.get('event_id', 'unknown')}"
+			def _iter_traces_from_array(data: np.ndarray) -> Iterable[np.ndarray]:
+				if data.dtype == object:
+					for idx, item in enumerate(data.flat):
+						trace = np.array(item, copy=True)
+						if trace.size == 0:
+							print(f"    Object entry {idx} empty; skipped")
+							continue
+						yield trace
+				elif data.ndim >= 2:
+					for idx in range(data.shape[0]):
+						trace = np.array(data[idx], copy=True)
+						if trace.size == 0:
+							print(f"    Row {idx} empty; skipped")
+							continue
+						yield trace
+				else:
+					yield np.array(data, copy=True)
+
+			trace_count = 0
+			for idx, trace in enumerate(_iter_traces_from_array(arr)):
+				trace_arr = _ensure_1d(trace)
+				identifier = f"{archive_path.stem}_trace{idx:03d}"
 				records.append(
 					TemplateRecord(
 						template_type="CR",
 						identifier=identifier,
-						trace=trace,
-						time=time,
-						source=npz_path,
+						trace=trace_arr,
+						source=archive_path,
 					)
 				)
-				found_any = True
-			if not found_any:
-				print("  No usable events produced a template")
+				trace_count += 1
+			print(f"  Added {trace_count} traces from {archive_path.name}")
 
 	return records
 
