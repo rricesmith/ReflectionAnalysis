@@ -25,7 +25,7 @@ if str(REPO_ROOT) not in sys.path:
 from DeepLearning.D00_helperFunctions import loadMultipleTemplates
 
 
-RCR_SERIES: Tuple[str, ...] = ("100s", "200s")
+RCR_SERIES: Tuple[int, ...] = (100, 200)
 SIM_BL_PICKLE_ROOT = Path("TemplateTesting/BL/pickles")
 CR_ARCHIVE_ROOT = Path("TemplateTesting/CRs")
 PLOT_ROOT = Path("TemplateTesting/plots/templates")
