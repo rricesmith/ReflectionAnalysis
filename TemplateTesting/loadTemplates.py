@@ -17,6 +17,8 @@ import numpy as np
 
 
 # Ensure repository root is importable for sibling packages.
+# Ensure repository root is importable for sibling packages. This is
+# needed when executing the loaders as scripts.
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
 	sys.path.insert(0, str(REPO_ROOT))
@@ -29,6 +31,7 @@ RCR_SERIES: Tuple[int, ...] = (100, 200)
 SIM_BL_PICKLE_ROOT = Path("TemplateTesting/BL/pickles")
 CR_ARCHIVE_ROOT = Path("TemplateTesting/CRs")
 PLOT_ROOT = Path("TemplateTesting/plots/templates")
+DEFAULT_SAMPLING_RATE_HZ = 2e9
 
 
 @dataclass
@@ -38,6 +41,7 @@ class TemplateRecord:
 	trace: np.ndarray
 	time: Optional[np.ndarray] = None
 	source: Optional[Path] = None
+	sampling_rate_hz: Optional[float] = None
 
 
 def _ensure_dir(path: Path) -> None:
@@ -53,6 +57,20 @@ def _ensure_1d(trace: np.ndarray) -> np.ndarray:
 	reshaped = arr.reshape(arr.shape[0], -1)
 	channel_index = int(np.argmax(np.max(np.abs(reshaped), axis=1)))
 	return np.array(arr[channel_index], copy=True)
+
+
+def _infer_sampling_rate_from_times(times: Optional[np.ndarray]) -> Optional[float]:
+	if times is None or len(times) < 2:
+		return None
+	times_arr = np.asarray(times, dtype=float)
+	diffs = np.diff(times_arr)
+	finite_diffs = diffs[np.isfinite(diffs) & (diffs != 0)]
+	if finite_diffs.size == 0:
+		return None
+	mean_dt_ns = float(np.mean(finite_diffs))
+	if mean_dt_ns == 0:
+		return None
+	return 1e9 / mean_dt_ns
 
 
 def _select_trace_with_times(
@@ -171,6 +189,7 @@ def load_rcr_templates() -> List[TemplateRecord]:
 					template_type="RCR",
 					identifier=identifier,
 					trace=trace,
+					sampling_rate_hz=DEFAULT_SAMPLING_RATE_HZ,
 				)
 			)
 	return records
@@ -228,6 +247,8 @@ def load_sim_bl_templates() -> List[TemplateRecord]:
 			print(f"No usable traces found in {selected_path}")
 			continue
 
+		sampling_rate = _infer_sampling_rate_from_times(best_time) or DEFAULT_SAMPLING_RATE_HZ
+
 		records.append(
 			TemplateRecord(
 				template_type="SimBL",
@@ -235,6 +256,7 @@ def load_sim_bl_templates() -> List[TemplateRecord]:
 				trace=best_trace,
 				time=best_time,
 				source=selected_path,
+				sampling_rate_hz=sampling_rate,
 			)
 		)
 
@@ -257,6 +279,7 @@ def load_data_bl_templates() -> List[TemplateRecord]:
 					template_type="DataBL",
 					identifier=identifier,
 					trace=trace,
+					sampling_rate_hz=DEFAULT_SAMPLING_RATE_HZ,
 				)
 			)
 	return records
@@ -315,6 +338,7 @@ def load_cr_templates() -> List[TemplateRecord]:
 							print("  No usable trace content in fallback data")
 							continue
 						trace_arr, time_arr = extracted
+						sampling_rate = _infer_sampling_rate_from_times(time_arr) or DEFAULT_SAMPLING_RATE_HZ
 						records.append(
 							TemplateRecord(
 								template_type="CR",
@@ -322,6 +346,7 @@ def load_cr_templates() -> List[TemplateRecord]:
 								trace=trace_arr,
 								time=time_arr,
 								source=archive_path,
+								sampling_rate_hz=sampling_rate,
 							)
 						)
 						print("  Added fallback trace")
@@ -340,6 +365,7 @@ def load_cr_templates() -> List[TemplateRecord]:
 						print("    Event skipped: trace selection failed")
 						continue
 					identifier = f"{archive_path.stem}_event{event.get('event_id', 'unknown')}"
+					sampling_rate = _infer_sampling_rate_from_times(time) or DEFAULT_SAMPLING_RATE_HZ
 					records.append(
 						TemplateRecord(
 							template_type="CR",
@@ -347,6 +373,7 @@ def load_cr_templates() -> List[TemplateRecord]:
 							trace=trace,
 							time=time,
 							source=archive_path,
+							sampling_rate_hz=sampling_rate,
 						)
 					)
 					found_any = True
@@ -387,6 +414,7 @@ def load_cr_templates() -> List[TemplateRecord]:
 						identifier=identifier,
 						trace=trace_arr,
 						source=archive_path,
+						sampling_rate_hz=DEFAULT_SAMPLING_RATE_HZ,
 					)
 				)
 				trace_count += 1
