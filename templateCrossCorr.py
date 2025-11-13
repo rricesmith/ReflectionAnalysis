@@ -305,7 +305,7 @@ def _plot_template_match(
     match_details: Dict[str, object],
     output_root: Path,
 ) -> Path:
-    output_dir = Path(output_root) / template_type / f"event_{event_id}"
+    output_dir = Path(output_root) / template_type 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=True)
