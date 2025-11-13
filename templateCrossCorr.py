@@ -16,6 +16,7 @@ from radiotools import helper as hp
 from scipy import signal
 
 from TemplateTesting.loadTemplates import DEFAULT_SAMPLING_RATE_HZ, TemplateRecord
+from icecream import ic
 
 
 CHANNEL_PAIRS: Tuple[Tuple[int, int], ...] = ((0, 2), (1, 3))
@@ -98,6 +99,7 @@ def get_xcorr_for_channel(
     if template_arr.ndim > 1:
         template_arr = template_arr.reshape(-1)
     if orig_arr.size == 0 or template_arr.size == 0:
+        ic(times)
         times_arr = np.asarray(list(times), dtype=float) if times else None
         if return_details:
             return {
