@@ -187,7 +187,9 @@ def get_xcorr_for_channel(
 
     full_corr = signal.correlate(orig_norm_work, ref_template_resampled, mode="full")
     if full_corr.size:
-        lags = signal.correlation_lags(len(orig_norm_work), len(ref_template_resampled), mode="full")
+        len_a = len(orig_norm_work)
+        len_b = len(ref_template_resampled)
+        lags = np.arange(-len_b + 1, len_a, dtype=int)
         lag_samples = int(lags[int(np.argmax(np.abs(full_corr)))])
     else:
         lag_samples = 0
