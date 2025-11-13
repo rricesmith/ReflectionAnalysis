@@ -128,6 +128,7 @@ def get_xcorr_for_channel(
 
     orig_norm = orig_arr / orig_abs_max
     template_norm = template_arr / template_abs_max
+    ic(times)
     times_arr = np.asarray(list(times), dtype=float) if times else None
 
     orig_binning = 1.0 / float(template_sampling_rate)
