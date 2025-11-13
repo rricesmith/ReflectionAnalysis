@@ -99,7 +99,7 @@ def get_xcorr_for_channel(
     if template_arr.ndim > 1:
         template_arr = template_arr.reshape(-1)
     if orig_arr.size == 0 or template_arr.size == 0:
-        ic(times)
+        # ic(times)
         times_arr = np.asarray(list(times), dtype=float) if times else None
         if return_details:
             return {
@@ -128,8 +128,8 @@ def get_xcorr_for_channel(
 
     orig_norm = orig_arr / orig_abs_max
     template_norm = template_arr / template_abs_max
-    ic(times)
-    times_arr = np.asarray(list(times), dtype=float) if times else None
+    # ic(times)
+    times_arr = np.asarray(list(times), dtype=float) if times.any() else None
 
     orig_binning = 1.0 / float(template_sampling_rate)
     target_binning = 1.0 / float(orig_sampling_rate)
