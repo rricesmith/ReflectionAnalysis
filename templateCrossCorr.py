@@ -5,7 +5,7 @@ from __future__ import annotations
 import fractions
 from decimal import Decimal
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import matplotlib
 
@@ -16,7 +16,6 @@ from radiotools import helper as hp
 from scipy import signal
 
 from TemplateTesting.loadTemplates import DEFAULT_SAMPLING_RATE_HZ, TemplateRecord
-from icecream import ic
 
 
 CHANNEL_PAIRS: Tuple[Tuple[int, int], ...] = ((0, 2), (1, 3))
@@ -92,6 +91,17 @@ def get_xcorr_for_channel(
     SNR: str = "n/a",
     return_details: bool = False,
 ):
+    if isinstance(times, np.ndarray):
+        times_arr: Optional[np.ndarray] = np.asarray(times, dtype=float)
+        if times_arr.size == 0:
+            times_arr = None
+    else:
+        try:
+            times_list = list(times)
+        except TypeError:
+            times_list = []
+        times_arr = np.asarray(times_list, dtype=float) if times_list else None
+
     orig_arr = np.asarray(orig_trace, dtype=float)
     template_arr = np.asarray(template_trace, dtype=float)
     if orig_arr.ndim > 1:
@@ -99,8 +109,6 @@ def get_xcorr_for_channel(
     if template_arr.ndim > 1:
         template_arr = template_arr.reshape(-1)
     if orig_arr.size == 0 or template_arr.size == 0:
-        # ic(times)
-        times_arr = np.asarray(list(times), dtype=float) if times else None
         if return_details:
             return {
                 "xcorr": 0.0,
@@ -128,9 +136,6 @@ def get_xcorr_for_channel(
 
     orig_norm = orig_arr / orig_abs_max
     template_norm = template_arr / template_abs_max
-    # ic(times)
-    times_arr = np.asarray(list(times), dtype=float) if times.any() else None
-
     orig_binning = 1.0 / float(template_sampling_rate)
     target_binning = 1.0 / float(orig_sampling_rate)
     resampling_factor = fractions.Fraction(Decimal(orig_binning / target_binning))
@@ -297,7 +302,7 @@ def _evaluate_template_for_trigger(
 
 
 def _plot_template_match(
-    event_id: int,
+    event_id: Union[int, str],
     station_id: object,
     trigger_idx: int,
     template_type: str,
@@ -305,8 +310,15 @@ def _plot_template_match(
     match_details: Dict[str, object],
     output_root: Path,
 ) -> Path:
-    output_dir = Path(output_root) / template_type 
+    event_label = _sanitize_identifier(str(event_id))
+    output_dir = Path(output_root) / template_type / f"event_{event_label}"
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    station_sampling = match_details.get("sampling_rate_hz", DEFAULT_TRACE_SAMPLING_HZ)
+    try:
+        station_sampling = float(station_sampling)
+    except (TypeError, ValueError):
+        station_sampling = DEFAULT_TRACE_SAMPLING_HZ
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=True)
     axes_flat = axes.flatten()
@@ -319,7 +331,7 @@ def _plot_template_match(
             continue
         times_ns = info.get("times_ns")
         if times_ns is None or len(times_ns) != len(info["orig_trace"]):
-            times_ns = _compute_times_ns(len(info["orig_trace"]), DEFAULT_TRACE_SAMPLING_HZ)
+            times_ns = _compute_times_ns(len(info["orig_trace"]), station_sampling)
         ax.plot(times_ns, info["orig_trace"], label="Trace", color="C0", alpha=0.85)
         overlay = info.get("aligned_template_scaled")
         if overlay is not None:
@@ -344,7 +356,8 @@ def _plot_template_match(
     fig.tight_layout(rect=[0, 0.05, 1, 0.95])
 
     filename = (
-        f"event{event_id}_st{station_label}_tr{trigger_idx:02d}_{_sanitize_identifier(template.identifier)}.png"
+        f"event{event_label}_st{station_label}_tr{trigger_idx:02d}_"
+        f"{_sanitize_identifier(template.identifier)}.png"
     )
     plot_path = output_dir / filename
     fig.savefig(plot_path, dpi=200)
@@ -353,14 +366,14 @@ def _plot_template_match(
 
 
 def evaluate_events_against_templates(
-    events: Dict[int, Dict[str, object]],
+    events: Dict[Union[int, str], Dict[str, object]],
     template_groups: Dict[str, List[TemplateRecord]],
     output_root: Path = MATCH_PLOT_ROOT,
     trace_sampling_rate_hz: float = DEFAULT_TRACE_SAMPLING_HZ,
-) -> Dict[int, Dict[str, Dict[str, object]]]:
-    output_root = Path(output_root)
-    output_root.mkdir(parents=True, exist_ok=True)
-    results: Dict[int, Dict[str, Dict[str, object]]] = {}
+) -> Dict[Union[int, str], Dict[str, Dict[str, object]]]:
+    default_output_root = Path(output_root)
+    default_output_root.mkdir(parents=True, exist_ok=True)
+    results: Dict[Union[int, str], Dict[str, Dict[str, object]]] = {}
 
     for raw_event_id, event_details in events.items():
         try:
@@ -370,6 +383,12 @@ def evaluate_events_against_templates(
 
         if not isinstance(event_details, dict):
             continue
+        event_output_root_raw = event_details.get("plot_root", default_output_root)
+        try:
+            event_output_root = Path(event_output_root_raw)
+        except (TypeError, ValueError):
+            event_output_root = default_output_root
+        event_output_root.mkdir(parents=True, exist_ok=True)
         stations = event_details.get("stations", {})
         if not isinstance(stations, dict):
             continue
@@ -384,12 +403,21 @@ def evaluate_events_against_templates(
                     if not isinstance(station_data, dict):
                         continue
                     traces_list = station_data.get("Traces", [])
+                    station_sampling_rate_raw = station_data.get("sampling_rate_hz", trace_sampling_rate_hz)
+                    try:
+                        station_sampling_rate = float(station_sampling_rate_raw)
+                    except (TypeError, ValueError):
+                        station_sampling_rate = trace_sampling_rate_hz
                     try:
                         traces_iterable = list(traces_list)
                     except TypeError:
                         continue
                     for trigger_idx, trigger_traces in enumerate(traces_iterable):
-                        match = _evaluate_template_for_trigger(trigger_traces, template, trace_sampling_rate_hz)
+                        match = _evaluate_template_for_trigger(
+                            trigger_traces,
+                            template,
+                            station_sampling_rate,
+                        )
                         if match is None:
                             continue
                         candidate = {
@@ -401,6 +429,8 @@ def evaluate_events_against_templates(
                             "score": match["score"],
                             "best_pair": match["best_pair"],
                             "channel_results": match["channel_results"],
+                            "sampling_rate_hz": station_sampling_rate,
+                            "output_root": event_output_root,
                         }
                         if best_candidate is None or candidate["score"] > best_candidate["score"]:
                             best_candidate = candidate
@@ -416,7 +446,7 @@ def evaluate_events_against_templates(
                 template_type,
                 best_candidate["template"],
                 best_candidate,
-                output_root,
+                best_candidate.get("output_root", event_output_root),
             )
             best_candidate["plot_path"] = plot_path
             channel_chi = {ch: data["xcorr"] for ch, data in best_candidate["channel_results"].items()}

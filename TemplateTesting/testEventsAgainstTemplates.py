@@ -7,7 +7,9 @@ import importlib
 import pickle
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, Union
+
+import numpy as np
 
 
 # Ensure repository root is importable when running as a script.
@@ -57,6 +59,10 @@ COINCIDENCE_SEARCH_ROOTS: Tuple[Path, ...] = (
     Path.cwd() / "HRAStationDataAnalysis" / "StationData",
     Path.cwd() / "HRAStationDataAnalysis" / "StationData" / "processedNumpyData",
 )
+STN51_EVENTS_DIR = Path("TemplateTesting/Stn51Events")
+STN51_SAMPLING_RATE_HZ = 1e9
+COINCIDENCE_PLOT_ROOT = MATCH_PLOT_ROOT / "Coincidence"
+STN51_PLOT_ROOT = MATCH_PLOT_ROOT / "Stn51"
 
 
 def _find_file_recursive(filename: str, search_roots: Iterable[Path]) -> Optional[Path]:
@@ -118,6 +124,86 @@ def load_good_coincidence_events(
     return filtered
 
 
+def _collect_trace_candidates(obj: object) -> List[np.ndarray]:
+    if isinstance(obj, np.ndarray):
+        if obj.dtype == object:
+            candidates: List[np.ndarray] = []
+            for item in obj.flat:
+                candidates.extend(_collect_trace_candidates(item))
+            return candidates
+        if obj.ndim == 1:
+            return [obj]
+        if obj.ndim >= 2 and obj.shape[0] <= 8:
+            return [obj[idx] for idx in range(obj.shape[0])]
+        return [obj.reshape(-1)]
+    if isinstance(obj, (list, tuple)):
+        candidates = []
+        for item in obj:
+            candidates.extend(_collect_trace_candidates(item))
+        return candidates
+    return [np.array(obj)]
+
+
+def _extract_traces_from_npz(path: Path) -> List[np.ndarray]:
+    with np.load(path, allow_pickle=True) as archive:
+        payload_candidates: List[np.ndarray] = []
+        for key in ("traces", "Traces", "signals", "Signals", "data", "Data"):
+            if key in archive.files:
+                payload_candidates = _collect_trace_candidates(archive[key])
+                break
+        else:
+            for key in sorted(archive.files):
+                payload_candidates.extend(_collect_trace_candidates(archive[key]))
+
+    traces: List[np.ndarray] = []
+    for candidate in payload_candidates:
+        arr = np.array(candidate, dtype=float, copy=True)
+        if arr.ndim > 1:
+            arr = arr.reshape(-1)
+        if arr.size == 0:
+            continue
+        traces.append(arr)
+    return traces
+
+
+def load_station51_events(directory: Path = STN51_EVENTS_DIR) -> Dict[str, Dict[str, object]]:
+    dir_path = Path(directory)
+    if not dir_path.exists():
+        print(f"Stn51 directory not found: {dir_path}")
+        return {}
+
+    events: Dict[str, Dict[str, object]] = {}
+    for idx, npz_path in enumerate(sorted(dir_path.glob("*.npz"))):
+        try:
+            traces = _extract_traces_from_npz(npz_path)
+        except Exception as exc:
+            print(f"Failed to load {npz_path.name}: {exc}")
+            continue
+        if not traces:
+            print(f"No traces extracted from {npz_path.name}")
+            continue
+
+        event_id = f"stn51_{npz_path.stem}"
+        event_payload = {
+            "stations": {
+                "Stn51": {
+                    "Traces": [traces],
+                    "sampling_rate_hz": STN51_SAMPLING_RATE_HZ,
+                }
+            },
+            "plot_root": STN51_PLOT_ROOT,
+        }
+        if event_id in events:
+            suffix = 1
+            while f"{event_id}_{suffix}" in events:
+                suffix += 1
+            event_id = f"{event_id}_{suffix}"
+        events[event_id] = event_payload
+
+    print(f"Loaded {len(events)} Stn51 events from {dir_path}")
+    return events
+
+
 def load_template_groups() -> Dict[str, List[TemplateRecord]]:
     groups = {
         "RCR": load_rcr_templates(),
@@ -134,12 +220,27 @@ def run_evaluation(
     search_roots: Iterable[Path] = COINCIDENCE_SEARCH_ROOTS,
     output_root: Path = MATCH_PLOT_ROOT,
     trace_sampling_rate_hz: float = DEFAULT_TRACE_SAMPLING_HZ,
-) -> Dict[int, Dict[str, Dict[str, object]]]:
+    station51_dir: Optional[Path] = STN51_EVENTS_DIR,
+) -> Dict[Union[int, str], Dict[str, Dict[str, object]]]:
     template_groups = load_template_groups()
     if not template_groups:
         raise RuntimeError("No templates available for matching.")
 
-    events = load_good_coincidence_events(event_ids, pickle_name=pickle_name, search_roots=search_roots)
+    base_events = load_good_coincidence_events(event_ids, pickle_name=pickle_name, search_roots=search_roots)
+    events: Dict[Union[int, str], Dict[str, object]] = dict(base_events)
+    for event_payload in events.values():
+        stations = event_payload.get("stations", {}) if isinstance(event_payload, dict) else {}
+        if not isinstance(stations, dict):
+            continue
+        for station_data in stations.values():
+            if isinstance(station_data, dict) and "sampling_rate_hz" not in station_data:
+                station_data["sampling_rate_hz"] = trace_sampling_rate_hz
+        if isinstance(event_payload, dict) and "plot_root" not in event_payload:
+            event_payload["plot_root"] = COINCIDENCE_PLOT_ROOT
+    if station51_dir is not None:
+        station_events = load_station51_events(station51_dir)
+        if station_events:
+            events.update(station_events)
     results = evaluate_events_against_templates(
         events,
         template_groups,
@@ -176,6 +277,12 @@ def _parse_args() -> argparse.Namespace:
         default=DEFAULT_TRACE_SAMPLING_HZ,
         help="Sampling rate for station traces in Hz",
     )
+    parser.add_argument(
+        "--stn51-dir",
+        type=Path,
+        default=STN51_EVENTS_DIR,
+        help="Directory containing Stn51 .npz events",
+    )
     return parser.parse_args()
 
 
@@ -187,6 +294,7 @@ def main() -> None:
         search_roots=COINCIDENCE_SEARCH_ROOTS,
         output_root=args.output,
         trace_sampling_rate_hz=args.sampling,
+        station51_dir=args.stn51_dir,
     )
 
 

@@ -32,6 +32,7 @@ SIM_BL_PICKLE_ROOT = Path("TemplateTesting/BL/pickles")
 CR_ARCHIVE_ROOT = Path("TemplateTesting/CRs")
 PLOT_ROOT = Path("TemplateTesting/plots/templates")
 DEFAULT_SAMPLING_RATE_HZ = 2e9
+CR_TEMPLATE_SAMPLING_RATE_HZ = 1e9
 
 
 @dataclass
@@ -338,7 +339,7 @@ def load_cr_templates() -> List[TemplateRecord]:
 							print("  No usable trace content in fallback data")
 							continue
 						trace_arr, time_arr = extracted
-						sampling_rate = _infer_sampling_rate_from_times(time_arr) or DEFAULT_SAMPLING_RATE_HZ
+						sampling_rate = _infer_sampling_rate_from_times(time_arr) or CR_TEMPLATE_SAMPLING_RATE_HZ
 						records.append(
 							TemplateRecord(
 								template_type="CR",
@@ -365,7 +366,7 @@ def load_cr_templates() -> List[TemplateRecord]:
 						print("    Event skipped: trace selection failed")
 						continue
 					identifier = f"{archive_path.stem}_event{event.get('event_id', 'unknown')}"
-					sampling_rate = _infer_sampling_rate_from_times(time) or DEFAULT_SAMPLING_RATE_HZ
+					sampling_rate = _infer_sampling_rate_from_times(time) or CR_TEMPLATE_SAMPLING_RATE_HZ
 					records.append(
 						TemplateRecord(
 							template_type="CR",
@@ -414,7 +415,7 @@ def load_cr_templates() -> List[TemplateRecord]:
 						identifier=identifier,
 						trace=trace_arr,
 						source=archive_path,
-						sampling_rate_hz=DEFAULT_SAMPLING_RATE_HZ,
+						sampling_rate_hz=CR_TEMPLATE_SAMPLING_RATE_HZ,
 					)
 				)
 				trace_count += 1
