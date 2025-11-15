@@ -311,7 +311,7 @@ def _plot_template_match(
     output_root: Path,
 ) -> Path:
     event_label = _sanitize_identifier(str(event_id))
-    output_dir = Path(output_root) / template_type / f"event_{event_label}"
+    output_dir = Path(output_root) / template_type
     output_dir.mkdir(parents=True, exist_ok=True)
 
     station_sampling = match_details.get("sampling_rate_hz", DEFAULT_TRACE_SAMPLING_HZ)
