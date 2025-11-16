@@ -427,6 +427,7 @@ def evaluate_events_against_templates(
             continue
 
         event_matches: Dict[str, Dict[str, object]] = {}
+        station_template_records: Dict[str, Dict[str, Dict[str, object]]] = {}
         for template_type, templates in template_groups.items():
             if not templates:
                 continue
@@ -468,6 +469,7 @@ def evaluate_events_against_templates(
                                 "output_root": event_output_root,
                                 "station_category": station_categories.get(station_label, event_category),
                                 "station_snr": station_snrs.get(station_label),
+                                "station_label": station_label,
                                 "event_category": event_category,
                                 "event_snr": event_snr,
                             }
@@ -476,6 +478,27 @@ def evaluate_events_against_templates(
             if not candidates:
                 print(f"Event {event_id}: no usable matches for {template_type}")
                 continue
+
+            per_station_best: Dict[str, Dict[str, object]] = {}
+            for candidate in candidates:
+                label = candidate.get("station_label")
+                if label is None:
+                    label = str(candidate.get("station_id"))
+                existing = per_station_best.get(label)
+                if existing is None or candidate["score"] > existing["score"]:
+                    per_station_best[label] = {
+                        "score": candidate["score"],
+                        "station_category": candidate.get("station_category"),
+                        "station_snr": candidate.get("station_snr"),
+                        "station_id": candidate.get("station_id"),
+                        "trigger_idx": candidate.get("trigger_idx"),
+                        "template_identifier": candidate["template"].identifier,
+                        "template_type": template_type,
+                    }
+
+            for station_label, station_entry in per_station_best.items():
+                station_records = station_template_records.setdefault(station_label, {})
+                station_records[template_type] = station_entry
 
             ranked_candidates = [dict(item) for item in sorted(candidates, key=lambda item: item["score"], reverse=True)]
             primary_candidate = ranked_candidates[0]
@@ -552,6 +575,8 @@ def evaluate_events_against_templates(
                 "snr": event_snr,
                 "vrms": event_details.get("vrms"),
             }
+            if station_template_records:
+                event_matches["_station_matches"] = station_template_records
             results[event_id] = event_matches
 
     return results
@@ -600,14 +625,7 @@ def plot_snr_chi_summary(
         if not isinstance(matches, dict):
             continue
         meta = matches.get("_meta", {}) if isinstance(matches, dict) else {}
-        event_category = meta.get("category") or next(
-            (
-                candidate.get("event_category")
-                for key, candidate in matches.items()
-                if key != "_meta" and isinstance(candidate, dict)
-            ),
-            "Backlobe",
-        )
+        event_category = meta.get("category") or "Backlobe"
         raw_station_categories = meta.get("station_categories", {})
         if isinstance(raw_station_categories, dict):
             meta_station_categories = {
@@ -627,47 +645,111 @@ def plot_snr_chi_summary(
                     continue
                 meta_station_snrs[str(key)] = snr_val
 
+        station_match_map = matches.get("_station_matches")
         station_groups: Dict[str, Dict[str, object]] = {}
-        for template_name in template_order_seq:
-            candidate = matches.get(template_name)
-            if not isinstance(candidate, dict):
-                continue
-            station_id = candidate.get("station_id")
-            station_label = str(station_id)
-            chi_val = float(abs(candidate.get("score", 0.0)))
-            if not np.isfinite(chi_val):
-                continue
-            chi_val = max(0.0, min(chi_val, 1.0))
-            station_category_raw = candidate.get("station_category")
-            if not station_category_raw:
-                station_category_raw = meta_station_categories.get(station_label, event_category)
-            station_category = str(station_category_raw)
-            station_snr = candidate.get("station_snr")
-            if station_snr is None:
-                station_snr = meta_station_snrs.get(station_label)
-            try:
-                station_snr = float(station_snr)
-            except (TypeError, ValueError):
-                continue
-            if station_snr <= 0:
-                continue
-            if category_filter is not None and station_category != category_filter:
-                continue
 
-            group = station_groups.setdefault(
-                station_label,
-                {
-                    "snr": float(station_snr),
-                    "category": station_category,
-                    "points": [],
-                },
-            )
-            if station_snr > group["snr"]:
-                group["snr"] = float(station_snr)
-            if not group.get("category"):
-                group["category"] = station_category
-            group_points = group.setdefault("points", [])
-            group_points.append((template_name, chi_val))
+        if isinstance(station_match_map, dict) and station_match_map:
+            for station_label, template_map in station_match_map.items():
+                if not isinstance(template_map, dict):
+                    continue
+                station_label_str = str(station_label)
+                base_category = meta_station_categories.get(station_label_str, event_category)
+                station_category = str(base_category)
+                base_snr = meta_station_snrs.get(station_label_str)
+                snr_val: Optional[float] = None
+                if base_snr is not None:
+                    snr_val = float(base_snr)
+
+                points: List[Tuple[str, float]] = []
+                for template_name in template_order_seq:
+                    entry = template_map.get(template_name)
+                    if not isinstance(entry, dict):
+                        continue
+                    chi_val = float(abs(entry.get("score", 0.0)))
+                    if not np.isfinite(chi_val):
+                        continue
+                    chi_val = max(0.0, min(chi_val, 1.0))
+                    entry_category = entry.get("station_category")
+                    if entry_category:
+                        station_category = str(entry_category)
+                    entry_snr = entry.get("station_snr")
+                    entry_snr_val: Optional[float] = None
+                    if entry_snr is not None:
+                        try:
+                            entry_snr_val = float(entry_snr)
+                        except (TypeError, ValueError):
+                            entry_snr_val = None
+                    if entry_snr_val is not None and entry_snr_val > 0:
+                        if snr_val is None or entry_snr_val > snr_val:
+                            snr_val = entry_snr_val
+                    points.append((template_name, chi_val))
+
+                if not points:
+                    continue
+
+                if snr_val is None or snr_val <= 0:
+                    continue
+
+                if category_filter is not None and station_category != category_filter:
+                    continue
+
+                group = station_groups.setdefault(
+                    station_label_str,
+                    {
+                        "snr": snr_val,
+                        "category": station_category,
+                        "points": [],
+                    },
+                )
+                group_points = group.setdefault("points", [])
+                group_points.extend(points)
+                if snr_val > group.get("snr", 0.0):
+                    group["snr"] = snr_val
+                if station_category and not group.get("category"):
+                    group["category"] = station_category
+
+        else:
+            # Fallback to legacy behaviour if station-level matches are missing.
+            for template_name in template_order_seq:
+                candidate = matches.get(template_name)
+                if not isinstance(candidate, dict):
+                    continue
+                station_id = candidate.get("station_id")
+                station_label = str(station_id)
+                chi_val = float(abs(candidate.get("score", 0.0)))
+                if not np.isfinite(chi_val):
+                    continue
+                chi_val = max(0.0, min(chi_val, 1.0))
+                station_category_raw = candidate.get("station_category")
+                if not station_category_raw:
+                    station_category_raw = meta_station_categories.get(station_label, event_category)
+                station_category = str(station_category_raw)
+                station_snr = candidate.get("station_snr")
+                if station_snr is None:
+                    station_snr = meta_station_snrs.get(station_label)
+                try:
+                    station_snr = float(station_snr)
+                except (TypeError, ValueError):
+                    continue
+                if station_snr <= 0:
+                    continue
+                if category_filter is not None and station_category != category_filter:
+                    continue
+
+                group = station_groups.setdefault(
+                    station_label,
+                    {
+                        "snr": float(station_snr),
+                        "category": station_category,
+                        "points": [],
+                    },
+                )
+                if station_snr > group["snr"]:
+                    group["snr"] = float(station_snr)
+                if not group.get("category"):
+                    group["category"] = station_category
+                group_points = group.setdefault("points", [])
+                group_points.append((template_name, chi_val))
 
         if not station_groups:
             continue
