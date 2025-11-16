@@ -311,12 +311,32 @@ def run_evaluation(
         output_root=output_root,
         trace_sampling_rate_hz=trace_sampling_rate_hz,
     )
-    summary_path = plot_snr_chi_summary(
-        results,
-        Path(output_root) / "snr_chi_summary.png",
+    output_root_path = Path(output_root)
+    summary_outputs: List[Tuple[str, Optional[Path]]] = []
+    summary_outputs.append(
+        (
+            "Combined",
+            plot_snr_chi_summary(
+                results,
+                output_root_path / "snr_chi_summary.png",
+            ),
+        )
     )
-    if summary_path is not None:
-        print(f"Saved SNR-chi summary plot to {summary_path}")
+    for category in ("Backlobe", "RCR", "Station 51"):
+        filename = f"snr_chi_summary_{category.lower().replace(' ', '_')}.png"
+        summary_outputs.append(
+            (
+                category,
+                plot_snr_chi_summary(
+                    results,
+                    output_root_path / filename,
+                    category_filter=category,
+                ),
+            )
+        )
+    for label, path in summary_outputs:
+        if path is not None:
+            print(f"Saved {label} SNR-chi plot to {path}")
     print(f"Generated matches for {len(results)} events")
     return results
 

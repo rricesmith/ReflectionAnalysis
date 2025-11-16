@@ -496,6 +496,7 @@ def plot_snr_chi_summary(
     template_order: Iterable[str] = DEFAULT_TEMPLATE_ORDER,
     template_colors: Optional[Dict[str, str]] = None,
     event_markers: Optional[Dict[str, str]] = None,
+    category_filter: Optional[str] = None,
 ) -> Optional[Path]:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -524,6 +525,8 @@ def plot_snr_chi_summary(
     ax.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.4)
 
     data_plotted = False
+    used_templates: Dict[str, str] = {}
+    used_categories: Dict[str, str] = {}
     template_order_seq = list(template_order)
 
     for event_id, matches in results.items():
@@ -541,6 +544,8 @@ def plot_snr_chi_summary(
         event_snr = meta.get("snr")
         if event_snr is None or event_snr <= 0:
             continue
+        if category_filter is not None and event_category != category_filter:
+            continue
         marker = event_markers.get(event_category, "o")
 
         template_points: List[Tuple[str, float]] = []
@@ -557,6 +562,8 @@ def plot_snr_chi_summary(
         if not template_points:
             continue
 
+        used_categories.setdefault(event_category, marker)
+
         if len(template_points) >= 2:
             _, chi_vals = zip(*template_points)
             sorted_chi = sorted(chi_vals)
@@ -571,6 +578,7 @@ def plot_snr_chi_summary(
 
         for template_name, chi_val in template_points:
             color = template_colors.get(template_name, "#444444")
+            used_templates.setdefault(template_name, color)
             ax.scatter(
                 event_snr,
                 chi_val,
@@ -593,12 +601,12 @@ def plot_snr_chi_summary(
             [0],
             marker="o",
             linestyle="None",
-            markerfacecolor=template_colors.get(name, "#444444"),
-            markeredgecolor=template_colors.get(name, "#444444"),
+            markerfacecolor=color,
+            markeredgecolor=color,
             markersize=8,
             label=name,
         )
-        for name in template_order_seq
+        for name, color in used_templates.items()
     ]
 
     event_handles = [
@@ -612,12 +620,13 @@ def plot_snr_chi_summary(
             markersize=8,
             label=category,
         )
-        for category, marker in event_markers.items()
+        for category, marker in used_categories.items()
     ]
 
     legend_handles = template_handles + event_handles
-    legend_labels = [handle.get_label() for handle in legend_handles]
-    ax.legend(legend_handles, legend_labels, loc="lower right")
+    if legend_handles:
+        legend_labels = [handle.get_label() for handle in legend_handles]
+        ax.legend(legend_handles, legend_labels, loc="lower right")
 
     fig.tight_layout()
     fig.savefig(output_path, dpi=200)
