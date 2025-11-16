@@ -310,6 +310,7 @@ def run_evaluation(
         template_groups,
         output_root=output_root,
         trace_sampling_rate_hz=trace_sampling_rate_hz,
+        prefer_secondary={"Backlobe": {"DataBL"}},
     )
     output_root_path = Path(output_root)
     summary_outputs: List[Tuple[str, Optional[Path]]] = []

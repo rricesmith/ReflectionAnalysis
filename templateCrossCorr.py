@@ -5,7 +5,7 @@ from __future__ import annotations
 import fractions
 from decimal import Decimal
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Union, Set
 
 import matplotlib
 
@@ -381,10 +381,17 @@ def evaluate_events_against_templates(
     template_groups: Dict[str, List[TemplateRecord]],
     output_root: Path = MATCH_PLOT_ROOT,
     trace_sampling_rate_hz: float = DEFAULT_TRACE_SAMPLING_HZ,
+    prefer_secondary: Optional[Dict[str, Iterable[str]]] = None,
 ) -> Dict[Union[int, str], Dict[str, Dict[str, object]]]:
     default_output_root = Path(output_root)
     default_output_root.mkdir(parents=True, exist_ok=True)
     results: Dict[Union[int, str], Dict[str, Dict[str, object]]] = {}
+    prefer_secondary_map: Dict[str, Set[str]] = {}
+    if prefer_secondary:
+        prefer_secondary_map = {
+            str(category): {str(item) for item in template_types}
+            for category, template_types in prefer_secondary.items()
+        }
 
     for raw_event_id, event_details in events.items():
         try:
@@ -410,7 +417,7 @@ def evaluate_events_against_templates(
         for template_type, templates in template_groups.items():
             if not templates:
                 continue
-            best_candidate: Optional[Dict[str, object]] = None
+            candidates: List[Dict[str, object]] = []
             for template in templates:
                 for station_key, station_data in stations.items():
                     if not isinstance(station_data, dict):
@@ -433,51 +440,93 @@ def evaluate_events_against_templates(
                         )
                         if match is None:
                             continue
-                        candidate = {
-                            "event_id": event_id,
-                            "station_id": station_key,
-                            "trigger_idx": trigger_idx,
-                            "template": template,
-                            "template_type": template_type,
-                            "score": match["score"],
-                            "best_pair": match["best_pair"],
-                            "channel_results": match["channel_results"],
-                            "sampling_rate_hz": station_sampling_rate,
-                            "output_root": event_output_root,
-                            "event_category": event_category,
-                            "event_snr": event_snr,
-                        }
-                        if best_candidate is None or candidate["score"] > best_candidate["score"]:
-                            best_candidate = candidate
+                        candidates.append(
+                            {
+                                "event_id": event_id,
+                                "station_id": station_key,
+                                "trigger_idx": trigger_idx,
+                                "template": template,
+                                "template_type": template_type,
+                                "score": match["score"],
+                                "best_pair": match["best_pair"],
+                                "channel_results": match["channel_results"],
+                                "sampling_rate_hz": station_sampling_rate,
+                                "output_root": event_output_root,
+                                "event_category": event_category,
+                                "event_snr": event_snr,
+                            }
+                        )
 
-            if best_candidate is None:
+            if not candidates:
                 print(f"Event {event_id}: no usable matches for {template_type}")
                 continue
 
+            ranked_candidates = [dict(item) for item in sorted(candidates, key=lambda item: item["score"], reverse=True)]
+            primary_candidate = ranked_candidates[0]
+            primary_candidate["selection_rank"] = 1
+            secondary_candidate = None
+            if len(ranked_candidates) > 1:
+                secondary_candidate = ranked_candidates[1]
+                secondary_candidate["selection_rank"] = 2
+
+            category_pref = prefer_secondary_map.get(str(event_category), set())
+            use_secondary = secondary_candidate is not None and template_type in category_pref
+
+            if use_secondary:
+                selected_candidate = secondary_candidate
+                selected_candidate["selection_rank"] = 2
+                selected_candidate["primary_candidate"] = dict(primary_candidate)
+            else:
+                selected_candidate = primary_candidate
+                selected_candidate["selection_rank"] = 1
+                if secondary_candidate is not None:
+                    selected_candidate["secondary_candidate"] = dict(secondary_candidate)
+
+            selected_candidate["top_score"] = primary_candidate["score"]
+            selected_candidate["top_template_identifier"] = primary_candidate["template"].identifier
+            if secondary_candidate is not None:
+                selected_candidate["second_score"] = secondary_candidate["score"]
+                selected_candidate["second_template_identifier"] = secondary_candidate["template"].identifier
+            else:
+                selected_candidate["second_score"] = None
+                selected_candidate["second_template_identifier"] = None
+            selected_candidate["ranked_scores"] = [
+                {
+                    "rank": idx + 1,
+                    "template_identifier": cand["template"].identifier,
+                    "score": cand["score"],
+                }
+                for idx, cand in enumerate(ranked_candidates[: min(3, len(ranked_candidates))])
+            ]
+
             plot_path = _plot_template_match(
                 event_id,
-                best_candidate["station_id"],
-                best_candidate["trigger_idx"],
+                selected_candidate["station_id"],
+                selected_candidate["trigger_idx"],
                 template_type,
-                best_candidate["template"],
-                best_candidate,
-                best_candidate.get("output_root", event_output_root),
+                selected_candidate["template"],
+                selected_candidate,
+                selected_candidate.get("output_root", event_output_root),
             )
-            best_candidate["plot_path"] = plot_path
-            channel_chi = {ch: data["xcorr"] for ch, data in best_candidate["channel_results"].items()}
-            best_pair = tuple(best_candidate.get("best_pair", ()))
+            selected_candidate["plot_path"] = plot_path
+            channel_chi = {ch: data["xcorr"] for ch, data in selected_candidate["channel_results"].items()}
+            best_pair = tuple(selected_candidate.get("best_pair", ()))
             if len(best_pair) == 1:
                 combo_label = f"best channel {best_pair[0]}"
             elif best_pair:
                 combo_label = f"best pair {best_pair}"
             else:
                 combo_label = "best match"
-            print(
-                f"Event {event_id} | {template_type}: template {best_candidate['template'].identifier} | "
-                f"station {best_candidate['station_id']} trigger {best_candidate['trigger_idx']} | "
-                f"{combo_label} -> avg χ={best_candidate['score']:.3f} | per-channel {channel_chi}"
+            rank_summary = ", ".join(
+                f"rank{entry['rank']}:χ={entry['score']:.3f}" for entry in selected_candidate["ranked_scores"]
             )
-            event_matches[template_type] = best_candidate
+            selection_label = "second-best" if selected_candidate.get("selection_rank") == 2 else "primary"
+            print(
+                f"Event {event_id} | {template_type}: template {selected_candidate['template'].identifier} | "
+                f"station {selected_candidate['station_id']} trigger {selected_candidate['trigger_idx']} | "
+                f"{combo_label} ({selection_label}) -> {rank_summary} | per-channel {channel_chi}"
+            )
+            event_matches[template_type] = selected_candidate
 
         if event_matches:
             event_matches["_meta"] = {
