@@ -58,6 +58,16 @@ SPECIAL_EVENT_IDS: Tuple[int, ...] = (
     11230,
     11243,
 )
+SPECIAL_EVENT_STATION_CATEGORIES: Dict[int, Dict[str, str]] = {
+    11230: {
+        "13": "RCR",
+        "17": "Backlobe",
+    },
+    11243: {
+        "30": "RCR",
+        "17": "Backlobe",
+    },
+}
 COINCIDENCE_SEARCH_ROOTS: Tuple[Path, ...] = (
     Path.cwd(),
     Path.cwd() / "HRAStationDataAnalysis",
@@ -189,12 +199,16 @@ def _calc_trace_snr(traces: Iterable[object], vrms: float) -> Optional[float]:
     return 0.5 * (snr_values[0] + snr_values[1])
 
 
-def _compute_event_snr(event_payload: Dict[str, object], vrms: float) -> Optional[float]:
+def _compute_event_snr(
+    event_payload: Dict[str, object],
+    vrms: float,
+) -> Tuple[Optional[float], Dict[str, float]]:
     stations = event_payload.get("stations", {}) if isinstance(event_payload, dict) else {}
     if not isinstance(stations, dict):
-        return None
+        return None, {}
     best_snr: Optional[float] = None
-    for station_data in stations.values():
+    station_snrs: Dict[str, float] = {}
+    for station_key, station_data in stations.items():
         if not isinstance(station_data, dict):
             continue
         traces_collection = station_data.get("Traces", [])
@@ -202,6 +216,7 @@ def _compute_event_snr(event_payload: Dict[str, object], vrms: float) -> Optiona
             triggers = list(traces_collection)
         except TypeError:
             continue
+        station_best: Optional[float] = None
         for trigger_traces in triggers:
             if trigger_traces is None:
                 continue
@@ -212,9 +227,15 @@ def _compute_event_snr(event_payload: Dict[str, object], vrms: float) -> Optiona
             snr_value = _calc_trace_snr(traces_iter, vrms)
             if snr_value is None:
                 continue
-            if best_snr is None or snr_value > best_snr:
-                best_snr = snr_value
-    return best_snr
+            if station_best is None or snr_value > station_best:
+                station_best = snr_value
+        if station_best is None:
+            continue
+        station_label = str(station_key)
+        station_snrs[station_label] = station_best
+        if best_snr is None or station_best > best_snr:
+            best_snr = station_best
+    return best_snr, station_snrs
 
 
 def load_station51_events(directory: Path = STN51_EVENTS_DIR) -> Dict[str, Dict[str, object]]:
@@ -304,7 +325,21 @@ def run_evaluation(
             event_payload["category"] = category
         vrms = 0.01 if category == "Station 51" else 0.02
         event_payload["vrms"] = vrms
-        event_payload["event_snr"] = _compute_event_snr(event_payload, vrms)
+        event_snr, station_snrs = _compute_event_snr(event_payload, vrms)
+        event_payload["event_snr"] = event_snr
+        event_payload["station_snrs"] = station_snrs
+        if isinstance(stations, dict):
+            station_categories: Dict[str, str] = {}
+            special_station_map: Dict[str, str] = {}
+            if isinstance(event_id, int) and event_id in SPECIAL_EVENT_STATION_CATEGORIES:
+                special_station_map = {
+                    str(station_key): str(station_category)
+                    for station_key, station_category in SPECIAL_EVENT_STATION_CATEGORIES[event_id].items()
+                }
+            for station_key in stations.keys():
+                station_label = str(station_key)
+                station_categories[station_label] = special_station_map.get(station_label, category)
+            event_payload["station_categories"] = station_categories
     results = evaluate_events_against_templates(
         events,
         template_groups,

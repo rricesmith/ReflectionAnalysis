@@ -404,6 +404,19 @@ def evaluate_events_against_templates(
         event_output_root_raw = event_details.get("plot_root", default_output_root)
         event_category = event_details.get("category", "Backlobe")
         event_snr = event_details.get("event_snr")
+        raw_station_categories = event_details.get("station_categories", {})
+        if isinstance(raw_station_categories, dict):
+            station_categories = {str(key): str(value) for key, value in raw_station_categories.items()}
+        else:
+            station_categories = {}
+        raw_station_snrs = event_details.get("station_snrs", {})
+        station_snrs: Dict[str, float] = {}
+        if isinstance(raw_station_snrs, dict):
+            for key, value in raw_station_snrs.items():
+                try:
+                    station_snrs[str(key)] = float(value)
+                except (TypeError, ValueError):
+                    continue
         try:
             event_output_root = Path(event_output_root_raw)
         except (TypeError, ValueError):
@@ -440,6 +453,7 @@ def evaluate_events_against_templates(
                         )
                         if match is None:
                             continue
+                        station_label = str(station_key)
                         candidates.append(
                             {
                                 "event_id": event_id,
@@ -452,6 +466,8 @@ def evaluate_events_against_templates(
                                 "channel_results": match["channel_results"],
                                 "sampling_rate_hz": station_sampling_rate,
                                 "output_root": event_output_root,
+                                "station_category": station_categories.get(station_label, event_category),
+                                "station_snr": station_snrs.get(station_label),
                                 "event_category": event_category,
                                 "event_snr": event_snr,
                             }
@@ -531,6 +547,8 @@ def evaluate_events_against_templates(
         if event_matches:
             event_matches["_meta"] = {
                 "category": event_category,
+                "station_snrs": station_snrs,
+                "station_categories": station_categories,
                 "snr": event_snr,
                 "vrms": event_details.get("vrms"),
             }
@@ -568,9 +586,9 @@ def plot_snr_chi_summary(
     ax.set_xscale("log")
     ax.set_xlim(3, 100)
     ax.set_ylim(0, 1)
-    ax.set_xlabel("Event SNR")
+    ax.set_xlabel("Station SNR")
     ax.set_ylabel(r"Template match $\chi$")
-    ax.set_title("Event SNR vs $\chi$ Summary")
+    ax.set_title("Station SNR vs $\chi$ Summary")
     ax.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.4)
 
     data_plotted = False
@@ -590,55 +608,106 @@ def plot_snr_chi_summary(
             ),
             "Backlobe",
         )
-        event_snr = meta.get("snr")
-        if event_snr is None or event_snr <= 0:
-            continue
-        if category_filter is not None and event_category != category_filter:
-            continue
-        marker = event_markers.get(event_category, "o")
+        raw_station_categories = meta.get("station_categories", {})
+        if isinstance(raw_station_categories, dict):
+            meta_station_categories = {
+                str(key): str(value) for key, value in raw_station_categories.items()
+            }
+        else:
+            meta_station_categories = {}
+        raw_station_snrs = meta.get("station_snrs", {})
+        meta_station_snrs: Dict[str, float] = {}
+        if isinstance(raw_station_snrs, dict):
+            for key, value in raw_station_snrs.items():
+                try:
+                    snr_val = float(value)
+                except (TypeError, ValueError):
+                    continue
+                if snr_val <= 0:
+                    continue
+                meta_station_snrs[str(key)] = snr_val
 
-        template_points: List[Tuple[str, float]] = []
+        station_groups: Dict[str, Dict[str, object]] = {}
         for template_name in template_order_seq:
             candidate = matches.get(template_name)
             if not isinstance(candidate, dict):
                 continue
+            station_id = candidate.get("station_id")
+            station_label = str(station_id)
             chi_val = float(abs(candidate.get("score", 0.0)))
             if not np.isfinite(chi_val):
                 continue
             chi_val = max(0.0, min(chi_val, 1.0))
-            template_points.append((template_name, chi_val))
+            station_category_raw = candidate.get("station_category")
+            if not station_category_raw:
+                station_category_raw = meta_station_categories.get(station_label, event_category)
+            station_category = str(station_category_raw)
+            station_snr = candidate.get("station_snr")
+            if station_snr is None:
+                station_snr = meta_station_snrs.get(station_label)
+            try:
+                station_snr = float(station_snr)
+            except (TypeError, ValueError):
+                continue
+            if station_snr <= 0:
+                continue
+            if category_filter is not None and station_category != category_filter:
+                continue
 
-        if not template_points:
+            group = station_groups.setdefault(
+                station_label,
+                {
+                    "snr": float(station_snr),
+                    "category": station_category,
+                    "points": [],
+                },
+            )
+            if station_snr > group["snr"]:
+                group["snr"] = float(station_snr)
+            if not group.get("category"):
+                group["category"] = station_category
+            group_points = group.setdefault("points", [])
+            group_points.append((template_name, chi_val))
+
+        if not station_groups:
             continue
 
-        used_categories.setdefault(event_category, marker)
+        for station_label, station_info in station_groups.items():
+            points = station_info.get("points", [])
+            if not points:
+                continue
+            snr_val = float(station_info.get("snr", 0.0))
+            if snr_val <= 0:
+                continue
+            station_category = str(station_info.get("category") or event_category or "Backlobe")
+            marker = event_markers.get(station_category, "o")
+            used_categories.setdefault(station_category, marker)
 
-        if len(template_points) >= 2:
-            _, chi_vals = zip(*template_points)
-            sorted_chi = sorted(chi_vals)
-            ax.plot(
-                [event_snr] * len(sorted_chi),
-                sorted_chi,
-                color="0.7",
-                linewidth=0.8,
-                alpha=0.8,
-                zorder=1,
-            )
+            chi_vals = [chi for _, chi in points]
+            if len(chi_vals) >= 2:
+                sorted_chi = sorted(chi_vals)
+                ax.plot(
+                    [snr_val] * len(sorted_chi),
+                    sorted_chi,
+                    color="0.7",
+                    linewidth=0.8,
+                    alpha=0.8,
+                    zorder=1,
+                )
 
-        for template_name, chi_val in template_points:
-            color = template_colors.get(template_name, "#444444")
-            used_templates.setdefault(template_name, color)
-            ax.scatter(
-                event_snr,
-                chi_val,
-                color=color,
-                marker=marker,
-                edgecolors="none",
-                s=64,
-                zorder=2,
-            )
-
-        data_plotted = True
+            for template_name, chi_val in points:
+                color = template_colors.get(template_name, "#444444")
+                used_templates.setdefault(template_name, color)
+                ax.scatter(
+                    snr_val,
+                    chi_val,
+                    color=color,
+                    marker=marker,
+                    edgecolors="none",
+                    s=64,
+                    zorder=2,
+                )
+            data_plotted = True
 
     if not data_plotted:
         plt.close(fig)
