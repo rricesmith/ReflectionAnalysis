@@ -32,6 +32,7 @@ from templateCrossCorr import (
     MATCH_PLOT_ROOT,
     DEFAULT_TRACE_SAMPLING_HZ,
     evaluate_events_against_templates,
+    plot_snr_chi_summary,
 )
 
 DEFAULT_GOOD_EVENT_PICKLE = "9.24.25_CoincidenceDatetimes_passing_cuts_with_all_params_recalcZenAzi_calcPol.pkl"
@@ -51,6 +52,10 @@ DEFAULT_GOOD_EVENT_IDS: Tuple[int, ...] = (
     11220,
     11230,
     11236,
+    11243,
+)
+SPECIAL_EVENT_IDS: Tuple[int, ...] = (
+    11230,
     11243,
 )
 COINCIDENCE_SEARCH_ROOTS: Tuple[Path, ...] = (
@@ -120,7 +125,7 @@ def load_good_coincidence_events(
     if missing:
         print(f"Warning: missing {len(missing)} events in {pickle_path}: {missing}")
 
-    print(f"Loaded {len(filtered)} coincidence events from {pickle_path}")
+    print(f"Loaded {len(filtered)} backlobe events from {pickle_path}")
     return filtered
 
 
@@ -166,6 +171,52 @@ def _extract_traces_from_npz(path: Path) -> List[np.ndarray]:
     return traces
 
 
+def _calc_trace_snr(traces: Iterable[object], vrms: float) -> Optional[float]:
+    if vrms <= 0:
+        return None
+    snr_values: List[float] = []
+    for trace in traces or []:
+        arr = np.asarray(trace, dtype=float).reshape(-1)
+        if arr.size == 0:
+            continue
+        peak_to_peak = float(np.max(arr) - np.min(arr))
+        snr_values.append(peak_to_peak / (2.0 * vrms))
+    if not snr_values:
+        return None
+    snr_values.sort(reverse=True)
+    if len(snr_values) == 1:
+        return snr_values[0]
+    return 0.5 * (snr_values[0] + snr_values[1])
+
+
+def _compute_event_snr(event_payload: Dict[str, object], vrms: float) -> Optional[float]:
+    stations = event_payload.get("stations", {}) if isinstance(event_payload, dict) else {}
+    if not isinstance(stations, dict):
+        return None
+    best_snr: Optional[float] = None
+    for station_data in stations.values():
+        if not isinstance(station_data, dict):
+            continue
+        traces_collection = station_data.get("Traces", [])
+        try:
+            triggers = list(traces_collection)
+        except TypeError:
+            continue
+        for trigger_traces in triggers:
+            if trigger_traces is None:
+                continue
+            try:
+                traces_iter = list(trigger_traces)
+            except TypeError:
+                traces_iter = [trigger_traces]
+            snr_value = _calc_trace_snr(traces_iter, vrms)
+            if snr_value is None:
+                continue
+            if best_snr is None or snr_value > best_snr:
+                best_snr = snr_value
+    return best_snr
+
+
 def load_station51_events(directory: Path = STN51_EVENTS_DIR) -> Dict[str, Dict[str, object]]:
     dir_path = Path(directory)
     if not dir_path.exists():
@@ -192,6 +243,7 @@ def load_station51_events(directory: Path = STN51_EVENTS_DIR) -> Dict[str, Dict[
                 }
             },
             "plot_root": STN51_PLOT_ROOT,
+            "category": "Station 51",
         }
         if event_id in events:
             suffix = 1
@@ -228,25 +280,43 @@ def run_evaluation(
 
     base_events = load_good_coincidence_events(event_ids, pickle_name=pickle_name, search_roots=search_roots)
     events: Dict[Union[int, str], Dict[str, object]] = dict(base_events)
-    for event_payload in events.values():
-        stations = event_payload.get("stations", {}) if isinstance(event_payload, dict) else {}
-        if not isinstance(stations, dict):
-            continue
-        for station_data in stations.values():
-            if isinstance(station_data, dict) and "sampling_rate_hz" not in station_data:
-                station_data["sampling_rate_hz"] = trace_sampling_rate_hz
-        if isinstance(event_payload, dict) and "plot_root" not in event_payload:
-            event_payload["plot_root"] = COINCIDENCE_PLOT_ROOT
     if station51_dir is not None:
         station_events = load_station51_events(station51_dir)
         if station_events:
             events.update(station_events)
+    special_ids = {int(eid) for eid in SPECIAL_EVENT_IDS}
+    for event_id, event_payload in events.items():
+        if not isinstance(event_payload, dict):
+            continue
+        stations = event_payload.get("stations", {})
+        if isinstance(stations, dict):
+            for station_data in stations.values():
+                if isinstance(station_data, dict) and "sampling_rate_hz" not in station_data:
+                    station_data["sampling_rate_hz"] = trace_sampling_rate_hz
+        if "plot_root" not in event_payload:
+            event_payload["plot_root"] = COINCIDENCE_PLOT_ROOT
+        category = event_payload.get("category")
+        if category is None:
+            if isinstance(event_id, int) and event_id in special_ids:
+                category = "RCR"
+            else:
+                category = "Backlobe"
+            event_payload["category"] = category
+        vrms = 0.01 if category == "Station 51" else 0.02
+        event_payload["vrms"] = vrms
+        event_payload["event_snr"] = _compute_event_snr(event_payload, vrms)
     results = evaluate_events_against_templates(
         events,
         template_groups,
         output_root=output_root,
         trace_sampling_rate_hz=trace_sampling_rate_hz,
     )
+    summary_path = plot_snr_chi_summary(
+        results,
+        Path(output_root) / "snr_chi_summary.png",
+    )
+    if summary_path is not None:
+        print(f"Saved SNR-chi summary plot to {summary_path}")
     print(f"Generated matches for {len(results)} events")
     return results
 

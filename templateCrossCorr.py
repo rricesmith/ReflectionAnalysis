@@ -11,6 +11,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 from radiotools import helper as hp
 from scipy import signal
@@ -21,6 +22,7 @@ from TemplateTesting.loadTemplates import DEFAULT_SAMPLING_RATE_HZ, TemplateReco
 CHANNEL_PAIRS: Tuple[Tuple[int, int], ...] = ((0, 2), (1, 3))
 MATCH_PLOT_ROOT = Path("TemplateTesting/plots/matches")
 DEFAULT_TRACE_SAMPLING_HZ = DEFAULT_SAMPLING_RATE_HZ
+DEFAULT_TEMPLATE_ORDER: Tuple[str, ...] = ("RCR", "SimBL", "DataBL", "CR")
 
 
 def _sanitize_identifier(text: str) -> str:
@@ -278,18 +280,20 @@ def _evaluate_template_for_trigger(
     if not channel_results:
         return None
 
-    pair_candidates: List[Tuple[float, Tuple[int, int]]] = []
+    aggregate_candidates: List[Tuple[float, Tuple[int, ...]]] = []
     for pair in CHANNEL_PAIRS:
         if all(ch in channel_results for ch in pair):
-            pair_candidates.append(
+            aggregate_candidates.append(
                 (
                     float(np.mean([abs(channel_results[ch]["xcorr"]) for ch in pair])),
                     pair,
                 )
             )
+    for ch, info in channel_results.items():
+        aggregate_candidates.append((abs(info["xcorr"]), (ch,)))
 
-    if pair_candidates:
-        best_score, best_pair = max(pair_candidates, key=lambda item: item[0])
+    if aggregate_candidates:
+        best_score, best_pair = max(aggregate_candidates, key=lambda item: (item[0], len(item[1])))
     else:
         best_score = float(np.mean([abs(info["xcorr"]) for info in channel_results.values()]))
         best_pair = tuple(sorted(channel_results.keys()))
@@ -347,9 +351,16 @@ def _plot_template_match(
         f"ch{ch}:{data['xcorr']:.3f}"
         for ch, data in sorted(channel_results.items())
     )
+    best_pair = tuple(match_details.get("best_pair", ()))
+    if len(best_pair) == 1:
+        best_label = f"Best channel {best_pair[0]}"
+    elif best_pair:
+        best_label = f"Best pair {best_pair}"
+    else:
+        best_label = "Best match"
     fig.suptitle(
         f"Event {event_id} | Station {station_label} | Trigger {trigger_idx} | {template_type} match: {template.identifier}\n"
-        f"Best pair {match_details['best_pair']} avg χ={match_details['score']:.3f}",
+        f"{best_label} avg χ={match_details['score']:.3f}",
         fontsize=14,
     )
     fig.text(0.5, 0.02, summary, ha="center", fontsize=10)
@@ -384,6 +395,8 @@ def evaluate_events_against_templates(
         if not isinstance(event_details, dict):
             continue
         event_output_root_raw = event_details.get("plot_root", default_output_root)
+        event_category = event_details.get("category", "Backlobe")
+        event_snr = event_details.get("event_snr")
         try:
             event_output_root = Path(event_output_root_raw)
         except (TypeError, ValueError):
@@ -431,6 +444,8 @@ def evaluate_events_against_templates(
                             "channel_results": match["channel_results"],
                             "sampling_rate_hz": station_sampling_rate,
                             "output_root": event_output_root,
+                            "event_category": event_category,
+                            "event_snr": event_snr,
                         }
                         if best_candidate is None or candidate["score"] > best_candidate["score"]:
                             best_candidate = candidate
@@ -450,17 +465,164 @@ def evaluate_events_against_templates(
             )
             best_candidate["plot_path"] = plot_path
             channel_chi = {ch: data["xcorr"] for ch, data in best_candidate["channel_results"].items()}
+            best_pair = tuple(best_candidate.get("best_pair", ()))
+            if len(best_pair) == 1:
+                combo_label = f"best channel {best_pair[0]}"
+            elif best_pair:
+                combo_label = f"best pair {best_pair}"
+            else:
+                combo_label = "best match"
             print(
                 f"Event {event_id} | {template_type}: template {best_candidate['template'].identifier} | "
                 f"station {best_candidate['station_id']} trigger {best_candidate['trigger_idx']} | "
-                f"best pair {best_candidate['best_pair']} -> avg χ={best_candidate['score']:.3f} | per-channel {channel_chi}"
+                f"{combo_label} -> avg χ={best_candidate['score']:.3f} | per-channel {channel_chi}"
             )
             event_matches[template_type] = best_candidate
 
         if event_matches:
+            event_matches["_meta"] = {
+                "category": event_category,
+                "snr": event_snr,
+                "vrms": event_details.get("vrms"),
+            }
             results[event_id] = event_matches
 
     return results
+
+
+def plot_snr_chi_summary(
+    results: Dict[Union[int, str], Dict[str, Dict[str, object]]],
+    output_path: Path,
+    template_order: Iterable[str] = DEFAULT_TEMPLATE_ORDER,
+    template_colors: Optional[Dict[str, str]] = None,
+    event_markers: Optional[Dict[str, str]] = None,
+) -> Optional[Path]:
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if template_colors is None:
+        template_colors = {
+            "RCR": "#1f77b4",
+            "SimBL": "#ff7f0e",
+            "DataBL": "#2ca02c",
+            "CR": "#d62728",
+        }
+    if event_markers is None:
+        event_markers = {
+            "Backlobe": "o",
+            "RCR": "s",
+            "Station 51": "^",
+        }
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.set_xscale("log")
+    ax.set_xlim(3, 100)
+    ax.set_ylim(0, 1)
+    ax.set_xlabel("Event SNR")
+    ax.set_ylabel(r"Template match $\chi$")
+    ax.set_title("Event SNR vs $\chi$ Summary")
+    ax.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.4)
+
+    data_plotted = False
+    template_order_seq = list(template_order)
+
+    for event_id, matches in results.items():
+        if not isinstance(matches, dict):
+            continue
+        meta = matches.get("_meta", {}) if isinstance(matches, dict) else {}
+        event_category = meta.get("category") or next(
+            (
+                candidate.get("event_category")
+                for key, candidate in matches.items()
+                if key != "_meta" and isinstance(candidate, dict)
+            ),
+            "Backlobe",
+        )
+        event_snr = meta.get("snr")
+        if event_snr is None or event_snr <= 0:
+            continue
+        marker = event_markers.get(event_category, "o")
+
+        template_points: List[Tuple[str, float]] = []
+        for template_name in template_order_seq:
+            candidate = matches.get(template_name)
+            if not isinstance(candidate, dict):
+                continue
+            chi_val = float(abs(candidate.get("score", 0.0)))
+            if not np.isfinite(chi_val):
+                continue
+            chi_val = max(0.0, min(chi_val, 1.0))
+            template_points.append((template_name, chi_val))
+
+        if not template_points:
+            continue
+
+        if len(template_points) >= 2:
+            _, chi_vals = zip(*template_points)
+            sorted_chi = sorted(chi_vals)
+            ax.plot(
+                [event_snr] * len(sorted_chi),
+                sorted_chi,
+                color="0.7",
+                linewidth=0.8,
+                alpha=0.8,
+                zorder=1,
+            )
+
+        for template_name, chi_val in template_points:
+            color = template_colors.get(template_name, "#444444")
+            ax.scatter(
+                event_snr,
+                chi_val,
+                color=color,
+                marker=marker,
+                edgecolors="none",
+                s=64,
+                zorder=2,
+            )
+
+        data_plotted = True
+
+    if not data_plotted:
+        plt.close(fig)
+        return None
+
+    template_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            linestyle="None",
+            markerfacecolor=template_colors.get(name, "#444444"),
+            markeredgecolor=template_colors.get(name, "#444444"),
+            markersize=8,
+            label=name,
+        )
+        for name in template_order_seq
+    ]
+
+    event_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker=marker,
+            linestyle="None",
+            markerfacecolor="white",
+            markeredgecolor="black",
+            markersize=8,
+            label=category,
+        )
+        for category, marker in event_markers.items()
+    ]
+
+    legend_handles = template_handles + event_handles
+    legend_labels = [handle.get_label() for handle in legend_handles]
+    ax.legend(legend_handles, legend_labels, loc="lower right")
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
+    return output_path
 
 
 
