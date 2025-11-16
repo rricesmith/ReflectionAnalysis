@@ -868,22 +868,18 @@ def plot_template_violin_summary(
         else:
             meta_station_categories = {}
 
+        best_by_template: Dict[str, Dict[str, float]] = {name: {} for name in template_order_seq}
+
         station_match_map = matches.get("_station_matches")
         if isinstance(station_match_map, dict) and station_match_map:
             for station_label, template_map in station_match_map.items():
                 if not isinstance(template_map, dict):
                     continue
                 station_label_str = str(station_label)
+                station_category_default = meta_station_categories.get(station_label_str, event_category)
                 for template_name in template_order_seq:
                     entry = template_map.get(template_name)
                     if not isinstance(entry, dict):
-                        continue
-                    station_category = str(
-                        entry.get("station_category")
-                        or meta_station_categories.get(station_label_str)
-                        or event_category
-                    )
-                    if category_filter is not None and station_category != category_filter:
                         continue
                     score = entry.get("score")
                     if score is None:
@@ -891,18 +887,18 @@ def plot_template_violin_summary(
                     chi_val = float(abs(score))
                     if not np.isfinite(chi_val):
                         continue
-                    template_scores.setdefault(template_name, []).append(chi_val)
+                    station_category = str(
+                        entry.get("station_category")
+                        or station_category_default
+                        or event_category
+                    )
+                    existing = best_by_template.setdefault(template_name, {}).get(station_category)
+                    if existing is None or chi_val > existing:
+                        best_by_template.setdefault(template_name, {})[station_category] = chi_val
         else:
             for template_name in template_order_seq:
                 candidate = matches.get(template_name)
                 if not isinstance(candidate, dict):
-                    continue
-                station_category = str(
-                    candidate.get("station_category")
-                    or meta_station_categories.get(str(candidate.get("station_id")))
-                    or event_category
-                )
-                if category_filter is not None and station_category != category_filter:
                     continue
                 score = candidate.get("score")
                 if score is None:
@@ -910,7 +906,27 @@ def plot_template_violin_summary(
                 chi_val = float(abs(score))
                 if not np.isfinite(chi_val):
                     continue
-                template_scores.setdefault(template_name, []).append(chi_val)
+                station_category = str(
+                    candidate.get("station_category")
+                    or meta_station_categories.get(str(candidate.get("station_id")))
+                    or event_category
+                )
+                existing = best_by_template.setdefault(template_name, {}).get(station_category)
+                if existing is None or chi_val > existing:
+                    best_by_template.setdefault(template_name, {})[station_category] = chi_val
+
+        if category_filter is None:
+            for template_name, category_map in best_by_template.items():
+                if not category_map:
+                    continue
+                best_val = max(category_map.values())
+                template_scores.setdefault(template_name, []).append(best_val)
+        else:
+            category_key = str(category_filter)
+            for template_name, category_map in best_by_template.items():
+                value = category_map.get(category_key)
+                if value is not None:
+                    template_scores.setdefault(template_name, []).append(value)
 
     filtered_templates = [
         (template_name, values)
