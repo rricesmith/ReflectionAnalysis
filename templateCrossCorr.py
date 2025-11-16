@@ -12,6 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 import numpy as np
 from radiotools import helper as hp
 from scipy import signal
@@ -23,6 +24,11 @@ CHANNEL_PAIRS: Tuple[Tuple[int, int], ...] = ((0, 2), (1, 3))
 MATCH_PLOT_ROOT = Path("TemplateTesting/plots/matches")
 DEFAULT_TRACE_SAMPLING_HZ = DEFAULT_SAMPLING_RATE_HZ
 DEFAULT_TEMPLATE_ORDER: Tuple[str, ...] = ("RCR", "SimBL", "DataBL", "CR")
+EVENT_CATEGORY_COLORS: Dict[str, str] = {
+    "Backlobe": "#4c72b0",
+    "RCR": "#dd8452",
+    "Station 51": "#55a868",
+}
 
 
 def _sanitize_identifier(text: str) -> str:
@@ -834,6 +840,107 @@ def plot_snr_chi_summary(
     return output_path
 
 
+def _extract_best_scores_for_event(
+    matches: Dict[str, Dict[str, object]],
+    template_order_seq: List[str],
+) -> Dict[str, Dict[str, float]]:
+    best_by_template: Dict[str, Dict[str, float]] = {name: {} for name in template_order_seq}
+    meta = matches.get("_meta", {}) if isinstance(matches, dict) else {}
+    event_category = str(meta.get("category") or "Backlobe")
+    raw_station_categories = meta.get("station_categories", {})
+    if isinstance(raw_station_categories, dict):
+        meta_station_categories = {str(key): str(value) for key, value in raw_station_categories.items()}
+    else:
+        meta_station_categories = {}
+
+    station_match_map = matches.get("_station_matches")
+    if isinstance(station_match_map, dict) and station_match_map:
+        for station_label, template_map in station_match_map.items():
+            if not isinstance(template_map, dict):
+                continue
+            station_label_str = str(station_label)
+            station_category_default = meta_station_categories.get(station_label_str, event_category)
+            for template_name in template_order_seq:
+                entry = template_map.get(template_name)
+                if not isinstance(entry, dict):
+                    continue
+                score = entry.get("score")
+                if score is None:
+                    continue
+                try:
+                    chi_val = float(abs(score))
+                except (TypeError, ValueError):
+                    continue
+                if not np.isfinite(chi_val):
+                    continue
+                station_category = entry.get("station_category")
+                if station_category is None:
+                    station_category = station_category_default
+                station_category = str(station_category or event_category)
+                current = best_by_template.setdefault(template_name, {})
+                existing = current.get(station_category)
+                if existing is None or chi_val > existing:
+                    current[station_category] = chi_val
+    else:
+        for template_name in template_order_seq:
+            candidate = matches.get(template_name)
+            if not isinstance(candidate, dict):
+                continue
+            score = candidate.get("score")
+            if score is None:
+                continue
+            try:
+                chi_val = float(abs(score))
+            except (TypeError, ValueError):
+                continue
+            if not np.isfinite(chi_val):
+                continue
+            station_category = candidate.get("station_category")
+            if station_category is None:
+                station_id = candidate.get("station_id")
+                station_category = meta_station_categories.get(str(station_id), event_category)
+            station_category = str(station_category or event_category)
+            current = best_by_template.setdefault(template_name, {})
+            existing = current.get(station_category)
+            if existing is None or chi_val > existing:
+                current[station_category] = chi_val
+    return best_by_template
+
+
+def _collect_best_template_scores(
+    results: Dict[Union[int, str], Dict[str, Dict[str, object]]],
+    template_order_seq: List[str],
+) -> Tuple[
+    Dict[str, Dict[str, List[float]]],
+    Dict[str, List[float]],
+    Dict[str, Set[Union[int, str]]],
+    Set[Union[int, str]],
+]:
+    template_category_scores: Dict[str, Dict[str, List[float]]] = {name: {} for name in template_order_seq}
+    template_overall_scores: Dict[str, List[float]] = {name: [] for name in template_order_seq}
+    events_per_category: Dict[str, Set[Union[int, str]]] = {}
+    overall_events: Set[Union[int, str]] = set()
+
+    for event_id, matches in results.items():
+        if not isinstance(matches, dict):
+            continue
+        best_by_template = _extract_best_scores_for_event(matches, template_order_seq)
+        contributed = False
+        for template_name, category_map in best_by_template.items():
+            if not category_map:
+                continue
+            best_val = max(category_map.values())
+            template_overall_scores.setdefault(template_name, []).append(best_val)
+            for category, value in category_map.items():
+                template_category_scores.setdefault(template_name, {}).setdefault(category, []).append(value)
+                events_per_category.setdefault(category, set()).add(event_id)
+            contributed = True
+        if contributed:
+            overall_events.add(event_id)
+
+    return template_category_scores, template_overall_scores, events_per_category, overall_events
+
+
 def plot_template_violin_summary(
     results: Dict[Union[int, str], Dict[str, Dict[str, object]]],
     output_path: Path,
@@ -853,100 +960,37 @@ def plot_template_violin_summary(
         }
 
     template_order_seq = [str(name) for name in template_order]
-    template_scores: Dict[str, List[float]] = {name: [] for name in template_order_seq}
-    included_event_ids: Set[Union[int, str]] = set()
+    (
+        template_category_scores,
+        template_overall_scores,
+        events_per_category,
+        overall_events,
+    ) = _collect_best_template_scores(results, template_order_seq)
 
-    for event_id, matches in results.items():
-        if not isinstance(matches, dict):
-            continue
-        meta = matches.get("_meta", {}) if isinstance(matches, dict) else {}
-        event_category = str(meta.get("category") or "Backlobe")
-        raw_station_categories = meta.get("station_categories", {})
-        if isinstance(raw_station_categories, dict):
-            meta_station_categories = {
-                str(key): str(value) for key, value in raw_station_categories.items()
-            }
-        else:
-            meta_station_categories = {}
+    labels: List[str] = []
+    data_series: List[List[float]] = []
+    if category_filter is None:
+        for template_name in template_order_seq:
+            series = template_overall_scores.get(template_name, [])
+            if not series:
+                continue
+            labels.append(template_name)
+            data_series.append(series)
+        event_count = len(overall_events)
+    else:
+        category_key = str(category_filter)
+        for template_name in template_order_seq:
+            series = template_category_scores.get(template_name, {}).get(category_key, [])
+            if not series:
+                continue
+            labels.append(template_name)
+            data_series.append(series)
+        event_count = len(events_per_category.get(category_key, set()))
 
-        best_by_template: Dict[str, Dict[str, float]] = {name: {} for name in template_order_seq}
-        contributed = False
-
-        station_match_map = matches.get("_station_matches")
-        if isinstance(station_match_map, dict) and station_match_map:
-            for station_label, template_map in station_match_map.items():
-                if not isinstance(template_map, dict):
-                    continue
-                station_label_str = str(station_label)
-                station_category_default = meta_station_categories.get(station_label_str, event_category)
-                for template_name in template_order_seq:
-                    entry = template_map.get(template_name)
-                    if not isinstance(entry, dict):
-                        continue
-                    score = entry.get("score")
-                    if score is None:
-                        continue
-                    chi_val = float(abs(score))
-                    if not np.isfinite(chi_val):
-                        continue
-                    station_category = str(
-                        entry.get("station_category")
-                        or station_category_default
-                        or event_category
-                    )
-                    existing = best_by_template.setdefault(template_name, {}).get(station_category)
-                    if existing is None or chi_val > existing:
-                        best_by_template.setdefault(template_name, {})[station_category] = chi_val
-        else:
-            for template_name in template_order_seq:
-                candidate = matches.get(template_name)
-                if not isinstance(candidate, dict):
-                    continue
-                score = candidate.get("score")
-                if score is None:
-                    continue
-                chi_val = float(abs(score))
-                if not np.isfinite(chi_val):
-                    continue
-                station_category = str(
-                    candidate.get("station_category")
-                    or meta_station_categories.get(str(candidate.get("station_id")))
-                    or event_category
-                )
-                existing = best_by_template.setdefault(template_name, {}).get(station_category)
-                if existing is None or chi_val > existing:
-                    best_by_template.setdefault(template_name, {})[station_category] = chi_val
-
-        if category_filter is None:
-            for template_name, category_map in best_by_template.items():
-                if not category_map:
-                    continue
-                best_val = max(category_map.values())
-                template_scores.setdefault(template_name, []).append(best_val)
-                contributed = True
-        else:
-            category_key = str(category_filter)
-            for template_name, category_map in best_by_template.items():
-                value = category_map.get(category_key)
-                if value is not None:
-                    template_scores.setdefault(template_name, []).append(value)
-                    contributed = True
-
-        if contributed:
-            included_event_ids.add(event_id)
-
-    filtered_templates = [
-        (template_name, values)
-        for template_name, values in template_scores.items()
-        if values
-    ]
-
-    if not filtered_templates:
+    if not data_series:
         return None
 
-    labels, data_series = zip(*filtered_templates)
     positions = np.arange(1, len(labels) + 1, dtype=float)
-    event_count = len(included_event_ids)
 
     fig, ax = plt.subplots(figsize=(10, 6))
     violins = ax.violinplot(
@@ -1001,6 +1045,156 @@ def plot_template_violin_summary(
             ha="left",
             va="top",
         )
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
+    return output_path
+
+
+def plot_template_box_summary(
+    results: Dict[Union[int, str], Dict[str, Dict[str, object]]],
+    output_path: Path,
+    template_order: Iterable[str] = DEFAULT_TEMPLATE_ORDER,
+    category_filter: Optional[str] = None,
+    category_colors: Optional[Dict[str, str]] = None,
+) -> Optional[Path]:
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if category_colors is None:
+        category_colors = EVENT_CATEGORY_COLORS
+
+    template_order_seq = [str(name) for name in template_order]
+    (
+        template_category_scores,
+        _template_overall_scores,
+        events_per_category,
+        overall_events,
+    ) = _collect_best_template_scores(results, template_order_seq)
+
+    if category_filter is None:
+        category_sequence = ["Backlobe", "RCR", "Station 51"]
+        category_sequence = [cat for cat in category_sequence if cat in events_per_category]
+        if not category_sequence:
+            category_sequence = sorted(events_per_category.keys())
+    else:
+        category_sequence = [str(category_filter)]
+
+    if not category_sequence:
+        return None
+
+    labels = template_order_seq
+    fig, ax = plt.subplots(figsize=(10, 6))
+    dataset_exists = False
+    templates_with_data: Set[str] = set()
+    category_handles: Dict[str, Patch] = {}
+
+    if category_filter is None:
+        num_categories = len(category_sequence)
+        offsets = np.linspace(-0.25, 0.25, num_categories) if num_categories > 1 else np.array([0.0])
+        width = 0.2 if num_categories > 1 else 0.35
+    else:
+        offsets = np.array([0.0])
+        width = 0.35
+
+    for idx, template_name in enumerate(template_order_seq, start=1):
+        for offset, category in zip(offsets, category_sequence):
+            series = template_category_scores.get(template_name, {}).get(category, [])
+            if not series:
+                continue
+            dataset_exists = True
+            templates_with_data.add(template_name)
+            position = idx + offset
+            box = ax.boxplot(
+                series,
+                positions=[position],
+                widths=width,
+                patch_artist=True,
+                showmeans=False,
+                showfliers=False,
+            )
+            color = category_colors.get(category, "#888888")
+            for patch in box["boxes"]:
+                patch.set_facecolor(color)
+                patch.set_edgecolor("#333333")
+                patch.set_alpha(0.6)
+            for element in ("medians", "whiskers", "caps"):
+                for artist in box.get(element, []):
+                    artist.set_color("#333333")
+                    artist.set_linewidth(1.0)
+            if category not in category_handles:
+                category_handles[category] = Patch(
+                    facecolor=color,
+                    edgecolor="#333333",
+                    alpha=0.6,
+                    label=category,
+                )
+
+    if not dataset_exists:
+        plt.close(fig)
+        return None
+
+    tick_positions = [idx for idx, name in enumerate(template_order_seq, start=1) if name in templates_with_data]
+    tick_labels = [name for name in template_order_seq if name in templates_with_data]
+    if tick_positions:
+        ax.set_xticks(tick_positions)
+        ax.set_xticklabels(tick_labels)
+    else:
+        ax.set_xticks(np.arange(1, len(labels) + 1))
+        ax.set_xticklabels(labels)
+    ax.set_ylabel(r"Template match $\chi$")
+    if category_filter is None:
+        ax.set_title("Template match $\chi$ distribution by template type (box)")
+    else:
+        ax.set_title(f"Template match $\chi$ distribution — {category_filter} (box)")
+    ax.set_ylim(0, 1)
+    ax.set_xlim(0.5, len(labels) + 0.5)
+    ax.grid(True, axis="y", linestyle="--", linewidth=0.5, alpha=0.4)
+
+    if category_handles:
+        legend_handles = [category_handles[cat] for cat in category_sequence if cat in category_handles]
+        if legend_handles:
+            ax.legend(legend_handles, [handle.get_label() for handle in legend_handles], loc="upper right")
+
+    if category_filter is None:
+        annotation_lines: List[str] = []
+        for category in category_sequence:
+            count = len(events_per_category.get(category, set()))
+            if count == 0:
+                continue
+            label_text = "event" if count == 1 else "events"
+            annotation_lines.append(f"{count} {category} {label_text}")
+        total_events = len(overall_events)
+        if total_events and not annotation_lines:
+            label_text = "event" if total_events == 1 else "events"
+            annotation_lines.append(f"{total_events} events")
+        if annotation_lines:
+            ax.text(
+                0.02,
+                0.95,
+                "\n".join(annotation_lines),
+                transform=ax.transAxes,
+                fontsize=10,
+                fontweight="bold",
+                ha="left",
+                va="top",
+            )
+    else:
+        category_key = str(category_filter)
+        count = len(events_per_category.get(category_key, set()))
+        if count:
+            label_text = "event" if count == 1 else "events"
+            ax.text(
+                0.02,
+                0.95,
+                f"{count} {category_key} {label_text}",
+                transform=ax.transAxes,
+                fontsize=10,
+                fontweight="bold",
+                ha="left",
+                va="top",
+            )
 
     fig.tight_layout()
     fig.savefig(output_path, dpi=200)
