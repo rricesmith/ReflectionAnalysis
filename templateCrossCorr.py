@@ -854,8 +854,9 @@ def plot_template_violin_summary(
 
     template_order_seq = [str(name) for name in template_order]
     template_scores: Dict[str, List[float]] = {name: [] for name in template_order_seq}
+    included_event_ids: Set[Union[int, str]] = set()
 
-    for matches in results.values():
+    for event_id, matches in results.items():
         if not isinstance(matches, dict):
             continue
         meta = matches.get("_meta", {}) if isinstance(matches, dict) else {}
@@ -869,6 +870,7 @@ def plot_template_violin_summary(
             meta_station_categories = {}
 
         best_by_template: Dict[str, Dict[str, float]] = {name: {} for name in template_order_seq}
+        contributed = False
 
         station_match_map = matches.get("_station_matches")
         if isinstance(station_match_map, dict) and station_match_map:
@@ -921,12 +923,17 @@ def plot_template_violin_summary(
                     continue
                 best_val = max(category_map.values())
                 template_scores.setdefault(template_name, []).append(best_val)
+                contributed = True
         else:
             category_key = str(category_filter)
             for template_name, category_map in best_by_template.items():
                 value = category_map.get(category_key)
                 if value is not None:
                     template_scores.setdefault(template_name, []).append(value)
+                    contributed = True
+
+        if contributed:
+            included_event_ids.add(event_id)
 
     filtered_templates = [
         (template_name, values)
@@ -939,25 +946,24 @@ def plot_template_violin_summary(
 
     labels, data_series = zip(*filtered_templates)
     positions = np.arange(1, len(labels) + 1, dtype=float)
+    event_count = len(included_event_ids)
 
     fig, ax = plt.subplots(figsize=(10, 6))
     violins = ax.violinplot(
         data_series,
         positions=positions,
         widths=0.8,
-        showmeans=True,
+        showmeans=False,
         showextrema=False,
+        points=200,
     )
 
     for body, label in zip(violins["bodies"], labels):
         color = template_colors.get(label, "#888888")
         body.set_facecolor(color)
-        body.set_edgecolor("black")
-        body.set_alpha(0.7)
-
-    if "cmeans" in violins:
-        violins["cmeans"].set_color("black")
-        violins["cmeans"].set_linewidth(1.2)
+        body.set_edgecolor(color)
+        body.set_alpha(0.5)
+        body.set_linewidth(1.2)
 
     ax.set_xticks(positions)
     ax.set_xticklabels(labels)
@@ -967,6 +973,35 @@ def plot_template_violin_summary(
     else:
         ax.set_title(f"Template match $\chi$ distribution — {category_filter}")
     ax.grid(True, axis="y", linestyle="--", linewidth=0.5, alpha=0.4)
+    ax.tick_params(axis="x", direction="out")
+
+    for position, series, label in zip(positions, data_series, labels):
+        color = template_colors.get(label, "#444444")
+        quartiles = np.percentile(series, [25, 50, 75])
+        whiskers = (np.min(series), np.max(series))
+        ax.vlines(position, whiskers[0], whiskers[1], color=color, linewidth=1.0, alpha=0.6)
+        ax.hlines(quartiles[1], position - 0.25, position + 0.25, color=color, linewidth=1.6)
+        ax.hlines(quartiles[0], position - 0.15, position + 0.15, color=color, linewidth=1.1, alpha=0.8)
+        ax.hlines(quartiles[2], position - 0.15, position + 0.15, color=color, linewidth=1.1, alpha=0.8)
+
+    if event_count > 0:
+        if category_filter is None:
+            label_text = "event" if event_count == 1 else "events"
+            annotation = f"{event_count} {label_text}"
+        else:
+            label_text = "event" if event_count == 1 else "events"
+            annotation = f"{event_count} {category_filter} {label_text}"
+        ax.text(
+            0.02,
+            0.95,
+            annotation,
+            transform=ax.transAxes,
+            fontsize=10,
+            fontweight="bold",
+            ha="left",
+            va="top",
+        )
+
     fig.tight_layout()
     fig.savefig(output_path, dpi=200)
     plt.close(fig)
