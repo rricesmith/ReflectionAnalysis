@@ -1057,14 +1057,18 @@ def plot_template_box_summary(
     output_path: Path,
     template_order: Iterable[str] = DEFAULT_TEMPLATE_ORDER,
     category_filter: Optional[str] = None,
-    category_colors: Optional[Dict[str, str]] = None,
+    template_colors: Optional[Dict[str, str]] = None,
 ) -> Optional[Path]:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if category_colors is None:
-        category_colors = EVENT_CATEGORY_COLORS
-
+    if template_colors is None:
+        template_colors = {
+            "RCR": "#1f77b4",
+            "SimBL": "#ff7f0e",
+            "DataBL": "#2ca02c",
+            "CR": "#d62728",
+        }
     template_order_seq = [str(name) for name in template_order]
     (
         template_category_scores,
@@ -1074,47 +1078,67 @@ def plot_template_box_summary(
     ) = _collect_best_template_scores(results, template_order_seq)
 
     if category_filter is None:
-        category_sequence = ["Backlobe", "RCR", "Station 51"]
-        category_sequence = [cat for cat in category_sequence if cat in events_per_category]
+        preferred = ["Backlobe", "RCR", "Station 51"]
+        category_sequence = [
+            category
+            for category in preferred
+            if any(template_category_scores.get(template_name, {}).get(category) for template_name in template_order_seq)
+        ]
         if not category_sequence:
-            category_sequence = sorted(events_per_category.keys())
+            category_sequence = sorted(
+                {
+                    category
+                    for template_map in template_category_scores.values()
+                    for category, series in template_map.items()
+                    if series
+                }
+            )
     else:
         category_sequence = [str(category_filter)]
+
+    category_sequence = [cat for cat in category_sequence if cat]
+    if category_filter is not None:
+        category_sequence = [
+            cat
+            for cat in category_sequence
+            if any(template_category_scores.get(template_name, {}).get(cat) for template_name in template_order_seq)
+        ]
 
     if not category_sequence:
         return None
 
-    labels = template_order_seq
     fig, ax = plt.subplots(figsize=(10, 6))
     dataset_exists = False
+    template_handles: Dict[str, Patch] = {}
     templates_with_data: Set[str] = set()
-    category_handles: Dict[str, Patch] = {}
 
-    if category_filter is None:
-        num_categories = len(category_sequence)
-        offsets = np.linspace(-0.25, 0.25, num_categories) if num_categories > 1 else np.array([0.0])
-        width = 0.2 if num_categories > 1 else 0.35
+    if len(template_order_seq) > 1:
+        offsets = np.linspace(-0.18, 0.18, len(template_order_seq))
+        width = 0.12
     else:
         offsets = np.array([0.0])
-        width = 0.35
+        width = 0.2
 
-    for idx, template_name in enumerate(template_order_seq, start=1):
-        for offset, category in zip(offsets, category_sequence):
+    for cat_idx, category in enumerate(category_sequence, start=1):
+        category_has_data = False
+        for offset, template_name in zip(offsets, template_order_seq):
             series = template_category_scores.get(template_name, {}).get(category, [])
             if not series:
                 continue
             dataset_exists = True
+            category_has_data = True
             templates_with_data.add(template_name)
-            position = idx + offset
+            scores = np.clip(np.asarray(series, dtype=float), 0.0, 1.0)
+            position = cat_idx + offset
             box = ax.boxplot(
-                series,
+                scores.tolist(),
                 positions=[position],
                 widths=width,
                 patch_artist=True,
                 showmeans=False,
                 showfliers=False,
             )
-            color = category_colors.get(category, "#888888")
+            color = template_colors.get(template_name, "#888888")
             for patch in box["boxes"]:
                 patch.set_facecolor(color)
                 patch.set_edgecolor("#333333")
@@ -1123,39 +1147,32 @@ def plot_template_box_summary(
                 for artist in box.get(element, []):
                     artist.set_color("#333333")
                     artist.set_linewidth(1.0)
-            if category not in category_handles:
-                category_handles[category] = Patch(
+            if template_name not in template_handles:
+                template_handles[template_name] = Patch(
                     facecolor=color,
                     edgecolor="#333333",
                     alpha=0.6,
-                    label=category,
+                    label=template_name,
                 )
+        if not category_has_data:
+            continue
 
     if not dataset_exists:
         plt.close(fig)
         return None
 
-    tick_positions = [idx for idx, name in enumerate(template_order_seq, start=1) if name in templates_with_data]
-    tick_labels = [name for name in template_order_seq if name in templates_with_data]
-    if tick_positions:
-        ax.set_xticks(tick_positions)
-        ax.set_xticklabels(tick_labels)
-    else:
-        ax.set_xticks(np.arange(1, len(labels) + 1))
-        ax.set_xticklabels(labels)
+    base_positions = list(range(1, len(category_sequence) + 1))
+    ax.set_xticks(base_positions)
+    ax.set_xticklabels(category_sequence)
+    ax.set_xlabel("Event category")
     ax.set_ylabel(r"Template match $\chi$")
-    if category_filter is None:
-        ax.set_title("Template match $\chi$ distribution by template type (box)")
-    else:
-        ax.set_title(f"Template match $\chi$ distribution — {category_filter} (box)")
     ax.set_ylim(0, 1)
-    ax.set_xlim(0.5, len(labels) + 0.5)
+    ax.set_xlim(0.5, len(category_sequence) + 0.5)
     ax.grid(True, axis="y", linestyle="--", linewidth=0.5, alpha=0.4)
 
-    if category_handles:
-        legend_handles = [category_handles[cat] for cat in category_sequence if cat in category_handles]
-        if legend_handles:
-            ax.legend(legend_handles, [handle.get_label() for handle in legend_handles], loc="upper right")
+    legend_handles = [template_handles[name] for name in template_order_seq if name in templates_with_data]
+    if legend_handles:
+        ax.legend(legend_handles, [handle.get_label() for handle in legend_handles], loc="lower right")
 
     if category_filter is None:
         annotation_lines: List[str] = []
@@ -1165,20 +1182,21 @@ def plot_template_box_summary(
                 continue
             label_text = "event" if count == 1 else "events"
             annotation_lines.append(f"{count} {category} {label_text}")
-        total_events = len(overall_events)
-        if total_events and not annotation_lines:
-            label_text = "event" if total_events == 1 else "events"
-            annotation_lines.append(f"{total_events} events")
+        if not annotation_lines:
+            total_events = len(overall_events)
+            if total_events:
+                label_text = "event" if total_events == 1 else "events"
+                annotation_lines.append(f"{total_events} events")
         if annotation_lines:
             ax.text(
                 0.02,
-                0.95,
+                0.05,
                 "\n".join(annotation_lines),
                 transform=ax.transAxes,
                 fontsize=10,
                 fontweight="bold",
                 ha="left",
-                va="top",
+                va="bottom",
             )
     else:
         category_key = str(category_filter)
@@ -1187,13 +1205,13 @@ def plot_template_box_summary(
             label_text = "event" if count == 1 else "events"
             ax.text(
                 0.02,
-                0.95,
+                0.05,
                 f"{count} {category_key} {label_text}",
                 transform=ax.transAxes,
                 fontsize=10,
                 fontweight="bold",
                 ha="left",
-                va="top",
+                va="bottom",
             )
 
     fig.tight_layout()
