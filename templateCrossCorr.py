@@ -834,4 +834,127 @@ def plot_snr_chi_summary(
     return output_path
 
 
+def plot_template_violin_summary(
+    results: Dict[Union[int, str], Dict[str, Dict[str, object]]],
+    output_path: Path,
+    template_order: Iterable[str] = DEFAULT_TEMPLATE_ORDER,
+    template_colors: Optional[Dict[str, str]] = None,
+    category_filter: Optional[str] = None,
+) -> Optional[Path]:
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if template_colors is None:
+        template_colors = {
+            "RCR": "#1f77b4",
+            "SimBL": "#ff7f0e",
+            "DataBL": "#2ca02c",
+            "CR": "#d62728",
+        }
+
+    template_order_seq = [str(name) for name in template_order]
+    template_scores: Dict[str, List[float]] = {name: [] for name in template_order_seq}
+
+    for matches in results.values():
+        if not isinstance(matches, dict):
+            continue
+        meta = matches.get("_meta", {}) if isinstance(matches, dict) else {}
+        event_category = str(meta.get("category") or "Backlobe")
+        raw_station_categories = meta.get("station_categories", {})
+        if isinstance(raw_station_categories, dict):
+            meta_station_categories = {
+                str(key): str(value) for key, value in raw_station_categories.items()
+            }
+        else:
+            meta_station_categories = {}
+
+        station_match_map = matches.get("_station_matches")
+        if isinstance(station_match_map, dict) and station_match_map:
+            for station_label, template_map in station_match_map.items():
+                if not isinstance(template_map, dict):
+                    continue
+                station_label_str = str(station_label)
+                for template_name in template_order_seq:
+                    entry = template_map.get(template_name)
+                    if not isinstance(entry, dict):
+                        continue
+                    station_category = str(
+                        entry.get("station_category")
+                        or meta_station_categories.get(station_label_str)
+                        or event_category
+                    )
+                    if category_filter is not None and station_category != category_filter:
+                        continue
+                    score = entry.get("score")
+                    if score is None:
+                        continue
+                    chi_val = float(abs(score))
+                    if not np.isfinite(chi_val):
+                        continue
+                    template_scores.setdefault(template_name, []).append(chi_val)
+        else:
+            for template_name in template_order_seq:
+                candidate = matches.get(template_name)
+                if not isinstance(candidate, dict):
+                    continue
+                station_category = str(
+                    candidate.get("station_category")
+                    or meta_station_categories.get(str(candidate.get("station_id")))
+                    or event_category
+                )
+                if category_filter is not None and station_category != category_filter:
+                    continue
+                score = candidate.get("score")
+                if score is None:
+                    continue
+                chi_val = float(abs(score))
+                if not np.isfinite(chi_val):
+                    continue
+                template_scores.setdefault(template_name, []).append(chi_val)
+
+    filtered_templates = [
+        (template_name, values)
+        for template_name, values in template_scores.items()
+        if values
+    ]
+
+    if not filtered_templates:
+        return None
+
+    labels, data_series = zip(*filtered_templates)
+    positions = np.arange(1, len(labels) + 1, dtype=float)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    violins = ax.violinplot(
+        data_series,
+        positions=positions,
+        widths=0.8,
+        showmeans=True,
+        showextrema=False,
+    )
+
+    for body, label in zip(violins["bodies"], labels):
+        color = template_colors.get(label, "#888888")
+        body.set_facecolor(color)
+        body.set_edgecolor("black")
+        body.set_alpha(0.7)
+
+    if "cmeans" in violins:
+        violins["cmeans"].set_color("black")
+        violins["cmeans"].set_linewidth(1.2)
+
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels)
+    ax.set_ylabel(r"Template match $\chi$")
+    if category_filter is None:
+        ax.set_title("Template match $\chi$ distribution by template type")
+    else:
+        ax.set_title(f"Template match $\chi$ distribution — {category_filter}")
+    ax.grid(True, axis="y", linestyle="--", linewidth=0.5, alpha=0.4)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
+    return output_path
+
+
 

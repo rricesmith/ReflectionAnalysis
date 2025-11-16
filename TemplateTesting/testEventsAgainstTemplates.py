@@ -33,6 +33,7 @@ from templateCrossCorr import (
     DEFAULT_TRACE_SAMPLING_HZ,
     evaluate_events_against_templates,
     plot_snr_chi_summary,
+    plot_template_violin_summary,
 )
 
 DEFAULT_GOOD_EVENT_PICKLE = "9.24.25_CoincidenceDatetimes_passing_cuts_with_all_params_recalcZenAzi_calcPol.pkl"
@@ -373,6 +374,32 @@ def run_evaluation(
     for label, path in summary_outputs:
         if path is not None:
             print(f"Saved {label} SNR-chi plot to {path}")
+
+    violin_outputs: List[Tuple[str, Optional[Path]]] = []
+    violin_outputs.append(
+        (
+            "Combined",
+            plot_template_violin_summary(
+                results,
+                output_root_path / "template_violin_summary.png",
+            ),
+        )
+    )
+    for category in ("Backlobe", "RCR", "Station 51"):
+        filename = f"template_violin_summary_{category.lower().replace(' ', '_')}.png"
+        violin_outputs.append(
+            (
+                category,
+                plot_template_violin_summary(
+                    results,
+                    output_root_path / filename,
+                    category_filter=category,
+                ),
+            )
+        )
+    for label, path in violin_outputs:
+        if path is not None:
+            print(f"Saved {label} template violin plot to {path}")
     print(f"Generated matches for {len(results)} events")
     return results
 
