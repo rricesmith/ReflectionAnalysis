@@ -599,6 +599,9 @@ def plot_snr_chi_summary(
     allowed_categories: Optional[Iterable[str]] = None,
     allowed_templates: Optional[Dict[str, Iterable[str]]] = None,
     category_label_overrides: Optional[Dict[str, str]] = None,
+    color_by_category: bool = False,
+    show_template_legend: bool = True,
+    category_colors: Optional[Dict[str, str]] = None,
 ) -> Optional[Path]:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -616,6 +619,9 @@ def plot_snr_chi_summary(
             "RCR": "s",
             "Station 51": "^",
         }
+
+    if category_colors is None:
+        category_colors = EVENT_CATEGORY_COLORS
 
     allowed_category_set: Optional[Set[str]] = None
     if allowed_categories is not None:
@@ -839,8 +845,12 @@ def plot_snr_chi_summary(
                 )
 
             for template_name, chi_val in points:
-                color = template_colors.get(template_name, "#444444")
-                used_templates.setdefault(template_name, color)
+                if color_by_category:
+                    color = category_colors.get(station_category, "#444444")
+                else:
+                    color = template_colors.get(template_name, "#444444")
+                    if show_template_legend:
+                        used_templates.setdefault(template_name, color)
                 ax.scatter(
                     snr_val,
                     chi_val,
@@ -856,19 +866,21 @@ def plot_snr_chi_summary(
         plt.close(fig)
         return None
 
-    template_handles = [
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            linestyle="None",
-            markerfacecolor=color,
-            markeredgecolor=color,
-            markersize=8,
-            label=name,
-        )
-        for name, color in used_templates.items()
-    ]
+    template_handles: List[Line2D] = []
+    if show_template_legend:
+        template_handles = [
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                linestyle="None",
+                markerfacecolor=color,
+                markeredgecolor=color,
+                markersize=8,
+                label=name,
+            )
+            for name, color in used_templates.items()
+        ]
 
     event_handles = []
     seen_labels: Set[str] = set()
@@ -877,13 +889,18 @@ def plot_snr_chi_summary(
         if label in seen_labels:
             continue
         seen_labels.add(label)
+        marker_face = "white"
+        marker_edge = "black"
+        if color_by_category:
+            marker_face = category_colors.get(category, "#444444")
+            marker_edge = marker_face
         handle = Line2D(
             [0],
             [0],
             marker=marker,
             linestyle="None",
-            markerfacecolor="white",
-            markeredgecolor="black",
+            markerfacecolor=marker_face,
+            markeredgecolor=marker_edge,
             markersize=8,
             label=label,
         )

@@ -412,9 +412,29 @@ def run_evaluation(
         allowed_templates={"Backlobe": {"SimBL"}, "Station 51": {"CR"}},
         category_label_overrides={"Station 51": "Frontlobe"},
         event_markers={"Backlobe": "o", "Station 51": "^"},
+        color_by_category=True,
+        show_template_legend=False,
     )
     if backlobe_frontlobe_path is not None:
         print(f"Saved Backlobe vs Frontlobe SNR-chi plot to {backlobe_frontlobe_path}")
+
+    for threshold in (10.0, 8.0):
+        threshold_label = str(int(threshold)) if float(threshold).is_integer() else str(threshold).replace(".", "p")
+        filtered_path = plot_snr_chi_summary(
+            results,
+            output_root_path / f"snr_chi_backlobe_simbl_frontlobe_snr_ge{threshold_label}.png",
+            allowed_categories={"Backlobe", "Station 51"},
+            allowed_templates={"Backlobe": {"SimBL"}, "Station 51": {"CR"}},
+            category_label_overrides={"Station 51": "Frontlobe"},
+            event_markers={"Backlobe": "o", "Station 51": "^"},
+            color_by_category=True,
+            show_template_legend=False,
+            min_station_snr=threshold,
+        )
+        if filtered_path is not None:
+            print(
+                f"Saved Backlobe vs Frontlobe SNR-chi plot (SNR>={threshold_label}) to {filtered_path}"
+            )
 
     violin_outputs: List[Tuple[str, Optional[Path]]] = []
     violin_outputs.append(
