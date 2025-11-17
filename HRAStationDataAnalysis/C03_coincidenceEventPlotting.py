@@ -742,7 +742,7 @@ def plot_self_similarity_snr_vs_chi(
     if pass_snrs:
         ax.scatter(pass_snrs, pass_chis, label='BL-BL', color='tab:green', alpha=0.75, s=55, edgecolors='k', linewidths=0.5)
     if fail_snrs:
-        ax.scatter(fail_snrs, fail_chis, label='BL-RCR', color='tab:red', alpha=0.65, s=55, edgecolors='k', linewidths=0.5)
+        ax.scatter(fail_snrs, fail_chis, label='Failed cuts', color='tab:red', alpha=0.65, s=55, edgecolors='k', linewidths=0.5)
     if unknown_snrs:
         ax.scatter(unknown_snrs, unknown_chis, label='Unknown', color='tab:gray', alpha=0.6, s=50, edgecolors='k', linewidths=0.4)
 
@@ -756,7 +756,7 @@ def plot_self_similarity_snr_vs_chi(
 
     if highlight_points:
         highlight_label_to_use = highlight_label
-        if highlight_label_to_use in {"BL-BL", "BL-RCR", "Unknown"}:
+        if highlight_label_to_use in {"BL-BL", "BL-RCR", "Unknown", "Failed cuts"}:
             highlight_label_to_use = f"{highlight_label_to_use} candidate"
         hx, hy = zip(*highlight_points)
         ax.scatter(
