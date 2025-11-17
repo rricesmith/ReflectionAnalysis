@@ -629,7 +629,14 @@ def compute_event_self_similarity(events_dict, sampling_rate_hz=DEFAULT_TRACE_SA
     return results
 
 
-def plot_self_similarity_snr_vs_chi(events_dict, output_dir, dataset_name, sampling_rate_hz=DEFAULT_TRACE_SAMPLING_HZ):
+def plot_self_similarity_snr_vs_chi(
+    events_dict,
+    output_dir,
+    dataset_name,
+    sampling_rate_hz=DEFAULT_TRACE_SAMPLING_HZ,
+    only_passing=False,
+    highlight_label="BL-RCR",
+):
     """Plot event-level SNR vs chi using self-correlation metrics."""
     metrics = compute_event_self_similarity(events_dict, sampling_rate_hz=sampling_rate_hz)
     if not metrics:
@@ -641,6 +648,8 @@ def plot_self_similarity_snr_vs_chi(events_dict, output_dir, dataset_name, sampl
     pass_snrs, pass_chis = [], []
     fail_snrs, fail_chis = [], []
     unknown_snrs, unknown_chis = [], []
+    highlight_ids = {11230, 11243, "11230", "11243"}
+    highlight_points = []
 
     for event_id, summary in metrics.items():
         event_entry = events_dict.get(event_id)
@@ -662,6 +671,9 @@ def plot_self_similarity_snr_vs_chi(events_dict, output_dir, dataset_name, sampl
         elif event_entry is None:
             passes_cuts = None
 
+        if only_passing and passes_cuts is not True:
+            continue
+
         if passes_cuts is True:
             pass_snrs.append(match_snr)
             pass_chis.append(chi_val)
@@ -671,6 +683,9 @@ def plot_self_similarity_snr_vs_chi(events_dict, output_dir, dataset_name, sampl
         else:
             unknown_snrs.append(match_snr)
             unknown_chis.append(chi_val)
+
+        if event_id in highlight_ids or str(event_id) in highlight_ids:
+            highlight_points.append((match_snr, chi_val))
 
     if not (pass_snrs or fail_snrs or unknown_snrs):
         ic(f"Self-match metrics for {dataset_name} contain no finite SNR/chi pairs.")
@@ -693,11 +708,29 @@ def plot_self_similarity_snr_vs_chi(events_dict, output_dir, dataset_name, sampl
     ax.set_title(f'Self-match SNR vs $\chi$ for {dataset_name}')
     ax.grid(True, linestyle='--', alpha=0.6)
 
+    if highlight_points:
+        hx, hy = zip(*highlight_points)
+        ax.scatter(
+            hx,
+            hy,
+            label=highlight_label,
+            color='gold',
+            edgecolors='black',
+            marker='*',
+            s=160,
+            linewidths=1.1,
+            zorder=6,
+        )
+
     handles, labels = ax.get_legend_handles_labels()
     if handles:
         ax.legend(handles, labels, loc='lower right')
 
-    plot_path = os.path.join(output_dir, f"{dataset_name}_self_match_snr_vs_chi.png")
+    if only_passing:
+        plot_filename = f"{dataset_name}_self_match_snr_vs_chi_passing_only.png"
+    else:
+        plot_filename = f"{dataset_name}_self_match_snr_vs_chi.png"
+    plot_path = os.path.join(output_dir, plot_filename)
     fig.tight_layout()
     fig.savefig(plot_path, dpi=200, bbox_inches='tight')
     plt.close(fig)
@@ -1591,8 +1624,21 @@ if __name__ == '__main__':
 
             with SectionTimer("Plot: SNR vs Chi"):
                 plot_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
-            with SectionTimer("Plot: Self-match SNR vs Chi"):
-                plot_self_similarity_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+            with SectionTimer("Plot: Self-match SNR vs Chi (all)"):
+                plot_self_similarity_snr_vs_chi(
+                    events_data_dict,
+                    specific_dataset_plot_dir,
+                    dataset_name_label,
+                    highlight_label="BL-RCR",
+                )
+            with SectionTimer("Plot: Self-match SNR vs Chi (passing only)"):
+                plot_self_similarity_snr_vs_chi(
+                    events_data_dict,
+                    specific_dataset_plot_dir,
+                    dataset_name_label,
+                    only_passing=True,
+                    highlight_label="BL-BL",
+                )
             with SectionTimer("Plot: Histograms"):
                 plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
             with SectionTimer("Plot: Polar zen/azi"):
