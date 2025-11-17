@@ -13,7 +13,7 @@ import matplotlib.gridspec as gridspec
 from NuRadioReco.utilities import fft, units
 import itertools # For combinations in angle cut
 import time
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Set
 
 from templateCrossCorr import DEFAULT_TRACE_SAMPLING_HZ, get_xcorr_for_channel
 
@@ -544,7 +544,8 @@ def compute_event_self_similarity(events_dict, sampling_rate_hz=DEFAULT_TRACE_SA
 
         best_match = None
         pairs_evaluated = 0
-        stations_compared = set()
+        stations_compared: Set[str] = set()
+        station_best_map: Dict[str, Dict[str, object]] = {}
 
         stations = event_details.get("stations", {})
         if not isinstance(stations, dict):
@@ -596,6 +597,9 @@ def compute_event_self_similarity(events_dict, sampling_rate_hz=DEFAULT_TRACE_SA
                     }
                     if best_match is None or abs_xcorr > best_match["abs_xcorr"]:
                         best_match = candidate
+                    existing = station_best_map.get(station_key_str)
+                    if existing is None or abs_xcorr > existing["abs_xcorr"]:
+                        station_best_map[station_key_str] = dict(candidate)
 
         if best_match is None or pairs_evaluated == 0:
             continue
@@ -604,6 +608,33 @@ def compute_event_self_similarity(events_dict, sampling_rate_hz=DEFAULT_TRACE_SA
         if not isinstance(derived_bucket, dict):
             derived_bucket = {}
             event_details["derived_metrics"] = derived_bucket
+
+        station_matches: Dict[str, Dict[str, object]] = {}
+        for station_key_str, candidate in station_best_map.items():
+            station_matches[station_key_str] = {
+                "chi": candidate["abs_xcorr"],
+                "xcorr": candidate["xcorr"],
+                "snr": candidate["snr"],
+                "trigger_idx": candidate["trigger_idx"],
+                "channel_idx": candidate["channel_idx"],
+            }
+
+        template_snr_val = template_info.get("snr")
+        station_matches[template_station_key] = {
+            "chi": 1.0,
+            "xcorr": 1.0,
+            "snr": template_snr_val,
+            "trigger_idx": template_info["trigger_idx"],
+            "channel_idx": template_info["channel_idx"],
+        }
+
+        snr_values: List[float] = []
+        if template_snr_val is not None and np.isfinite(template_snr_val):
+            snr_values.append(float(template_snr_val))
+        match_snr_val = best_match.get("snr") if best_match is not None else None
+        if match_snr_val is not None and np.isfinite(match_snr_val):
+            snr_values.append(float(match_snr_val))
+        avg_pair_snr = float(np.mean(snr_values)) if snr_values else float("nan")
 
         summary = {
             "sampling_rate_hz": sampling_rate,
@@ -619,8 +650,10 @@ def compute_event_self_similarity(events_dict, sampling_rate_hz=DEFAULT_TRACE_SA
             "match_snr": best_match["snr"],
             "best_match_chi": best_match["xcorr"],
             "best_match_abs_chi": best_match["abs_xcorr"],
+            "avg_pair_snr": avg_pair_snr,
             "pairs_evaluated": pairs_evaluated,
             "stations_compared": sorted(stations_compared),
+            "station_matches": station_matches,
         }
         derived_bucket["self_match"] = summary
         results[event_id] = summary
@@ -645,6 +678,15 @@ def plot_self_similarity_snr_vs_chi(
 
     os.makedirs(output_dir, exist_ok=True)
 
+    derived_metrics = event_details.get("derived_metrics")
+    if not isinstance(derived_metrics, dict):
+        derived_metrics = {}
+        event_details["derived_metrics"] = derived_metrics
+    self_match_summary = derived_metrics.get("self_match")
+    if self_match_summary is None:
+        compute_event_self_similarity({event_id: event_details})
+        self_match_summary = derived_metrics.get("self_match")
+
     pass_snrs, pass_chis = [], []
     fail_snrs, fail_chis = [], []
     unknown_snrs, unknown_chis = [], []
@@ -658,9 +700,13 @@ def plot_self_similarity_snr_vs_chi(
         if event_entry is None and not isinstance(event_id, str):
             event_entry = events_dict.get(str(event_id))
 
+        avg_pair_snr = summary.get("avg_pair_snr")
         match_snr = summary.get("match_snr")
+        snr_value = avg_pair_snr
+        if snr_value is None or not np.isfinite(snr_value) or snr_value <= 0:
+            snr_value = match_snr
         chi_val = summary.get("best_match_abs_chi")
-        if match_snr is None or not np.isfinite(match_snr) or match_snr <= 0:
+        if snr_value is None or not np.isfinite(snr_value) or snr_value <= 0:
             continue
         if chi_val is None or not np.isfinite(chi_val):
             continue
@@ -675,17 +721,17 @@ def plot_self_similarity_snr_vs_chi(
             continue
 
         if passes_cuts is True:
-            pass_snrs.append(match_snr)
+            pass_snrs.append(snr_value)
             pass_chis.append(chi_val)
         elif passes_cuts is False:
-            fail_snrs.append(match_snr)
+            fail_snrs.append(snr_value)
             fail_chis.append(chi_val)
         else:
-            unknown_snrs.append(match_snr)
+            unknown_snrs.append(snr_value)
             unknown_chis.append(chi_val)
 
         if event_id in highlight_ids or str(event_id) in highlight_ids:
-            highlight_points.append((match_snr, chi_val))
+            highlight_points.append((snr_value, chi_val))
 
     if not (pass_snrs or fail_snrs or unknown_snrs):
         ic(f"Self-match metrics for {dataset_name} contain no finite SNR/chi pairs.")
@@ -694,26 +740,29 @@ def plot_self_similarity_snr_vs_chi(
     fig, ax = plt.subplots(figsize=(10, 6))
 
     if pass_snrs:
-        ax.scatter(pass_snrs, pass_chis, label='Pass cuts', color='tab:green', alpha=0.75, s=55, edgecolors='k', linewidths=0.5)
+        ax.scatter(pass_snrs, pass_chis, label='BL-BL', color='tab:green', alpha=0.75, s=55, edgecolors='k', linewidths=0.5)
     if fail_snrs:
-        ax.scatter(fail_snrs, fail_chis, label='Fail cuts', color='tab:red', alpha=0.65, s=55, edgecolors='k', linewidths=0.5)
+        ax.scatter(fail_snrs, fail_chis, label='BL-RCR', color='tab:red', alpha=0.65, s=55, edgecolors='k', linewidths=0.5)
     if unknown_snrs:
-        ax.scatter(unknown_snrs, unknown_chis, label='Unknown cuts', color='tab:gray', alpha=0.6, s=50, edgecolors='k', linewidths=0.4)
+        ax.scatter(unknown_snrs, unknown_chis, label='Unknown', color='tab:gray', alpha=0.6, s=50, edgecolors='k', linewidths=0.4)
 
     ax.set_xscale('log')
     ax.set_xlim(3, 100)
     ax.set_ylim(0, 1)
-    ax.set_xlabel('Station SNR (self-match partner)')
+    ax.set_xlabel('Average SNR (template + partner)')
     ax.set_ylabel(r'Self-match $\chi$')
     ax.set_title(f'Self-match SNR vs $\chi$ for {dataset_name}')
     ax.grid(True, linestyle='--', alpha=0.6)
 
     if highlight_points:
+        highlight_label_to_use = highlight_label
+        if highlight_label_to_use in {"BL-BL", "BL-RCR", "Unknown"}:
+            highlight_label_to_use = f"{highlight_label_to_use} candidate"
         hx, hy = zip(*highlight_points)
         ax.scatter(
             hx,
             hy,
-            label=highlight_label,
+            label=highlight_label_to_use,
             color='gold',
             edgecolors='black',
             marker='*',
@@ -950,7 +999,16 @@ def plot_single_master_event(event_id, event_details, output_dir, dataset_name, 
             return None
 
     os.makedirs(output_dir, exist_ok=True)
-    
+
+    derived_metrics = event_details.get("derived_metrics")
+    if not isinstance(derived_metrics, dict):
+        derived_metrics = {}
+        event_details["derived_metrics"] = derived_metrics
+    self_match_summary = derived_metrics.get("self_match")
+    if self_match_summary is None:
+        compute_event_self_similarity({event_id: event_details})
+        self_match_summary = derived_metrics.get("self_match")
+
     color_map = {13: 'tab:blue', 14: 'tab:orange', 15: 'tab:green',
                  17: 'tab:red', 18: 'tab:purple', 19: 'sienna', 30: 'tab:brown'}
     default_color = 'grey'; marker_list = ['o', 's', 'D', '^', 'v', '>', '<', 'p', '*', 'X', '+']
@@ -983,6 +1041,86 @@ def plot_single_master_event(event_id, event_details, output_dir, dataset_name, 
     status_text = "PASS" if passes_overall_analysis else "FAIL"
     text_info_lines = [f"Event ID: {event_id} -- Overall: {status_text} (Analysis Cuts)"]
     text_info_lines.append(f"Cut Status -> Time: {'Passed' if cut_results.get('time_cut_passed') else 'Failed'}, Chi: {'Passed' if cut_results.get('chi_cut_passed') else 'Failed'}, Angle: {'Passed' if cut_results.get('angle_cut_passed') else 'Failed'}, FFT: {'Passed' if cut_results.get('fft_cut_passed') else 'Failed'}")
+
+    if isinstance(self_match_summary, dict):
+        template_station = self_match_summary.get("template_station")
+        template_trigger_idx = self_match_summary.get("template_trigger_idx")
+        template_channel_idx = self_match_summary.get("template_channel_idx")
+        template_snr_val = self_match_summary.get("template_snr")
+        best_station = self_match_summary.get("match_station")
+        best_trigger_idx = self_match_summary.get("match_trigger_idx")
+        best_channel_idx = self_match_summary.get("match_channel_idx")
+        best_chi = self_match_summary.get("best_match_abs_chi")
+        best_snr = self_match_summary.get("match_snr")
+        avg_pair_snr = self_match_summary.get("avg_pair_snr")
+        stations_compared = self_match_summary.get("stations_compared", [])
+        station_matches = self_match_summary.get("station_matches", {})
+
+        def _fmt_idx(idx):
+            if isinstance(idx, int):
+                return idx + 1
+            try:
+                return int(idx) + 1
+            except (TypeError, ValueError):
+                return None
+
+        def _fmt_float(value, precision=2):
+            try:
+                if value is None or not np.isfinite(value):
+                    return "N/A"
+                return f"{float(value):.{precision}f}"
+            except (TypeError, ValueError):
+                return "N/A"
+
+        text_info_lines.append("--- Template Self-Match ---")
+        template_trigger_str = _fmt_idx(template_trigger_idx)
+        template_channel_str = _fmt_idx(template_channel_idx)
+        text_info_lines.append(
+            "  Template: St{} T{} Ch{} SNR={}"
+            .format(
+                template_station if template_station is not None else "?",
+                template_trigger_str if template_trigger_str is not None else "?",
+                template_channel_str if template_channel_str is not None else "?",
+                _fmt_float(template_snr_val, precision=1),
+            )
+        )
+        text_info_lines.append(
+            "  Best match: St{} T{} Ch{} χ={} SNR={} (avg pair SNR={})".format(
+                best_station if best_station is not None else "?",
+                _fmt_idx(best_trigger_idx) or "?",
+                _fmt_idx(best_channel_idx) or "?",
+                _fmt_float(best_chi, precision=2),
+                _fmt_float(best_snr, precision=1),
+                _fmt_float(avg_pair_snr, precision=1),
+            )
+        )
+        if stations_compared:
+            text_info_lines.append(
+                "  Stations compared: {}".format(", ".join(str(s) for s in stations_compared))
+            )
+        if isinstance(station_matches, dict):
+            sorted_keys = sorted(
+                station_matches.keys(),
+                key=lambda key: (
+                    0 if str(key) == str(template_station) else 1,
+                    int(key) if str(key).isdigit() else str(key),
+                ),
+            )
+            text_info_lines.append("  Station χ overview:")
+            for station_key in sorted_keys:
+                station_info = station_matches.get(station_key) or {}
+                role = "template" if str(station_key) == str(template_station) else "partner"
+                text_info_lines.append(
+                    "    St{} ({}): χ={} SNR={} T{} Ch{}".format(
+                        station_key,
+                        role,
+                        _fmt_float(station_info.get("chi"), precision=2),
+                        _fmt_float(station_info.get("snr"), precision=1),
+                        _fmt_idx(station_info.get("trigger_idx")) or "?",
+                        _fmt_idx(station_info.get("channel_idx")) or "?",
+                    )
+                )
+
     text_info_lines.append("--- Station Triggers ---")
     
     legend_handles_for_fig = {}; global_trace_min = float('inf'); global_trace_max = float('-inf')
