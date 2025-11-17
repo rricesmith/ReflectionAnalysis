@@ -13,6 +13,9 @@ import matplotlib.gridspec as gridspec
 from NuRadioReco.utilities import fft, units
 import itertools # For combinations in angle cut
 import time
+from typing import Dict, Optional
+
+from templateCrossCorr import DEFAULT_TRACE_SAMPLING_HZ, get_xcorr_for_channel
 
 # --- Lightweight Timing + Progress Helpers ---
 PROGRESS_EVERY = 50  # How often to print loop progress
@@ -39,6 +42,95 @@ def _progress(idx: int, total: int, label: str):
     if idx == 0 or (idx + 1) % PROGRESS_EVERY == 0 or (idx + 1) == total:
         pct = 100.0 * (idx + 1) / total
         ic(f"[{label}] {idx + 1}/{total} ({pct:.1f}%)")
+
+# --- Trace preparation helpers ---
+NUM_TRACE_CHANNELS = 4  # Default number of waveform channels stored per trigger
+
+
+def _prepare_trace_array(trace_obj) -> Optional[np.ndarray]:
+    """Convert raw waveform data into a 1D float array, cleaning NaNs."""
+    if trace_obj is None:
+        return None
+    arr = np.asarray(trace_obj, dtype=float)
+    if arr.ndim == 0:
+        return None
+    if arr.ndim > 1:
+        arr = arr.reshape(-1)
+    if arr.size == 0:
+        return None
+    if not np.any(np.isfinite(arr)):
+        return None
+    if np.any(~np.isfinite(arr)):
+        arr = np.nan_to_num(arr)
+    return arr
+
+
+def _iter_channel_traces(trace_channels, max_channels: int = NUM_TRACE_CHANNELS):
+    """Yield (channel_idx, trace_array_like) pairs for a trigger."""
+    if trace_channels is None:
+        return
+    try:
+        sequence = list(trace_channels)
+    except TypeError:
+        return
+    if max_channels is not None and max_channels > 0:
+        sequence = sequence[:max_channels]
+    for idx, channel_trace in enumerate(sequence):
+        yield idx, channel_trace
+
+
+def _extract_snr_value(station_data, trigger_idx: int) -> float:
+    """Return SNR value for a given trigger index or NaN if unavailable."""
+    snr_list = station_data.get("SNR", []) if isinstance(station_data, dict) else []
+    if not isinstance(snr_list, (list, tuple, np.ndarray)):
+        return float("nan")
+    if trigger_idx is None or trigger_idx >= len(snr_list):
+        return float("nan")
+    snr_val = snr_list[trigger_idx]
+    try:
+        snr_float = float(snr_val)
+    except (TypeError, ValueError):
+        return float("nan")
+    return snr_float if np.isfinite(snr_float) else float("nan")
+
+
+def _find_loudest_trace(event_details) -> Optional[Dict[str, object]]:
+    """Identify the single channel trace with the largest absolute amplitude."""
+    if not isinstance(event_details, dict):
+        return None
+    stations = event_details.get("stations", {})
+    if not isinstance(stations, dict):
+        return None
+
+    loudest = None
+    for station_id_str, station_data in stations.items():
+        if not isinstance(station_data, dict):
+            continue
+        traces_list = station_data.get("Traces", [])
+        if not isinstance(traces_list, (list, tuple, np.ndarray)):
+            continue
+        for trigger_idx, trace_channels in enumerate(traces_list):
+            for channel_idx, channel_trace in _iter_channel_traces(trace_channels):
+                trace_arr = _prepare_trace_array(channel_trace)
+                if trace_arr is None:
+                    continue
+                try:
+                    amplitude = float(np.nanmax(np.abs(trace_arr)))
+                except (ValueError, TypeError):
+                    continue
+                if not np.isfinite(amplitude):
+                    continue
+                if loudest is None or amplitude > loudest["amplitude"]:
+                    loudest = {
+                        "trace": trace_arr,
+                        "amplitude": amplitude,
+                        "station_id": station_id_str,
+                        "trigger_idx": trigger_idx,
+                        "channel_idx": channel_idx,
+                        "snr": _extract_snr_value(station_data, trigger_idx),
+                        "trace_length": int(trace_arr.size),
+                    }
+    return loudest
 
 # --- Helper for Loading Data ---
 def _load_pickle(filepath):
@@ -424,6 +516,193 @@ def plot_snr_vs_chi(events_dict, output_dir, dataset_name):
             plt.savefig(plot_filename, bbox_inches='tight')
         ic(f"Saved SNR vs Chi plot: {plot_filename} (subset took {(time.perf_counter()-start_subset):.2f}s)")
         plt.close(fig); gc.collect()
+
+
+def compute_event_self_similarity(events_dict, sampling_rate_hz=DEFAULT_TRACE_SAMPLING_HZ) -> Dict:
+    """Compute self-template match metrics for each event."""
+    results: Dict = {}
+    if not isinstance(events_dict, dict):
+        return results
+
+    try:
+        sampling_rate = float(sampling_rate_hz)
+    except (TypeError, ValueError):
+        sampling_rate = float(DEFAULT_TRACE_SAMPLING_HZ)
+    if sampling_rate <= 0:
+        sampling_rate = float(DEFAULT_TRACE_SAMPLING_HZ)
+
+    for event_id, event_details in events_dict.items():
+        if not isinstance(event_details, dict):
+            continue
+
+        template_info = _find_loudest_trace(event_details)
+        if template_info is None:
+            continue
+
+        template_trace = template_info["trace"]
+        template_station_key = str(template_info["station_id"])
+
+        best_match = None
+        pairs_evaluated = 0
+        stations_compared = set()
+
+        stations = event_details.get("stations", {})
+        if not isinstance(stations, dict):
+            continue
+
+        for station_key, station_data in stations.items():
+            station_key_str = str(station_key)
+            if station_key_str == template_station_key:
+                # Skip re-matching the template station to itself
+                continue
+            if not isinstance(station_data, dict):
+                continue
+
+            traces_list = station_data.get("Traces", [])
+            if not isinstance(traces_list, (list, tuple, np.ndarray)):
+                continue
+
+            for trigger_idx, trace_channels in enumerate(traces_list):
+                for channel_idx, channel_trace in _iter_channel_traces(trace_channels):
+                    trace_arr = _prepare_trace_array(channel_trace)
+                    if trace_arr is None:
+                        continue
+
+                    xcorr_value = get_xcorr_for_channel(
+                        trace_arr,
+                        template_trace,
+                        sampling_rate,
+                        sampling_rate,
+                    )
+                    if isinstance(xcorr_value, dict):
+                        xcorr_value = xcorr_value.get("xcorr", 0.0)
+                    try:
+                        xcorr_float = float(xcorr_value)
+                    except (TypeError, ValueError):
+                        continue
+                    if not np.isfinite(xcorr_float):
+                        continue
+
+                    pairs_evaluated += 1
+                    stations_compared.add(station_key_str)
+                    abs_xcorr = abs(xcorr_float)
+                    candidate = {
+                        "station_id": station_key_str,
+                        "trigger_idx": trigger_idx,
+                        "channel_idx": channel_idx,
+                        "xcorr": xcorr_float,
+                        "abs_xcorr": abs_xcorr,
+                        "snr": _extract_snr_value(station_data, trigger_idx),
+                    }
+                    if best_match is None or abs_xcorr > best_match["abs_xcorr"]:
+                        best_match = candidate
+
+        if best_match is None or pairs_evaluated == 0:
+            continue
+
+        derived_bucket = event_details.get("derived_metrics")
+        if not isinstance(derived_bucket, dict):
+            derived_bucket = {}
+            event_details["derived_metrics"] = derived_bucket
+
+        summary = {
+            "sampling_rate_hz": sampling_rate,
+            "template_station": template_station_key,
+            "template_trigger_idx": template_info["trigger_idx"],
+            "template_channel_idx": template_info["channel_idx"],
+            "template_amplitude": template_info["amplitude"],
+            "template_snr": template_info["snr"],
+            "template_trace_length": template_info["trace_length"],
+            "match_station": best_match["station_id"],
+            "match_trigger_idx": best_match["trigger_idx"],
+            "match_channel_idx": best_match["channel_idx"],
+            "match_snr": best_match["snr"],
+            "best_match_chi": best_match["xcorr"],
+            "best_match_abs_chi": best_match["abs_xcorr"],
+            "pairs_evaluated": pairs_evaluated,
+            "stations_compared": sorted(stations_compared),
+        }
+        derived_bucket["self_match"] = summary
+        results[event_id] = summary
+
+    ic(f"Computed self-match metrics for {len(results)}/{len(events_dict)} events.")
+    return results
+
+
+def plot_self_similarity_snr_vs_chi(events_dict, output_dir, dataset_name, sampling_rate_hz=DEFAULT_TRACE_SAMPLING_HZ):
+    """Plot event-level SNR vs chi using self-correlation metrics."""
+    metrics = compute_event_self_similarity(events_dict, sampling_rate_hz=sampling_rate_hz)
+    if not metrics:
+        ic(f"No self-match metrics computed for {dataset_name}; skipping self-similarity plot.")
+        return None
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    pass_snrs, pass_chis = [], []
+    fail_snrs, fail_chis = [], []
+    unknown_snrs, unknown_chis = [], []
+
+    for event_id, summary in metrics.items():
+        event_entry = events_dict.get(event_id)
+        if event_entry is None and isinstance(event_id, str) and event_id.isdigit():
+            event_entry = events_dict.get(int(event_id))
+        if event_entry is None and not isinstance(event_id, str):
+            event_entry = events_dict.get(str(event_id))
+
+        match_snr = summary.get("match_snr")
+        chi_val = summary.get("best_match_abs_chi")
+        if match_snr is None or not np.isfinite(match_snr) or match_snr <= 0:
+            continue
+        if chi_val is None or not np.isfinite(chi_val):
+            continue
+
+        passes_cuts = False
+        if isinstance(event_entry, dict):
+            passes_cuts = bool(event_entry.get('passes_analysis_cuts', False))
+        elif event_entry is None:
+            passes_cuts = None
+
+        if passes_cuts is True:
+            pass_snrs.append(match_snr)
+            pass_chis.append(chi_val)
+        elif passes_cuts is False:
+            fail_snrs.append(match_snr)
+            fail_chis.append(chi_val)
+        else:
+            unknown_snrs.append(match_snr)
+            unknown_chis.append(chi_val)
+
+    if not (pass_snrs or fail_snrs or unknown_snrs):
+        ic(f"Self-match metrics for {dataset_name} contain no finite SNR/chi pairs.")
+        return None
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    if pass_snrs:
+        ax.scatter(pass_snrs, pass_chis, label='Pass cuts', color='tab:green', alpha=0.75, s=55, edgecolors='k', linewidths=0.5)
+    if fail_snrs:
+        ax.scatter(fail_snrs, fail_chis, label='Fail cuts', color='tab:red', alpha=0.65, s=55, edgecolors='k', linewidths=0.5)
+    if unknown_snrs:
+        ax.scatter(unknown_snrs, unknown_chis, label='Unknown cuts', color='tab:gray', alpha=0.6, s=50, edgecolors='k', linewidths=0.4)
+
+    ax.set_xscale('log')
+    ax.set_xlim(3, 100)
+    ax.set_ylim(0, 1)
+    ax.set_xlabel('Station SNR (self-match partner)')
+    ax.set_ylabel(r'Self-match $\chi$')
+    ax.set_title(f'Self-match SNR vs $\chi$ for {dataset_name}')
+    ax.grid(True, linestyle='--', alpha=0.6)
+
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(handles, labels, loc='lower right')
+
+    plot_path = os.path.join(output_dir, f"{dataset_name}_self_match_snr_vs_chi.png")
+    fig.tight_layout()
+    fig.savefig(plot_path, dpi=200, bbox_inches='tight')
+    plt.close(fig)
+    ic(f"Saved self-match SNR vs Chi plot: {plot_path}")
+    return plot_path
 
 
 # --- Plotting Function 2: Parameter Histograms ---
@@ -1311,6 +1590,8 @@ if __name__ == '__main__':
 
             with SectionTimer("Plot: SNR vs Chi"):
                 plot_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
+            with SectionTimer("Plot: Self-match SNR vs Chi"):
+                plot_self_similarity_snr_vs_chi(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
             with SectionTimer("Plot: Histograms"):
                 plot_parameter_histograms(events_data_dict, specific_dataset_plot_dir, dataset_name_label)
             with SectionTimer("Plot: Polar zen/azi"):
