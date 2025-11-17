@@ -1328,6 +1328,7 @@ if __name__ == '__main__':
     if not os.path.exists(config_path): config_path = 'config.ini'
     if not os.path.exists(config_path): ic(f"CRITICAL: config.ini not found."); exit()
     config.read(config_path); date_of_data = config['PARAMETERS']['date']
+    date_of_coincidence = config['PARAMETERS']['date_coincidence']
     date_of_process = config['PARAMETERS']['date_processing']
     base_processed_data_dir = os.path.join("HRAStationDataAnalysis", "StationData", "processedNumpyData")
     processed_data_dir_for_date = os.path.join(base_processed_data_dir, date_of_data)
@@ -1362,8 +1363,8 @@ if __name__ == '__main__':
     datasets_to_plot_info = []
 
     prefixes = [
-        f"{date_of_process}_CoincidenceDatetimes_passing_cuts",
-        f"{date_of_process}_CoincidenceDatetimes",
+        f"{date_of_coincidence}_CoincidenceDatetimes_passing_cuts",
+        f"{date_of_coincidence}_CoincidenceDatetimes",
     ]
     # Ensure calcPol is tried first within each prefix
     suffixes = [
