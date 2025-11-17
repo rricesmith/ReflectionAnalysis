@@ -376,6 +376,46 @@ def run_evaluation(
         if path is not None:
             print(f"Saved {label} SNR-chi plot to {path}")
 
+    snr_threshold = 10.0
+    summary_outputs_snr10: List[Tuple[str, Optional[Path]]] = []
+    summary_outputs_snr10.append(
+        (
+            "Combined",
+            plot_snr_chi_summary(
+                results,
+                output_root_path / "snr_chi_summary_snr_ge10.png",
+                min_station_snr=snr_threshold,
+            ),
+        )
+    )
+    for category in ("Backlobe", "RCR", "Station 51"):
+        filename = f"snr_chi_summary_{category.lower().replace(' ', '_')}_snr_ge10.png"
+        summary_outputs_snr10.append(
+            (
+                category,
+                plot_snr_chi_summary(
+                    results,
+                    output_root_path / filename,
+                    category_filter=category,
+                    min_station_snr=snr_threshold,
+                ),
+            )
+        )
+    for label, path in summary_outputs_snr10:
+        if path is not None:
+            print(f"Saved {label} SNR-chi plot (SNR>=10) to {path}")
+
+    backlobe_frontlobe_path = plot_snr_chi_summary(
+        results,
+        output_root_path / "snr_chi_backlobe_simbl_frontlobe.png",
+        allowed_categories={"Backlobe", "Station 51"},
+        allowed_templates={"Backlobe": {"SimBL"}, "Station 51": {"CR"}},
+        category_label_overrides={"Station 51": "Frontlobe"},
+        event_markers={"Backlobe": "o", "Station 51": "^"},
+    )
+    if backlobe_frontlobe_path is not None:
+        print(f"Saved Backlobe vs Frontlobe SNR-chi plot to {backlobe_frontlobe_path}")
+
     violin_outputs: List[Tuple[str, Optional[Path]]] = []
     violin_outputs.append(
         (
@@ -427,6 +467,34 @@ def run_evaluation(
     for label, path in box_outputs:
         if path is not None:
             print(f"Saved {label} template box plot to {path}")
+
+    box_outputs_snr10: List[Tuple[str, Optional[Path]]] = []
+    box_outputs_snr10.append(
+        (
+            "Combined",
+            plot_template_box_summary(
+                results,
+                output_root_path / "template_box_summary_snr_ge10.png",
+                min_event_snr=snr_threshold,
+            ),
+        )
+    )
+    for category in ("Backlobe", "RCR", "Station 51"):
+        filename = f"template_box_summary_{category.lower().replace(' ', '_')}_snr_ge10.png"
+        box_outputs_snr10.append(
+            (
+                category,
+                plot_template_box_summary(
+                    results,
+                    output_root_path / filename,
+                    category_filter=category,
+                    min_event_snr=snr_threshold,
+                ),
+            )
+        )
+    for label, path in box_outputs_snr10:
+        if path is not None:
+            print(f"Saved {label} template box plot (SNR>=10) to {path}")
     print(f"Generated matches for {len(results)} events")
     return results
 

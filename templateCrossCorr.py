@@ -595,6 +595,10 @@ def plot_snr_chi_summary(
     template_colors: Optional[Dict[str, str]] = None,
     event_markers: Optional[Dict[str, str]] = None,
     category_filter: Optional[str] = None,
+    min_station_snr: Optional[float] = None,
+    allowed_categories: Optional[Iterable[str]] = None,
+    allowed_templates: Optional[Dict[str, Iterable[str]]] = None,
+    category_label_overrides: Optional[Dict[str, str]] = None,
 ) -> Optional[Path]:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -613,6 +617,21 @@ def plot_snr_chi_summary(
             "Station 51": "^",
         }
 
+    allowed_category_set: Optional[Set[str]] = None
+    if allowed_categories is not None:
+        allowed_category_set = {str(item) for item in allowed_categories}
+
+    template_allow_map: Optional[Dict[str, Set[str]]] = None
+    default_allowed_templates: Optional[Set[str]] = None
+    if allowed_templates is not None:
+        template_allow_map = {
+            str(key): {str(name) for name in value}
+            for key, value in allowed_templates.items()
+        }
+        default_allowed_templates = template_allow_map.get("*")
+
+    category_label_overrides = {str(k): str(v) for k, v in (category_label_overrides or {}).items()}
+
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.set_xscale("log")
     ax.set_xlim(3, 100)
@@ -625,7 +644,7 @@ def plot_snr_chi_summary(
     data_plotted = False
     used_templates: Dict[str, str] = {}
     used_categories: Dict[str, str] = {}
-    template_order_seq = list(template_order)
+    template_order_seq = [str(name) for name in template_order]
 
     for event_id, matches in results.items():
         if not isinstance(matches, dict):
@@ -651,6 +670,10 @@ def plot_snr_chi_summary(
                     continue
                 meta_station_snrs[str(key)] = snr_val
 
+        event_category_str = str(event_category)
+        if allowed_category_set is not None and event_category_str not in allowed_category_set:
+            continue
+
         station_match_map = matches.get("_station_matches")
         station_groups: Dict[str, Dict[str, object]] = {}
 
@@ -659,7 +682,7 @@ def plot_snr_chi_summary(
                 if not isinstance(template_map, dict):
                     continue
                 station_label_str = str(station_label)
-                base_category = meta_station_categories.get(station_label_str, event_category)
+                base_category = meta_station_categories.get(station_label_str, event_category_str)
                 station_category = str(base_category)
                 base_snr = meta_station_snrs.get(station_label_str)
                 snr_val: Optional[float] = None
@@ -667,7 +690,14 @@ def plot_snr_chi_summary(
                     snr_val = float(base_snr)
 
                 points: List[Tuple[str, float]] = []
+                station_category_candidate = station_category
                 for template_name in template_order_seq:
+                    if template_allow_map is not None:
+                        allowed_set = template_allow_map.get(event_category_str)
+                        if allowed_set is None:
+                            allowed_set = default_allowed_templates
+                        if allowed_set is None or template_name not in allowed_set:
+                            continue
                     entry = template_map.get(template_name)
                     if not isinstance(entry, dict):
                         continue
@@ -677,7 +707,7 @@ def plot_snr_chi_summary(
                     chi_val = max(0.0, min(chi_val, 1.0))
                     entry_category = entry.get("station_category")
                     if entry_category:
-                        station_category = str(entry_category)
+                        station_category_candidate = str(entry_category)
                     entry_snr = entry.get("station_snr")
                     entry_snr_val: Optional[float] = None
                     if entry_snr is not None:
@@ -688,12 +718,21 @@ def plot_snr_chi_summary(
                     if entry_snr_val is not None and entry_snr_val > 0:
                         if snr_val is None or entry_snr_val > snr_val:
                             snr_val = entry_snr_val
+                    target_category = station_category_candidate
+                    if allowed_category_set is not None and target_category not in allowed_category_set:
+                        continue
+                    if category_filter is not None and target_category != category_filter:
+                        continue
                     points.append((template_name, chi_val))
+                    station_category = target_category
 
                 if not points:
                     continue
 
                 if snr_val is None or snr_val <= 0:
+                    continue
+
+                if min_station_snr is not None and snr_val < float(min_station_snr):
                     continue
 
                 if category_filter is not None and station_category != category_filter:
@@ -728,7 +767,7 @@ def plot_snr_chi_summary(
                 chi_val = max(0.0, min(chi_val, 1.0))
                 station_category_raw = candidate.get("station_category")
                 if not station_category_raw:
-                    station_category_raw = meta_station_categories.get(station_label, event_category)
+                    station_category_raw = meta_station_categories.get(station_label, event_category_str)
                 station_category = str(station_category_raw)
                 station_snr = candidate.get("station_snr")
                 if station_snr is None:
@@ -738,6 +777,16 @@ def plot_snr_chi_summary(
                 except (TypeError, ValueError):
                     continue
                 if station_snr <= 0:
+                    continue
+                if min_station_snr is not None and station_snr < float(min_station_snr):
+                    continue
+                if template_allow_map is not None:
+                    allowed_set = template_allow_map.get(event_category_str)
+                    if allowed_set is None:
+                        allowed_set = default_allowed_templates
+                    if allowed_set is None or template_name not in allowed_set:
+                        continue
+                if allowed_category_set is not None and station_category not in allowed_category_set:
                     continue
                 if category_filter is not None and station_category != category_filter:
                     continue
@@ -767,7 +816,13 @@ def plot_snr_chi_summary(
             snr_val = float(station_info.get("snr", 0.0))
             if snr_val <= 0:
                 continue
+            if min_station_snr is not None and snr_val < float(min_station_snr):
+                continue
             station_category = str(station_info.get("category") or event_category or "Backlobe")
+            if allowed_category_set is not None and station_category not in allowed_category_set:
+                continue
+            if category_filter is not None and station_category != category_filter:
+                continue
             marker = event_markers.get(station_category, "o")
             used_categories.setdefault(station_category, marker)
 
@@ -815,8 +870,14 @@ def plot_snr_chi_summary(
         for name, color in used_templates.items()
     ]
 
-    event_handles = [
-        Line2D(
+    event_handles = []
+    seen_labels: Set[str] = set()
+    for category, marker in used_categories.items():
+        label = category_label_overrides.get(category, category)
+        if label in seen_labels:
+            continue
+        seen_labels.add(label)
+        handle = Line2D(
             [0],
             [0],
             marker=marker,
@@ -824,10 +885,9 @@ def plot_snr_chi_summary(
             markerfacecolor="white",
             markeredgecolor="black",
             markersize=8,
-            label=category,
+            label=label,
         )
-        for category, marker in used_categories.items()
-    ]
+        event_handles.append(handle)
 
     legend_handles = template_handles + event_handles
     if legend_handles:
@@ -910,6 +970,7 @@ def _extract_best_scores_for_event(
 def _collect_best_template_scores(
     results: Dict[Union[int, str], Dict[str, Dict[str, object]]],
     template_order_seq: List[str],
+    min_event_snr: Optional[float] = None,
 ) -> Tuple[
     Dict[str, Dict[str, List[float]]],
     Dict[str, List[float]],
@@ -924,6 +985,16 @@ def _collect_best_template_scores(
     for event_id, matches in results.items():
         if not isinstance(matches, dict):
             continue
+        meta = matches.get("_meta", {}) if isinstance(matches, dict) else {}
+        event_snr_val: Optional[float] = None
+        if isinstance(meta, dict) and "snr" in meta:
+            try:
+                event_snr_val = float(meta.get("snr"))
+            except (TypeError, ValueError):
+                event_snr_val = None
+        if min_event_snr is not None:
+            if event_snr_val is None or event_snr_val < float(min_event_snr):
+                continue
         best_by_template = _extract_best_scores_for_event(matches, template_order_seq)
         contributed = False
         for template_name, category_map in best_by_template.items():
@@ -947,6 +1018,7 @@ def plot_template_violin_summary(
     template_order: Iterable[str] = DEFAULT_TEMPLATE_ORDER,
     template_colors: Optional[Dict[str, str]] = None,
     category_filter: Optional[str] = None,
+    min_event_snr: Optional[float] = None,
 ) -> Optional[Path]:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -965,7 +1037,7 @@ def plot_template_violin_summary(
         template_overall_scores,
         events_per_category,
         overall_events,
-    ) = _collect_best_template_scores(results, template_order_seq)
+    ) = _collect_best_template_scores(results, template_order_seq, min_event_snr=min_event_snr)
 
     labels: List[str] = []
     data_series: List[List[float]] = []
@@ -1058,6 +1130,7 @@ def plot_template_box_summary(
     template_order: Iterable[str] = DEFAULT_TEMPLATE_ORDER,
     category_filter: Optional[str] = None,
     template_colors: Optional[Dict[str, str]] = None,
+    min_event_snr: Optional[float] = None,
 ) -> Optional[Path]:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1075,7 +1148,11 @@ def plot_template_box_summary(
         _template_overall_scores,
         events_per_category,
         overall_events,
-    ) = _collect_best_template_scores(results, template_order_seq)
+    ) = _collect_best_template_scores(
+        results,
+        template_order_seq,
+        min_event_snr=min_event_snr,
+    )
 
     if category_filter is None:
         preferred = ["Backlobe", "RCR", "Station 51"]
