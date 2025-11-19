@@ -356,46 +356,37 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
         ax.fill_betweenx(ax.get_ylim(), snr_max, ax.get_xlim()[1], color='m', alpha=0.1, hatch='///')
 
     if plot_key == 'snr_vs_chircr':
-        if cut_type == 'rcr':
-            snr_line_snr = cuts_dict['chi_rcr_line_snr']
-            snr_line_chi = cuts_dict['chi_rcr_line_chi']
-            ax.plot(snr_line_snr, snr_line_chi, color='purple', linestyle='--', linewidth=1.5)
-        elif cut_type == 'backlobe':
-            snr_line_snr = cuts_dict['chi_2016_line_snr']
-            snr_line_chi = cuts_dict['chi_2016_line_chi']
-            ax.plot(snr_line_snr, snr_line_chi, color='orange', linestyle='--', linewidth=1.5)
+        # Always draw RCR cut line here
+        snr_line_snr = cuts_dict['chi_rcr_line_snr']
+        snr_line_chi = cuts_dict['chi_rcr_line_chi']
+        ax.plot(snr_line_snr, snr_line_chi, color='purple', linestyle='--', linewidth=1.5, label='RCR Cut')
     
     elif plot_key == 'snr_vs_chi2016':
-        if cut_type == 'backlobe':
-            snr_line_snr = cuts_dict['chi_2016_line_snr']
-            snr_line_chi = cuts_dict['chi_2016_line_chi']
-            ax.plot(snr_line_snr, snr_line_chi, color='orange', linestyle='--', linewidth=1.5)
+        # Always draw Backlobe cut line here
+        snr_line_snr = cuts_dict['chi_2016_line_snr']
+        snr_line_chi = cuts_dict['chi_2016_line_chi']
+        ax.plot(snr_line_snr, snr_line_chi, color='orange', linestyle='--', linewidth=1.5, label='BL Cut')
     
     elif plot_key == 'chi_vs_chi':
-        if cut_type == 'rcr':
-            # Draw Chi difference cut line: ChiRCR = Chi2016 + threshold
-            x_vals = np.linspace(0, 1, 100)
-            y_vals = x_vals + chi_diff_threshold
-            # Only show the part where y_vals <= 1
-            valid_mask = y_vals <= 1
-            if np.any(valid_mask):
-                ax.plot(x_vals[valid_mask], y_vals[valid_mask], color='darkgreen', linestyle='--', linewidth=1.5)
-        elif cut_type == 'backlobe':
-            # Draw Chi difference cut line: ChiRCR = Chi2016 - threshold
-            x_vals = np.linspace(0, 1, 100)
-            y_vals = x_vals - chi_diff_threshold
-            # Only show the part where y_vals >= 0
-            valid_mask = y_vals >= 0
-            if np.any(valid_mask):
-                ax.plot(x_vals[valid_mask], y_vals[valid_mask], color='darkorange', linestyle='--', linewidth=1.5)
+        # Draw Chi difference cut line: ChiRCR = Chi2016 + threshold (RCR)
+        x_vals = np.linspace(0, 1, 100)
+        y_vals_rcr = x_vals + chi_diff_threshold
+        valid_mask_rcr = y_vals_rcr <= 1
+        if np.any(valid_mask_rcr):
+            ax.plot(x_vals[valid_mask_rcr], y_vals_rcr[valid_mask_rcr], color='darkgreen', linestyle='--', linewidth=1.5, label='RCR Diff Cut')
+        
+        # Draw Chi difference cut line: ChiRCR = Chi2016 - threshold (Backlobe)
+        # Note: Backlobe cut is ChiRCR - Chi2016 < -threshold  => ChiRCR < Chi2016 - threshold
+        y_vals_bl = x_vals - chi_diff_threshold
+        valid_mask_bl = y_vals_bl >= 0
+        if np.any(valid_mask_bl):
+            ax.plot(x_vals[valid_mask_bl], y_vals_bl[valid_mask_bl], color='darkorange', linestyle='--', linewidth=1.5, label='BL Diff Cut')
     
     elif plot_key == 'snr_vs_chidiff':
-        if cut_type == 'rcr':
-            # Draw horizontal line for Chi difference cut
-            ax.axhline(y=chi_diff_threshold, color='darkgreen', linestyle='--', linewidth=1.5)
-        elif cut_type == 'backlobe':
-            # Draw horizontal line for Chi difference cut (reversed)
-            ax.axhline(y=-chi_diff_threshold, color='darkorange', linestyle='--', linewidth=1.5)
+        # Draw horizontal line for Chi difference cut (RCR)
+        ax.axhline(y=chi_diff_threshold, color='darkgreen', linestyle='--', linewidth=1.5, label='RCR Diff Cut')
+        # Draw horizontal line for Chi difference cut (Backlobe)
+        ax.axhline(y=-chi_diff_threshold, color='darkorange', linestyle='--', linewidth=1.5, label='BL Diff Cut')
 
 
 def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bins_dict=None):
@@ -772,15 +763,16 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     # --- Generate Master Plots for Passing Events ---
     # Only if Traces are available (implies single station processing with loaded traces)
     if 'Traces' in station_data:
-        passing_mask = masks_rcr['all_cuts']
-        passing_indices = np.where(passing_mask)[0]
+        # --- RCR Passing Events ---
+        passing_mask_rcr = masks_rcr['all_cuts']
+        passing_indices_rcr = np.where(passing_mask_rcr)[0]
         
-        if len(passing_indices) > 0:
-            ic(f"Generating master plots for {len(passing_indices)} passing events for Station {station_id}...")
-            passing_plot_folder = os.path.join(plot_folder, 'PassingEvents_Plots', f'Station{station_id}')
-            os.makedirs(passing_plot_folder, exist_ok=True)
+        if len(passing_indices_rcr) > 0:
+            ic(f"Generating master plots for {len(passing_indices_rcr)} RCR passing events for Station {station_id}...")
+            rcr_plot_folder = os.path.join(plot_folder, 'PassingEvents_Plots', 'RCR')
+            os.makedirs(rcr_plot_folder, exist_ok=True)
             
-            for idx in passing_indices:
+            for idx in passing_indices_rcr:
                 evt_id = event_ids[idx]
                 
                 # Construct event_details for plot_single_master_event
@@ -810,7 +802,48 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
                     "datetime": station_data['Time'][idx] if 'Time' in station_data else 0
                 }
                 
-                plot_single_master_event(evt_id, event_details, passing_plot_folder, f"Station {station_id}")
+                plot_single_master_event(evt_id, event_details, rcr_plot_folder, f"RCR_Station{station_id}", title_suffix=" (RCR Cut)")
+
+        # --- Backlobe Passing Events ---
+        passing_mask_bl = masks_backlobe['all_cuts']
+        passing_indices_bl = np.where(passing_mask_bl)[0]
+        
+        if len(passing_indices_bl) > 0:
+            ic(f"Generating master plots for {len(passing_indices_bl)} Backlobe passing events for Station {station_id}...")
+            bl_plot_folder = os.path.join(plot_folder, 'PassingEvents_Plots', 'BL')
+            os.makedirs(bl_plot_folder, exist_ok=True)
+            
+            for idx in passing_indices_bl:
+                evt_id = event_ids[idx]
+                
+                # Construct event_details for plot_single_master_event
+                st_data = {
+                    "Traces": [ station_data['Traces'][idx] ], # List of triggers (1 trigger)
+                    "SNR": [ station_data['snr'][idx] ],
+                    "ChiRCR": [ station_data['ChiRCR'][idx] ],
+                    "Chi2016": [ station_data['Chi2016'][idx] ],
+                    "Time": [ station_data['Time'][idx] ] if 'Time' in station_data else [0],
+                    "event_ids": [ evt_id ]
+                }
+                
+                if 'Zen' in station_data:
+                    st_data["Zen"] = [ station_data['Zen'][idx] ]
+                if 'Azi' in station_data:
+                    st_data["Azi"] = [ station_data['Azi'][idx] ]
+                
+                event_details = {
+                    "stations": { str(station_id): st_data },
+                    "passes_analysis_cuts": True,
+                    "cut_results": {
+                        'time_cut_passed': True,
+                        'chi_cut_passed': True,
+                        'angle_cut_passed': True,
+                        'fft_cut_passed': True
+                    },
+                    "datetime": station_data['Time'][idx] if 'Time' in station_data else 0
+                }
+                
+                plot_single_master_event(evt_id, event_details, bl_plot_folder, f"BL_Station{station_id}", title_suffix=" (BL Cut)")
 
 
 if __name__ == "__main__":
@@ -845,12 +878,12 @@ if __name__ == "__main__":
         'snr_max': 50,
         'chi_rcr_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
         # 'chi_rcr_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]),  # More aggressive cut
-        'chi_rcr_line_chi': np.array([0.78, 0.78, 0.78, 0.78, 0.78, 0.78, 0.78]),  # Flat cut
+        'chi_rcr_line_chi': np.array([0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75]),  # Flat cut
         # 'chi_diff_threshold': 0.08,
         'chi_diff_threshold': 0.0,  # Just closer to RCR than 2016
         'chi_2016_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
         # 'chi_2016_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]) # More aggressive cut
-        'chi_2016_line_chi': np.array([0.78, 0.78, 0.78, 0.78, 0.78, 0.78, 0.78]) # Flat cut
+        'chi_2016_line_chi': np.array([0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]) # Flat cut at 0.8
     }
     rcr_cut_string = f"RCR Cuts: SNR < {cuts['snr_max']} & ChiRCR > SNR Line & ChiRCR - Chi2016 > {cuts['chi_diff_threshold']}"
     backlobe_cut_string = f"Backlobe Cuts: SNR < {cuts['snr_max']} & Chi2016 > SNR Line & ChiRCR - Chi2016 < -{cuts['chi_diff_threshold']}"
