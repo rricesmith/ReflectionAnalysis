@@ -11,6 +11,7 @@ from icecream import ic
 import configparser
 from HRAStationDataAnalysis.C_utils import getTimeEventMasks
 from HRASimulation.HRAEventObject import HRAevent 
+from HRAStationDataAnalysis.C03_coincidenceEventPlotting import plot_single_master_event
 
 # --- Utility Functions ---
 
@@ -503,24 +504,26 @@ def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bin
             draw_cut_visuals(ax, key, cuts_dict, cut_type='rcr')  # For now, only show RCR cuts on main plots
         if key == 'chi_vs_chi':
             ax.plot([0, 1], [0, 1], linestyle='--', color='red', linewidth=1)
-            
-            legend_elements = []
-            if base_data_config['label']:
-                if base_plot_type == 'hist':
-                    legend_elements.append(plt.Rectangle((0,0),1,1,fc="lightblue", label=base_data_config['label']))
-                else:
-                    legend_elements.append(Line2D([0], [0], marker=base_data_config['style'].get('marker', 'o'), color='w', label=base_data_config['label'], markerfacecolor=base_data_config['style']['c'], markersize=8))
 
-            if overlays:
-                for overlay in overlays:
-                    if overlay['label']:
-                        if overlay['style'].get('color_by_weight'):
-                            legend_elements.append(Line2D([0], [0], marker='o', color='w', label=overlay['label'], markerfacecolor='blue', markersize=8, alpha=0.5))
-                        else:
-                            marker_face = overlay['style'].get('c', overlay['style'].get('color', 'gray'))
-                            marker_edge = overlay['style'].get('edgecolors', 'w')
-                            legend_elements.append(Line2D([0], [0], marker=overlay['style'].get('marker', 'o'), color='w', label=overlay['label'], markerfacecolor=marker_face, markeredgecolor=marker_edge, markersize=8))
-            ax.legend(handles=legend_elements, loc='upper left')
+    # --- Figure-level Legend ---
+    legend_elements = []
+    if base_data_config['label']:
+        if base_plot_type == 'hist':
+            legend_elements.append(plt.Rectangle((0,0),1,1,fc="lightblue", label=base_data_config['label']))
+        else:
+            legend_elements.append(Line2D([0], [0], marker=base_data_config['style'].get('marker', 'o'), color='w', label=base_data_config['label'], markerfacecolor=base_data_config['style']['c'], markersize=8))
+
+    if overlays:
+        for overlay in overlays:
+            if overlay['label']:
+                if overlay['style'].get('color_by_weight'):
+                    legend_elements.append(Line2D([0], [0], marker='o', color='w', label=overlay['label'], markerfacecolor='blue', markersize=8, alpha=0.5))
+                else:
+                    marker_face = overlay['style'].get('c', overlay['style'].get('color', 'gray'))
+                    marker_edge = overlay['style'].get('edgecolors', 'w')
+                    legend_elements.append(Line2D([0], [0], marker=overlay['style'].get('marker', 'o'), color='w', label=overlay['label'], markerfacecolor=marker_face, markeredgecolor=marker_edge, markersize=8))
+    
+    fig.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, 0.13), ncol=3, fontsize=10, frameon=True)
 
     return im
 
@@ -549,11 +552,11 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     fig_raw.text(0.5, 0.01, stats_text_raw, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
 
     if im_raw:
-        fig_raw.tight_layout(rect=[0, 0.18, 0.9, 0.95])
+        fig_raw.tight_layout(rect=[0, 0.22, 0.9, 0.95])
         cbar_ax_raw = fig_raw.add_axes([0.91, 0.2, 0.02, 0.7])
         fig_raw.colorbar(im_raw, cax=cbar_ax_raw, label='Direct Weighted Counts (Evts/Yr)')
     else:
-        fig_raw.tight_layout(rect=[0, 0.18, 1, 0.95])
+        fig_raw.tight_layout(rect=[0, 0.22, 1, 0.95])
     plt.savefig(f'{plot_folder}SimOnly_Direct_vs_Reflected_NoCuts_{date}.png')
     plt.close(fig_raw)
 
@@ -597,11 +600,11 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     fig_cut.text(0.5, 0.01, stats_text_cut, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
 
     if im_cut:
-        fig_cut.tight_layout(rect=[0, 0.18, 0.9, 0.95])
+        fig_cut.tight_layout(rect=[0, 0.22, 0.9, 0.95])
         cbar_ax_cut = fig_cut.add_axes([0.91, 0.2, 0.02, 0.7])
         fig_cut.colorbar(im_cut, cax=cbar_ax_cut, label='Direct Weighted Counts (Evts/Yr)')
     else:
-        fig_cut.tight_layout(rect=[0, 0.18, 1, 0.95])
+        fig_cut.tight_layout(rect=[0, 0.22, 1, 0.95])
     plt.savefig(f'{plot_folder}SimOnly_Direct_vs_Reflected_AllCuts_{date}.png')
     plt.close(fig_cut)
 
@@ -687,7 +690,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
             coinc_backlobe_points = backlobe_data['snr'].size
             coincidence_overlays.append({
                 'data': backlobe_data,
-                'label': f"Backlobe Coinc. (Events={len(backlobe_event_ids)}; Points={coinc_backlobe_points})",
+                'label': f"Backlobe",
                 'style': {'marker': 'o', 's': 55, 'alpha': 0.9, 'c': 'gold', 'edgecolors': 'black', 'linewidths': 0.4}
             })
 
@@ -696,7 +699,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
             rcr_event_list = ', '.join(str(evt) for evt in sorted(rcr_event_ids)) if rcr_event_ids else 'None'
             coincidence_overlays.append({
                 'data': rcr_data,
-                'label': f"RCR Coinc. (IDs: {rcr_event_list}; Points={coinc_rcr_points})",
+                'label': f"RCR",
                 'style': {'marker': '*', 's': 140, 'alpha': 0.95, 'c': 'darkorange', 'edgecolors': 'black', 'linewidths': 0.6},
                 'annotations': rcr_annotations,
                 'annotation_color': 'maroon',
@@ -711,7 +714,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     backlobe_stats_str = calculate_cut_stats_table(station_data, cuts, is_sim=False, title="Data Stats (Backlobe Cuts)", pre_mask_count=pre_mask_count, cut_type='backlobe')
     stats_str = f"{rcr_stats_str}\n\n{backlobe_stats_str}"
     fig1.text(0.5, 0.01, stats_str, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
-    fig1.tight_layout(rect=[0, 0.15, 1, 0.95])
+    fig1.tight_layout(rect=[0, 0.20, 1, 0.95])
     plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_Station{station_id}_{date}.png')
     plt.close(fig1)
 
@@ -721,7 +724,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         fig1c.suptitle(f'Data: Chi Comparison + Coincidences for Station {station_id} on {date}\n{rcr_cut_string}', fontsize=14)
         plot_2x2_grid(fig1c, axs1c, base_data_config, cuts, overlays=data_overlays + coincidence_overlays)
         fig1c.text(0.5, 0.01, stats_str, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
-        fig1c.tight_layout(rect=[0, 0.15, 1, 0.95])
+        fig1c.tight_layout(rect=[0, 0.20, 1, 0.95])
         plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_Station{station_id}_{date}_Coincidences.png')
         plt.close(fig1c)
 
@@ -741,11 +744,11 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     fig_all.text(0.5, 0.01, f"{direct_stats}\n\n{reflected_stats}", ha='center', va='bottom', fontsize=10, fontfamily='monospace')
     
     if im_all:
-        fig_all.tight_layout(rect=[0, 0.18, 0.9, 0.95])
+        fig_all.tight_layout(rect=[0, 0.22, 0.9, 0.95])
         cbar_ax = fig_all.add_axes([0.91, 0.2, 0.02, 0.7])
         fig_all.colorbar(im_all, cax=cbar_ax, label='Direct Weighted Counts (Evts/Yr)')
     else:
-        fig_all.tight_layout(rect=[0, 0.18, 1, 0.95])
+        fig_all.tight_layout(rect=[0, 0.22, 1, 0.95])
     plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_Station{station_id}_{date}.png')
     plt.close(fig_all)
 
@@ -758,13 +761,56 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         fig_allc.text(0.5, 0.01, f"{direct_stats}\n\n{reflected_stats}", ha='center', va='bottom', fontsize=10, fontfamily='monospace')
 
         if im_allc:
-            fig_allc.tight_layout(rect=[0, 0.18, 0.9, 0.95])
+            fig_allc.tight_layout(rect=[0, 0.22, 0.9, 0.95])
             cbar_ax_allc = fig_allc.add_axes([0.91, 0.2, 0.02, 0.7])
             fig_allc.colorbar(im_allc, cax=cbar_ax_allc, label='Direct Weighted Counts (Evts/Yr)')
         else:
-            fig_allc.tight_layout(rect=[0, 0.18, 1, 0.95])
+            fig_allc.tight_layout(rect=[0, 0.22, 1, 0.95])
         plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_Station{station_id}_{date}_Coincidences.png')
         plt.close(fig_allc)
+
+    # --- Generate Master Plots for Passing Events ---
+    # Only if Traces are available (implies single station processing with loaded traces)
+    if 'Traces' in station_data:
+        passing_mask = masks_rcr['all_cuts']
+        passing_indices = np.where(passing_mask)[0]
+        
+        if len(passing_indices) > 0:
+            ic(f"Generating master plots for {len(passing_indices)} passing events for Station {station_id}...")
+            passing_plot_folder = os.path.join(plot_folder, 'PassingEvents_Plots', f'Station{station_id}')
+            os.makedirs(passing_plot_folder, exist_ok=True)
+            
+            for idx in passing_indices:
+                evt_id = event_ids[idx]
+                
+                # Construct event_details for plot_single_master_event
+                st_data = {
+                    "Traces": [ station_data['Traces'][idx] ], # List of triggers (1 trigger)
+                    "SNR": [ station_data['snr'][idx] ],
+                    "ChiRCR": [ station_data['ChiRCR'][idx] ],
+                    "Chi2016": [ station_data['Chi2016'][idx] ],
+                    "Time": [ station_data['Time'][idx] ] if 'Time' in station_data else [0],
+                    "event_ids": [ evt_id ]
+                }
+                
+                if 'Zen' in station_data:
+                    st_data["Zen"] = [ station_data['Zen'][idx] ]
+                if 'Azi' in station_data:
+                    st_data["Azi"] = [ station_data['Azi'][idx] ]
+                
+                event_details = {
+                    "stations": { str(station_id): st_data },
+                    "passes_analysis_cuts": True,
+                    "cut_results": {
+                        'time_cut_passed': True,
+                        'chi_cut_passed': True,
+                        'angle_cut_passed': True,
+                        'fft_cut_passed': True
+                    },
+                    "datetime": station_data['Time'][idx] if 'Time' in station_data else 0
+                }
+                
+                plot_single_master_event(evt_id, event_details, passing_plot_folder, f"Station {station_id}")
 
 
 if __name__ == "__main__":
@@ -799,12 +845,12 @@ if __name__ == "__main__":
         'snr_max': 50,
         'chi_rcr_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
         # 'chi_rcr_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]),  # More aggressive cut
-        'chi_rcr_line_chi': np.array([0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7]),  # Flat cut
+        'chi_rcr_line_chi': np.array([0.78, 0.78, 0.78, 0.78, 0.78, 0.78, 0.78]),  # Flat cut
         # 'chi_diff_threshold': 0.08,
-        'chi_diff_threshold': -1.0,  # Disable Chi difference cut for now
+        'chi_diff_threshold': 0.0,  # Just closer to RCR than 2016
         'chi_2016_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
         # 'chi_2016_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]) # More aggressive cut
-        'chi_2016_line_chi': np.array([0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7]) # Flat cut
+        'chi_2016_line_chi': np.array([0.78, 0.78, 0.78, 0.78, 0.78, 0.78, 0.78]) # Flat cut
     }
     rcr_cut_string = f"RCR Cuts: SNR < {cuts['snr_max']} & ChiRCR > SNR Line & ChiRCR - Chi2016 > {cuts['chi_diff_threshold']}"
     backlobe_cut_string = f"Backlobe Cuts: SNR < {cuts['snr_max']} & Chi2016 > SNR Line & ChiRCR - Chi2016 < -{cuts['chi_diff_threshold']}"
@@ -864,6 +910,11 @@ if __name__ == "__main__":
         Chi2016_array = load_station_data(station_data_folder, date, station_id, 'Chi2016')
         ChiRCR_array = load_station_data(station_data_folder, date, station_id, 'ChiRCR')
         
+        # Load additional data for master plots
+        traces_array = load_station_data(station_data_folder, date, station_id, 'Traces')
+        zen_array = load_station_data(station_data_folder, date, station_id, 'Zen')
+        azi_array = load_station_data(station_data_folder, date, station_id, 'Azi')
+
         if Chi2016_array.size == 0 or ChiRCR_array.size == 0:
             ic(f"Skipping Station {station_id} due to missing Chi data.")
             continue
@@ -899,8 +950,33 @@ if __name__ == "__main__":
         station_data = {
             'snr': snr_array[initial_mask][final_indices],
             'Chi2016': Chi2016_array[initial_mask][final_indices],
-            'ChiRCR': ChiRCR_array[initial_mask][final_indices]
+            'ChiRCR': ChiRCR_array[initial_mask][final_indices],
+            'Time': times[initial_mask][final_indices]
         }
+        
+        # Add optional data if available and matching length
+        if traces_array.size > 0:
+            # Check if length matches (traces_array might be empty if file missing, but here we check size)
+            # We assume alignment if files exist.
+            # Note: traces_array is (N, 4, 256). len() gives N.
+            # We need to apply masks.
+            try:
+                station_data['Traces'] = traces_array[initial_mask][final_indices]
+            except IndexError:
+                ic(f"Warning: Traces array length mismatch for Station {station_id}. Skipping Traces.")
+        
+        if zen_array.size > 0:
+            try:
+                station_data['Zen'] = zen_array[initial_mask][final_indices]
+            except IndexError:
+                ic(f"Warning: Zen array length mismatch for Station {station_id}. Skipping Zen.")
+
+        if azi_array.size > 0:
+            try:
+                station_data['Azi'] = azi_array[initial_mask][final_indices]
+            except IndexError:
+                ic(f"Warning: Azi array length mismatch for Station {station_id}. Skipping Azi.")
+
         station_event_ids = event_ids_raw[initial_mask][final_indices]
         
         ic(f"Station {station_id} has {len(station_data['snr'])} events after masking and cuts.")
