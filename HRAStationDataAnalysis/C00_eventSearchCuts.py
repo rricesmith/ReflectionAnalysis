@@ -648,6 +648,8 @@ if __name__ == "__main__":
         time_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Times*')))
         trace_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Traces*'))) # Paths to trace parts
         eventid_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_EventIDs*')))
+        chi2016_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_Chi2016*')))
+        chiRCR_files = sorted(glob.glob(os.path.join(station_data_folder, f'{date_filter}_Station{current_station_id}_ChiRCR*')))
 
         if not time_files or not trace_files or not eventid_files:
             raise FileNotFoundError(f"Core data files (Times, Traces, or EventIDs) missing for St {current_station_id}, Date {date_filter}")
@@ -656,6 +658,18 @@ if __name__ == "__main__":
         eventids_list = [np.load(f) for f in eventid_files]; eventids_raw = np.concatenate(eventids_list, axis=0).squeeze()
         if times_raw.ndim == 0: times_raw = np.array([times_raw.item()])
         if eventids_raw.ndim == 0: eventids_raw = np.array([eventids_raw.item()])
+
+        if chi2016_files:
+            chi2016_list = [np.load(f) for f in chi2016_files]; chi2016_raw = np.concatenate(chi2016_list, axis=0).squeeze()
+            if chi2016_raw.ndim == 0: chi2016_raw = np.array([chi2016_raw.item()])
+        else:
+            chi2016_raw = np.array([])
+
+        if chiRCR_files:
+            chiRCR_list = [np.load(f) for f in chiRCR_files]; chiRCR_raw = np.concatenate(chiRCR_list, axis=0).squeeze()
+            if chiRCR_raw.ndim == 0: chiRCR_raw = np.array([chiRCR_raw.item()])
+        else:
+            chiRCR_raw = np.array([])
 
         from HRAStationDataAnalysis.C_utils import timeInTimes
         if current_station_id == 13 or current_station_id == 17:
@@ -806,6 +820,9 @@ if __name__ == "__main__":
         base_event_ids_for_cuts = eventids_raw[initial_valid_mask][unique_indices]
         base_max_amplitudes_for_cuts = max_amplitudes_raw[initial_valid_mask][unique_indices]
         base_traces_for_cuts = traces_raw[initial_valid_mask][unique_indices] if traces_raw.size > 0 else np.array([]).reshape(0,4,256)
+        base_chi2016_for_cuts = chi2016_raw[initial_valid_mask][unique_indices] if chi2016_raw.size > 0 else np.array([])
+        base_chiRCR_for_cuts = chiRCR_raw[initial_valid_mask][unique_indices] if chiRCR_raw.size > 0 else np.array([])
+
         if base_times_for_cuts.size == 0:
             ic(f"No data for Station {current_station_id} after initial time filters. Saving empty report and aborting.")
             _save_pickle_atomic({}, os.path.join(station_livetime_output_dir, f"livetime_gti_St{current_station_id}_{date_filter}.pkl"))
@@ -940,8 +957,31 @@ if __name__ == "__main__":
                             date_to_examine_start=zoom_start_dt,
                             date_to_examine_end=zoom_end_dt)
         
-        # Plot Chi values if available (these don't depend on traces directly here)
-        # ... (load ChiRCR, call plot_cuts_amplitudes with ChiRCR data and is_max_amp_data=False) ...
+        # Plot Chi values if available
+        if base_chi2016_for_cuts.size > 0:
+            plot_cuts_amplitudes(base_times_for_cuts, 
+                                base_chi2016_for_cuts, 
+                                "Chi2016", 
+                                plot_folder_station, 
+                                LIVETIME_THRESHOLD_SECONDS, 
+                                cuts_dict_for_plotting, 
+                                is_max_amp_data=True, 
+                                final_cut_mask_for_gti_fill=final_overall_mask,
+                                date_to_examine_start=zoom_start_dt,
+                                date_to_examine_end=zoom_end_dt)
+
+        if base_chiRCR_for_cuts.size > 0:
+            plot_cuts_amplitudes(base_times_for_cuts, 
+                                base_chiRCR_for_cuts, 
+                                "ChiRCR", 
+                                plot_folder_station, 
+                                LIVETIME_THRESHOLD_SECONDS, 
+                                cuts_dict_for_plotting, 
+                                is_max_amp_data=True, 
+                                final_cut_mask_for_gti_fill=final_overall_mask,
+                                date_to_examine_start=zoom_start_dt,
+                                date_to_examine_end=zoom_end_dt)
+
         plot_cuts_rates(base_times_for_cuts, 
                         output_dir=plot_folder_station, 
                         cuts_to_plot_dict=cuts_dict_for_plotting,
