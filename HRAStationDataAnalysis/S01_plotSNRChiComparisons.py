@@ -454,7 +454,8 @@ def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bin
 
                     # Enhanced weight visualization with better color mapping and size scaling
                     norm = colors.LogNorm(vmin=min_weight, vmax=max_weight)
-                    scatter = ax.scatter(x_data, y_data, c=weights, cmap='viridis', norm=norm,
+                    cmap = overlay['style'].get('cmap', 'viridis')
+                    scatter = ax.scatter(x_data, y_data, c=weights, cmap=cmap, norm=norm,
                                        alpha=overlay['style']['alpha'], s=overlay['style']['s'])
                     
                     # Add colorbar for weight visualization if this is the first overlay
@@ -529,10 +530,10 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     ic("Generating simulation-only comparison plots (no cuts)...")
 
     base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Direct Sim (Hist)'}
-    reflected_overlay = {'data': sim_reflected, 'label': 'Reflected Sim (Weighted)', 'style': {'s': 12, 'alpha': 0.6, 'color_by_weight': True}}
+    reflected_overlay = {'data': sim_reflected, 'label': 'Reflected Sim (Weighted)', 'style': {'s': 12, 'alpha': 0.5, 'color_by_weight': True, 'cmap': 'cool'}}
 
     # --- Plot 1: No Cuts (With Lines) ---
-    fig_raw, axs_raw = plt.subplots(2, 2, figsize=(13, 15))
+    fig_raw, axs_raw = plt.subplots(2, 2, figsize=(8, 20))
     fig_raw.suptitle(f'Simulation Comparison: Direct vs Reflected (No Cuts)\n{rcr_cut_string}', fontsize=14)
     im_raw = plot_2x2_grid(fig_raw, axs_raw, base_config, cuts, overlays=[reflected_overlay], hist_bins_dict=hist_bins)
 
@@ -556,7 +557,7 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
 
     # --- Plot 1b: No Cuts (No Lines) ---
     ic("Generating simulation-only comparison plots (no cuts, no lines)...")
-    fig_raw_nl, axs_raw_nl = plt.subplots(2, 2, figsize=(13, 15))
+    fig_raw_nl, axs_raw_nl = plt.subplots(2, 2, figsize=(8, 20))
     fig_raw_nl.suptitle(f'Simulation Comparison: Direct vs Reflected (No Cuts, No Lines)\n{rcr_cut_string}', fontsize=14)
     im_raw_nl = plot_2x2_grid(fig_raw_nl, axs_raw_nl, base_config, None, overlays=[reflected_overlay], hist_bins_dict=hist_bins)
 
@@ -582,11 +583,11 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     reflected_overlay_cuts = {
         'data': reflected_rcr_pass,
         'label': 'Reflected Sim (Weighted, Pass All Cuts)',
-        'style': {'s': 12, 'alpha': 0.6, 'color_by_weight': True}
+        'style': {'s': 12, 'alpha': 0.5, 'color_by_weight': True, 'cmap': 'cool'}
     }
 
     # --- Plot 2: All Cuts (With Lines) ---
-    fig_cut, axs_cut = plt.subplots(2, 2, figsize=(13, 15))
+    fig_cut, axs_cut = plt.subplots(2, 2, figsize=(8, 20))
     fig_cut.suptitle(f'Simulation Comparison: Direct vs Reflected (RCR All Cuts)\n{rcr_cut_string}', fontsize=14)
     im_cut = plot_2x2_grid(fig_cut, axs_cut, base_config_cuts, cuts, overlays=[reflected_overlay_cuts], hist_bins_dict=hist_bins)
 
@@ -623,7 +624,7 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
 
     # --- Plot 2b: All Cuts (No Lines) ---
     ic("Generating simulation-only comparison plots (RCR all cuts, no lines)...")
-    fig_cut_nl, axs_cut_nl = plt.subplots(2, 2, figsize=(13, 15))
+    fig_cut_nl, axs_cut_nl = plt.subplots(2, 2, figsize=(8, 20))
     fig_cut_nl.suptitle(f'Simulation Comparison: Direct vs Reflected (RCR All Cuts, No Lines)\n{rcr_cut_string}', fontsize=14)
     im_cut_nl = plot_2x2_grid(fig_cut_nl, axs_cut_nl, base_config_cuts, None, overlays=[reflected_overlay_cuts], hist_bins_dict=hist_bins)
 
@@ -737,7 +738,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
                 'annotation_offset': (6, 6)
             })
 
-    fig1, axs1 = plt.subplots(2, 2, figsize=(12, 14))
+    fig1, axs1 = plt.subplots(2, 2, figsize=(8, 20))
     fig1.suptitle(f'Data: Chi Comparison for Station {station_id} on {date}\n{rcr_cut_string}', fontsize=14)
     plot_2x2_grid(fig1, axs1, base_data_config, cuts, overlays=data_overlays)
     rcr_stats_str = calculate_cut_stats_table(station_data, cuts, is_sim=False, title="Data Stats (RCR Cuts)", pre_mask_count=pre_mask_count, cut_type='rcr')
@@ -751,7 +752,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     plt.close(fig1)
 
     # Plot 1b: Data Only (No Cuts Shown)
-    fig1_nc, axs1_nc = plt.subplots(2, 2, figsize=(12, 14))
+    fig1_nc, axs1_nc = plt.subplots(2, 2, figsize=(8, 20))
     fig1_nc.suptitle(f'Data: Chi Comparison for Station {station_id} on {date} (No Cuts Shown)\n{rcr_cut_string}', fontsize=14)
     plot_2x2_grid(fig1_nc, axs1_nc, base_data_config, None, overlays=data_overlays)
     
@@ -764,7 +765,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
 
     if coincidence_overlays:
         ic(f"Generating coincidence overlay plots for Station {station_id} (Backlobe={coinc_backlobe_points}, RCR={coinc_rcr_points})")
-        fig1c, axs1c = plt.subplots(2, 2, figsize=(12, 14))
+        fig1c, axs1c = plt.subplots(2, 2, figsize=(8, 20))
         fig1c.suptitle(f'Data: Chi Comparison + Coincidences for Station {station_id} on {date}\n{rcr_cut_string}', fontsize=14)
         plot_2x2_grid(fig1c, axs1c, base_data_config, cuts, overlays=data_overlays + coincidence_overlays)
         
@@ -776,7 +777,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         plt.close(fig1c)
 
         # Coincidence No Cuts Shown
-        fig1c_nc, axs1c_nc = plt.subplots(2, 2, figsize=(12, 14))
+        fig1c_nc, axs1c_nc = plt.subplots(2, 2, figsize=(8, 20))
         fig1c_nc.suptitle(f'Data: Chi Comparison + Coincidences for Station {station_id} on {date} (No Cuts Shown)\n{rcr_cut_string}', fontsize=14)
         plot_2x2_grid(fig1c_nc, axs1c_nc, base_data_config, None, overlays=data_overlays + coincidence_overlays)
         
@@ -790,11 +791,11 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     # --- Other Plots (Sim vs Data, etc.) ---
     sim_base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Direct Sim (Hist)'}
     data_overlay_config = {'data': station_data, 'label': 'Data', 'style': {'marker': '.', 's': 5, 'alpha': 0.8, 'c': 'orangered'}}
-    reflected_overlay_config = {'data': sim_reflected, 'label': 'Reflected Sim (Weighted)', 'style': {'s': 12, 'alpha': 0.6, 'color_by_weight': True}}
+    reflected_overlay_config = {'data': sim_reflected, 'label': 'Reflected Sim (Weighted)', 'style': {'s': 12, 'alpha': 0.5, 'color_by_weight': True, 'cmap': 'cool'}}
 
     # Data over Composite Sim Plot
     ic("Generating data over composite simulation plot...")
-    fig_all, axs_all = plt.subplots(2, 2, figsize=(13, 15))
+    fig_all, axs_all = plt.subplots(2, 2, figsize=(8, 20))
     fig_all.suptitle(f'Data vs Composite Simulation - Station {station_id}\n{rcr_cut_string}', fontsize=14)
     im_all = plot_2x2_grid(fig_all, axs_all, sim_base_config, cuts, overlays=[reflected_overlay_config, data_overlay_config], hist_bins_dict=hist_bins)
     
@@ -814,7 +815,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     plt.close(fig_all)
 
     # Data over Composite Sim Plot (No Cuts Shown)
-    fig_all_nc, axs_all_nc = plt.subplots(2, 2, figsize=(13, 15))
+    fig_all_nc, axs_all_nc = plt.subplots(2, 2, figsize=(8, 20))
     fig_all_nc.suptitle(f'Data vs Composite Simulation - Station {station_id} (No Cuts Shown)\n{rcr_cut_string}', fontsize=14)
     im_all_nc = plot_2x2_grid(fig_all_nc, axs_all_nc, sim_base_config, None, overlays=[reflected_overlay_config, data_overlay_config], hist_bins_dict=hist_bins)
     
@@ -832,7 +833,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
 
     if coincidence_overlays:
         ic("Generating data over simulation plot with coincidence overlays...")
-        fig_allc, axs_allc = plt.subplots(2, 2, figsize=(13, 15))
+        fig_allc, axs_allc = plt.subplots(2, 2, figsize=(8, 20))
         fig_allc.suptitle(f'Data vs Composite Simulation + Coincidences - Station {station_id}\n{rcr_cut_string}', fontsize=14)
         overlays_all_combined = [reflected_overlay_config, data_overlay_config] + coincidence_overlays
         im_allc = plot_2x2_grid(fig_allc, axs_allc, sim_base_config, cuts, overlays=overlays_all_combined, hist_bins_dict=hist_bins)
@@ -850,7 +851,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         plt.close(fig_allc)
 
         # No Cuts Shown
-        fig_allc_nc, axs_allc_nc = plt.subplots(2, 2, figsize=(13, 15))
+        fig_allc_nc, axs_allc_nc = plt.subplots(2, 2, figsize=(8, 20))
         fig_allc_nc.suptitle(f'Data vs Composite Simulation + Coincidences - Station {station_id} (No Cuts Shown)\n{rcr_cut_string}', fontsize=14)
         im_allc_nc = plot_2x2_grid(fig_allc_nc, axs_allc_nc, sim_base_config, None, overlays=overlays_all_combined, hist_bins_dict=hist_bins)
         
