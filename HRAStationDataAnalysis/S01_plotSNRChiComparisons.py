@@ -514,7 +514,7 @@ def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bin
                     marker_edge = overlay['style'].get('edgecolors', 'w')
                     legend_elements.append(Line2D([0], [0], marker=overlay['style'].get('marker', 'o'), color='w', label=overlay['label'], markerfacecolor=marker_face, markeredgecolor=marker_edge, markersize=8))
     
-    fig.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, 0.13), ncol=3, fontsize=10, frameon=True)
+    fig.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, 0.22), ncol=3, fontsize=10, frameon=True)
 
     return im
 
@@ -531,6 +531,7 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Direct Sim (Hist)'}
     reflected_overlay = {'data': sim_reflected, 'label': 'Reflected Sim (Weighted)', 'style': {'s': 12, 'alpha': 0.6, 'color_by_weight': True}}
 
+    # --- Plot 1: No Cuts (With Lines) ---
     fig_raw, axs_raw = plt.subplots(2, 2, figsize=(13, 15))
     fig_raw.suptitle(f'Simulation Comparison: Direct vs Reflected (No Cuts)\n{rcr_cut_string}', fontsize=14)
     im_raw = plot_2x2_grid(fig_raw, axs_raw, base_config, cuts, overlays=[reflected_overlay], hist_bins_dict=hist_bins)
@@ -539,17 +540,37 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     reflected_stats_rcr = calculate_cut_stats_table(sim_reflected, cuts, True, "Reflected Sim (RCR Cuts)", cut_type='rcr')
     direct_stats_back = calculate_cut_stats_table(sim_direct, cuts, True, "Direct Sim (Backlobe Cuts)", cut_type='backlobe')
     reflected_stats_back = calculate_cut_stats_table(sim_reflected, cuts, True, "Reflected Sim (Backlobe Cuts)", cut_type='backlobe')
-    stats_text_raw = f"{direct_stats_rcr}\n\n{reflected_stats_rcr}\n\n{direct_stats_back}\n\n{reflected_stats_back}"
-    fig_raw.text(0.5, 0.01, stats_text_raw, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+    
+    # Split text into columns
+    fig_raw.text(0.25, 0.01, f"{direct_stats_rcr}\n\n{reflected_stats_rcr}", ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    fig_raw.text(0.75, 0.01, f"{direct_stats_back}\n\n{reflected_stats_back}", ha='center', va='bottom', fontsize=9, fontfamily='monospace')
 
     if im_raw:
-        fig_raw.tight_layout(rect=[0, 0.22, 0.9, 0.95])
-        cbar_ax_raw = fig_raw.add_axes([0.91, 0.2, 0.02, 0.7])
+        fig_raw.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_raw = fig_raw.add_axes([0.91, 0.28, 0.02, 0.65])
         fig_raw.colorbar(im_raw, cax=cbar_ax_raw, label='Direct Weighted Counts (Evts/Yr)')
     else:
-        fig_raw.tight_layout(rect=[0, 0.22, 1, 0.95])
+        fig_raw.tight_layout(rect=[0, 0.28, 1, 0.95])
     plt.savefig(f'{plot_folder}SimOnly_Direct_vs_Reflected_NoCuts_{date}.png')
     plt.close(fig_raw)
+
+    # --- Plot 1b: No Cuts (No Lines) ---
+    ic("Generating simulation-only comparison plots (no cuts, no lines)...")
+    fig_raw_nl, axs_raw_nl = plt.subplots(2, 2, figsize=(13, 15))
+    fig_raw_nl.suptitle(f'Simulation Comparison: Direct vs Reflected (No Cuts, No Lines)\n{rcr_cut_string}', fontsize=14)
+    im_raw_nl = plot_2x2_grid(fig_raw_nl, axs_raw_nl, base_config, None, overlays=[reflected_overlay], hist_bins_dict=hist_bins)
+
+    fig_raw_nl.text(0.25, 0.01, f"{direct_stats_rcr}\n\n{reflected_stats_rcr}", ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    fig_raw_nl.text(0.75, 0.01, f"{direct_stats_back}\n\n{reflected_stats_back}", ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+
+    if im_raw_nl:
+        fig_raw_nl.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_raw_nl = fig_raw_nl.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig_raw_nl.colorbar(im_raw_nl, cax=cbar_ax_raw_nl, label='Direct Weighted Counts (Evts/Yr)')
+    else:
+        fig_raw_nl.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}SimOnly_Direct_vs_Reflected_NoCuts_NoLines_{date}.png')
+    plt.close(fig_raw_nl)
 
     ic("Generating simulation-only comparison plots (RCR all cuts)...")
     direct_masks_rcr = get_all_cut_masks(sim_direct, cuts, cut_type='rcr')
@@ -564,6 +585,7 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
         'style': {'s': 12, 'alpha': 0.6, 'color_by_weight': True}
     }
 
+    # --- Plot 2: All Cuts (With Lines) ---
     fig_cut, axs_cut = plt.subplots(2, 2, figsize=(13, 15))
     fig_cut.suptitle(f'Simulation Comparison: Direct vs Reflected (RCR All Cuts)\n{rcr_cut_string}', fontsize=14)
     im_cut = plot_2x2_grid(fig_cut, axs_cut, base_config_cuts, cuts, overlays=[reflected_overlay_cuts], hist_bins_dict=hist_bins)
@@ -591,13 +613,30 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     fig_cut.text(0.5, 0.01, stats_text_cut, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
 
     if im_cut:
-        fig_cut.tight_layout(rect=[0, 0.22, 0.9, 0.95])
-        cbar_ax_cut = fig_cut.add_axes([0.91, 0.2, 0.02, 0.7])
+        fig_cut.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_cut = fig_cut.add_axes([0.91, 0.28, 0.02, 0.65])
         fig_cut.colorbar(im_cut, cax=cbar_ax_cut, label='Direct Weighted Counts (Evts/Yr)')
     else:
-        fig_cut.tight_layout(rect=[0, 0.22, 1, 0.95])
+        fig_cut.tight_layout(rect=[0, 0.28, 1, 0.95])
     plt.savefig(f'{plot_folder}SimOnly_Direct_vs_Reflected_AllCuts_{date}.png')
     plt.close(fig_cut)
+
+    # --- Plot 2b: All Cuts (No Lines) ---
+    ic("Generating simulation-only comparison plots (RCR all cuts, no lines)...")
+    fig_cut_nl, axs_cut_nl = plt.subplots(2, 2, figsize=(13, 15))
+    fig_cut_nl.suptitle(f'Simulation Comparison: Direct vs Reflected (RCR All Cuts, No Lines)\n{rcr_cut_string}', fontsize=14)
+    im_cut_nl = plot_2x2_grid(fig_cut_nl, axs_cut_nl, base_config_cuts, None, overlays=[reflected_overlay_cuts], hist_bins_dict=hist_bins)
+
+    fig_cut_nl.text(0.5, 0.01, stats_text_cut, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+
+    if im_cut_nl:
+        fig_cut_nl.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_cut_nl = fig_cut_nl.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig_cut_nl.colorbar(im_cut_nl, cax=cbar_ax_cut_nl, label='Direct Weighted Counts (Evts/Yr)')
+    else:
+        fig_cut_nl.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}SimOnly_Direct_vs_Reflected_AllCuts_NoLines_{date}.png')
+    plt.close(fig_cut_nl)
 
 def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=None):
     """
@@ -703,21 +742,50 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     plot_2x2_grid(fig1, axs1, base_data_config, cuts, overlays=data_overlays)
     rcr_stats_str = calculate_cut_stats_table(station_data, cuts, is_sim=False, title="Data Stats (RCR Cuts)", pre_mask_count=pre_mask_count, cut_type='rcr')
     backlobe_stats_str = calculate_cut_stats_table(station_data, cuts, is_sim=False, title="Data Stats (Backlobe Cuts)", pre_mask_count=pre_mask_count, cut_type='backlobe')
-    stats_str = f"{rcr_stats_str}\n\n{backlobe_stats_str}"
-    fig1.text(0.5, 0.01, stats_str, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
-    fig1.tight_layout(rect=[0, 0.20, 1, 0.95])
+    
+    fig1.text(0.25, 0.01, rcr_stats_str, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    fig1.text(0.75, 0.01, backlobe_stats_str, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    
+    fig1.tight_layout(rect=[0, 0.28, 1, 0.95])
     plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_Station{station_id}_{date}.png')
     plt.close(fig1)
+
+    # Plot 1b: Data Only (No Cuts Shown)
+    fig1_nc, axs1_nc = plt.subplots(2, 2, figsize=(12, 14))
+    fig1_nc.suptitle(f'Data: Chi Comparison for Station {station_id} on {date} (No Cuts Shown)\n{rcr_cut_string}', fontsize=14)
+    plot_2x2_grid(fig1_nc, axs1_nc, base_data_config, None, overlays=data_overlays)
+    
+    fig1_nc.text(0.25, 0.01, rcr_stats_str, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    fig1_nc.text(0.75, 0.01, backlobe_stats_str, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    
+    fig1_nc.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_NoCutsShown_Station{station_id}_{date}.png')
+    plt.close(fig1_nc)
 
     if coincidence_overlays:
         ic(f"Generating coincidence overlay plots for Station {station_id} (Backlobe={coinc_backlobe_points}, RCR={coinc_rcr_points})")
         fig1c, axs1c = plt.subplots(2, 2, figsize=(12, 14))
         fig1c.suptitle(f'Data: Chi Comparison + Coincidences for Station {station_id} on {date}\n{rcr_cut_string}', fontsize=14)
         plot_2x2_grid(fig1c, axs1c, base_data_config, cuts, overlays=data_overlays + coincidence_overlays)
-        fig1c.text(0.5, 0.01, stats_str, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
-        fig1c.tight_layout(rect=[0, 0.20, 1, 0.95])
+        
+        fig1c.text(0.25, 0.01, rcr_stats_str, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+        fig1c.text(0.75, 0.01, backlobe_stats_str, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+        
+        fig1c.tight_layout(rect=[0, 0.28, 1, 0.95])
         plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_Station{station_id}_{date}_Coincidences.png')
         plt.close(fig1c)
+
+        # Coincidence No Cuts Shown
+        fig1c_nc, axs1c_nc = plt.subplots(2, 2, figsize=(12, 14))
+        fig1c_nc.suptitle(f'Data: Chi Comparison + Coincidences for Station {station_id} on {date} (No Cuts Shown)\n{rcr_cut_string}', fontsize=14)
+        plot_2x2_grid(fig1c_nc, axs1c_nc, base_data_config, None, overlays=data_overlays + coincidence_overlays)
+        
+        fig1c_nc.text(0.25, 0.01, rcr_stats_str, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+        fig1c_nc.text(0.75, 0.01, backlobe_stats_str, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+        
+        fig1c_nc.tight_layout(rect=[0, 0.28, 1, 0.95])
+        plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_NoCutsShown_Station{station_id}_{date}_Coincidences.png')
+        plt.close(fig1c_nc)
 
     # --- Other Plots (Sim vs Data, etc.) ---
     sim_base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Direct Sim (Hist)'}
@@ -732,16 +800,35 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     
     direct_stats = calculate_cut_stats_table(sim_direct, cuts, True, "Direct Sim", cut_type='rcr')
     reflected_stats = calculate_cut_stats_table(sim_reflected, cuts, True, "Reflected Sim", cut_type='rcr')
-    fig_all.text(0.5, 0.01, f"{direct_stats}\n\n{reflected_stats}", ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+    
+    fig_all.text(0.25, 0.01, direct_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    fig_all.text(0.75, 0.01, reflected_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
     
     if im_all:
-        fig_all.tight_layout(rect=[0, 0.22, 0.9, 0.95])
-        cbar_ax = fig_all.add_axes([0.91, 0.2, 0.02, 0.7])
+        fig_all.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax = fig_all.add_axes([0.91, 0.28, 0.02, 0.65])
         fig_all.colorbar(im_all, cax=cbar_ax, label='Direct Weighted Counts (Evts/Yr)')
     else:
-        fig_all.tight_layout(rect=[0, 0.22, 1, 0.95])
+        fig_all.tight_layout(rect=[0, 0.28, 1, 0.95])
     plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_Station{station_id}_{date}.png')
     plt.close(fig_all)
+
+    # Data over Composite Sim Plot (No Cuts Shown)
+    fig_all_nc, axs_all_nc = plt.subplots(2, 2, figsize=(13, 15))
+    fig_all_nc.suptitle(f'Data vs Composite Simulation - Station {station_id} (No Cuts Shown)\n{rcr_cut_string}', fontsize=14)
+    im_all_nc = plot_2x2_grid(fig_all_nc, axs_all_nc, sim_base_config, None, overlays=[reflected_overlay_config, data_overlay_config], hist_bins_dict=hist_bins)
+    
+    fig_all_nc.text(0.25, 0.01, direct_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    fig_all_nc.text(0.75, 0.01, reflected_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    
+    if im_all_nc:
+        fig_all_nc.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_nc = fig_all_nc.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig_all_nc.colorbar(im_all_nc, cax=cbar_ax_nc, label='Direct Weighted Counts (Evts/Yr)')
+    else:
+        fig_all_nc.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_NoCutsShown_Station{station_id}_{date}.png')
+    plt.close(fig_all_nc)
 
     if coincidence_overlays:
         ic("Generating data over simulation plot with coincidence overlays...")
@@ -749,16 +836,35 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         fig_allc.suptitle(f'Data vs Composite Simulation + Coincidences - Station {station_id}\n{rcr_cut_string}', fontsize=14)
         overlays_all_combined = [reflected_overlay_config, data_overlay_config] + coincidence_overlays
         im_allc = plot_2x2_grid(fig_allc, axs_allc, sim_base_config, cuts, overlays=overlays_all_combined, hist_bins_dict=hist_bins)
-        fig_allc.text(0.5, 0.01, f"{direct_stats}\n\n{reflected_stats}", ha='center', va='bottom', fontsize=10, fontfamily='monospace')
+        
+        fig_allc.text(0.25, 0.01, direct_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+        fig_allc.text(0.75, 0.01, reflected_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
 
         if im_allc:
-            fig_allc.tight_layout(rect=[0, 0.22, 0.9, 0.95])
-            cbar_ax_allc = fig_allc.add_axes([0.91, 0.2, 0.02, 0.7])
+            fig_allc.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+            cbar_ax_allc = fig_allc.add_axes([0.91, 0.28, 0.02, 0.65])
             fig_allc.colorbar(im_allc, cax=cbar_ax_allc, label='Direct Weighted Counts (Evts/Yr)')
         else:
-            fig_allc.tight_layout(rect=[0, 0.22, 1, 0.95])
+            fig_allc.tight_layout(rect=[0, 0.28, 1, 0.95])
         plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_Station{station_id}_{date}_Coincidences.png')
         plt.close(fig_allc)
+
+        # No Cuts Shown
+        fig_allc_nc, axs_allc_nc = plt.subplots(2, 2, figsize=(13, 15))
+        fig_allc_nc.suptitle(f'Data vs Composite Simulation + Coincidences - Station {station_id} (No Cuts Shown)\n{rcr_cut_string}', fontsize=14)
+        im_allc_nc = plot_2x2_grid(fig_allc_nc, axs_allc_nc, sim_base_config, None, overlays=overlays_all_combined, hist_bins_dict=hist_bins)
+        
+        fig_allc_nc.text(0.25, 0.01, direct_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+        fig_allc_nc.text(0.75, 0.01, reflected_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+
+        if im_allc_nc:
+            fig_allc_nc.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+            cbar_ax_allc_nc = fig_allc_nc.add_axes([0.91, 0.28, 0.02, 0.65])
+            fig_allc_nc.colorbar(im_allc_nc, cax=cbar_ax_allc_nc, label='Direct Weighted Counts (Evts/Yr)')
+        else:
+            fig_allc_nc.tight_layout(rect=[0, 0.28, 1, 0.95])
+        plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_NoCutsShown_Station{station_id}_{date}_Coincidences.png')
+        plt.close(fig_allc_nc)
 
     # --- Generate Master Plots for Passing Events ---
     # Only if Traces are available (implies single station processing with loaded traces)
