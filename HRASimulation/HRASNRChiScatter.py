@@ -1070,6 +1070,13 @@ def plot_combined_delta_plane_with_validation(
     labels = []
 
     if direct_x.size > 0:
+        w_min = np.min(direct_w)
+        w_max = np.max(direct_w)
+        if w_max > w_min > 0:
+            norm_direct = colors.LogNorm(vmin=w_min, vmax=w_max)
+        else:
+            norm_direct = colors.Normalize(vmin=w_min, vmax=w_max)
+
         sizes_direct = normalize_marker_sizes(direct_w)
         scatter_direct = ax.scatter(
             direct_x,
@@ -1077,6 +1084,7 @@ def plot_combined_delta_plane_with_validation(
             s=sizes_direct,
             c=direct_w,
             cmap='viridis',
+            norm=norm_direct,
             alpha=0.5,
             marker='o',
             edgecolors='none',
@@ -1087,6 +1095,13 @@ def plot_combined_delta_plane_with_validation(
         labels.append(direct_label)
 
     if refl_x.size > 0:
+        w_min = np.min(refl_w)
+        w_max = np.max(refl_w)
+        if w_max > w_min > 0:
+            norm_refl = colors.LogNorm(vmin=w_min, vmax=w_max)
+        else:
+            norm_refl = colors.Normalize(vmin=w_min, vmax=w_max)
+
         sizes_refl = normalize_marker_sizes(refl_w)
         scatter_refl = ax.scatter(
             refl_x,
@@ -1094,6 +1109,7 @@ def plot_combined_delta_plane_with_validation(
             s=sizes_refl,
             c=refl_w,
             cmap='cool',
+            norm=norm_refl,
             alpha=0.5,
             marker='^',
             edgecolors='none',
@@ -1239,6 +1255,13 @@ def plot_combined_snr_delta_with_validation(
     labels = []
 
     if direct_x.size > 0:
+        w_min = np.min(direct_w)
+        w_max = np.max(direct_w)
+        if w_max > w_min > 0:
+            norm_direct = colors.LogNorm(vmin=w_min, vmax=w_max)
+        else:
+            norm_direct = colors.Normalize(vmin=w_min, vmax=w_max)
+
         sizes_direct = normalize_marker_sizes(direct_w)
         scatter_direct = ax.scatter(
             direct_x,
@@ -1246,6 +1269,7 @@ def plot_combined_snr_delta_with_validation(
             s=sizes_direct,
             c=direct_w,
             cmap='viridis',
+            norm=norm_direct,
             alpha=0.5,
             marker='o',
             edgecolors='none',
@@ -1256,6 +1280,13 @@ def plot_combined_snr_delta_with_validation(
         labels.append(direct_label)
 
     if refl_x.size > 0:
+        w_min = np.min(refl_w)
+        w_max = np.max(refl_w)
+        if w_max > w_min > 0:
+            norm_refl = colors.LogNorm(vmin=w_min, vmax=w_max)
+        else:
+            norm_refl = colors.Normalize(vmin=w_min, vmax=w_max)
+
         sizes_refl = normalize_marker_sizes(refl_w)
         scatter_refl = ax.scatter(
             refl_x,
@@ -1263,6 +1294,7 @@ def plot_combined_snr_delta_with_validation(
             s=sizes_refl,
             c=refl_w,
             cmap='cool',
+            norm=norm_refl,
             alpha=0.5,
             marker='^',
             edgecolors='none',
