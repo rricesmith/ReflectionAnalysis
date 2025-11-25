@@ -639,6 +639,44 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     plt.savefig(f'{plot_folder}SimOnly_Direct_vs_Reflected_AllCuts_NoLines_{date}.png')
     plt.close(fig_cut_nl)
 
+
+def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=None):
+    """
+    Runs the full plotting and saving pipeline for a given station ID and its data.
+    """
+    ic(f"--- Running analysis for Station {station_id} ---")
+
+    # --- Get Masks and Save Passing Events ---
+    masks_rcr = get_all_cut_masks(station_data, cuts, cut_type='rcr')
+    masks_backlobe = get_all_cut_masks(station_data, cuts, cut_type='backlobe')
+    
+    passing_events_to_save = {}
+    
+    # Note: The keys here must be valid Python identifiers for np.savez
+    passing_events_to_save['snr_cut_only'] = np.zeros(np.sum(masks_rcr['snr_cut']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['snr_and_snr_line'] = np.zeros(np.sum(masks_rcr['snr_and_snr_line']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['all_cuts'] = np.zeros(np.sum(masks_rcr['all_cuts']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['backlobe_cut_only'] = np.zeros(np.sum(masks_backlobe['snr_cut']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['backlobe_and_snr_line'] = np.zeros(np.sum(masks_backlobe['snr_and_snr_line']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+    passing_events_to_save['backlobe_all_cuts'] = np.zeros(np.sum(masks_backlobe['all_cuts']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
+
+    passing_events_to_save['snr_cut_only']['event_id'] = event_ids[masks_rcr['snr_cut']]
+    passing_events_to_save['snr_cut_only']['unique_index'] = unique_indices[masks_rcr['snr_cut']]
+    passing_events_to_save['snr_and_snr_line']['event_id'] = event_ids[masks_rcr['snr_and_snr_line']]
+    passing_events_to_save['snr_and_snr_line']['unique_index'] = unique_indices[masks_rcr['snr_and_snr_line']]
+    passing_events_to_save['all_cuts']['event_id'] = event_ids[masks_rcr['all_cuts']]
+    passing_events_to_save['all_cuts']['unique_index'] = unique_indices[masks_rcr['all_cuts']]
+    passing_events_to_save['backlobe_cut_only']['event_id'] = event_ids[masks_backlobe['snr_cut']]
+    passing_events_to_save['backlobe_cut_only']['unique_index'] = unique_indices[masks_backlobe['snr_cut']]
+    passing_events_to_save['backlobe_and_snr_line']['event_id'] = event_ids[masks_backlobe['snr_and_snr_line']]
+    passing_events_to_save['backlobe_and_snr_line']['unique_index'] = unique_indices[masks_backlobe['snr_and_snr_line']]
+    passing_events_to_save['backlobe_all_cuts']['event_id'] = event_ids[masks_backlobe['all_cuts']]
+    passing_events_to_save['backlobe_all_cuts']['unique_index'] = unique_indices[masks_backlobe['all_cuts']]
+    
+    savename = f'{plot_folder}PassingEvents_Station{station_id}_{date}.npz'
+    np.savez(savename, **passing_events_to_save)
+    ic(f"Saved passing event combinations for Station {station_id} to {savename}")
+
     # --- Plot 3: Data Only with layered cuts
     ic("Generating layered scatter plot for data...")
     
@@ -957,6 +995,9 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
                 
                 plot_single_master_event(evt_id, event_details, bl_plot_folder, f"BL_Station{station_id}", title_suffix=" (BL Cut)")
 
+
+
+    
 
 if __name__ == "__main__":
     # --- Configuration and Setup ---
