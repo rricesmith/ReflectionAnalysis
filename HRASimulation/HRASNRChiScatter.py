@@ -1083,7 +1083,7 @@ def plot_combined_delta_plane_with_validation(
             direct_y,
             s=sizes_direct,
             c=direct_w,
-            cmap='viridis',
+            cmap='Blues',
             norm=norm_direct,
             alpha=0.5,
             marker='o',
@@ -1108,7 +1108,7 @@ def plot_combined_delta_plane_with_validation(
             refl_y,
             s=sizes_refl,
             c=refl_w,
-            cmap='cool',
+            cmap='Purples',
             norm=norm_refl,
             alpha=0.5,
             marker='^',
@@ -1268,7 +1268,7 @@ def plot_combined_snr_delta_with_validation(
             direct_y,
             s=sizes_direct,
             c=direct_w,
-            cmap='viridis',
+            cmap='Blues',
             norm=norm_direct,
             alpha=0.5,
             marker='o',
@@ -1293,7 +1293,7 @@ def plot_combined_snr_delta_with_validation(
             refl_y,
             s=sizes_refl,
             c=refl_w,
-            cmap='cool',
+            cmap='Purples',
             norm=norm_refl,
             alpha=0.5,
             marker='^',
@@ -1495,7 +1495,7 @@ if __name__ == "__main__":
     if direct_data[0].size > 0:
         plot_single_scatter(
             direct_data,
-            cmap='viridis',
+            cmap='Blues',
             marker='o',
             legend_label=direct_label,
             title='Chi Difference Spread vs Average SNR (Direct Pairs)',
@@ -1511,7 +1511,7 @@ if __name__ == "__main__":
     if refl_data[0].size > 0:
         plot_single_scatter(
             refl_data,
-            cmap='cool',
+            cmap='Purples',
             marker='^',
             legend_label=refl_label,
             title='Chi Difference Spread vs Average SNR (Direct-Reflected Pairs)',
@@ -1526,7 +1526,7 @@ if __name__ == "__main__":
     if direct_plane_data[0].size > 0:
         plot_delta_plane(
             direct_plane_data,
-            cmap='viridis',
+            cmap='Blues',
             marker='o',
             legend_label=direct_plane_label,
             title='Chi Delta Plane (Direct Pairs)',
@@ -1540,7 +1540,7 @@ if __name__ == "__main__":
     if refl_plane_data[0].size > 0:
         plot_delta_plane(
             refl_plane_data,
-            cmap='cool',
+            cmap='Purples',
             marker='^',
             legend_label=refl_plane_label,
             title='Chi Delta Plane (Direct-Reflected Pairs)',
@@ -1554,7 +1554,7 @@ if __name__ == "__main__":
     if direct_plane_cut[0].size > 0:
         plot_delta_plane(
             direct_plane_cut,
-            cmap='viridis',
+            cmap='Blues',
             marker='o',
             legend_label=direct_plane_cut_label,
             title='Chi Delta Plane (Direct Pairs) — Quadrant Cut',
@@ -1568,7 +1568,7 @@ if __name__ == "__main__":
     if refl_plane_cut[0].size > 0:
         plot_delta_plane(
             refl_plane_cut,
-            cmap='cool',
+            cmap='Purples',
             marker='^',
             legend_label=refl_plane_cut_label,
             title='Chi Delta Plane (Direct-Reflected Pairs) — Quadrant Cut',
@@ -1606,7 +1606,7 @@ if __name__ == "__main__":
                     legend_label=direct_label,
                     title='Chi Difference Spread vs Average SNR (Direct Pairs) — With Validation',
                     output_path=overlay_direct_output,
-                    cmap='viridis',
+                    cmap='Blues',
                     marker='o',
                     delta_cut=DELTA_CUT,
                     validation_pairs=validation_pairs,
@@ -1623,7 +1623,7 @@ if __name__ == "__main__":
                     legend_label=refl_label,
                     title='Chi Difference Spread vs Average SNR (Direct-Reflected Pairs) — With Validation',
                     output_path=overlay_refl_output,
-                    cmap='cool',
+                    cmap='Purples',
                     marker='^',
                     delta_cut=DELTA_CUT,
                     validation_pairs=validation_pairs,
@@ -1640,7 +1640,7 @@ if __name__ == "__main__":
                     legend_label=direct_plane_label,
                     title='Chi Delta Plane (Direct Pairs) — With Validation',
                     output_path=overlay_direct_plane_output,
-                    cmap='viridis',
+                    cmap='Blues',
                     marker='o',
                     validation_pairs=validation_pairs,
                     special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
@@ -1656,7 +1656,7 @@ if __name__ == "__main__":
                     legend_label=refl_plane_label,
                     title='Chi Delta Plane (Direct-Reflected Pairs) — With Validation',
                     output_path=overlay_refl_plane_output,
-                    cmap='cool',
+                    cmap='Purples',
                     marker='^',
                     validation_pairs=validation_pairs,
                     special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
@@ -1672,7 +1672,7 @@ if __name__ == "__main__":
                     legend_label=direct_plane_cut_label,
                     title='Chi Delta Plane (Direct Pairs) — With Validation (Quadrant Cut)',
                     output_path=overlay_direct_plane_cut_output,
-                    cmap='viridis',
+                    cmap='Blues',
                     marker='o',
                     validation_pairs=validation_pairs,
                     special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
@@ -1689,14 +1689,14 @@ if __name__ == "__main__":
                     legend_label=refl_plane_cut_label,
                     title='Chi Delta Plane (Direct-Reflected Pairs) — With Validation (Quadrant Cut)',
                     output_path=overlay_refl_plane_cut_output,
-                    cmap='cool',
+                    cmap='Purples',
                     marker='^',
                     validation_pairs=validation_pairs,
                     special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                     exclude_lower_left=True,
                 )
 
-            if direct_plane_data[0].size > 0 or refl_plane_data[0].size > 0:
+            if direct_data[0].size > 0 or refl_data[0].size > 0:
                 combined_plane_output = os.path.join(
                     snr_plot_folder,
                     'chi_delta_plane_combined_with_validation.png',
