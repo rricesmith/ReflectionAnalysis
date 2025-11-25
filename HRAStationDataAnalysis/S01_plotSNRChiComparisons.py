@@ -320,7 +320,7 @@ def calculate_cut_stats_table(data_dict, cuts, is_sim, title, pre_mask_count=Non
         "ChiRCR > SNR Line": masks['snr_line_cut'],
         f"ChiRCR - Chi2016 > {cuts['chi_diff_threshold']}": masks['chi_diff_cut'],
         "All Cuts": masks['all_cuts']
-    }
+    };
     
     for name, mask in cut_masks_to_report.items():
         passing_val = np.sum(weights[mask])
@@ -639,45 +639,7 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     plt.savefig(f'{plot_folder}SimOnly_Direct_vs_Reflected_AllCuts_NoLines_{date}.png')
     plt.close(fig_cut_nl)
 
-def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=None):
-    """
-    Runs the full plotting and saving pipeline for a given station ID and its data.
-    """
-    ic(f"--- Running analysis for Station {station_id} ---")
-
-    # --- Get Masks and Save Passing Events ---
-    masks_rcr = get_all_cut_masks(station_data, cuts, cut_type='rcr')
-    masks_backlobe = get_all_cut_masks(station_data, cuts, cut_type='backlobe')
-    
-    passing_events_to_save = {}
-    
-    # Note: The keys here must be valid Python identifiers for np.savez
-    passing_events_to_save['snr_cut_only'] = np.zeros(np.sum(masks_rcr['snr_cut']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
-    passing_events_to_save['snr_and_snr_line'] = np.zeros(np.sum(masks_rcr['snr_and_snr_line']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
-    passing_events_to_save['all_cuts'] = np.zeros(np.sum(masks_rcr['all_cuts']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
-    passing_events_to_save['backlobe_cut_only'] = np.zeros(np.sum(masks_backlobe['snr_cut']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
-    passing_events_to_save['backlobe_and_snr_line'] = np.zeros(np.sum(masks_backlobe['snr_and_snr_line']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
-    passing_events_to_save['backlobe_all_cuts'] = np.zeros(np.sum(masks_backlobe['all_cuts']), dtype=[('event_id', 'i8'), ('unique_index', 'i8')])
-
-    passing_events_to_save['snr_cut_only']['event_id'] = event_ids[masks_rcr['snr_cut']]
-    passing_events_to_save['snr_cut_only']['unique_index'] = unique_indices[masks_rcr['snr_cut']]
-    passing_events_to_save['snr_and_snr_line']['event_id'] = event_ids[masks_rcr['snr_and_snr_line']]
-    passing_events_to_save['snr_and_snr_line']['unique_index'] = unique_indices[masks_rcr['snr_and_snr_line']]
-    passing_events_to_save['all_cuts']['event_id'] = event_ids[masks_rcr['all_cuts']]
-    passing_events_to_save['all_cuts']['unique_index'] = unique_indices[masks_rcr['all_cuts']]
-    passing_events_to_save['backlobe_cut_only']['event_id'] = event_ids[masks_backlobe['snr_cut']]
-    passing_events_to_save['backlobe_cut_only']['unique_index'] = unique_indices[masks_backlobe['snr_cut']]
-    passing_events_to_save['backlobe_and_snr_line']['event_id'] = event_ids[masks_backlobe['snr_and_snr_line']]
-    passing_events_to_save['backlobe_and_snr_line']['unique_index'] = unique_indices[masks_backlobe['snr_and_snr_line']]
-    passing_events_to_save['backlobe_all_cuts']['event_id'] = event_ids[masks_backlobe['all_cuts']]
-    passing_events_to_save['backlobe_all_cuts']['unique_index'] = unique_indices[masks_backlobe['all_cuts']]
-    
-    savename = f'{plot_folder}PassingEvents_Station{station_id}_{date}.npz'
-    np.savez(savename, **passing_events_to_save)
-    ic(f"Saved passing event combinations for Station {station_id} to {savename}")
-
-    # --- Plotting ---
-    # Plot 1: Data Only with layered cuts
+    # --- Plot 3: Data Only with layered cuts
     ic("Generating layered scatter plot for data...")
     
     base_data_config = {
@@ -737,6 +699,49 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
                 'annotation_fontsize': 9,
                 'annotation_offset': (6, 6)
             })
+
+        # Create merged coincidence overlay
+        merged_data = {'snr': [], 'Chi2016': [], 'ChiRCR': []}
+        
+        if backlobe_data is not None:
+            for key in merged_data:
+                if key in backlobe_data:
+                    merged_data[key].extend(backlobe_data[key])
+        
+        if rcr_data is not None:
+            for key in merged_data:
+                if key in rcr_data:
+                    merged_data[key].extend(rcr_data[key])
+        
+        for key in merged_data:
+            merged_data[key] = np.array(merged_data[key])
+            
+        coincidence_overlays_merged = []
+        merged_stats_str = "No Coincidence Events"
+        
+        if merged_data['snr'].size > 0:
+             coincidence_overlays_merged.append({
+                'data': merged_data,
+                'label': f"Coincidence",
+                'style': {'marker': 'o', 's': 55, 'alpha': 0.9, 'c': 'gold', 'edgecolors': 'black', 'linewidths': 0.4}
+            })
+             
+             # Calculate stats for merged coincidence events
+             merged_stats_str = calculate_cut_stats_table(merged_data, cuts, is_sim=False, title="Coincidence Stats (RCR Cuts)", cut_type='rcr')
+             
+             # Identify coincidence events passing all cuts
+             merged_masks = get_all_cut_masks(merged_data, cuts, cut_type='rcr')
+             passing_mask = merged_masks['all_cuts']
+             
+             if np.any(passing_mask):
+                 merged_data_passing = {key: merged_data[key][passing_mask] for key in merged_data}
+                 coincidence_overlays_merged.append({
+                    'data': merged_data_passing,
+                    'label': f"Coincidence (Pass All)",
+                    'style': {'marker': 'D', 's': 80, 'alpha': 1.0, 'c': 'lime', 'edgecolors': 'black', 'linewidths': 1.0}
+                })
+        else:
+            merged_stats_str = "No Coincidence Events"
 
     fig1, axs1 = plt.subplots(2, 2, figsize=(12, 15))
     fig1.suptitle(f'Data: Chi Comparison for Station {station_id} on {date}\n{rcr_cut_string}', fontsize=14)
@@ -1140,4 +1145,4 @@ if __name__ == "__main__":
     else:
         ic("Not enough station data to perform a summed analysis.")
 
-    ic("Processing complete.")
+
