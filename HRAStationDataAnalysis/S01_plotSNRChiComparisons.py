@@ -910,6 +910,30 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_NoCutsShown_Station{station_id}_{date}_Coincidences.png')
         plt.close(fig_allc_nc)
 
+        # --- NEW PLOT: Data over Composite Sim + Merged Coincidences (No Cuts) ---
+        ic("Generating data over simulation plot with MERGED coincidence overlays (No Cuts)...")
+        fig_allc_merged, axs_allc_merged = plt.subplots(2, 2, figsize=(12, 15))
+        fig_allc_merged.suptitle(f'Data vs Composite Simulation + Merged Coincidences - Station {station_id} (No Cuts Shown)\n{rcr_cut_string}', fontsize=14)
+        
+        # Only use the first element of coincidence_overlays_merged (the yellow circles), ignoring any "Pass All" overlay
+        overlays_all_merged = [reflected_overlay_config, data_overlay_config]
+        if coincidence_overlays_merged:
+            overlays_all_merged.append(coincidence_overlays_merged[0])
+        
+        im_allc_merged = plot_2x2_grid(fig_allc_merged, axs_allc_merged, sim_base_config, None, overlays=overlays_all_merged, hist_bins_dict=hist_bins)
+        
+        fig_allc_merged.text(0.25, 0.01, direct_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+        fig_allc_merged.text(0.75, 0.01, reflected_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+
+        if im_allc_merged:
+            fig_allc_merged.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+            cbar_ax_allc_merged = fig_allc_merged.add_axes([0.91, 0.28, 0.02, 0.65])
+            fig_allc_merged.colorbar(im_allc_merged, cax=cbar_ax_allc_merged, label='Direct Weighted Counts (Evts/Yr)')
+        else:
+            fig_allc_merged.tight_layout(rect=[0, 0.28, 1, 0.95])
+        plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_NoCutsShown_Station{station_id}_{date}_MergedCoincidences.png')
+        plt.close(fig_allc_merged)
+
     # --- Generate Master Plots for Passing Events ---
     # Only if Traces are available (implies single station processing with loaded traces)
     if 'Traces' in station_data:
