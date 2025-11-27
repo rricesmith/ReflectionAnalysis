@@ -61,7 +61,7 @@ for inc_azi in inc_azis:
         VELs['theta'] = VELs['theta'] / np.max(np.abs(VELs['theta']))
         VELs['phi'] = VELs['phi'] / np.max(np.abs(VELs['phi']))
         ax.plot(ff / units.MHz, np.abs(VELs['theta']), label=f'eTheta LPDA {(180*units.deg-inc_zen)/units.deg:.0f}deg', color='blue')
-        # ax.plot(ff / units.MHz, np.abs(VELs['phi']), label=f'ePhi LPDA {(180*units.deg-inc_zen)/units.deg:.0f}deg')
+        ax.plot(ff / units.MHz, np.abs(VELs['phi']), label=f'ePhi LPDA {(180*units.deg-inc_zen)/units.deg:.0f}deg')
 
         # Linear fit
         # fit = np.polyfit(ff[fitmask]/units.MHz, np.abs(VELs['theta'])[fitmask], 1)
