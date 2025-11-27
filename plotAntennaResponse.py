@@ -49,12 +49,12 @@ for inc_azi in inc_azis:
         # ax.plot(ff[fitmask] / units.MHz, fit[0]*ff[fitmask]/units.MHz + fit[1], label=f'Fit {fit[0]:.5f}x+{fit[1]:.2f}', color='red', linestyle='--')
 
         # Inverse fit
-        try:
-            fit, cov = optimize.curve_fit(inverse_func, ff[fitmask]/units.MHz, np.abs(VELs['theta'])[fitmask], p0=[100, 2, 0], maxfev=10000)
-        except RuntimeError:
-            ic(f'Failed to fit {inc_zen/units.deg}, continuing')
-            continue
-        ax.plot(ff[fitmask] / units.MHz, inverse_func(ff[fitmask]/units.MHz, *fit), label=f'Fit {fit[0]:.5f}/(x+{fit[1]:.2f})+{fit[2]:.2f}', color='red', linestyle='--')
+        # try:
+        #     fit, cov = optimize.curve_fit(inverse_func, ff[fitmask]/units.MHz, np.abs(VELs['theta'])[fitmask], p0=[100, 2, 0], maxfev=10000)
+        # except RuntimeError:
+        #     ic(f'Failed to fit {inc_zen/units.deg}, continuing')
+        #     continue
+        # ax.plot(ff[fitmask] / units.MHz, inverse_func(ff[fitmask]/units.MHz, *fit), label=f'Fit {fit[0]:.5f}/(x+{fit[1]:.2f})+{fit[2]:.2f}', color='red', linestyle='--')
 
         VELs = LPDA_antenna.get_antenna_response_vectorized(ff, 180*units.deg-inc_zen, inc_azi,
                                                     orientation_theta_phi[0], orientation_theta_phi[1], rotation_theta_phi[0], rotation_theta_phi[1])
