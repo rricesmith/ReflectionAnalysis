@@ -38,7 +38,7 @@ for inc_azi in inc_azis:
                                                     orientation_theta_phi[0], orientation_theta_phi[1], rotation_theta_phi[0], rotation_theta_phi[1])
         VELs['theta'] = VELs['theta'] / np.max(np.abs(VELs['theta']))
         VELs['phi'] = VELs['phi'] / np.max(np.abs(VELs['phi']))
-        ax.plot(ff / units.MHz, np.abs(VELs['theta']), label=f'eTheta LPDA {inc_zen/units.deg:.0f}deg', color='red')
+        ax.plot(ff / units.MHz, np.abs(VELs['theta']), label=f'Frontlobe', color='red')
         # ax.plot(ff / units.MHz, np.abs(VELs['phi']), label=f'ePhi LPDA {inc_zen/units.deg:.0f}deg')
 
         # Limit fit to sensitive region of LPDA
@@ -60,8 +60,8 @@ for inc_azi in inc_azis:
                                                     orientation_theta_phi[0], orientation_theta_phi[1], rotation_theta_phi[0], rotation_theta_phi[1])
         VELs['theta'] = VELs['theta'] / np.max(np.abs(VELs['theta']))
         VELs['phi'] = VELs['phi'] / np.max(np.abs(VELs['phi']))
-        ax.plot(ff / units.MHz, np.abs(VELs['theta']), label=f'eTheta LPDA {(180*units.deg-inc_zen)/units.deg:.0f}deg', color='blue')
-        ax.plot(ff / units.MHz, np.abs(VELs['phi']), label=f'ePhi LPDA {(180*units.deg-inc_zen)/units.deg:.0f}deg')
+        ax.plot(ff / units.MHz, np.abs(VELs['theta']), label=f'Backlobe', color='blue')
+        # ax.plot(ff / units.MHz, np.abs(VELs['phi']), label=f'ePhi LPDA {(180*units.deg-inc_zen)/units.deg:.0f}deg')
 
         # Linear fit
         # fit = np.polyfit(ff[fitmask]/units.MHz, np.abs(VELs['theta'])[fitmask], 1)
@@ -93,8 +93,21 @@ for inc_azi in inc_azis:
         # ax.plot(ff / units.MHz, np.abs(VELs['theta']), '--', label='eTheta bicone (air)')
         # ax.plot(ff / units.MHz, np.abs(VELs['phi']), '--', label='ePhi bicone (air)')
 
-        ax.set_title(f'LPDA Response at {inc_azi/units.deg:.0f}deg Azimuth, {inc_zen/units.deg:.0f}deg Zenith above/below')
+        ax.set_title(f'LPDA Response')
         ax.legend()
+        
+        # Add text below legend
+        textstr = '\n'.join((
+            r'Zenith $%.0f^\circ$' % (inc_zen/units.deg, ),
+            r'Azimuth $%.0f^\circ$' % (inc_azi/units.deg, )))
+        
+        # these are matplotlib.patch.Patch properties
+        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+
+        # place a text box in upper left in axes coords
+        ax.text(0.05, 0.75, textstr, transform=ax.transAxes, fontsize=10,
+                verticalalignment='top', bbox=props)
+
         ax.set_ylabel("Normalized Heff")
         ax.set_xlabel("frequency [MHz]")
         ax.set_xlim(0, 500)
