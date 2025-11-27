@@ -105,8 +105,8 @@ for inc_azi in inc_azis:
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
 
         # place a text box in upper left in axes coords
-        ax.text(0.05, 0.75, textstr, transform=ax.transAxes, fontsize=10,
-                verticalalignment='top', bbox=props)
+        ax.text(0.95, 0.85, textstr, transform=ax.transAxes, fontsize=10,
+                verticalalignment='top', horizontalalignment='right', bbox=props)
 
         ax.set_ylabel("Normalized Heff")
         ax.set_xlabel("frequency [MHz]")
