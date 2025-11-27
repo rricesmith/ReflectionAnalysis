@@ -34,9 +34,17 @@ for inc_azi in inc_azis:
 
         fig, (ax) = plt.subplots(1, 1, sharey=True)
 
-        VELs = LPDA_antenna.get_antenna_response_vectorized(ff, inc_zen, inc_azi,
+        VELs_front = LPDA_antenna.get_antenna_response_vectorized(ff, inc_zen, inc_azi,
                                                     orientation_theta_phi[0], orientation_theta_phi[1], rotation_theta_phi[0], rotation_theta_phi[1])
-        VELs['theta'] = VELs['theta'] / np.max(np.abs(VELs['theta']))
+        
+        VELs_back = LPDA_antenna.get_antenna_response_vectorized(ff, 180*units.deg-inc_zen, inc_azi,
+                                                    orientation_theta_phi[0], orientation_theta_phi[1], rotation_theta_phi[0], rotation_theta_phi[1])
+
+        # Normalize to the larger of the two sets
+        norm_factor = max(np.max(np.abs(VELs_front['theta'])), np.max(np.abs(VELs_back['theta'])))
+
+        VELs = VELs_front
+        VELs['theta'] = VELs['theta'] / norm_factor
         VELs['phi'] = VELs['phi'] / np.max(np.abs(VELs['phi']))
         ax.plot(ff / units.MHz, np.abs(VELs['theta']), label=f'Frontlobe', color='red')
         # ax.plot(ff / units.MHz, np.abs(VELs['phi']), label=f'ePhi LPDA {inc_zen/units.deg:.0f}deg')
@@ -56,9 +64,8 @@ for inc_azi in inc_azis:
         #     continue
         # ax.plot(ff[fitmask] / units.MHz, inverse_func(ff[fitmask]/units.MHz, *fit), label=f'Fit {fit[0]:.5f}/(x+{fit[1]:.2f})+{fit[2]:.2f}', color='red', linestyle='--')
 
-        VELs = LPDA_antenna.get_antenna_response_vectorized(ff, 180*units.deg-inc_zen, inc_azi,
-                                                    orientation_theta_phi[0], orientation_theta_phi[1], rotation_theta_phi[0], rotation_theta_phi[1])
-        VELs['theta'] = VELs['theta'] / np.max(np.abs(VELs['theta']))
+        VELs = VELs_back
+        VELs['theta'] = VELs['theta'] / norm_factor
         VELs['phi'] = VELs['phi'] / np.max(np.abs(VELs['phi']))
         ax.plot(ff / units.MHz, np.abs(VELs['theta']), label=f'Backlobe', color='blue')
         # ax.plot(ff / units.MHz, np.abs(VELs['phi']), label=f'ePhi LPDA {(180*units.deg-inc_zen)/units.deg:.0f}deg')
