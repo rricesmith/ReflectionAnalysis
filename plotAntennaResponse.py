@@ -101,6 +101,7 @@ for inc_azi in inc_azis:
 
         savename = f'plots/AntennaResponse_Zen{inc_zen/units.deg:.0f}deg_Azi{inc_azi/units.deg:.0f}deg.png'
         plt.savefig(savename)
+        plt.close(fig)
         ic(f'Saved {savename}')
 
 quit()
