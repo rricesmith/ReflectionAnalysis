@@ -689,7 +689,6 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     base_config_bl_cuts = {'data': direct_bl_pass, 'type': 'hist', 'label': 'Backlobe Sim (Hist, Pass BL Cuts)'}
     
     backlobe_cut_string = f"Backlobe Cuts: SNR < {cuts['snr_max']} & BL-$\chi$ > SNR Line & RCR-$\chi$ - BL-$\chi$ < -{cuts['chi_diff_threshold']}"
-
     fig_bl, axs_bl = plt.subplots(2, 2, figsize=(12, 15))
     fig_bl.suptitle(f'Simulation: Backlobe Only (Backlobe All Cuts)\n{backlobe_cut_string}', fontsize=14)
     im_bl = plot_2x2_grid(fig_bl, axs_bl, base_config_bl_cuts, cuts, overlays=[], hist_bins_dict=hist_bins)
@@ -731,7 +730,7 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
         fig_bl_nl.tight_layout(rect=[0, 0.28, 1, 0.95])
     plt.savefig(f'{plot_folder}SimOnly_Backlobe_BacklobeCuts_NoLines_{date}.png')
     plt.close(fig_bl_nl)
-def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=None):
+def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=None, backlobe_2016_overlay=None):
     """
     Runs the full plotting and saving pipeline for a given station ID and its data.
     """
@@ -1138,7 +1137,7 @@ if __name__ == "__main__":
     station_ids_to_process = [13, 14, 15, 17, 18, 19, 30]
     HRAeventList = loadHRAfromH5(sim_file)
     direct_stations = [13, 14, 15, 17, 18, 19, 30]
-    reflected_stations = [113, 114, 115, 117, 118, 119, 130]
+    reflected_stations = [113,  114, 115, 117, 118, 119, 130]
     sim_direct, sim_reflected = get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct_stations, reflected_stations, sigma=sim_sigma)
 
     # --- Define Cuts & Bins ---
@@ -1187,6 +1186,11 @@ if __name__ == "__main__":
 
     coincidence_events = load_coincidence_events(coincidence_pickle_path, requested_coincidence_event_ids)
     coincidence_station_overlays = build_coincidence_station_overlays(coincidence_events, station_ids_to_process)
+
+    # --- Prepare "2016 Backlobe" Overlay ---
+    backlobe_2016_ids = [10449, 10466, 10231]
+    backlobe_2016_events = {k: v for k, v in coincidence_events.items() if k in backlobe_2016_ids}
+    backlobe_2016_station_overlays = build_coincidence_station_overlays(backlobe_2016_events, station_ids_to_process)
 
     plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_folder, date, rcr_cut_string)
 
@@ -1288,7 +1292,8 @@ if __name__ == "__main__":
         all_stations_unique_indices.append(final_indices)
         
         coincidence_overlay_for_station = coincidence_station_overlays.get(station_id)
-        run_analysis_for_station(station_id, station_data, station_event_ids, final_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=coincidence_overlay_for_station)
+        backlobe_2016_overlay_for_station = backlobe_2016_station_overlays.get(station_id)
+        run_analysis_for_station(station_id, station_data, station_event_ids, final_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=coincidence_overlay_for_station, backlobe_2016_overlay=backlobe_2016_overlay_for_station)
 
     # --- Run Analysis for Summed Stations ---
     if len(all_stations_data['snr']) > 1:
@@ -1297,6 +1302,7 @@ if __name__ == "__main__":
         summed_unique_indices = np.concatenate(all_stations_unique_indices)
         summed_station_id = '+'.join(map(str, station_ids_to_process))
         combined_coincidence_overlay = combine_coincidence_overlays(station_ids_to_process, coincidence_station_overlays)
-        run_analysis_for_station(summed_station_id, summed_station_data, summed_event_ids, summed_unique_indices, total_pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=combined_coincidence_overlay)
+        combined_backlobe_2016_overlay = combine_coincidence_overlays(station_ids_to_process, backlobe_2016_station_overlays)
+        run_analysis_for_station(summed_station_id, summed_station_data, summed_event_ids, summed_unique_indices, total_pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=combined_coincidence_overlay, backlobe_2016_overlay=combined_backlobe_2016_overlay)
     else:
         ic("Not enough station data to perform a summed analysis.")
