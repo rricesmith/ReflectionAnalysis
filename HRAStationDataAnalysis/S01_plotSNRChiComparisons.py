@@ -924,7 +924,7 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
 
     # --- Other Plots (Sim vs Data, etc.) ---
     sim_base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Backlobe Sim (Hist)'}
-    data_overlay_config = {'data': station_data, 'label': 'Data', 'style': {'marker': '.', 's': 5, 'alpha': 0.8, 'c': 'orangered'}}
+    data_overlay_config = {'data': station_data, 'label': 'Data', 'style': {'marker': '.', 's': 5, 'alpha': 0.75, 'c': 'black'}}
     reflected_overlay_config = {'data': sim_reflected, 'label': 'RCR Sim (Weighted)', 'style': {'s': 12, 'alpha': 0.5, 'color_by_weight': True, 'cmap': 'cool'}}
 
     # Data over Composite Sim Plot
