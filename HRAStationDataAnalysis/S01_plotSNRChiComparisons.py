@@ -257,6 +257,13 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct
     for data_dict in [direct_data, reflected_data]:
         for key in data_dict:
             data_dict[key] = np.array(data_dict[key])
+
+        # Filter out data where (RCRchi - BLchi) > 0.11
+        if len(data_dict['ChiRCR']) > 0:
+            mask = (data_dict['ChiRCR'] - data_dict['Chi2016']) <= 0.11
+            ic(f"Filtering simulation data: keeping {np.sum(mask)}/{len(mask)} events where (ChiRCR - Chi2016) <= 0.11")
+            for key in data_dict:
+                data_dict[key] = data_dict[key][mask]
             
     return direct_data, reflected_data
 
