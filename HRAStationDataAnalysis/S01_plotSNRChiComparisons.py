@@ -597,6 +597,23 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     plt.savefig(f'{plot_folder}SimOnly_Backlobe_NoCuts_{date}.png')
     plt.close(fig_bl_only)
 
+    # --- Plot 1d: Backlobe Only (No Cuts, No Lines) ---
+    ic("Generating simulation-only plots (Backlobe only, no cuts, no lines)...")
+    fig_bl_only_nl, axs_bl_only_nl = plt.subplots(2, 2, figsize=(12, 15))
+    fig_bl_only_nl.suptitle(f'Simulation: Backlobe Only (No Cuts, No Lines)\n{rcr_cut_string}', fontsize=14)
+    im_bl_only_nl = plot_2x2_grid(fig_bl_only_nl, axs_bl_only_nl, base_config, None, overlays=[], hist_bins_dict=hist_bins)
+
+    fig_bl_only_nl.text(0.5, 0.01, f"{direct_stats_rcr}\n\n{direct_stats_back}", ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+
+    if im_bl_only_nl:
+        fig_bl_only_nl.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_bl_only_nl = fig_bl_only_nl.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig_bl_only_nl.colorbar(im_bl_only_nl, cax=cbar_ax_bl_only_nl, label='Backlobe Weighted Counts (Evts/Yr)')
+    else:
+        fig_bl_only_nl.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}SimOnly_Backlobe_NoCuts_NoLines_{date}.png')
+    plt.close(fig_bl_only_nl)
+
 
     ic("Generating simulation-only comparison plots (RCR all cuts)...")
     direct_masks_rcr = get_all_cut_masks(sim_direct, cuts, cut_type='rcr')
