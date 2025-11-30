@@ -1024,6 +1024,92 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_NoCutsShown_Station{station_id}_{date}_MergedCoincidences.png')
         plt.close(fig_allc_merged)
 
+        # --- NEW PLOT: Data over Composite Sim + Backlobe 2016 (No Cuts) ---
+        if backlobe_2016_overlay:
+            ic("Generating data over simulation plot with Backlobe 2016 overlay (No Cuts)...")
+            
+            # Prepare Backlobe 2016 overlay data
+            bl_2016_data = {'snr': [], 'Chi2016': [], 'ChiRCR': []}
+            bl_2016_backlobe = backlobe_2016_overlay.get('Backlobe')
+            bl_2016_rcr = backlobe_2016_overlay.get('RCR')
+            
+            if bl_2016_backlobe:
+                for key in bl_2016_data:
+                    if key in bl_2016_backlobe:
+                        bl_2016_data[key].extend(bl_2016_backlobe[key])
+            if bl_2016_rcr:
+                for key in bl_2016_data:
+                    if key in bl_2016_rcr:
+                        bl_2016_data[key].extend(bl_2016_rcr[key])
+            
+            for key in bl_2016_data:
+                bl_2016_data[key] = np.array(bl_2016_data[key])
+            
+            if bl_2016_data['snr'].size > 0:
+                bl_2016_overlay_config = {
+                    'data': bl_2016_data,
+                    'label': 'Backlobe 2016',
+                    'style': {'marker': '^', 's': 55, 'alpha': 0.9, 'c': 'red', 'edgecolors': 'black', 'linewidths': 0.4}
+                }
+
+                # 1. Sims + Data + "Backlobe 2016"
+                fig_bl2016, axs_bl2016 = plt.subplots(2, 2, figsize=(12, 15))
+                fig_bl2016.suptitle(f'Data vs Composite Simulation + Backlobe 2016 - Station {station_id} (No Cuts Shown)\n{rcr_cut_string}', fontsize=14)
+                overlays_bl2016 = [reflected_overlay_config, data_overlay_config, bl_2016_overlay_config]
+                im_bl2016 = plot_2x2_grid(fig_bl2016, axs_bl2016, sim_base_config, None, overlays=overlays_bl2016, hist_bins_dict=hist_bins)
+                
+                fig_bl2016.text(0.25, 0.01, direct_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+                fig_bl2016.text(0.75, 0.01, reflected_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+                
+                if im_bl2016:
+                    fig_bl2016.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+                    cbar_ax_bl2016 = fig_bl2016.add_axes([0.91, 0.28, 0.02, 0.65])
+                    fig_bl2016.colorbar(im_bl2016, cax=cbar_ax_bl2016, label='Backlobe Weighted Counts (Evts/Yr)')
+                else:
+                    fig_bl2016.tight_layout(rect=[0, 0.28, 1, 0.95])
+                plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_Backlobe2016_Station{station_id}_{date}.png')
+                plt.close(fig_bl2016)
+
+                # 2. Sims + Data + "Coincidence" + "Backlobe 2016"
+                if coincidence_overlays_merged:
+                    fig_bl2016_coinc, axs_bl2016_coinc = plt.subplots(2, 2, figsize=(12, 15))
+                    fig_bl2016_coinc.suptitle(f'Data vs Composite Simulation + Coincidence + Backlobe 2016 - Station {station_id} (No Cuts Shown)\n{rcr_cut_string}', fontsize=14)
+                    # Use merged coincidence overlay (yellow circles)
+                    overlays_bl2016_coinc = [reflected_overlay_config, data_overlay_config, coincidence_overlays_merged[0], bl_2016_overlay_config]
+                    im_bl2016_coinc = plot_2x2_grid(fig_bl2016_coinc, axs_bl2016_coinc, sim_base_config, None, overlays=overlays_bl2016_coinc, hist_bins_dict=hist_bins)
+                    
+                    fig_bl2016_coinc.text(0.25, 0.01, direct_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+                    fig_bl2016_coinc.text(0.75, 0.01, reflected_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+                    
+                    if im_bl2016_coinc:
+                        fig_bl2016_coinc.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+                        cbar_ax_bl2016_coinc = fig_bl2016_coinc.add_axes([0.91, 0.28, 0.02, 0.65])
+                        fig_bl2016_coinc.colorbar(im_bl2016_coinc, cax=cbar_ax_bl2016_coinc, label='Backlobe Weighted Counts (Evts/Yr)')
+                    else:
+                        fig_bl2016_coinc.tight_layout(rect=[0, 0.28, 1, 0.95])
+                    plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_Backlobe2016_Coincidence_Station{station_id}_{date}.png')
+                    plt.close(fig_bl2016_coinc)
+
+                # 3. Sims + Data + "Backlobe" + "RCR" + "Backlobe 2016"
+                if coincidence_overlays:
+                    fig_bl2016_split, axs_bl2016_split = plt.subplots(2, 2, figsize=(12, 15))
+                    fig_bl2016_split.suptitle(f'Data vs Composite Simulation + Backlobe/RCR + Backlobe 2016 - Station {station_id} (No Cuts Shown)\n{rcr_cut_string}', fontsize=14)
+                    # coincidence_overlays contains separate Backlobe and RCR overlays
+                    overlays_bl2016_split = [reflected_overlay_config, data_overlay_config] + coincidence_overlays + [bl_2016_overlay_config]
+                    im_bl2016_split = plot_2x2_grid(fig_bl2016_split, axs_bl2016_split, sim_base_config, None, overlays=overlays_bl2016_split, hist_bins_dict=hist_bins)
+                    
+                    fig_bl2016_split.text(0.25, 0.01, direct_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+                    fig_bl2016_split.text(0.75, 0.01, reflected_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+                    
+                    if im_bl2016_split:
+                        fig_bl2016_split.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+                        cbar_ax_bl2016_split = fig_bl2016_split.add_axes([0.91, 0.28, 0.02, 0.65])
+                        fig_bl2016_split.colorbar(im_bl2016_split, cax=cbar_ax_bl2016_split, label='Backlobe Weighted Counts (Evts/Yr)')
+                    else:
+                        fig_bl2016_split.tight_layout(rect=[0, 0.28, 1, 0.95])
+                    plt.savefig(f'{plot_folder}Data_over_Sim_Composite_SNR_Chi_2x2_Backlobe2016_Split_Station{station_id}_{date}.png')
+                    plt.close(fig_bl2016_split)
+
     # --- Generate Master Plots for Passing Events ---
     # Only if Traces are available (implies single station processing with loaded traces)
     if 'Traces' in station_data:
