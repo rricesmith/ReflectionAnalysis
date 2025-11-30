@@ -9,6 +9,7 @@ import h5py
 import pickle
 from icecream import ic
 import configparser
+import json
 from HRAStationDataAnalysis.C_utils import getTimeEventMasks
 from HRASimulation.HRAEventObject import HRAevent 
 from HRAStationDataAnalysis.C03_coincidenceEventPlotting import plot_single_master_event
@@ -1274,9 +1275,16 @@ if __name__ == "__main__":
     coincidence_station_overlays = build_coincidence_station_overlays(coincidence_events, station_ids_to_process)
 
     # --- Prepare "2016 Backlobe" Overlay ---
-    backlobe_2016_ids = [10449, 10466, 10231]
-    backlobe_2016_events = {k: v for k, v in coincidence_events.items() if k in backlobe_2016_ids}
-    backlobe_2016_station_overlays = build_coincidence_station_overlays(backlobe_2016_events, station_ids_to_process)
+    json_path = 'StationDataAnalysis/2016FoundEvents.json'
+    if os.path.exists(json_path):
+        with open(json_path, 'r') as f:
+            found_events_json = json.load(f)
+        ic(f"Loaded 2016 Found Events from {json_path}")
+    else:
+        ic(f"Warning: JSON file not found at {json_path}")
+        found_events_json = {}
+
+    backlobe_2016_station_overlays = {}
 
     plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_folder, date, rcr_cut_string)
 
@@ -1300,6 +1308,37 @@ if __name__ == "__main__":
         snr_array = load_station_data(station_data_folder, date, station_id, 'SNR')
         Chi2016_array = load_station_data(station_data_folder, date, station_id, 'Chi2016')
         ChiRCR_array = load_station_data(station_data_folder, date, station_id, 'ChiRCR')
+
+        # --- Build Backlobe 2016 Overlay for this station ---
+        station_key = f"Station{station_id}Found"
+        target_times = found_events_json.get(station_key, [])
+        
+        bl_2016_entry = {
+            'Backlobe': {'snr': np.array([]), 'Chi2016': np.array([]), 'ChiRCR': np.array([])},
+            'Backlobe_event_ids': set(),
+            'RCR': {'snr': np.array([]), 'Chi2016': np.array([]), 'ChiRCR': np.array([])},
+            'RCR_event_ids': set(),
+            'RCR_annotations': []
+        }
+        
+        if target_times:
+            found_indices = []
+            for t in target_times:
+                # Use isclose to handle potential float precision issues
+                idxs = np.where(np.isclose(times, t, atol=0.1))[0]
+                if len(idxs) > 0:
+                    found_indices.extend(idxs)
+            
+            found_indices = np.unique(found_indices)
+            
+            if len(found_indices) > 0:
+                bl_2016_entry['Backlobe']['snr'] = snr_array[found_indices]
+                bl_2016_entry['Backlobe']['Chi2016'] = Chi2016_array[found_indices]
+                bl_2016_entry['Backlobe']['ChiRCR'] = ChiRCR_array[found_indices]
+                if 'event_ids_raw' in locals():
+                     bl_2016_entry['Backlobe_event_ids'].update(event_ids_raw[found_indices])
+        
+        backlobe_2016_station_overlays[station_id] = bl_2016_entry
         
         # Load additional data for master plots
         traces_array = load_station_data(station_data_folder, date, station_id, 'Traces')
