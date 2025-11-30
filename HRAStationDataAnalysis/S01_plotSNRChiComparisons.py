@@ -1323,13 +1323,18 @@ if __name__ == "__main__":
         
         if target_times:
             found_indices = []
+            # Convert times to int64 for exact second matching
+            # User specifies "no sub-second data", so we round to nearest second
+            times_int = np.round(times).astype(np.int64)
+            
             for t in target_times:
-                # Use isclose to handle potential float precision issues
-                idxs = np.where(np.isclose(times, t, atol=0.1))[0]
+                # Exact second match
+                idxs = np.where(times_int == int(t))[0]
                 if len(idxs) > 0:
                     found_indices.extend(idxs)
             
             found_indices = np.unique(found_indices)
+            ic(f"Station {station_id}: Found {len(found_indices)} Backlobe 2016 events matching {len(target_times)} target times.")
             
             if len(found_indices) > 0:
                 bl_2016_entry['Backlobe']['snr'] = snr_array[found_indices]
