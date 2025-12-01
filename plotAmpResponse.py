@@ -57,14 +57,6 @@ for amp in amplifiers:
     fft_noise_convolved = fft_noise * response
     trace_noise_convolved = np.fft.irfft(fft_noise_convolved, n=n_samples)
     
-    # Convolve Flat-5 Signal
-    fft_flat_convolved = fft_flat * response
-    trace_flat_convolved = np.fft.irfft(fft_flat_convolved, n=n_samples)
-    
-    # Determine limits from Flat-5 trace
-    # Use the maximum absolute value of the Flat-5 trace to set limits
-    max_limit = np.max(np.abs(trace_flat_convolved))
-    
     # Plot Frequency Spectrum (Magnitude) of Noise
     fft_mag = np.abs(fft_noise_convolved)
     
@@ -73,7 +65,9 @@ for amp in amplifiers:
     ax_freq.set_xlabel('Frequency [GHz]')
     ax_freq.set_ylabel('Amplitude')
     ax_freq.legend()
-    ax_freq.grid(True)
+    ax_freq.set_ylim(0, 3 * np.max(fft_mag))
+    ax_freq.set_xticks([])
+    ax_freq.set_yticks([])
 
     # Plot Time Trace of Noise
     ax_time.plot(t, trace_noise_convolved, label=f'Noise', linestyle='dashed', color=colors[amp], linewidth=2)
@@ -81,11 +75,13 @@ for amp in amplifiers:
     ax_time.set_xlabel('Time [ns]')
     ax_time.set_ylabel('Amplitude')
     
-    # Set limits based on Flat-5 signal
-    ax_time.set_ylim(-max_limit, max_limit)
+    # Set limits based on noise trace itself
+    max_time_val = np.max(np.abs(trace_noise_convolved))
+    ax_time.set_ylim(-3 * max_time_val, 3 * max_time_val)
     
     ax_time.legend()
-    ax_time.grid(True)
+    ax_time.set_xticks([])
+    ax_time.set_yticks([])
 
     fig_amp.tight_layout()
     fig_amp.savefig(f'plots/noiseAnalysis_{amp}.png')
