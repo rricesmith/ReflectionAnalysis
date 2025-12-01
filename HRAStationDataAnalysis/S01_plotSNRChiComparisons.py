@@ -259,10 +259,10 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name, direct
         for key in data_dict:
             data_dict[key] = np.array(data_dict[key])
 
-        # Filter out data where (RCRchi - BLchi) > 0.11
+        # Filter out data where (RCRchi - BLchi) > 0.15
         if len(data_dict['ChiRCR']) > 0:
-            mask = (data_dict['ChiRCR'] - data_dict['Chi2016']) <= 0.11
-            ic(f"Filtering simulation data: keeping {np.sum(mask)}/{len(mask)} events where (ChiRCR - Chi2016) <= 0.11")
+            mask = (data_dict['ChiRCR'] - data_dict['Chi2016']) <= 0.15
+            ic(f"Filtering simulation data: keeping {np.sum(mask)}/{len(mask)} events where (ChiRCR - Chi2016) <= 0.15")
             for key in data_dict:
                 data_dict[key] = data_dict[key][mask]
             
@@ -298,7 +298,7 @@ def get_all_cut_masks(data_dict, cuts, cut_type='rcr'):
         masks = {}
         masks['snr_cut'] = snr < cuts['snr_max']
         masks['snr_line_cut'] = chi2016 > chi_2016_snr_cut_values
-        masks['chi_diff_cut'] = chi_diff < -cuts['chi_diff_threshold']
+        masks['chi_diff_cut'] = (chi_diff < -cuts['chi_diff_threshold']) & (chi_diff > -cuts.get('chi_diff_max', 999))
         
         masks['snr_and_snr_line'] = masks['snr_cut'] & masks['snr_line_cut']
         masks['all_cuts'] = masks['snr_cut'] & masks['snr_line_cut'] & masks['chi_diff_cut']
@@ -377,14 +377,16 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
     
     elif plot_key == 'chi_vs_chi':
         chi_diff_max = cuts_dict.get('chi_diff_max', 1.5)
+        rcr_chi_cut_val = cuts_dict['chi_rcr_line_chi'][0]
+        bl_chi_cut_val = cuts_dict['chi_2016_line_chi'][0]
         
-        # RCR Region: ChiRCR > 0.8, ChiRCR > Chi2016 + threshold, ChiRCR < Chi2016 + max_diff
+        # RCR Region: ChiRCR > rcr_chi_cut_val, ChiRCR > Chi2016 + threshold, ChiRCR < Chi2016 + max_diff
         x = np.linspace(0, 1, 200)
         y_rcr_lower = x + chi_diff_threshold
         y_rcr_upper = x + chi_diff_max
         
         # Effective bounds for RCR region
-        y_lower_eff = np.maximum(0.8, y_rcr_lower)
+        y_lower_eff = np.maximum(rcr_chi_cut_val, y_rcr_lower)
         y_upper_eff = np.minimum(1.0, y_rcr_upper)
         
         # Only fill where lower < upper
@@ -392,27 +394,52 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
         if np.any(fill_mask):
             ax.fill_between(x[fill_mask], y_lower_eff[fill_mask], y_upper_eff[fill_mask], color='green', alpha=0.1, label='Pass RCR Cuts')
         
-        # Draw boundaries
-        ax.plot(x, y_rcr_lower, color='darkgreen', linestyle='--', linewidth=1.5, label='RCR Diff Cut')
-        ax.plot(x, y_rcr_upper, color='darkgreen', linestyle=':', linewidth=1.5, label='RCR Max Diff')
-        # ax.axhline(y=0.8, color='purple', linestyle='--', linewidth=1.5, label='RCR Chi Cut') 
-        ax.plot([0, 0.8], [0.8, 0.8], color='purple', linestyle='--', linewidth=1.5, label='RCR Chi Cut')
+        # Draw boundaries for RCR
+        # Only show lines where ChiRCR > rcr_chi_cut_val
+        mask_rcr_lines = y_rcr_lower > rcr_chi_cut_val
+        if np.any(mask_rcr_lines):
+             ax.plot(x[mask_rcr_lines], y_rcr_lower[mask_rcr_lines], color='darkgreen', linestyle='--', linewidth=1.5, label='RCR Diff Cut')
         
-        # Backlobe Region: ChiBL > 0.8, ChiRCR < Chi2016 - threshold
-        # For x (ChiBL) > 0.8, y (ChiRCR) < x - threshold
-        x_bl = np.linspace(0.8, 1.0, 100)
+        mask_rcr_max_lines = y_rcr_upper > rcr_chi_cut_val
+        if np.any(mask_rcr_max_lines):
+             ax.plot(x[mask_rcr_max_lines], y_rcr_upper[mask_rcr_max_lines], color='darkgreen', linestyle=':', linewidth=1.5, label='RCR Max Diff')
+
+        ax.plot([0, 1], [rcr_chi_cut_val, rcr_chi_cut_val], color='purple', linestyle='--', linewidth=1.5, label='RCR Chi Cut')
+        
+        # Backlobe Region: ChiBL > bl_chi_cut_val, ChiRCR < Chi2016 - threshold, ChiRCR > Chi2016 - max_diff
+        # For x (ChiBL) > bl_chi_cut_val, y (ChiRCR) < x - threshold
+        x_bl = np.linspace(0, 1, 200)
         y_bl_upper = x_bl - chi_diff_threshold
-        y_bl_lower = np.zeros_like(x_bl)
+        y_bl_lower = x_bl - chi_diff_max
         
-        # Ensure we don't shade below 0
-        y_bl_upper = np.maximum(0, y_bl_upper)
+        # Effective bounds for BL region
+        # We need x > bl_chi_cut_val
+        # And y < y_bl_upper
+        # And y > y_bl_lower
+        # And y > 0 (implicit)
         
-        ax.fill_between(x_bl, y_bl_lower, y_bl_upper, color='orange', alpha=0.1, label='Pass BL Cuts')
+        # We are filling between y_bl_lower and y_bl_upper, but only where x > bl_chi_cut_val
         
-        # Draw boundaries
-        ax.plot(x, x - chi_diff_threshold, color='darkorange', linestyle='--', linewidth=1.5, label='BL Diff Cut')
-        # ax.axvline(x=0.8, color='orange', linestyle='--', linewidth=1.5, label='BL Chi Cut')
-        ax.plot([0.8, 0.8], [0, 0.8], color='orange', linestyle='--', linewidth=1.5, label='BL Chi Cut')
+        # Also need to respect x > bl_chi_cut_val for the fill
+        fill_mask_bl = (x_bl > bl_chi_cut_val) & (y_bl_lower < y_bl_upper)
+        
+        # Also ensure y is within [0, 1]
+        y_bl_upper_eff = np.minimum(1.0, y_bl_upper)
+        y_bl_lower_eff = np.maximum(0.0, y_bl_lower)
+        
+        fill_mask_bl &= (y_bl_lower_eff < y_bl_upper_eff)
+
+        if np.any(fill_mask_bl):
+            ax.fill_between(x_bl[fill_mask_bl], y_bl_lower_eff[fill_mask_bl], y_bl_upper_eff[fill_mask_bl], color='orange', alpha=0.1, label='Pass BL Cuts')
+        
+        # Draw boundaries for BL
+        # Only show lines where ChiBL > bl_chi_cut_val
+        mask_bl_lines = x_bl > bl_chi_cut_val
+        if np.any(mask_bl_lines):
+            ax.plot(x_bl[mask_bl_lines], y_bl_upper[mask_bl_lines], color='darkorange', linestyle='--', linewidth=1.5, label='BL Diff Cut')
+            ax.plot(x_bl[mask_bl_lines], y_bl_lower[mask_bl_lines], color='darkorange', linestyle=':', linewidth=1.5, label='BL Max Diff')
+
+        ax.plot([bl_chi_cut_val, bl_chi_cut_val], [0, 1], color='orange', linestyle='--', linewidth=1.5, label='BL Chi Cut')
 
     elif plot_key == 'snr_vs_chidiff':
         chi_diff_max = cuts_dict.get('chi_diff_max', 1.5)
@@ -421,6 +448,7 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
         ax.axhline(y=chi_diff_max, color='darkgreen', linestyle=':', linewidth=1.5, label='RCR Max Diff')
         # Draw horizontal line for Chi difference cut (Backlobe)
         ax.axhline(y=-chi_diff_threshold, color='darkorange', linestyle='--', linewidth=1.5, label='BL Diff Cut')
+        ax.axhline(y=-chi_diff_max, color='darkorange', linestyle=':', linewidth=1.5, label='BL Max Diff')
 
 
 def plot_2x2_grid(fig, axs, base_data_config, cuts_dict, overlays=None, hist_bins_dict=None):
@@ -1286,14 +1314,14 @@ if __name__ == "__main__":
     cuts = {
         'snr_max': 50,
         'chi_rcr_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
-        'chi_rcr_line_chi': np.array([0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]),  # Flat cut at 0.8
+        'chi_rcr_line_chi': np.array([0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75]),  # Flat cut at 0.75
         'chi_diff_threshold': 0.0,
-        'chi_diff_max': 1.5,
+        'chi_diff_max': 0.15,
         'chi_2016_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
         'chi_2016_line_chi': np.array([0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75]) # Flat cut at 0.75
     }
     rcr_cut_string = f"RCR Cuts: SNR < {cuts['snr_max']} & RCR-$\chi$ > 0.75 & 0 < RCR-$\chi$ - BL-$\chi$ < {cuts['chi_diff_max']}"
-    backlobe_cut_string = f"Backlobe Cuts: SNR < {cuts['snr_max']} & BL-$\chi$ > 0.8 & RCR-$\chi$ - BL-$\chi$ < 0"
+    backlobe_cut_string = f"Backlobe Cuts: SNR < {cuts['snr_max']} & BL-$\chi$ > 0.75 & -{cuts['chi_diff_max']} < RCR-$\chi$ - BL-$\chi$ < 0"
     
     log_bins = np.logspace(np.log10(3), np.log10(100), 31)
     linear_bins = np.linspace(0, 1, 31)
