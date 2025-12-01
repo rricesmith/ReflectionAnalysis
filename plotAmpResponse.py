@@ -77,7 +77,7 @@ for amp in amplifiers:
     
     # Set limits based on noise trace itself
     max_time_val = np.max(np.abs(trace_noise_convolved))
-    ax_time.set_ylim(-3 * max_time_val, 3 * max_time_val)
+    ax_time.set_ylim(-4 * max_time_val, 4 * max_time_val)
     
     ax_time.legend()
     ax_time.set_xticks([])
