@@ -10,6 +10,7 @@ import pickle
 from icecream import ic
 import configparser
 import json
+from datetime import datetime
 from HRAStationDataAnalysis.C_utils import getTimeEventMasks
 from HRASimulation.HRAEventObject import HRAevent 
 from HRAStationDataAnalysis.C03_coincidenceEventPlotting import plot_single_master_event
@@ -41,6 +42,28 @@ def load_cuts_for_station(date, station_id, cuts_data_folder):
     except Exception as e:
         ic(f"Error loading cuts file {cuts_file}: {e}")
         return None
+
+def filter_unique_events_by_day(times, station_ids):
+    """
+    Returns a boolean mask of the same length as times/station_ids.
+    True means keep the event (it's the first one seen for that station/day).
+    False means it's a duplicate.
+    """
+    seen_combinations = set()
+    keep_mask = np.zeros(len(times), dtype=bool)
+    
+    for i, (t, sid) in enumerate(zip(times, station_ids)):
+        # Convert unix timestamp to date string (YYYY-MM-DD)
+        date_str = datetime.utcfromtimestamp(t).strftime('%Y-%m-%d')
+        combo = (sid, date_str)
+        
+        if combo not in seen_combinations:
+            seen_combinations.add(combo)
+            keep_mask[i] = True
+        else:
+            keep_mask[i] = False
+            
+    return keep_mask
 
 def loadHRAfromH5(filename):
     """
@@ -404,7 +427,8 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
         if np.any(mask_rcr_max_lines):
              ax.plot(x[mask_rcr_max_lines], y_rcr_upper[mask_rcr_max_lines], color='darkgreen', linestyle=':', linewidth=1.5, label='RCR Max Diff')
 
-        ax.plot([0, 1], [rcr_chi_cut_val, rcr_chi_cut_val], color='purple', linestyle='--', linewidth=1.5, label='RCR Chi Cut')
+        # RCR Chi Cut: Horizontal line from x=0 to x=rcr_chi_cut_val (diagonal intersection)
+        ax.plot([0, rcr_chi_cut_val], [rcr_chi_cut_val, rcr_chi_cut_val], color='purple', linestyle='--', linewidth=1.5, label='RCR Chi Cut')
         
         # Backlobe Region: ChiBL > bl_chi_cut_val, ChiRCR < Chi2016 - threshold, ChiRCR > Chi2016 - max_diff
         # For x (ChiBL) > bl_chi_cut_val, y (ChiRCR) < x - threshold
@@ -439,7 +463,8 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
             ax.plot(x_bl[mask_bl_lines], y_bl_upper[mask_bl_lines], color='darkorange', linestyle='--', linewidth=1.5, label='BL Diff Cut')
             ax.plot(x_bl[mask_bl_lines], y_bl_lower[mask_bl_lines], color='darkorange', linestyle=':', linewidth=1.5, label='BL Max Diff')
 
-        ax.plot([bl_chi_cut_val, bl_chi_cut_val], [0, 1], color='orange', linestyle='--', linewidth=1.5, label='BL Chi Cut')
+        # BL Chi Cut: Vertical line from y=0 to y=bl_chi_cut_val (diagonal intersection)
+        ax.plot([bl_chi_cut_val, bl_chi_cut_val], [0, bl_chi_cut_val], color='orange', linestyle='--', linewidth=1.5, label='BL Chi Cut')
 
     elif plot_key == 'snr_vs_chidiff':
         chi_diff_max = cuts_dict.get('chi_diff_max', 1.5)
@@ -811,6 +836,42 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
                      excluded_mask[idx] = True
                      ic(f"Excluding event {evt_id} from Station {st_id}")
 
+    # --- Apply Day-Cut (Uniqueness) ---
+    # For RCR
+    rcr_passing_indices = np.where(masks_rcr['all_cuts'])[0]
+    if len(rcr_passing_indices) > 0:
+        times_rcr = station_data['Time'][rcr_passing_indices]
+        sids_rcr = station_data['StationID'][rcr_passing_indices]
+        unique_mask_rcr = filter_unique_events_by_day(times_rcr, sids_rcr)
+        
+        # Update masks
+        # The indices that are False in unique_mask_rcr are the duplicates
+        duplicate_indices_rcr = rcr_passing_indices[~unique_mask_rcr]
+        masks_rcr['all_cuts'][duplicate_indices_rcr] = False
+        masks_rcr['day_cut_fail'] = np.zeros(len(station_data['snr']), dtype=bool)
+        masks_rcr['day_cut_fail'][duplicate_indices_rcr] = True
+        
+        ic(f"RCR Day Cut: Removed {len(duplicate_indices_rcr)} duplicates.")
+    else:
+        masks_rcr['day_cut_fail'] = np.zeros(len(station_data['snr']), dtype=bool)
+
+    # For Backlobe
+    bl_passing_indices = np.where(masks_backlobe['all_cuts'])[0]
+    if len(bl_passing_indices) > 0:
+        times_bl = station_data['Time'][bl_passing_indices]
+        sids_bl = station_data['StationID'][bl_passing_indices]
+        unique_mask_bl = filter_unique_events_by_day(times_bl, sids_bl)
+        
+        # Update masks
+        duplicate_indices_bl = bl_passing_indices[~unique_mask_bl]
+        masks_backlobe['all_cuts'][duplicate_indices_bl] = False
+        masks_backlobe['day_cut_fail'] = np.zeros(len(station_data['snr']), dtype=bool)
+        masks_backlobe['day_cut_fail'][duplicate_indices_bl] = True
+        
+        ic(f"Backlobe Day Cut: Removed {len(duplicate_indices_bl)} duplicates.")
+    else:
+        masks_backlobe['day_cut_fail'] = np.zeros(len(station_data['snr']), dtype=bool)
+
     # Update masks to exclude these events from passing
     masks_rcr['all_cuts'] &= ~excluded_mask
     masks_backlobe['all_cuts'] &= ~excluded_mask
@@ -855,11 +916,25 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     # Create data subsets for overlay
     data_snr_snr_line = {key: station_data[key][masks_rcr['snr_and_snr_line']] for key in station_data}
     data_all_cuts = {key: station_data[key][masks_rcr['all_cuts']] for key in station_data}
+    data_bl_all_cuts = {key: station_data[key][masks_backlobe['all_cuts']] for key in station_data}
 
     count_snr_snr_line = len(data_snr_snr_line['snr'])
     count_all_cuts = len(data_all_cuts['snr'])
+    count_bl_all_cuts = len(data_bl_all_cuts['snr'])
 
-    data_overlays = [
+    data_overlays = []
+
+    # Add Excluded/Failed Events Overlay (First, so it's at the bottom)
+    fail_mask = excluded_mask | masks_rcr.get('day_cut_fail', False) | masks_backlobe.get('day_cut_fail', False)
+    if np.any(fail_mask):
+        data_excluded = {key: station_data[key][fail_mask] for key in station_data}
+        data_overlays.append({
+            'data': data_excluded,
+            'label': f'Fail Cuts (N={np.sum(fail_mask)})',
+            'style': {'marker': 'X', 's': 20, 'alpha': 1.0, 'c': 'black', 'edgecolors': 'white', 'linewidths': 0.5}
+        })
+
+    data_overlays.extend([
         {
             'data': data_snr_snr_line,
             'label': f'Pass Chi-cut (N={count_snr_snr_line})',
@@ -868,18 +943,14 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         {
             'data': data_all_cuts,
             'label': f'Pass RCR Cuts (N={count_all_cuts})',
-            'style': {'marker': '*', 's': 25, 'alpha': 0.9, 'c': 'magenta'}
+            'style': {'marker': '*', 's': 60, 'alpha': 0.9, 'c': 'purple'}
+        },
+        {
+            'data': data_bl_all_cuts,
+            'label': f'Pass BL Cuts (N={count_bl_all_cuts})',
+            'style': {'marker': '*', 's': 60, 'alpha': 0.9, 'c': 'blue'}
         }
-    ]
-
-    # Add Excluded Events Overlay
-    if np.any(excluded_mask):
-        data_excluded = {key: station_data[key][excluded_mask] for key in station_data}
-        data_overlays.append({
-            'data': data_excluded,
-            'label': 'Fail Cuts',
-            'style': {'marker': 'X', 's': 60, 'alpha': 1.0, 'c': 'black', 'edgecolors': 'white', 'linewidths': 0.5}
-        })
+    ])
 
     coincidence_overlays = []
     coinc_backlobe_points = 0
@@ -960,6 +1031,13 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     plot_2x2_grid(fig1, axs1, base_data_config, cuts, overlays=data_overlays)
     rcr_stats_str = calculate_cut_stats_table(station_data, cuts, is_sim=False, title="Data Stats (RCR Cuts)", pre_mask_count=pre_mask_count, cut_type='rcr')
     backlobe_stats_str = calculate_cut_stats_table(station_data, cuts, is_sim=False, title="Data Stats (Backlobe Cuts)", pre_mask_count=pre_mask_count, cut_type='backlobe')
+    
+    # Add Day Cut Failures to stats string
+    rcr_day_fails = np.sum(masks_rcr.get('day_cut_fail', False))
+    bl_day_fails = np.sum(masks_backlobe.get('day_cut_fail', False))
+    
+    rcr_stats_str += f"\n- Day Cut Failures: {rcr_day_fails}"
+    backlobe_stats_str += f"\n- Day Cut Failures: {bl_day_fails}"
     
     fig1.text(0.25, 0.01, rcr_stats_str, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
     fig1.text(0.75, 0.01, backlobe_stats_str, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
