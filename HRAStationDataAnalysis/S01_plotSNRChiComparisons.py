@@ -285,7 +285,7 @@ def get_all_cut_masks(data_dict, cuts, cut_type='rcr'):
         masks = {}
         masks['snr_cut'] = snr < cuts['snr_max']
         masks['snr_line_cut'] = chircr > chi_rcr_snr_cut_values
-        masks['chi_diff_cut'] = chi_diff > cuts['chi_diff_threshold']
+        masks['chi_diff_cut'] = (chi_diff > cuts['chi_diff_threshold']) & (chi_diff < cuts.get('chi_diff_max', 999))
         
         masks['snr_and_snr_line'] = masks['snr_cut'] & masks['snr_line_cut']
         masks['all_cuts'] = masks['snr_cut'] & masks['snr_line_cut'] & masks['chi_diff_cut']
@@ -376,23 +376,47 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
         ax.plot(snr_line_snr, snr_line_chi, color='orange', linestyle='--', linewidth=1.5, label='BL Cut')
     
     elif plot_key == 'chi_vs_chi':
-        # Draw Chi difference cut line: ChiRCR = Chi2016 + threshold (RCR)
-        x_vals = np.linspace(0, 1, 100)
-        y_vals_rcr = x_vals + chi_diff_threshold
-        valid_mask_rcr = y_vals_rcr <= 1
-        if np.any(valid_mask_rcr):
-            ax.plot(x_vals[valid_mask_rcr], y_vals_rcr[valid_mask_rcr], color='darkgreen', linestyle='--', linewidth=1.5, label='RCR Diff Cut')
+        chi_diff_max = cuts_dict.get('chi_diff_max', 1.5)
         
-        # Draw Chi difference cut line: ChiRCR = Chi2016 - threshold (Backlobe)
-        # Note: Backlobe cut is ChiRCR - Chi2016 < -threshold  => ChiRCR < Chi2016 - threshold
-        y_vals_bl = x_vals - chi_diff_threshold
-        valid_mask_bl = y_vals_bl >= 0
-        if np.any(valid_mask_bl):
-            ax.plot(x_vals[valid_mask_bl], y_vals_bl[valid_mask_bl], color='darkorange', linestyle='--', linewidth=1.5, label='BL Diff Cut')
-    
+        # RCR Region: ChiRCR > 0.8, ChiRCR > Chi2016 + threshold, ChiRCR < Chi2016 + max_diff
+        x = np.linspace(0, 1, 200)
+        y_rcr_lower = x + chi_diff_threshold
+        y_rcr_upper = x + chi_diff_max
+        
+        # Effective bounds for RCR region
+        y_lower_eff = np.maximum(0.8, y_rcr_lower)
+        y_upper_eff = np.minimum(1.0, y_rcr_upper)
+        
+        # Only fill where lower < upper
+        fill_mask = y_lower_eff < y_upper_eff
+        if np.any(fill_mask):
+            ax.fill_between(x[fill_mask], y_lower_eff[fill_mask], y_upper_eff[fill_mask], color='green', alpha=0.1, label='Pass RCR Cuts')
+        
+        # Draw boundaries
+        ax.plot(x, y_rcr_lower, color='darkgreen', linestyle='--', linewidth=1.5, label='RCR Diff Cut')
+        ax.plot(x, y_rcr_upper, color='darkgreen', linestyle=':', linewidth=1.5, label='RCR Max Diff')
+        ax.axhline(y=0.8, color='purple', linestyle='--', linewidth=1.5, label='RCR Chi Cut') 
+        
+        # Backlobe Region: ChiBL > 0.8, ChiRCR < Chi2016 - threshold
+        # For x (ChiBL) > 0.8, y (ChiRCR) < x - threshold
+        x_bl = np.linspace(0.8, 1.0, 100)
+        y_bl_upper = x_bl - chi_diff_threshold
+        y_bl_lower = np.zeros_like(x_bl)
+        
+        # Ensure we don't shade below 0
+        y_bl_upper = np.maximum(0, y_bl_upper)
+        
+        ax.fill_between(x_bl, y_bl_lower, y_bl_upper, color='orange', alpha=0.1, label='Pass BL Cuts')
+        
+        # Draw boundaries
+        ax.plot(x, x - chi_diff_threshold, color='darkorange', linestyle='--', linewidth=1.5, label='BL Diff Cut')
+        ax.axvline(x=0.8, color='orange', linestyle='--', linewidth=1.5, label='BL Chi Cut')
+
     elif plot_key == 'snr_vs_chidiff':
+        chi_diff_max = cuts_dict.get('chi_diff_max', 1.5)
         # Draw horizontal line for Chi difference cut (RCR)
         ax.axhline(y=chi_diff_threshold, color='darkgreen', linestyle='--', linewidth=1.5, label='RCR Diff Cut')
+        ax.axhline(y=chi_diff_max, color='darkgreen', linestyle=':', linewidth=1.5, label='RCR Max Diff')
         # Draw horizontal line for Chi difference cut (Backlobe)
         ax.axhline(y=-chi_diff_threshold, color='darkorange', linestyle='--', linewidth=1.5, label='BL Diff Cut')
 
@@ -537,8 +561,8 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     """Create simulation-only comparison plots with and without RCR cuts."""
     ic("Generating simulation-only comparison plots (no cuts)...")
 
-    base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Backlobe Sim (Hist)'}
-    reflected_overlay = {'data': sim_reflected, 'label': 'RCR Sim (Weighted)', 'style': {'s': 12, 'alpha': 0.5, 'color_by_weight': True, 'cmap': 'cool'}}
+    base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Backlobe Sim'}
+    reflected_overlay = {'data': sim_reflected, 'label': 'RCR Sim', 'style': {'s': 12, 'alpha': 0.5, 'color_by_weight': True, 'cmap': 'cool'}}
 
     # --- Plot 1: No Cuts (With Lines) ---
     fig_raw, axs_raw = plt.subplots(2, 2, figsize=(12, 15))
@@ -731,7 +755,7 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
         fig_bl_nl.tight_layout(rect=[0, 0.28, 1, 0.95])
     plt.savefig(f'{plot_folder}SimOnly_Backlobe_BacklobeCuts_NoLines_{date}.png')
     plt.close(fig_bl_nl)
-def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=None, backlobe_2016_overlay=None):
+def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=None, backlobe_2016_overlay=None, excluded_events=None):
     """
     Runs the full plotting and saving pipeline for a given station ID and its data.
     """
@@ -740,6 +764,21 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     # --- Get Masks and Save Passing Events ---
     masks_rcr = get_all_cut_masks(station_data, cuts, cut_type='rcr')
     masks_backlobe = get_all_cut_masks(station_data, cuts, cut_type='backlobe')
+    
+    # --- Handle Excluded Events ---
+    excluded_mask = np.zeros(len(event_ids), dtype=bool)
+    if excluded_events and 'StationID' in station_data:
+        st_ids = station_data['StationID']
+        # Create a set for faster lookup
+        excluded_set = set(excluded_events)
+        for idx, (evt_id, st_id) in enumerate(zip(event_ids, st_ids)):
+             if (st_id, evt_id) in excluded_set:
+                 excluded_mask[idx] = True
+                 ic(f"Excluding event {evt_id} from Station {st_id}")
+
+    # Update masks to exclude these events from passing
+    masks_rcr['all_cuts'] &= ~excluded_mask
+    masks_backlobe['all_cuts'] &= ~excluded_mask
     
     passing_events_to_save = {}
     
@@ -788,15 +827,24 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     data_overlays = [
         {
             'data': data_snr_snr_line,
-            'label': f'Pass SNR+SNR Line (N={count_snr_snr_line})',
+            'label': f'Pass Chi-cut (N={count_snr_snr_line})',
             'style': {'marker': 'x', 's': 15, 'alpha': 0.8, 'c': 'darkturquoise'}
         },
         {
             'data': data_all_cuts,
-            'label': f'Pass All Cuts (N={count_all_cuts})',
+            'label': f'Pass RCR Cuts (N={count_all_cuts})',
             'style': {'marker': '*', 's': 25, 'alpha': 0.9, 'c': 'magenta'}
         }
     ]
+
+    # Add Excluded Events Overlay
+    if np.any(excluded_mask):
+        data_excluded = {key: station_data[key][excluded_mask] for key in station_data}
+        data_overlays.append({
+            'data': data_excluded,
+            'label': 'Fail Cuts',
+            'style': {'marker': 'X', 's': 60, 'alpha': 1.0, 'c': 'black', 'edgecolors': 'white', 'linewidths': 0.5}
+        })
 
     coincidence_overlays = []
     coinc_backlobe_points = 0
@@ -923,9 +971,9 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         plt.close(fig1c_nc)
 
     # --- Other Plots (Sim vs Data, etc.) ---
-    sim_base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Backlobe Sim (Hist)'}
+    sim_base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Backlobe Sim'}
     data_overlay_config = {'data': station_data, 'label': 'Data', 'style': {'marker': '.', 's': 5, 'alpha': 0.75, 'c': 'black'}}
-    reflected_overlay_config = {'data': sim_reflected, 'label': 'RCR Sim (Weighted)', 'style': {'s': 12, 'alpha': 0.5, 'color_by_weight': True, 'cmap': 'cool'}}
+    reflected_overlay_config = {'data': sim_reflected, 'label': 'RCR Sim', 'style': {'s': 12, 'alpha': 0.5, 'color_by_weight': True, 'cmap': 'cool'}}
 
     # Data over Composite Sim Plot
     ic("Generating data over composite simulation plot...")
@@ -1231,16 +1279,14 @@ if __name__ == "__main__":
     cuts = {
         'snr_max': 50,
         'chi_rcr_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
-        # 'chi_rcr_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]),  # More aggressive cut
-        'chi_rcr_line_chi': np.array([0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75]),  # Flat cut
-        # 'chi_diff_threshold': 0.08,
-        'chi_diff_threshold': 0.0,  # Just closer to RCR than 2016
+        'chi_rcr_line_chi': np.array([0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]),  # Flat cut at 0.8
+        'chi_diff_threshold': 0.0,
+        'chi_diff_max': 1.5,
         'chi_2016_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
-        # 'chi_2016_line_chi': np.array([0.65, 0.65, 0.7, 0.76, 0.77, 0.81, 0.83]) # More aggressive cut
         'chi_2016_line_chi': np.array([0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]) # Flat cut at 0.8
     }
-    rcr_cut_string = f"RCR Cuts: SNR < {cuts['snr_max']} & RCR-$\chi$ > SNR Line & RCR-$\chi$ - BL-$\chi$ > {cuts['chi_diff_threshold']}"
-    backlobe_cut_string = f"Backlobe Cuts: SNR < {cuts['snr_max']} & BL-$\chi$ > SNR Line & RCR-$\chi$ - BL-$\chi$ < -{cuts['chi_diff_threshold']}"
+    rcr_cut_string = f"RCR Cuts: SNR < {cuts['snr_max']} & RCR-$\chi$ > 0.8 & 0 < RCR-$\chi$ - BL-$\chi$ < {cuts['chi_diff_max']}"
+    backlobe_cut_string = f"Backlobe Cuts: SNR < {cuts['snr_max']} & BL-$\chi$ > 0.8 & RCR-$\chi$ - BL-$\chi$ < 0"
     
     log_bins = np.logspace(np.log10(3), np.log10(100), 31)
     linear_bins = np.linspace(0, 1, 31)
@@ -1288,8 +1334,14 @@ if __name__ == "__main__":
 
     plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_folder, date, rcr_cut_string)
 
+    excluded_events = [
+        (18, 82), (18, 520), (18, 681),
+        (15, 1472768),
+        (19, 3621320), (19, 4599318), (19, 4599919)
+    ]
+
     # --- Main Loop for Individual and Summed Stations ---
-    all_stations_data = {key: [] for key in ['snr', 'Chi2016', 'ChiRCR']}
+    all_stations_data = {key: [] for key in ['snr', 'Chi2016', 'ChiRCR', 'StationID']}
     all_stations_event_ids = []
     all_stations_unique_indices = []
     total_pre_mask_count = 0
@@ -1388,6 +1440,7 @@ if __name__ == "__main__":
             'ChiRCR': ChiRCR_array[initial_mask][final_indices],
             'Time': times[initial_mask][final_indices]
         }
+        station_data['StationID'] = np.full(len(station_data['snr']), station_id, dtype=int)
         
         # Add optional data if available and matching length
         if traces_array.size > 0:
@@ -1423,7 +1476,7 @@ if __name__ == "__main__":
         
         coincidence_overlay_for_station = coincidence_station_overlays.get(station_id)
         backlobe_2016_overlay_for_station = backlobe_2016_station_overlays.get(station_id)
-        run_analysis_for_station(station_id, station_data, station_event_ids, final_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=coincidence_overlay_for_station, backlobe_2016_overlay=backlobe_2016_overlay_for_station)
+        run_analysis_for_station(station_id, station_data, station_event_ids, final_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=coincidence_overlay_for_station, backlobe_2016_overlay=backlobe_2016_overlay_for_station, excluded_events=excluded_events)
 
     # --- Run Analysis for Summed Stations ---
     if len(all_stations_data['snr']) > 1:
@@ -1433,6 +1486,6 @@ if __name__ == "__main__":
         summed_station_id = '+'.join(map(str, station_ids_to_process))
         combined_coincidence_overlay = combine_coincidence_overlays(station_ids_to_process, coincidence_station_overlays)
         combined_backlobe_2016_overlay = combine_coincidence_overlays(station_ids_to_process, backlobe_2016_station_overlays)
-        run_analysis_for_station(summed_station_id, summed_station_data, summed_event_ids, summed_unique_indices, total_pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=combined_coincidence_overlay, backlobe_2016_overlay=combined_backlobe_2016_overlay)
+        run_analysis_for_station(summed_station_id, summed_station_data, summed_event_ids, summed_unique_indices, total_pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=combined_coincidence_overlay, backlobe_2016_overlay=combined_backlobe_2016_overlay, excluded_events=excluded_events)
     else:
         ic("Not enough station data to perform a summed analysis.")
