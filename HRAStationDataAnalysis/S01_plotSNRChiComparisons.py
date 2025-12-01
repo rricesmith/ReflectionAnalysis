@@ -395,7 +395,8 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
         # Draw boundaries
         ax.plot(x, y_rcr_lower, color='darkgreen', linestyle='--', linewidth=1.5, label='RCR Diff Cut')
         ax.plot(x, y_rcr_upper, color='darkgreen', linestyle=':', linewidth=1.5, label='RCR Max Diff')
-        ax.axhline(y=0.8, color='purple', linestyle='--', linewidth=1.5, label='RCR Chi Cut') 
+        # ax.axhline(y=0.8, color='purple', linestyle='--', linewidth=1.5, label='RCR Chi Cut') 
+        ax.plot([0, 0.8], [0.8, 0.8], color='purple', linestyle='--', linewidth=1.5, label='RCR Chi Cut')
         
         # Backlobe Region: ChiBL > 0.8, ChiRCR < Chi2016 - threshold
         # For x (ChiBL) > 0.8, y (ChiRCR) < x - threshold
@@ -410,7 +411,8 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
         
         # Draw boundaries
         ax.plot(x, x - chi_diff_threshold, color='darkorange', linestyle='--', linewidth=1.5, label='BL Diff Cut')
-        ax.axvline(x=0.8, color='orange', linestyle='--', linewidth=1.5, label='BL Chi Cut')
+        # ax.axvline(x=0.8, color='orange', linestyle='--', linewidth=1.5, label='BL Chi Cut')
+        ax.plot([0.8, 0.8], [0, 0.8], color='orange', linestyle='--', linewidth=1.5, label='BL Chi Cut')
 
     elif plot_key == 'snr_vs_chidiff':
         chi_diff_max = cuts_dict.get('chi_diff_max', 1.5)
@@ -771,10 +773,15 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         st_ids = station_data['StationID']
         # Create a set for faster lookup
         excluded_set = set(excluded_events)
+        
+        # Only mark as excluded if it passes the cuts we make (RCR cuts)
+        passing_rcr = masks_rcr['all_cuts']
+        
         for idx, (evt_id, st_id) in enumerate(zip(event_ids, st_ids)):
              if (st_id, evt_id) in excluded_set:
-                 excluded_mask[idx] = True
-                 ic(f"Excluding event {evt_id} from Station {st_id}")
+                 if passing_rcr[idx]:
+                     excluded_mask[idx] = True
+                     ic(f"Excluding event {evt_id} from Station {st_id}")
 
     # Update masks to exclude these events from passing
     masks_rcr['all_cuts'] &= ~excluded_mask
@@ -1283,9 +1290,9 @@ if __name__ == "__main__":
         'chi_diff_threshold': 0.0,
         'chi_diff_max': 1.5,
         'chi_2016_line_snr': np.array([0, 7, 8.5, 15, 20, 30, 100]),
-        'chi_2016_line_chi': np.array([0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]) # Flat cut at 0.8
+        'chi_2016_line_chi': np.array([0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75]) # Flat cut at 0.75
     }
-    rcr_cut_string = f"RCR Cuts: SNR < {cuts['snr_max']} & RCR-$\chi$ > 0.8 & 0 < RCR-$\chi$ - BL-$\chi$ < {cuts['chi_diff_max']}"
+    rcr_cut_string = f"RCR Cuts: SNR < {cuts['snr_max']} & RCR-$\chi$ > 0.75 & 0 < RCR-$\chi$ - BL-$\chi$ < {cuts['chi_diff_max']}"
     backlobe_cut_string = f"Backlobe Cuts: SNR < {cuts['snr_max']} & BL-$\chi$ > 0.8 & RCR-$\chi$ - BL-$\chi$ < 0"
     
     log_bins = np.logspace(np.log10(3), np.log10(100), 31)
