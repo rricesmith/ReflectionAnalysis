@@ -1220,7 +1220,10 @@ if __name__ == "__main__":
         # Prepare Backlobe 2016 Overlay for this station
         bl_2016_entry = {
             'Backlobe': {'snr': [], 'Chi2016': [], 'ChiRCR': []},
-            'Backlobe_event_ids': set()
+            'Backlobe_event_ids': set(),
+            'RCR': {'snr': [], 'Chi2016': [], 'ChiRCR': []},
+            'RCR_event_ids': set(),
+            'RCR_annotations': []
         }
         
         if str(station_id) in found_events_json:
