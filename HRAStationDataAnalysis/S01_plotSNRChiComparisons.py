@@ -231,7 +231,7 @@ def combine_coincidence_overlays(station_ids, overlays_map):
 
         for bucket in ('Backlobe', 'RCR'):
             for key in ('snr', 'Chi2016', 'ChiRCR'):
-                combined[bucket][key].extend(station_overlay[bucket][key].tolist())
+                combined[bucket][key].extend(station_overlay[bucket][key])
 
         combined['Backlobe_event_ids'].update(station_overlay.get('Backlobe_event_ids', set()))
         combined['RCR_event_ids'].update(station_overlay.get('RCR_event_ids', set()))
