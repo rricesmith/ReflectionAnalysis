@@ -770,9 +770,9 @@ def plot_validation_pairs(pairs, special_event_ids, output_path, delta_cut):
     ax.set_xscale('log')
     ax.set_xlim(3, 100)
     ax.set_xlabel('Average SNR')
-    ax.set_ylabel('|Δ(ChiRCR - Chi2016)| between stations')
+    ax.set_ylabel(r'|Δ($\chi$RCR - $\chi$2016)| between stations')
     ax.grid(True, which='both', linestyle='--', alpha=0.3)
-    ax.axhline(delta_cut, color='dimgray', linestyle='--', linewidth=1, label=f'Delta cut ({delta_cut})')
+    ax.axhline(delta_cut, color='dimgray', linestyle='--', linewidth=1, label='_nolegend_')
     
     x_max = ax.get_xlim()[1]
     ax.text(
@@ -788,7 +788,7 @@ def plot_validation_pairs(pairs, special_event_ids, output_path, delta_cut):
 
     handles, labels, _ = add_validation_snr_points(ax, pairs, special_event_ids)
 
-    ax.set_title('Validation Event Chi Difference Spread (range shown for n>2)')
+    ax.set_title(r'Validation Event $\chi$ Difference Spread (range shown for n>2)')
     ax.legend(handles, labels, loc='upper left')
 
     fig.tight_layout()
@@ -885,8 +885,8 @@ def plot_delta_plane(
     else:
         fig = ax.figure
 
-    ax.set_xlabel('Larger Δ(ChiRCR - Chi2016)')
-    ax.set_ylabel('Smaller Δ(ChiRCR - Chi2016)')
+    ax.set_xlabel(r'Larger Δ($\chi$RCR - $\chi$2016)')
+    ax.set_ylabel(r'Smaller Δ($\chi$RCR - $\chi$2016)')
     ax.set_title(title)
     ax.grid(True, linestyle='--', alpha=0.3)
 
@@ -1113,8 +1113,8 @@ def plot_combined_delta_plane_with_validation(
     y_pad = 0.05 * (y_max - y_min) if y_max > y_min else 0.05 * max(1.0, abs(y_min) + abs(y_max))
 
     fig, ax = plt.subplots(figsize=(9, 6))
-    ax.set_xlabel('Larger Δ(ChiRCR - Chi2016)')
-    ax.set_ylabel('Smaller Δ(ChiRCR - Chi2016)')
+    ax.set_xlabel(r'Larger Δ($\chi$RCR - $\chi$2016)')
+    ax.set_ylabel(r'Smaller Δ($\chi$RCR - $\chi$2016)')
     ax.set_title(title)
     ax.grid(True, linestyle='--', alpha=0.3)
     ax.set_aspect('equal', adjustable='box')
@@ -1218,8 +1218,9 @@ def plot_single_scatter(
 
     ax.set_xscale('log')
     ax.set_xlim(3, 100)
+    ax.set_ylim(0, np.max(y_vals) * 1.05)
     ax.set_xlabel('Average SNR')
-    ax.set_ylabel('|ΔChi| between stations')
+    ax.set_ylabel(r'|Δ$\chi$| between stations')
     ax.grid(True, which='both', linestyle='--', alpha=0.3)
     ax.set_title(title)
 
@@ -1253,7 +1254,7 @@ def plot_single_scatter(
             color='dimgray',
             linestyle='--',
             linewidth=1,
-            label=f'Δ cut ({delta_cut})',
+            label='_nolegend_',
         )
         x_max = ax.get_xlim()[1]
         ax.text(
@@ -1313,9 +1314,9 @@ def plot_combined_snr_delta_with_validation(
     ax.set_xscale('log')
     ax.set_xlim(max(3.0, x_min * 0.95), max(100.0, x_max * 1.05))
     ax.set_xlabel('Average SNR')
-    ax.set_ylabel('|ΔChi| between stations')
+    ax.set_ylabel(r'|Δ$\chi$| between stations')
     ax.grid(True, which='both', linestyle='--', alpha=0.3)
-    ax.set_title('Chi Difference Spread vs Average SNR — Combined Pairs with Validation')
+    ax.set_title(r'$\chi$ Difference Spread vs Average SNR — Combined Pairs with Validation')
 
     handles = []
     labels = []
@@ -1375,7 +1376,7 @@ def plot_combined_snr_delta_with_validation(
         color='dimgray',
         linestyle='--',
         linewidth=1,
-        label=f'Δ cut ({delta_cut})',
+        label='_nolegend_',
         zorder=3,
     )
     x_max = ax.get_xlim()[1]
@@ -1579,7 +1580,7 @@ if __name__ == "__main__":
             cmap='Blues',
             marker='o',
             legend_label=direct_label,
-            title='Chi Difference Spread vs Average SNR (Direct Pairs)',
+            title=r'$\chi$ Difference Spread vs Average SNR (Direct Pairs)',
             output_path=direct_output,
             delta_cut=DELTA_CUT,
         )
@@ -1595,7 +1596,7 @@ if __name__ == "__main__":
             cmap='Purples',
             marker='^',
             legend_label=refl_label,
-            title='Chi Difference Spread vs Average SNR (Direct-Reflected Pairs)',
+            title=r'$\chi$ Difference Spread vs Average SNR (Direct-Reflected Pairs)',
             output_path=refl_output,
             delta_cut=DELTA_CUT,
         )
@@ -1610,7 +1611,7 @@ if __name__ == "__main__":
             cmap='Blues',
             marker='o',
             legend_label=direct_plane_label,
-            title='Chi Delta Plane (Direct Pairs)',
+            title=r'$\chi$ Delta Plane (Direct Pairs)',
             output_path=direct_plane_output,
         )
         ic(f"Saved direct pair delta plane plot to {direct_plane_output}")
@@ -1624,7 +1625,7 @@ if __name__ == "__main__":
             cmap='Purples',
             marker='^',
             legend_label=refl_plane_label,
-            title='Chi Delta Plane (Direct-Reflected Pairs)',
+            title=r'$\chi$ Delta Plane (Direct-Reflected Pairs)',
             output_path=refl_plane_output,
         )
         ic(f"Saved direct-reflected pair delta plane plot to {refl_plane_output}")
@@ -1638,7 +1639,7 @@ if __name__ == "__main__":
             cmap='Blues',
             marker='o',
             legend_label=direct_plane_cut_label,
-            title='Chi Delta Plane (Direct Pairs) — Quadrant Cut',
+            title=r'$\chi$ Delta Plane (Direct Pairs) — Quadrant Cut',
             output_path=direct_plane_cut_output,
         )
         ic(f"Saved direct pair delta plane cut plot to {direct_plane_cut_output}")
@@ -1652,7 +1653,7 @@ if __name__ == "__main__":
             cmap='Purples',
             marker='^',
             legend_label=refl_plane_cut_label,
-            title='Chi Delta Plane (Direct-Reflected Pairs) — Quadrant Cut',
+            title=r'$\chi$ Delta Plane (Direct-Reflected Pairs) — Quadrant Cut',
             output_path=refl_plane_cut_output,
         )
         ic(f"Saved direct-reflected delta plane cut plot to {refl_plane_cut_output}")
@@ -1698,7 +1699,7 @@ if __name__ == "__main__":
                 plot_simulation_with_validation(
                     direct_data,
                     legend_label=direct_label,
-                    title='Chi Difference Spread vs Average SNR (Direct Pairs) — With Validation',
+                    title=r'$\chi$ Difference Spread vs Average SNR (Direct Pairs) — With Validation',
                     output_path=overlay_direct_output,
                     cmap='Blues',
                     marker='o',
@@ -1715,7 +1716,7 @@ if __name__ == "__main__":
                 plot_simulation_with_validation(
                     refl_data,
                     legend_label=refl_label,
-                    title='Chi Difference Spread vs Average SNR (Direct-Reflected Pairs) — With Validation',
+                    title=r'$\chi$ Difference Spread vs Average SNR (Direct-Reflected Pairs) — With Validation',
                     output_path=overlay_refl_output,
                     cmap='Purples',
                     marker='^',
@@ -1732,7 +1733,7 @@ if __name__ == "__main__":
                 plot_delta_plane_with_validation(
                     direct_plane_data,
                     legend_label=direct_plane_label,
-                    title='Chi Delta Plane (Direct Pairs) — With Validation',
+                    title=r'$\chi$ Delta Plane (Direct Pairs) — With Validation',
                     output_path=overlay_direct_plane_output,
                     cmap='Blues',
                     marker='o',
@@ -1748,7 +1749,7 @@ if __name__ == "__main__":
                 plot_delta_plane_with_validation(
                     refl_plane_data,
                     legend_label=refl_plane_label,
-                    title='Chi Delta Plane (Direct-Reflected Pairs) — With Validation',
+                    title=r'$\chi$ Delta Plane (Direct-Reflected Pairs) — With Validation',
                     output_path=overlay_refl_plane_output,
                     cmap='Purples',
                     marker='^',
@@ -1764,7 +1765,7 @@ if __name__ == "__main__":
                 plot_delta_plane_with_validation(
                     direct_plane_cut,
                     legend_label=direct_plane_cut_label,
-                    title='Chi Delta Plane (Direct Pairs) — With Validation (Quadrant Cut)',
+                    title=r'$\chi$ Delta Plane (Direct Pairs) — With Validation (Quadrant Cut)',
                     output_path=overlay_direct_plane_cut_output,
                     cmap='Blues',
                     marker='o',
@@ -1781,7 +1782,7 @@ if __name__ == "__main__":
                 plot_delta_plane_with_validation(
                     refl_plane_cut,
                     legend_label=refl_plane_cut_label,
-                    title='Chi Delta Plane (Direct-Reflected Pairs) — With Validation (Quadrant Cut)',
+                    title=r'$\chi$ Delta Plane (Direct-Reflected Pairs) — With Validation (Quadrant Cut)',
                     output_path=overlay_refl_plane_cut_output,
                     cmap='Purples',
                     marker='^',
@@ -1800,7 +1801,7 @@ if __name__ == "__main__":
                     direct_plane_label,
                     refl_plane_data,
                     refl_plane_label,
-                    title='Chi Delta Plane — Combined Pairs with Validation',
+                    title=r'$\chi$ Delta Plane — Combined Pairs with Validation',
                     output_path=combined_plane_output,
                     validation_pairs=validation_pairs,
                     special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
@@ -1817,7 +1818,7 @@ if __name__ == "__main__":
                     direct_plane_cut_label,
                     refl_plane_cut,
                     refl_plane_cut_label,
-                    title='Chi Delta Plane — Combined Pairs with Validation (Quadrant Cut)',
+                    title=r'$\chi$ Delta Plane — Combined Pairs with Validation (Quadrant Cut)',
                     output_path=combined_plane_cut_output,
                     validation_pairs=validation_pairs,
                     special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
@@ -1839,6 +1840,22 @@ if __name__ == "__main__":
                     validation_pairs=validation_pairs,
                     special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
                 )
+
+                if validation_pairs_no_n_gt_2:
+                    combined_snr_output_no_n_gt_2 = os.path.join(
+                        snr_plot_folder,
+                        'snr_chi_diff_scatter_combined_with_validation_no_n_gt_2.png',
+                    )
+                    plot_combined_snr_delta_with_validation(
+                        direct_data,
+                        direct_label,
+                        refl_data,
+                        refl_label,
+                        combined_snr_output_no_n_gt_2,
+                        delta_cut=DELTA_CUT,
+                        validation_pairs=validation_pairs_no_n_gt_2,
+                        special_event_ids=DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
+                    )
 
             special_summary = next(
                 (rec for rec in validation_pairs if rec['event_id'] == DEFAULT_VALIDATION_SPECIAL_EVENT_IDS),
