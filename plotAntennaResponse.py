@@ -6,6 +6,7 @@ from icecream import ic
 from scipy import optimize
 import os
 from NuRadioReco.utilities import fft
+from plotAttenuationLengthsMB import calculate_attenuation_length
 
 def inverse_func(x, a, b, c):
     return a/(x + b) + c
@@ -22,9 +23,9 @@ LPDA_antenna = provider.load_antenna_pattern("createLPDA_100MHz_InfFirn")
 
 #inc_zen = 0*units.deg
 # inc_azi = 45*units.deg
-inc_azis = [0*units.deg, 15*units.deg, 30*units.deg, 45*units.deg, 90*units.deg, 128.9*units.deg, 180*units.deg, 180.65*units.deg, 236.1*units.deg, 237.25*units.deg, 238.4*units.deg, 240.1*units.deg]
+inc_azis = [0*units.deg, 30*units.deg, 45*units.deg, 90*units.deg, 240.1*units.deg]
 
-zen_range = [0, 30, 41.8, 44.1, 44.5, 44.7, 60, 61.9, 80]
+zen_range = [0, 30, 45]
 for inc_azi in inc_azis:
     for inc_zen in zen_range:
         inc_zen = inc_zen * units.deg
@@ -40,13 +41,36 @@ for inc_azi in inc_azis:
         VELs_back = LPDA_antenna.get_antenna_response_vectorized(ff, 180*units.deg-inc_zen, inc_azi,
                                                     orientation_theta_phi[0], orientation_theta_phi[1], rotation_theta_phi[0], rotation_theta_phi[1])
 
-        # Normalize to the larger of the two sets
-        norm_factor = max(np.max(np.abs(VELs_front['theta'])), np.max(np.abs(VELs_back['theta'])))
+        # Calculate attenuation
+        att_len = calculate_attenuation_length(ff, apply_correction=True, R=0.82)
+        d_ice = 576 * units.m
+        # inc_zen is in radians
+        att_factor = np.exp(-2 * d_ice / (np.cos(inc_zen) * att_len))
+        
+        front_response = np.abs(VELs_front['theta'])
+        front_w_att = front_response * att_factor
+        # Normalize to 1
+        if np.max(front_w_att) > 0:
+            front_w_att_norm = front_w_att / np.max(front_w_att)
+        else:
+            front_w_att_norm = front_w_att
 
-        VELs = VELs_front
-        VELs['theta'] = VELs['theta'] / norm_factor
-        VELs['phi'] = VELs['phi'] / np.max(np.abs(VELs['phi']))
-        ax.plot(ff / units.MHz, np.abs(VELs['theta']), label=f'Frontlobe', color='red')
+        # Normalize Frontlobe to 1
+        front_theta = np.abs(VELs_front['theta'])
+        if np.max(front_theta) > 0:
+            front_theta_norm = front_theta / np.max(front_theta)
+        else:
+            front_theta_norm = front_theta
+
+        # Normalize Backlobe to 1
+        back_theta = np.abs(VELs_back['theta'])
+        if np.max(back_theta) > 0:
+            back_theta_norm = back_theta / np.max(back_theta)
+        else:
+            back_theta_norm = back_theta
+
+        ax.plot(ff / units.MHz, front_theta_norm, label=f'Frontlobe', color='red')
+        ax.plot(ff / units.MHz, front_w_att_norm, label='Frontlobe w/ att.', color='green', linestyle=':')
         # ax.plot(ff / units.MHz, np.abs(VELs['phi']), label=f'ePhi LPDA {inc_zen/units.deg:.0f}deg')
 
         # Limit fit to sensitive region of LPDA
@@ -64,10 +88,7 @@ for inc_azi in inc_azis:
         #     continue
         # ax.plot(ff[fitmask] / units.MHz, inverse_func(ff[fitmask]/units.MHz, *fit), label=f'Fit {fit[0]:.5f}/(x+{fit[1]:.2f})+{fit[2]:.2f}', color='red', linestyle='--')
 
-        VELs = VELs_back
-        VELs['theta'] = VELs['theta'] / norm_factor
-        VELs['phi'] = VELs['phi'] / np.max(np.abs(VELs['phi']))
-        ax.plot(ff / units.MHz, np.abs(VELs['theta']), label=f'Backlobe', color='blue')
+        ax.plot(ff / units.MHz, back_theta_norm, label=f'Backlobe', color='blue')
         # ax.plot(ff / units.MHz, np.abs(VELs['phi']), label=f'ePhi LPDA {(180*units.deg-inc_zen)/units.deg:.0f}deg')
 
         # Linear fit

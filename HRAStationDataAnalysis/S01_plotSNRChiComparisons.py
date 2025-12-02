@@ -1454,7 +1454,7 @@ if __name__ == "__main__":
     ]
 
     # --- Main Loop for Individual and Summed Stations ---
-    all_stations_data = {key: [] for key in ['snr', 'Chi2016', 'ChiRCR', 'StationID']}
+    all_stations_data = {key: [] for key in ['snr', 'Chi2016', 'ChiRCR', 'StationID', 'Time']}
     all_stations_event_ids = []
     all_stations_unique_indices = []
     total_pre_mask_count = 0

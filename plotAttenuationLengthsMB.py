@@ -155,6 +155,60 @@ def plot_attenuation_length(freqs, att_length):
 if __name__ == '__main__':
     # Create all the requested plots
     plot_attenuation_comparison()
+
+    def plot_normalized_attenuation_factor():
+        """
+        Plots the normalized attenuation factor as a function of frequency.
+        Formula: exp(-2 * 576 / (cos(zenith) * L_att))
+        Zenith: 45 degrees
+        Normalized such that 100 MHz = 1.0
+        """
+        # Create output directory
+        os.makedirs('plots/attenuation', exist_ok=True)
+        
+        # Define frequency range from 0 to 500 MHz
+        frequencies = np.arange(0, 501, 1) * units.MHz
+        
+        # Calculate attenuation length with correction
+        att_length = calculate_attenuation_length(frequencies, apply_correction=True, R=0.82)
+        
+        # Constants
+        d_ice = 576 * units.m
+        zenith_deg = 45
+        zenith_rad = np.deg2rad(zenith_deg)
+        
+        # Calculate the factor
+        # Path length for reflection: 2 * d_ice / cos(zenith)
+        # Formula: exp(-2 * 576 / (cos(zenith) * L_att))
+        exponent = -2 * d_ice / (np.cos(zenith_rad) * att_length)
+        factor = np.exp(exponent)
+        
+        # Normalize at 100 MHz
+        # Find index for 100 MHz. Since step is 1 MHz and start is 0, index 100 is 100 MHz.
+        idx_100MHz = 100
+        norm_value = factor[idx_100MHz]
+        
+        normalized_factor = factor / norm_value
+        
+        # Plot
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(frequencies / units.MHz, normalized_factor, linewidth=2, label='Normalized Attenuation Factor')
+        
+        ax.set_xlabel("Frequency [MHz]")
+        ax.set_ylabel("Normalized Factor (1.0 at 100 MHz)")
+        ax.set_title("Normalized Attenuation Factor vs Frequency")
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+        ax.set_xlim(0, 500)
+        
+        # Add text for zenith
+        ax.text(0.05, 0.95, f"Zenith: {zenith_deg}°", transform=ax.transAxes, 
+                fontsize=12, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+                
+        plt.tight_layout()
+        plt.savefig('plots/attenuation/normalized_attenuation_factor.png', dpi=300, bbox_inches='tight')
+        plt.show()
+
+    plot_normalized_attenuation_factor()
     
     # Original functionality (optional)
     # frequencies = np.arange(0, 501, 1) * units.MHz
