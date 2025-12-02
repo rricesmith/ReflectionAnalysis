@@ -903,6 +903,62 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     np.savez(savename, **passing_events_to_save)
     ic(f"Saved passing event combinations for Station {station_id} to {savename}")
 
+    # --- Generate Master Plots for Passing Events ---
+    if 'Traces' in station_data:
+        # RCR Passing
+        rcr_plot_folder = os.path.join(plot_folder, 'MasterPlots_RCR')
+        if np.any(masks_rcr['all_cuts']):
+            ic(f"Generating master plots for {np.sum(masks_rcr['all_cuts'])} RCR passing events...")
+            idxs = np.where(masks_rcr['all_cuts'])[0]
+            for idx in idxs:
+                evt_id = event_ids[idx]
+                st_id = station_data['StationID'][idx]
+                
+                st_entry = {
+                    "Traces": [station_data['Traces'][idx]],
+                    "SNR": [station_data['snr'][idx]],
+                    "Chi2016": [station_data['Chi2016'][idx]],
+                    "ChiRCR": [station_data['ChiRCR'][idx]],
+                }
+                if 'Zen' in station_data: st_entry['Zen'] = [station_data['Zen'][idx]]
+                if 'Azi' in station_data: st_entry['Azi'] = [station_data['Azi'][idx]]
+                
+                event_details = {
+                    "datetime": station_data['Time'][idx],
+                    "passes_analysis_cuts": True,
+                    "stations": {str(st_id): st_entry}
+                }
+                
+                plot_single_master_event(evt_id, event_details, rcr_plot_folder, f"Station {st_id} RCR Pass", title_suffix=" (RCR Cut)")
+
+        # Backlobe Passing
+        bl_plot_folder = os.path.join(plot_folder, 'MasterPlots_Backlobe')
+        if np.any(masks_backlobe['all_cuts']):
+            ic(f"Generating master plots for {np.sum(masks_backlobe['all_cuts'])} Backlobe passing events...")
+            idxs = np.where(masks_backlobe['all_cuts'])[0]
+            for idx in idxs:
+                evt_id = event_ids[idx]
+                st_id = station_data['StationID'][idx]
+                
+                st_entry = {
+                    "Traces": [station_data['Traces'][idx]],
+                    "SNR": [station_data['snr'][idx]],
+                    "Chi2016": [station_data['Chi2016'][idx]],
+                    "ChiRCR": [station_data['ChiRCR'][idx]],
+                }
+                if 'Zen' in station_data: st_entry['Zen'] = [station_data['Zen'][idx]]
+                if 'Azi' in station_data: st_entry['Azi'] = [station_data['Azi'][idx]]
+                
+                event_details = {
+                    "datetime": station_data['Time'][idx],
+                    "passes_analysis_cuts": True,
+                    "stations": {str(st_id): st_entry}
+                }
+                
+                plot_single_master_event(evt_id, event_details, bl_plot_folder, f"Station {st_id} BL Pass", title_suffix=" (BL Cut)")
+    else:
+        ic("No traces available in station_data, skipping master plot generation.")
+
     # --- Plot 3: Data Only with layered cuts
     ic("Generating layered scatter plot for data...")
     
