@@ -35,7 +35,7 @@ DEFAULT_VALIDATION_PASSING_EVENT_IDS = [
 ]
 DEFAULT_VALIDATION_SPECIAL_EVENT_IDS = [11230, 11243]
 VALIDATION_PICKLE_NAME = "9.24.25_CoincidenceDatetimes_passing_cuts_with_all_params_recalcZenAzi_calcPol.pkl"
-DELTA_CUT = 0.11
+# DELTA_CUT is now calculated dynamically in __main__
 
 def ensure_coincidence_weight(event_list, coincidence_level, weight_name, sigma, sigma_52,
                               bad_stations, max_distance, force_stations=None):
@@ -296,6 +296,49 @@ def compute_station_chi_delta(event, station_id):
         return None
 
     return chi_rcr - chi_2016
+
+
+def find_delta_cut_for_efficiency(data_tuple, target_efficiency=0.05, precision=3):
+    """Find the delta cut value that yields the target efficiency (fraction of kept weight)."""
+    x_vals, y_vals, weights = data_tuple
+    if weights.size == 0:
+        return 0.0
+    
+    total_weight = np.sum(weights)
+    if total_weight <= 0:
+        return 0.0
+
+    # y_vals are the delta values. We keep points where y_vals >= cut.
+    # We want sum(weights[y_vals >= cut]) / total_weight approx target_efficiency.
+    
+    min_y = np.min(y_vals)
+    max_y = np.max(y_vals)
+    
+    low = min_y
+    high = max_y + 0.1 # Allow going slightly above max to get 0%
+    
+    best_cut = high
+    min_diff = 1.0
+    
+    for _ in range(30):
+        mid = (low + high) / 2.0
+        mask = y_vals >= mid
+        kept_weight = np.sum(weights[mask])
+        eff = kept_weight / total_weight
+        
+        diff = abs(eff - target_efficiency)
+        if diff < min_diff:
+            min_diff = diff
+            best_cut = mid
+            
+        if eff > target_efficiency:
+            # Kept too much, need higher cut (stricter)
+            low = mid
+        else:
+            # Kept too little, need lower cut (looser)
+            high = mid
+            
+    return round(best_cut, precision)
 
 
 def apply_delta_cut(data_tuple, delta_cut):
@@ -730,6 +773,18 @@ def plot_validation_pairs(pairs, special_event_ids, output_path, delta_cut):
     ax.set_ylabel('|Δ(ChiRCR - Chi2016)| between stations')
     ax.grid(True, which='both', linestyle='--', alpha=0.3)
     ax.axhline(delta_cut, color='dimgray', linestyle='--', linewidth=1, label=f'Delta cut ({delta_cut})')
+    
+    x_max = ax.get_xlim()[1]
+    ax.text(
+        x_max, 
+        delta_cut, 
+        f" {delta_cut:.2f}", 
+        va='bottom', 
+        ha='right', 
+        fontsize=9, 
+        color='dimgray',
+        fontweight='bold'
+    )
 
     handles, labels, _ = add_validation_snr_points(ax, pairs, special_event_ids)
 
@@ -1200,6 +1255,17 @@ def plot_single_scatter(
             linewidth=1,
             label=f'Δ cut ({delta_cut})',
         )
+        x_max = ax.get_xlim()[1]
+        ax.text(
+            x_max, 
+            delta_cut, 
+            f" {delta_cut:.2f}", 
+            va='bottom', 
+            ha='right', 
+            fontsize=9, 
+            color='dimgray',
+            fontweight='bold'
+        )
 
     if add_colorbar and weights.size > 0:
         divider = make_axes_locatable(ax)
@@ -1311,6 +1377,17 @@ def plot_combined_snr_delta_with_validation(
         linewidth=1,
         label=f'Δ cut ({delta_cut})',
         zorder=3,
+    )
+    x_max = ax.get_xlim()[1]
+    ax.text(
+        x_max, 
+        delta_cut, 
+        f" {delta_cut:.2f}", 
+        va='bottom', 
+        ha='right', 
+        fontsize=9, 
+        color='dimgray',
+        fontweight='bold'
     )
     handles.append(cut_line)
     labels.append(cut_line.get_label())
@@ -1443,6 +1520,10 @@ if __name__ == "__main__":
         reflected_exclusions=reflected_exclusions_set,
     )
 
+    ic("Calculating DELTA_CUT for 5% efficiency on direct pairs...")
+    DELTA_CUT = find_delta_cut_for_efficiency(direct_data, target_efficiency=0.05, precision=3)
+    ic(f"Calculated DELTA_CUT: {DELTA_CUT}")
+
     direct_plane_cut, direct_plane_kept_weight, direct_plane_total_weight = apply_lower_left_cut(direct_plane_data)
     refl_plane_cut, refl_plane_kept_weight, refl_plane_total_weight = apply_lower_left_cut(refl_plane_data)
 
@@ -1491,7 +1572,7 @@ if __name__ == "__main__":
     refl_plane_cut_label = format_plane_cut_label(refl_plane_label, refl_plane_kept_weight, refl_plane_total_weight)
 
     direct_output = os.path.join(snr_plot_folder, 'snr_chi_diff_scatter_direct.png')
-    direct_label = f'BL-only pairs, eff {direct_kept_weight/direct_total_weight:.2%}'
+    direct_label = f'BL-only pairs, eff 5%'
     if direct_data[0].size > 0:
         plot_single_scatter(
             direct_data,
@@ -1595,6 +1676,19 @@ if __name__ == "__main__":
                 validation_output,
                 DELTA_CUT,
             )
+
+            validation_pairs_no_n_gt_2 = [
+                p for p in validation_pairs 
+                if len(p.get('stations', [])) <= 2
+            ]
+            if validation_pairs_no_n_gt_2:
+                validation_output_no_n_gt_2 = os.path.join(snr_plot_folder, 'validation_event_pair_spread_no_n_gt_2.png')
+                plot_validation_pairs(
+                    validation_pairs_no_n_gt_2,
+                    DEFAULT_VALIDATION_SPECIAL_EVENT_IDS,
+                    validation_output_no_n_gt_2,
+                    DELTA_CUT,
+                )
 
             if direct_data[0].size > 0:
                 overlay_direct_output = os.path.join(
