@@ -229,8 +229,9 @@ def main():
             data_passing_bl.append(evt_tuple)
             
         # Backlobe 2016 Matching
-        if str(station_id) in found_events_json:
-            target_times = set(found_events_json[str(station_id)])
+        station_key = f"Station{station_id}Found"
+        if station_key in found_events_json:
+            target_times = set(found_events_json[station_key])
             # We need to find events in our data that match these times.
             # We should search in the *masked* data to be consistent with what we are plotting?
             # Or raw data? S01 searches in raw data.
@@ -245,7 +246,7 @@ def main():
                     backlobe_2016_events.append(evt_tuple)
 
     # --- Plotting ---
-    bins = np.linspace(-0.4, 0.4, 41) # Adjust as needed
+    bins = np.linspace(-0.2, 0.2, 41) # Adjust as needed
     
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
     fig.suptitle(f'Chi Difference Histograms (RCR - BL) - {date}', fontsize=16)
@@ -256,8 +257,8 @@ def main():
 
     # 1. Coincidence Events
     ax = axs[0, 0]
-    ax.hist(get_diffs(coinc_rcr_events), bins=bins, alpha=0.7, label='Coinc RCR Pass', color='purple')
-    ax.hist(get_diffs(coinc_bl_events), bins=bins, alpha=0.7, label='Coinc BL Pass', color='orange')
+    ax.hist(get_diffs(coinc_rcr_events), bins=bins, histtype='step', label='Coinc RCR Pass', color='purple')
+    ax.hist(get_diffs(coinc_bl_events), bins=bins, histtype='step', label='Coinc BL Pass', color='orange')
     ax.set_title('Coincidence Events')
     ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
     ax.legend()
@@ -265,8 +266,8 @@ def main():
 
     # 2. Data Passing Cuts
     ax = axs[0, 1]
-    ax.hist(get_diffs(data_passing_rcr), bins=bins, alpha=0.6, label='Data RCR Pass', color='purple')
-    ax.hist(get_diffs(data_passing_bl), bins=bins, alpha=0.6, label='Data BL Pass', color='orange')
+    ax.hist(get_diffs(data_passing_rcr), bins=bins, histtype='step', label='Data RCR Pass', color='purple')
+    ax.hist(get_diffs(data_passing_bl), bins=bins, histtype='step', label='Data BL Pass', color='orange')
     ax.set_title('Data Passing Cuts')
     ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
     ax.legend()
@@ -274,7 +275,7 @@ def main():
 
     # 3. Backlobe 2016
     ax = axs[1, 0]
-    ax.hist(get_diffs(backlobe_2016_events), bins=bins, alpha=0.7, label='Backlobe 2016', color='green')
+    ax.hist(get_diffs(backlobe_2016_events), bins=bins, histtype='step', label='Backlobe 2016', color='green')
     ax.set_title('Backlobe 2016 Events')
     ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
     ax.legend()
@@ -318,7 +319,7 @@ def main():
         elif cat == 'Backlobe 2016': combined_bl2016.append(diff)
         
     ax = axs[1, 1]
-    ax.hist([combined_data, combined_coinc_rcr, combined_coinc_bl, combined_bl2016], bins=bins, stacked=True, 
+    ax.hist([combined_data, combined_coinc_rcr, combined_coinc_bl, combined_bl2016], bins=bins, histtype='step', stacked=False, 
             label=['Data', 'Coinc RCR', 'Coinc BL', 'Backlobe 2016'], 
             color=['gray', 'purple', 'orange', 'green'])
     ax.set_title('Combined (Prioritized)')
