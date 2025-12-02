@@ -817,6 +817,15 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     """
     ic(f"--- Running analysis for Station {station_id} ---")
 
+    # Ensure overlay data are numpy arrays to prevent AttributeError: 'list' object has no attribute 'size'
+    for overlay in [coincidence_overlay, backlobe_2016_overlay]:
+        if overlay:
+            for cat in ['Backlobe', 'RCR']:
+                if cat in overlay:
+                    for data_key in ['snr', 'Chi2016', 'ChiRCR']:
+                        if data_key in overlay[cat] and isinstance(overlay[cat][data_key], list):
+                            overlay[cat][data_key] = np.array(overlay[cat][data_key])
+
     # --- Get Masks and Save Passing Events ---
     masks_rcr = get_all_cut_masks(station_data, cuts, cut_type='rcr')
     masks_backlobe = get_all_cut_masks(station_data, cuts, cut_type='backlobe')
