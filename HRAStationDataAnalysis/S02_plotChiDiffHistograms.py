@@ -11,6 +11,8 @@ import json
 import configparser
 from icecream import ic
 from HRAStationDataAnalysis.C_utils import getTimeEventMasks
+from scipy.optimize import curve_fit
+from scipy.integrate import quad
 
 # --- Configuration ---
 def load_config():
@@ -246,7 +248,7 @@ def main():
                     backlobe_2016_events.append(evt_tuple)
 
     # --- Plotting ---
-    bins = np.linspace(-0.2, 0.2, 41) # Adjust as needed
+    bins = np.linspace(-0.2, 0.2, 21) # Adjust as needed
     
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
     fig.suptitle(f'Chi Difference Histograms (RCR - BL) - {date}', fontsize=16)
@@ -331,6 +333,71 @@ def main():
     save_path = f'{plot_folder}ChiDiff_Histograms_Combined.png'
     plt.savefig(save_path)
     ic(f"Saved plot to {save_path}")
+    plt.close()
+
+    # --- New Plot: Data Only with Gaussian Fit ---
+    fig2, ax2 = plt.subplots(figsize=(10, 8))
+    
+    # Data for new plot: combined_data (Data category only)
+    data_to_plot = np.array(combined_data)
+    
+    # Histogram
+    counts, bin_edges, patches = ax2.hist(data_to_plot, bins=bins, histtype='bar', edgecolor='black')
+    
+    # Color bins
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    for c, p in zip(bin_centers, patches):
+        if c < 0:
+            p.set_facecolor('gray')
+        else:
+            p.set_facecolor('red')
+            
+    # Fit Gaussian to left side
+    # Select data for fit
+    mask_left = bin_centers < 0
+    X_fit = bin_centers[mask_left]
+    Y_fit = counts[mask_left]
+    
+    def gaussian(x, A, mu, sigma):
+        return A * np.exp(-(x - mu)**2 / (2 * sigma**2))
+        
+    # Initial guess
+    if len(Y_fit) > 0:
+        p0 = [max(Y_fit), 0, 0.1]
+        
+        try:
+            popt, pcov = curve_fit(gaussian, X_fit, Y_fit, p0=p0)
+            
+            # Draw Gaussian
+            x_plot = np.linspace(min(bin_edges), max(bin_edges), 1000)
+            y_plot = gaussian(x_plot, *popt)
+            ax2.plot(x_plot, y_plot, color='blue', linewidth=2, label='Gaussian Fit (Left)')
+            
+            # Shade region > 0
+            x_shade = np.linspace(0, max(bin_edges), 500)
+            y_shade = gaussian(x_shade, *popt)
+            ax2.fill_between(x_shade, y_shade, color='blue', alpha=0.3, linestyle='--', hatch='//', label='Extrapolation > 0')
+            
+            # Calculate sum of area > 0
+            area, _ = quad(lambda x: gaussian(x, *popt), 0, np.inf)
+            bin_width = bin_edges[1] - bin_edges[0]
+            expected_events = area / bin_width
+            
+            ax2.text(0.6, 0.8, f'Expected > 0: {expected_events:.1f}', transform=ax2.transAxes, fontsize=12, verticalalignment='top', bbox=dict(facecolor='white', alpha=0.8))
+            
+        except Exception as e:
+            ic(f"Gaussian fit failed: {e}")
+    else:
+        ic("Not enough data for Gaussian fit on left side.")
+
+    ax2.set_title('Data Only - Gaussian Fit to Background')
+    ax2.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    save_path_2 = f'{plot_folder}ChiDiff_Data_Gaussian.png'
+    plt.savefig(save_path_2)
+    ic(f"Saved data plot to {save_path_2}")
     plt.close()
 
 if __name__ == "__main__":
