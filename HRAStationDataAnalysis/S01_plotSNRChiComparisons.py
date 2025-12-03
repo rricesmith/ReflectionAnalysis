@@ -695,122 +695,6 @@ def plot_sim_only_comparisons(sim_direct, sim_reflected, cuts, hist_bins, plot_f
     plt.close(fig_bl_only_nl)
 
 
-    ic("Generating simulation-only comparison plots (RCR all cuts)...")
-    direct_masks_rcr = get_all_cut_masks(sim_direct, cuts, cut_type='rcr')
-    reflected_masks_rcr = get_all_cut_masks(sim_reflected, cuts, cut_type='rcr')
-    direct_rcr_pass = subset_data_by_mask(sim_direct, direct_masks_rcr['all_cuts'])
-    reflected_rcr_pass = subset_data_by_mask(sim_reflected, reflected_masks_rcr['all_cuts'])
-
-    base_config_cuts = {'data': direct_rcr_pass, 'type': 'hist', 'label': 'Backlobe Sim (Hist, Pass All Cuts)'}
-    reflected_overlay_cuts = {
-        'data': reflected_rcr_pass,
-        'label': 'RCR Sim (Weighted, Pass All Cuts)',
-        'style': {'s': 12, 'alpha': 0.5, 'color_by_weight': True, 'cmap': 'cool'}
-    }
-
-    # --- Plot 2: All Cuts (With Lines) ---
-    fig_cut, axs_cut = plt.subplots(2, 2, figsize=(12, 15))
-    fig_cut.suptitle(f'Simulation Comparison: Backlobe vs RCR (RCR All Cuts)\n{rcr_cut_string}', fontsize=14)
-    im_cut = plot_2x2_grid(fig_cut, axs_cut, base_config_cuts, cuts, overlays=[reflected_overlay_cuts], hist_bins_dict=hist_bins)
-
-    direct_total_weight = np.sum(sim_direct.get('weights', np.array([])))
-    direct_pass_weight = np.sum(direct_rcr_pass.get('weights', np.array([])))
-    direct_fraction = direct_pass_weight / direct_total_weight if direct_total_weight > 0 else 0.0
-    direct_pass_count = direct_rcr_pass.get('snr', np.array([])).size
-
-    reflected_total_weight = np.sum(sim_reflected.get('weights', np.array([])))
-    reflected_pass_weight = np.sum(reflected_rcr_pass.get('weights', np.array([])))
-    reflected_fraction = reflected_pass_weight / reflected_total_weight if reflected_total_weight > 0 else 0.0
-    reflected_pass_count = reflected_rcr_pass.get('snr', np.array([])).size
-
-    stats_text_cut = (
-        f"Backlobe Sim (Pass All RCR Cuts):\n"
-        f"- Total Weight: {direct_total_weight:>10.3e}\n"
-        f"- Weight After Cuts: {direct_pass_weight:>10.3e} ({direct_fraction:>.2%})\n"
-        f"- Events After Cuts: {direct_pass_count}\n\n"
-        f"RCR Sim (Pass All RCR Cuts):\n"
-        f"- Total Weight: {reflected_total_weight:>10.3e}\n"
-        f"- Weight After Cuts: {reflected_pass_weight:>10.3e} ({reflected_fraction:>.2%})\n"
-        f"- Events After Cuts: {reflected_pass_count}"
-    )
-    fig_cut.text(0.5, 0.01, stats_text_cut, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
-
-    if im_cut:
-        fig_cut.tight_layout(rect=[0, 0.28, 0.9, 0.95])
-        cbar_ax_cut = fig_cut.add_axes([0.91, 0.28, 0.02, 0.65])
-        fig_cut.colorbar(im_cut, cax=cbar_ax_cut, label='Backlobe Weighted Counts (Evts/Yr)')
-    else:
-        fig_cut.tight_layout(rect=[0, 0.28, 1, 0.95])
-    plt.savefig(f'{plot_folder}SimOnly_Backlobe_vs_RCR_AllCuts_{date}.png')
-    plt.close(fig_cut)
-
-    # --- Plot 2b: All Cuts (No Lines) ---
-    ic("Generating simulation-only comparison plots (RCR all cuts, no lines)...")
-    fig_cut_nl, axs_cut_nl = plt.subplots(2, 2, figsize=(12, 15))
-    fig_cut_nl.suptitle(f'Simulation Comparison: Backlobe vs RCR (RCR All Cuts, No Lines)\n{rcr_cut_string}', fontsize=14)
-    im_cut_nl = plot_2x2_grid(fig_cut_nl, axs_cut_nl, base_config_cuts, None, overlays=[reflected_overlay_cuts], hist_bins_dict=hist_bins)
-
-    fig_cut_nl.text(0.5, 0.01, stats_text_cut, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
-
-    if im_cut_nl:
-        fig_cut_nl.tight_layout(rect=[0, 0.28, 0.9, 0.95])
-        cbar_ax_cut_nl = fig_cut_nl.add_axes([0.91, 0.28, 0.02, 0.65])
-        fig_cut_nl.colorbar(im_cut_nl, cax=cbar_ax_cut_nl, label='Backlobe Weighted Counts (Evts/Yr)')
-    else:
-        fig_cut_nl.tight_layout(rect=[0, 0.28, 1, 0.95])
-    plt.savefig(f'{plot_folder}SimOnly_Backlobe_vs_RCR_AllCuts_NoLines_{date}.png')
-    plt.close(fig_cut_nl)
-
-    # --- Plot 3: Backlobe All Cuts (Backlobe Only) ---
-    ic("Generating simulation-only comparison plots (Backlobe all cuts, Backlobe only)...")
-    direct_masks_bl = get_all_cut_masks(sim_direct, cuts, cut_type='backlobe')
-    direct_bl_pass = subset_data_by_mask(sim_direct, direct_masks_bl['all_cuts'])
-
-    base_config_bl_cuts = {'data': direct_bl_pass, 'type': 'hist', 'label': 'Backlobe Sim (Hist, Pass BL Cuts)'}
-    
-    backlobe_cut_string = f"Backlobe Cuts: SNR < {cuts['snr_max']} & BL-$\chi$ > SNR Line & RCR-$\chi$ - BL-$\chi$ < -{cuts['chi_diff_threshold']}"
-    fig_bl, axs_bl = plt.subplots(2, 2, figsize=(12, 15))
-    fig_bl.suptitle(f'Simulation: Backlobe Only (Backlobe All Cuts)\n{backlobe_cut_string}', fontsize=14)
-    im_bl = plot_2x2_grid(fig_bl, axs_bl, base_config_bl_cuts, cuts, overlays=[], hist_bins_dict=hist_bins)
-
-    direct_pass_weight_bl = np.sum(direct_bl_pass.get('weights', np.array([])))
-    direct_fraction_bl = direct_pass_weight_bl / direct_total_weight if direct_total_weight > 0 else 0.0
-    direct_pass_count_bl = direct_bl_pass.get('snr', np.array([])).size
-
-    stats_text_bl = (
-        f"Backlobe Sim (Pass All Backlobe Cuts):\n"
-        f"- Total Weight: {direct_total_weight:>10.3e}\n"
-        f"- Weight After Cuts: {direct_pass_weight_bl:>10.3e} ({direct_fraction_bl:>.2%})\n"
-        f"- Events After Cuts: {direct_pass_count_bl}"
-    )
-    fig_bl.text(0.5, 0.01, stats_text_bl, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
-
-    if im_bl:
-        fig_bl.tight_layout(rect=[0, 0.28, 0.9, 0.95])
-        cbar_ax_bl = fig_bl.add_axes([0.91, 0.28, 0.02, 0.65])
-        fig_bl.colorbar(im_bl, cax=cbar_ax_bl, label='Backlobe Weighted Counts (Evts/Yr)')
-    else:
-        fig_bl.tight_layout(rect=[0, 0.28, 1, 0.95])
-    plt.savefig(f'{plot_folder}SimOnly_Backlobe_BacklobeCuts_{date}.png')
-    plt.close(fig_bl)
-
-    # --- Plot 3b: Backlobe All Cuts (Backlobe Only, No Lines) ---
-    ic("Generating simulation-only comparison plots (Backlobe all cuts, Backlobe only, no lines)...")
-    fig_bl_nl, axs_bl_nl = plt.subplots(2, 2, figsize=(12, 15))
-    fig_bl_nl.suptitle(f'Simulation: Backlobe Only (Backlobe All Cuts, No Lines)\n{backlobe_cut_string}', fontsize=14)
-    im_bl_nl = plot_2x2_grid(fig_bl_nl, axs_bl_nl, base_config_bl_cuts, None, overlays=[], hist_bins_dict=hist_bins)
-
-    fig_bl_nl.text(0.5, 0.01, stats_text_bl, ha='center', va='bottom', fontsize=10, fontfamily='monospace')
-
-    if im_bl_nl:
-        fig_bl_nl.tight_layout(rect=[0, 0.28, 0.9, 0.95])
-        cbar_ax_bl_nl = fig_bl_nl.add_axes([0.91, 0.28, 0.02, 0.65])
-        fig_bl_nl.colorbar(im_bl_nl, cax=cbar_ax_bl_nl, label='Backlobe Weighted Counts (Evts/Yr)')
-    else:
-        fig_bl_nl.tight_layout(rect=[0, 0.28, 1, 0.95])
-    plt.savefig(f'{plot_folder}SimOnly_Backlobe_BacklobeCuts_NoLines_{date}.png')
-    plt.close(fig_bl_nl)
-
 def run_analysis_for_station(station_id, station_data, event_ids, unique_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=None, backlobe_2016_overlay=None, excluded_events=None):
     """
     Runs the full plotting and saving pipeline for a given station ID and its data.
@@ -973,8 +857,15 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     # --- Plot 3: Data Only with layered cuts
     ic("Generating layered scatter plot for data...")
     
+    # Add Excluded/Failed Events Overlay (First, so it's at the bottom)
+    fail_mask = excluded_mask | masks_rcr.get('day_cut_fail', False) | masks_backlobe.get('day_cut_fail', False)
+    
+    # Filter station_data for base plot to exclude failed events
+    valid_mask = ~fail_mask
+    station_data_valid = {key: station_data[key][valid_mask] for key in station_data}
+    
     base_data_config = {
-        'data': station_data,
+        'data': station_data_valid,
         'type': 'scatter',
         'label': 'Data',
         'style': {'marker': '.', 's': 5, 'alpha': 0.4, 'c': 'gray'}
@@ -991,15 +882,14 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
 
     data_overlays = []
 
-    # Add Excluded/Failed Events Overlay (First, so it's at the bottom)
-    fail_mask = excluded_mask | masks_rcr.get('day_cut_fail', False) | masks_backlobe.get('day_cut_fail', False)
-    if np.any(fail_mask):
-        data_excluded = {key: station_data[key][fail_mask] for key in station_data}
-        data_overlays.append({
-            'data': data_excluded,
-            'label': f'Fail Cuts (N={np.sum(fail_mask)})',
-            'style': {'marker': 'X', 's': 20, 'alpha': 1.0, 'c': 'black', 'edgecolors': 'white', 'linewidths': 0.5}
-        })
+    # REMOVED: Fail Cuts Overlay
+    # if np.any(fail_mask):
+    #     data_excluded = {key: station_data[key][fail_mask] for key in station_data}
+    #     data_overlays.append({
+    #         'data': data_excluded,
+    #         'label': f'Fail Cuts (N={np.sum(fail_mask)})',
+    #         'style': {'marker': 'X', 's': 20, 'alpha': 1.0, 'c': 'black', 'edgecolors': 'white', 'linewidths': 0.5}
+    #     })
 
     data_overlays.extend([
         {
@@ -1280,6 +1170,89 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         fig_srcr.tight_layout(rect=[0, 0.28, 1, 0.95])
     plt.savefig(f'{plot_folder}SimRCR_vs_2016_vs_CoincBacklobe_Station{station_id}_{date}.png')
     plt.close(fig_srcr)
+
+    # --- Plot 1b: Sim Backlobe vs 2016 vs Coinc Backlobe (No Cuts) ---
+    ic("Generating Sim Backlobe vs Backlobe 2016 vs Coincidence Backlobe plot (No Cuts)...")
+    fig_sbl_nc, axs_sbl_nc = plt.subplots(2, 2, figsize=(12, 15))
+    fig_sbl_nc.suptitle(f'Sim Backlobe vs 2016 vs Coinc Backlobe - Station {station_id} (No Cuts)\n{rcr_cut_string}', fontsize=14)
+    im_sbl_nc = plot_2x2_grid(fig_sbl_nc, axs_sbl_nc, sim_bl_base_config, None, overlays=overlays_sim_bl_comb, hist_bins_dict=hist_bins)
+    fig_sbl_nc.text(0.5, 0.01, sim_direct_rcr_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    if im_sbl_nc:
+        fig_sbl_nc.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_sbl_nc = fig_sbl_nc.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig_sbl_nc.colorbar(im_sbl_nc, cax=cbar_ax_sbl_nc, label='Backlobe Weighted Counts (Evts/Yr)')
+    else:
+        fig_sbl_nc.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}SimBacklobe_vs_2016_vs_CoincBacklobe_NoCuts_Station{station_id}_{date}.png')
+    plt.close(fig_sbl_nc)
+
+    # --- Plot 2: Sim Backlobe + RCR Sim + 2016 + Coinc (With and Without Cuts) ---
+    ic("Generating Sim Backlobe + RCR Sim + 2016 + Coinc plot...")
+    overlays_sim_all = [reflected_overlay_config] + overlays_sim_bl_comb
+    
+    # With Cuts
+    fig_sall, axs_sall = plt.subplots(2, 2, figsize=(12, 15))
+    fig_sall.suptitle(f'Sim Backlobe + RCR Sim + 2016 + Coinc - Station {station_id}\n{rcr_cut_string}', fontsize=14)
+    im_sall = plot_2x2_grid(fig_sall, axs_sall, sim_bl_base_config, cuts, overlays=overlays_sim_all, hist_bins_dict=hist_bins)
+    fig_sall.text(0.5, 0.01, sim_direct_rcr_stats + "\n\n" + sim_reflected_rcr_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    if im_sall:
+        fig_sall.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_sall = fig_sall.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig_sall.colorbar(im_sall, cax=cbar_ax_sall, label='Backlobe Weighted Counts (Evts/Yr)')
+    else:
+        fig_sall.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}SimAll_vs_2016_vs_Coinc_Station{station_id}_{date}.png')
+    plt.close(fig_sall)
+
+    # Without Cuts
+    fig_sall_nc, axs_sall_nc = plt.subplots(2, 2, figsize=(12, 15))
+    fig_sall_nc.suptitle(f'Sim Backlobe + RCR Sim + 2016 + Coinc - Station {station_id} (No Cuts)\n{rcr_cut_string}', fontsize=14)
+    im_sall_nc = plot_2x2_grid(fig_sall_nc, axs_sall_nc, sim_bl_base_config, None, overlays=overlays_sim_all, hist_bins_dict=hist_bins)
+    fig_sall_nc.text(0.5, 0.01, sim_direct_rcr_stats + "\n\n" + sim_reflected_rcr_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    if im_sall_nc:
+        fig_sall_nc.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_sall_nc = fig_sall_nc.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig_sall_nc.colorbar(im_sall_nc, cax=cbar_ax_sall_nc, label='Backlobe Weighted Counts (Evts/Yr)')
+    else:
+        fig_sall_nc.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}SimAll_vs_2016_vs_Coinc_NoCuts_Station{station_id}_{date}.png')
+    plt.close(fig_sall_nc)
+
+    # --- Plot 3: Sim Backlobe + RCR Sim + 2016 + Coinc + Data (With and Without Cuts) ---
+    ic("Generating Sim Backlobe + RCR Sim + 2016 + Coinc + Data plot...")
+    # Use filtered data for overlay
+    data_overlay_valid = {'data': station_data_valid, 'label': 'Data', 'style': {'marker': '.', 's': 5, 'alpha': 0.75, 'c': 'black'}}
+    overlays_sim_all_data = [reflected_overlay_config, data_overlay_valid] + overlays_sim_bl_comb
+
+    # With Cuts
+    fig_salld, axs_salld = plt.subplots(2, 2, figsize=(12, 15))
+    fig_salld.suptitle(f'Sim Backlobe + RCR Sim + 2016 + Coinc + Data - Station {station_id}\n{rcr_cut_string}', fontsize=14)
+    im_salld = plot_2x2_grid(fig_salld, axs_salld, sim_bl_base_config, cuts, overlays=overlays_sim_all_data, hist_bins_dict=hist_bins)
+    fig_salld.text(0.5, 0.01, sim_direct_rcr_stats + "\n\n" + sim_reflected_rcr_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    if im_salld:
+        fig_salld.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_salld = fig_salld.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig_salld.colorbar(im_salld, cax=cbar_ax_salld, label='Backlobe Weighted Counts (Evts/Yr)')
+    else:
+        fig_salld.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}SimAll_vs_2016_vs_Coinc_vs_Data_Station{station_id}_{date}.png')
+    plt.close(fig_salld)
+
+    # Without Cuts
+    fig_salld_nc, axs_salld_nc = plt.subplots(2, 2, figsize=(12, 15))
+    fig_salld_nc.suptitle(f'Sim Backlobe + RCR Sim + 2016 + Coinc + Data - Station {station_id} (No Cuts)\n{rcr_cut_string}', fontsize=14)
+    im_salld_nc = plot_2x2_grid(fig_salld_nc, axs_salld_nc, sim_bl_base_config, None, overlays=overlays_sim_all_data, hist_bins_dict=hist_bins)
+    fig_salld_nc.text(0.5, 0.01, sim_direct_rcr_stats + "\n\n" + sim_reflected_rcr_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    if im_salld_nc:
+        fig_salld_nc.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_salld_nc = fig_salld_nc.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig_salld_nc.colorbar(im_salld_nc, cax=cbar_ax_salld_nc, label='Backlobe Weighted Counts (Evts/Yr)')
+    else:
+        fig_salld_nc.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}SimAll_vs_2016_vs_Coinc_vs_Data_NoCuts_Station{station_id}_{date}.png')
+    plt.close(fig_salld_nc)
+
+
 
 if __name__ == "__main__":
     # --- Configuration and Setup ---
