@@ -385,7 +385,7 @@ def main():
             # Shade region > 0
             x_shade = np.linspace(0, max(bin_edges), 500)
             y_shade = gaussian(x_shade, *popt)
-            gauss_fill = ax2.fill_between(x_shade, y_shade, color='blue', alpha=0.5, linestyle='--', hatch='//', label='Gaussian Extrapolation', zorder=5)
+            gauss_fill = ax2.fill_between(x_shade, y_shade, color='blue', alpha=0.25, linestyle='--', hatch='//', label='Gaussian>0', zorder=5)
             
             # Calculate sum of area > 0
             area, _ = quad(lambda x: gaussian(x, *popt), 0, np.inf)
@@ -395,7 +395,7 @@ def main():
             # Legend 2: Gaussian
             leg2 = ax2.legend(handles=[gauss_line, gauss_fill], loc='upper right', bbox_to_anchor=(0.98, 0.86), framealpha=1)
             
-            ax2.text(0.98, 0.76, f'Expected > 0: {expected_events:.1f}', transform=ax2.transAxes, fontsize=12, verticalalignment='top', horizontalalignment='right', bbox=dict(facecolor='white', alpha=0.8))
+            ax2.text(0.94, 0.66, f'Expected > 0: {expected_events:.1f}', transform=ax2.transAxes, fontsize=12, verticalalignment='top', horizontalalignment='right', bbox=dict(facecolor='white', alpha=0.8))
             
         except Exception as e:
             ic(f"Gaussian fit failed: {e}")

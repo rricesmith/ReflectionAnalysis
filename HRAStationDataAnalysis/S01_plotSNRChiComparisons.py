@@ -904,6 +904,9 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         }
     ])
 
+    # Capture overlays without Backlobe 2016 for separate plot
+    data_overlays_no_bl = list(data_overlays)
+
     # Add Backlobe 2016 Overlay
     bl_2016_overlay_config = None
     if backlobe_2016_overlay:
@@ -1009,6 +1012,18 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     fig1.tight_layout(rect=[0, 0.28, 1, 0.95])
     plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_Station{station_id}_{date}.png')
     plt.close(fig1)
+
+    # --- New Plot: Data Only with layered cuts (No Backlobe 2016) ---
+    fig1_nobl, axs1_nobl = plt.subplots(2, 2, figsize=(12, 15))
+    fig1_nobl.suptitle(f'Data: Chi Comparison for Station {station_id} on {date} (No BL 2016)\n{rcr_cut_string}', fontsize=14)
+    plot_2x2_grid(fig1_nobl, axs1_nobl, base_data_config, cuts, overlays=data_overlays_no_bl)
+    
+    fig1_nobl.text(0.25, 0.01, rcr_stats_str, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    fig1_nobl.text(0.75, 0.01, backlobe_stats_str, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    
+    fig1_nobl.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}Data_SNR_Chi_2x2_WithCuts_NoBL2016_Station{station_id}_{date}.png')
+    plt.close(fig1_nobl)
 
     # Plot 1b: Data Only (No Cuts Shown)
     fig1_nc, axs1_nc = plt.subplots(2, 2, figsize=(12, 15))
