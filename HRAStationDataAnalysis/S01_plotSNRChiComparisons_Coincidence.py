@@ -929,6 +929,21 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     plt.savefig(f'{plot_folder}CoincBLSim_Station{station_id}_{date}.png')
     plt.close(fig1)
 
+    # --- Requested Plot 1 (No Cuts): Coinc BL Sim ---
+    ic("Generating Plot 1 (No Cuts): Coinc BL Sim...")
+    fig1_nc, axs1_nc = plt.subplots(2, 2, figsize=(12, 15))
+    fig1_nc.suptitle(f'Coinc BL Sim - Station {station_id} (No Cuts)\n{rcr_cut_string}', fontsize=14)
+    im1_nc = plot_2x2_grid(fig1_nc, axs1_nc, sim_base_config, None, overlays=[], hist_bins_dict=hist_bins)
+    fig1_nc.text(0.5, 0.01, sim_direct_rcr_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    if im1_nc:
+        fig1_nc.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax1_nc = fig1_nc.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig1_nc.colorbar(im1_nc, cax=cbar_ax1_nc, label='Coinc BL Sim Weighted Counts (Evts/Yr)')
+    else:
+        fig1_nc.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}CoincBLSim_NoCuts_Station{station_id}_{date}.png')
+    plt.close(fig1_nc)
+
 
     # --- Requested Plot 2: Coinc BL Sim + 2016 Backlobe + Coinc Backlobe + Coinc RCR ---
     ic("Generating Plot 2: Coinc BL Sim + 2016 Backlobe + Coinc Backlobe + Coinc RCR...")
@@ -950,6 +965,21 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     plt.savefig(f'{plot_folder}CoincBLSim_vs_2016_vs_Coinc_Station{station_id}_{date}.png')
     plt.close(fig2)
 
+    # --- Requested Plot 2 (No Cuts): Coinc BL Sim + 2016 Backlobe + Coinc Backlobe + Coinc RCR ---
+    ic("Generating Plot 2 (No Cuts): Coinc BL Sim + 2016 Backlobe + Coinc Backlobe + Coinc RCR...")
+    fig2_nc, axs2_nc = plt.subplots(2, 2, figsize=(12, 15))
+    fig2_nc.suptitle(f'Coinc BL Sim + 2016 BL + Coinc BL + Coinc RCR - Station {station_id} (No Cuts)\n{rcr_cut_string}', fontsize=14)
+    im2_nc = plot_2x2_grid(fig2_nc, axs2_nc, sim_base_config, None, overlays=overlays_2, hist_bins_dict=hist_bins)
+    fig2_nc.text(0.5, 0.01, sim_direct_rcr_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    if im2_nc:
+        fig2_nc.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax2_nc = fig2_nc.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig2_nc.colorbar(im2_nc, cax=cbar_ax2_nc, label='Coinc BL Sim Weighted Counts (Evts/Yr)')
+    else:
+        fig2_nc.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}CoincBLSim_vs_2016_vs_Coinc_NoCuts_Station{station_id}_{date}.png')
+    plt.close(fig2_nc)
+
 
     # --- Requested Plot 3: Coinc BL Sim + Coinc RCR Sim + 2016 Backlobe + Coinc Backlobe + Coinc RCR ---
     ic("Generating Plot 3: Coinc BL Sim + Coinc RCR Sim + 2016 Backlobe + Coinc Backlobe + Coinc RCR...")
@@ -967,6 +997,21 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         fig3.tight_layout(rect=[0, 0.28, 1, 0.95])
     plt.savefig(f'{plot_folder}CoincBLSim_vs_CoincRCRSim_vs_2016_vs_Coinc_Station{station_id}_{date}.png')
     plt.close(fig3)
+
+    # --- Requested Plot 3 (No Cuts): Coinc BL Sim + Coinc RCR Sim + 2016 Backlobe + Coinc Backlobe + Coinc RCR ---
+    ic("Generating Plot 3 (No Cuts): Coinc BL Sim + Coinc RCR Sim + 2016 Backlobe + Coinc Backlobe + Coinc RCR...")
+    fig3_nc, axs3_nc = plt.subplots(2, 2, figsize=(12, 15))
+    fig3_nc.suptitle(f'Coinc BL Sim + Coinc RCR Sim + 2016 BL + Coinc BL + Coinc RCR - Station {station_id} (No Cuts)\n{rcr_cut_string}', fontsize=14)
+    im3_nc = plot_2x2_grid(fig3_nc, axs3_nc, sim_base_config, None, overlays=overlays_3, hist_bins_dict=hist_bins)
+    fig3_nc.text(0.5, 0.01, sim_direct_rcr_stats + "\n\n" + sim_reflected_rcr_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+    if im3_nc:
+        fig3_nc.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax3_nc = fig3_nc.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig3_nc.colorbar(im3_nc, cax=cbar_ax3_nc, label='Coinc BL Sim Weighted Counts (Evts/Yr)')
+    else:
+        fig3_nc.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}CoincBLSim_vs_CoincRCRSim_vs_2016_vs_Coinc_NoCuts_Station{station_id}_{date}.png')
+    plt.close(fig3_nc)
 
 
 if __name__ == "__main__":
