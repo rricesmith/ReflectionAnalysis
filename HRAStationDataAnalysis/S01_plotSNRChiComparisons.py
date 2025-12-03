@@ -1211,6 +1211,76 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     plt.savefig(f'{plot_folder}Data_vs_Sim_Station{station_id}_{date}_NoCuts.png')
     plt.close(fig_all_nc)
 
+    # --- New Plot 1: Simulated Backlobe, Backlobe 2016, and Coincidence Backlobe ---
+    ic("Generating Sim Backlobe vs Backlobe 2016 vs Coincidence Backlobe plot...")
+    
+    coinc_backlobe_overlay_config = None
+    if coincidence_overlay:
+        backlobe_data = coincidence_overlay.get('Backlobe')
+        if backlobe_data is not None and backlobe_data.get('snr', np.array([])).size > 0:
+            coinc_backlobe_overlay_config = {
+                'data': backlobe_data,
+                'label': f"Coinc Backlobe",
+                'style': {'marker': 'o', 's': 55, 'alpha': 0.9, 'c': 'gold', 'edgecolors': 'black', 'linewidths': 0.4}
+            }
+
+    overlays_sim_bl_comb = []
+    if bl_2016_overlay_config:
+        overlays_sim_bl_comb.append(bl_2016_overlay_config)
+    if coinc_backlobe_overlay_config:
+        overlays_sim_bl_comb.append(coinc_backlobe_overlay_config)
+
+    fig_sbl, axs_sbl = plt.subplots(2, 2, figsize=(12, 15))
+    fig_sbl.suptitle(f'Sim Backlobe vs 2016 vs Coinc Backlobe - Station {station_id}\n{rcr_cut_string}', fontsize=14)
+    
+    # Base: Sim Backlobe
+    sim_bl_base_config = {'data': sim_direct, 'type': 'hist', 'label': 'Backlobe Sim'}
+    
+    im_sbl = plot_2x2_grid(fig_sbl, axs_sbl, sim_bl_base_config, cuts, overlays=overlays_sim_bl_comb, hist_bins_dict=hist_bins)
+    
+    # Add stats
+    fig_sbl.text(0.5, 0.01, sim_direct_rcr_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+
+    if im_sbl:
+        fig_sbl.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_sbl = fig_sbl.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig_sbl.colorbar(im_sbl, cax=cbar_ax_sbl, label='Backlobe Weighted Counts (Evts/Yr)')
+    else:
+        fig_sbl.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}SimBacklobe_vs_2016_vs_CoincBacklobe_Station{station_id}_{date}.png')
+    plt.close(fig_sbl)
+
+
+    # --- New Plot 2: Simulated RCR, Backlobe 2016, and Coincidence Backlobe ---
+    ic("Generating Sim RCR vs Backlobe 2016 vs Coincidence Backlobe plot...")
+    
+    # Base: Sim RCR
+    # Note: Sim RCR is usually an overlay in other plots, but here we want it as base (hist) or overlay?
+    # If we want it as base hist, we need to configure it as such.
+    # sim_reflected has weights, so we can use 'hist'.
+    
+    sim_rcr_base_config = {'data': sim_reflected, 'type': 'hist', 'label': 'RCR Sim'}
+    
+    # Overlays are the same: Backlobe 2016 and Coincidence Backlobe
+    # Reuse overlays_sim_bl_comb
+    
+    fig_srcr, axs_srcr = plt.subplots(2, 2, figsize=(12, 15))
+    fig_srcr.suptitle(f'Sim RCR vs 2016 vs Coinc Backlobe - Station {station_id}\n{rcr_cut_string}', fontsize=14)
+    
+    im_srcr = plot_2x2_grid(fig_srcr, axs_srcr, sim_rcr_base_config, cuts, overlays=overlays_sim_bl_comb, hist_bins_dict=hist_bins)
+    
+    # Add stats
+    fig_srcr.text(0.5, 0.01, sim_reflected_rcr_stats, ha='center', va='bottom', fontsize=9, fontfamily='monospace')
+
+    if im_srcr:
+        fig_srcr.tight_layout(rect=[0, 0.28, 0.9, 0.95])
+        cbar_ax_srcr = fig_srcr.add_axes([0.91, 0.28, 0.02, 0.65])
+        fig_srcr.colorbar(im_srcr, cax=cbar_ax_srcr, label='RCR Weighted Counts (Evts/Yr)')
+    else:
+        fig_srcr.tight_layout(rect=[0, 0.28, 1, 0.95])
+    plt.savefig(f'{plot_folder}SimRCR_vs_2016_vs_CoincBacklobe_Station{station_id}_{date}.png')
+    plt.close(fig_srcr)
+
 if __name__ == "__main__":
     # --- Configuration and Setup ---
     config = configparser.ConfigParser()
