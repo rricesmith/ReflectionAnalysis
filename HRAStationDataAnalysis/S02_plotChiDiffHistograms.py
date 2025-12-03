@@ -257,8 +257,8 @@ def main():
 
     # 1. Coincidence Events
     ax = axs[0, 0]
-    ax.hist(get_diffs(coinc_rcr_events), bins=bins, histtype='step', label='Coinc RCR Pass', color='purple')
-    ax.hist(get_diffs(coinc_bl_events), bins=bins, histtype='step', label='Coinc BL Pass', color='orange')
+    ax.hist(get_diffs(coinc_rcr_events), bins=bins, histtype='step', label='Coinc RCR Pass', color='purple', linewidth=2)
+    ax.hist(get_diffs(coinc_bl_events), bins=bins, histtype='step', label='Coinc BL Pass', color='orange', linewidth=2)
     ax.set_title('Coincidence Events')
     ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
     ax.legend()
@@ -266,8 +266,8 @@ def main():
 
     # 2. Data Passing Cuts
     ax = axs[0, 1]
-    ax.hist(get_diffs(data_passing_rcr), bins=bins, histtype='step', label='Data RCR Pass', color='purple')
-    ax.hist(get_diffs(data_passing_bl), bins=bins, histtype='step', label='Data BL Pass', color='orange')
+    ax.hist(get_diffs(data_passing_rcr), bins=bins, histtype='step', label='Data RCR Pass', color='purple', linewidth=2)
+    ax.hist(get_diffs(data_passing_bl), bins=bins, histtype='step', label='Data BL Pass', color='orange', linewidth=2)
     ax.set_title('Data Passing Cuts')
     ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
     ax.legend()
@@ -275,7 +275,7 @@ def main():
 
     # 3. Backlobe 2016
     ax = axs[1, 0]
-    ax.hist(get_diffs(backlobe_2016_events), bins=bins, histtype='step', label='Backlobe 2016', color='green')
+    ax.hist(get_diffs(backlobe_2016_events), bins=bins, histtype='step', label='Backlobe 2016', color='green', linewidth=2)
     ax.set_title('Backlobe 2016 Events')
     ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
     ax.legend()
@@ -321,7 +321,7 @@ def main():
     ax = axs[1, 1]
     ax.hist([combined_data, combined_coinc_rcr, combined_coinc_bl, combined_bl2016], bins=bins, histtype='step', stacked=False, 
             label=['Data', 'Coinc RCR', 'Coinc BL', 'Backlobe 2016'], 
-            color=['gray', 'purple', 'orange', 'green'])
+            color=['gray', 'purple', 'orange', 'green'], linewidth=2)
     ax.set_title('Combined (Prioritized)')
     ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
     ax.legend()

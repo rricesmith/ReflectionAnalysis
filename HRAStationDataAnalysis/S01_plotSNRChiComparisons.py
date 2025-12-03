@@ -1329,8 +1329,9 @@ if __name__ == "__main__":
             'RCR_annotations': []
         }
         
-        if str(station_id) in found_events_json:
-            target_times = found_events_json[str(station_id)]
+        station_key = f"Station{station_id}Found"
+        if station_key in found_events_json:
+            target_times = found_events_json[station_key]
             # Find indices in current data that match these times (approximate match or exact?)
             # Assuming exact match for now, or use event IDs if available.
             # The JSON has times.
