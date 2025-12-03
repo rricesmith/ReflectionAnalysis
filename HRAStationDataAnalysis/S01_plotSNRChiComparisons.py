@@ -1491,7 +1491,7 @@ if __name__ == "__main__":
         
         coincidence_overlay_for_station = coincidence_station_overlays.get(station_id)
         backlobe_2016_overlay_for_station = backlobe_2016_station_overlays.get(station_id)
-        run_analysis_for_station(station_id, station_data, station_event_ids, final_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=coincidence_overlay_for_station, backlobe_2016_overlay=backlobe_2016_overlay_for_station, excluded_events=excluded_events)
+        # run_analysis_for_station(station_id, station_data, station_event_ids, final_indices, pre_mask_count, sim_direct, sim_reflected, cuts, rcr_cut_string, hist_bins, plot_folder, date, coincidence_overlay=coincidence_overlay_for_station, backlobe_2016_overlay=backlobe_2016_overlay_for_station, excluded_events=excluded_events)
 
     # --- Run Analysis for Summed Stations ---
     if len(all_stations_data['snr']) > 1:
