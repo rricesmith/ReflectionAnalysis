@@ -4,6 +4,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 import os
 import glob
 import pickle
@@ -342,7 +343,7 @@ def main():
     data_to_plot = np.array(combined_data)
     
     # Histogram
-    counts, bin_edges, patches = ax2.hist(data_to_plot, bins=bins, histtype='bar', edgecolor='black')
+    counts, bin_edges, patches = ax2.hist(data_to_plot, bins=bins, histtype='bar', edgecolor='black', zorder=1)
     
     # Color bins
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
@@ -351,6 +352,14 @@ def main():
             p.set_facecolor('gray')
         else:
             p.set_facecolor('red')
+
+    # Legend 1: Regions
+    legend_elements1 = [
+        Patch(facecolor='gray', edgecolor='black', label='BL Region'),
+        Patch(facecolor='red', edgecolor='black', label='RCR Region')
+    ]
+    leg1 = ax2.legend(handles=legend_elements1, loc='upper right', bbox_to_anchor=(0.98, 0.98), framealpha=1)
+    ax2.add_artist(leg1)
             
     # Fit Gaussian to left side
     # Select data for fit
@@ -371,19 +380,22 @@ def main():
             # Draw Gaussian
             x_plot = np.linspace(min(bin_edges), max(bin_edges), 1000)
             y_plot = gaussian(x_plot, *popt)
-            ax2.plot(x_plot, y_plot, color='blue', linewidth=2, label='Gaussian Fit (Left)')
+            gauss_line, = ax2.plot(x_plot, y_plot, color='blue', linewidth=2, label='Gaussian Fit', zorder=6)
             
             # Shade region > 0
             x_shade = np.linspace(0, max(bin_edges), 500)
             y_shade = gaussian(x_shade, *popt)
-            ax2.fill_between(x_shade, y_shade, color='blue', alpha=0.3, linestyle='--', hatch='//', label='Extrapolation > 0')
+            gauss_fill = ax2.fill_between(x_shade, y_shade, color='blue', alpha=0.5, linestyle='--', hatch='//', label='Gaussian Extrapolation', zorder=5)
             
             # Calculate sum of area > 0
             area, _ = quad(lambda x: gaussian(x, *popt), 0, np.inf)
             bin_width = bin_edges[1] - bin_edges[0]
             expected_events = area / bin_width
             
-            ax2.text(0.6, 0.8, f'Expected > 0: {expected_events:.1f}', transform=ax2.transAxes, fontsize=12, verticalalignment='top', bbox=dict(facecolor='white', alpha=0.8))
+            # Legend 2: Gaussian
+            leg2 = ax2.legend(handles=[gauss_line, gauss_fill], loc='upper right', bbox_to_anchor=(0.98, 0.86), framealpha=1)
+            
+            ax2.text(0.98, 0.76, f'Expected > 0: {expected_events:.1f}', transform=ax2.transAxes, fontsize=12, verticalalignment='top', horizontalalignment='right', bbox=dict(facecolor='white', alpha=0.8))
             
         except Exception as e:
             ic(f"Gaussian fit failed: {e}")
@@ -392,7 +404,7 @@ def main():
 
     ax2.set_title('Data Only - Gaussian Fit to Background')
     ax2.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
-    ax2.legend()
+    ax2.set_ylabel('N-Events')
     ax2.grid(True, alpha=0.3)
     
     save_path_2 = f'{plot_folder}ChiDiff_Data_Gaussian.png'
