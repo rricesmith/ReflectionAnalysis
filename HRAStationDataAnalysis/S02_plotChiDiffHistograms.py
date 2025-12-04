@@ -14,6 +14,7 @@ from icecream import ic
 from HRAStationDataAnalysis.C_utils import getTimeEventMasks
 from scipy.optimize import curve_fit
 from scipy.integrate import quad
+import math
 
 # --- Configuration ---
 def load_config():
@@ -349,11 +350,28 @@ def main():
     bl_mean = np.mean(bl_region_data) if bl_region_data.size > 0 else np.nan
     bl_std = np.std(bl_region_data) if bl_region_data.size > 0 else np.nan
 
+    expected_above_0 = np.nan
+    if not np.isnan(bl_mean) and not np.isnan(bl_std) and bl_std > 0:
+        # Calculate probability mass below and above 0 for a Gaussian with these parameters
+        # Using math.erf for CDF: CDF(x) = 0.5 * (1 + erf((x - mu) / (sigma * sqrt(2))))
+        def gaussian_cdf(x, mu, sigma):
+            return 0.5 * (1 + math.erf((x - mu) / (sigma * np.sqrt(2))))
+
+        prob_below_0 = gaussian_cdf(0, bl_mean, bl_std)
+        prob_above_0 = 1 - prob_below_0
+        
+        # Normalize by the number of events observed below 0
+        # N_below = Total * prob_below_0  => Total = N_below / prob_below_0
+        # N_above = Total * prob_above_0 = N_below * (prob_above_0 / prob_below_0)
+        if prob_below_0 > 0:
+            expected_above_0 = len(bl_region_data) * (prob_above_0 / prob_below_0)
+
     print(f"\n--- Data Statistics ---")
     print(f"BL Region Data Points ({len(bl_region_data)}): {bl_region_data}")
     print(f"RCR Region Data Points ({len(rcr_region_data)}): {rcr_region_data}")
     print(f"BL Region Mean: {bl_mean:.4f}")
     print(f"BL Region Std Dev: {bl_std:.4f}")
+    print(f"Expected Events > 0 (from BL stats): {expected_above_0:.4f}")
     print(f"-----------------------\n")
     
     # Histogram
