@@ -384,7 +384,7 @@ def get_all_cut_masks(data_dict, cuts, cut_type='rcr'):
         
     elif cut_type == 'backlobe':
         # Backlobe cuts (reversed logic)
-        chi_rcr_snr_cut_values = np.interp(snr, cuts['chi_rcr_line_snr'], cuts['chi_rcr_line_chi'])
+        chi_rcr_snr_cut_values = np.interp(snr, cuts['chi_2016_line_snr'], cuts['chi_2016_line_chi'])
         chi_diff = chircr - chi2016
         
         masks = {}
@@ -500,18 +500,18 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
         # RCR Chi Cut: Horizontal line from x=0 to x=rcr_chi_cut_val (diagonal intersection)
         ax.plot([0, rcr_chi_cut_val], [rcr_chi_cut_val, rcr_chi_cut_val], color='purple', linestyle='--', linewidth=1.5, label='RCR Chi Cut')
         
-        # Backlobe Region: ChiRCR > rcr_chi_cut_val, ChiRCR < Chi2016 - threshold, ChiRCR > Chi2016 - max_diff
+        # Backlobe Region: ChiRCR > bl_chi_cut_val, ChiRCR < Chi2016 - threshold, ChiRCR > Chi2016 - max_diff
         # For x (ChiBL) > bl_chi_cut_val, y (ChiRCR) < x - threshold
         x_bl = np.linspace(0, 1, 200)
         y_bl_upper = x_bl - chi_diff_threshold
         y_bl_lower = x_bl - chi_diff_max
         
         # Effective bounds for BL region
-        # We need y > rcr_chi_cut_val (NEW)
+        # We need y > bl_chi_cut_val (NEW)
         # And y < y_bl_upper
         # And y > y_bl_lower
         
-        y_bl_lower_eff = np.maximum(y_bl_lower, rcr_chi_cut_val)
+        y_bl_lower_eff = np.maximum(y_bl_lower, bl_chi_cut_val)
         y_bl_upper_eff = np.minimum(1.0, y_bl_upper)
         
         fill_mask_bl = y_bl_lower_eff < y_bl_upper_eff
@@ -520,21 +520,21 @@ def draw_cut_visuals(ax, plot_key, cuts_dict, cut_type='rcr'):
             ax.fill_between(x_bl[fill_mask_bl], y_bl_lower_eff[fill_mask_bl], y_bl_upper_eff[fill_mask_bl], color='orange', alpha=0.1, label='Pass BL Cuts')
         
         # Draw boundaries for BL
-        # Only show lines where y_upper > rcr_chi_cut_val
-        mask_bl_lines = y_bl_upper > rcr_chi_cut_val
+        # Only show lines where y_upper > bl_chi_cut_val
+        mask_bl_lines = y_bl_upper > bl_chi_cut_val
         if np.any(mask_bl_lines):
             ax.plot(x_bl[mask_bl_lines], y_bl_upper[mask_bl_lines], color='darkorange', linestyle='--', linewidth=1.5, label='BL Diff Cut')
             
-        mask_bl_lines_lower = y_bl_lower > rcr_chi_cut_val
+        mask_bl_lines_lower = y_bl_lower > bl_chi_cut_val
         if np.any(mask_bl_lines_lower):
             ax.plot(x_bl[mask_bl_lines_lower], y_bl_lower[mask_bl_lines_lower], color='darkorange', linestyle=':', linewidth=1.5, label='BL Max Diff')
 
-        # BL Chi Cut: Horizontal line at y = rcr_chi_cut_val
-        # Intersects y = x - threshold at x = rcr_chi_cut_val + threshold
-        # Intersects y = x - max_diff at x = rcr_chi_cut_val + max_diff
-        x_start = rcr_chi_cut_val + chi_diff_threshold
-        x_end = rcr_chi_cut_val + chi_diff_max
-        ax.plot([x_start, x_end], [rcr_chi_cut_val, rcr_chi_cut_val], color='orange', linestyle='--', linewidth=1.5, label='BL Chi Cut')
+        # BL Chi Cut: Horizontal line at y = bl_chi_cut_val
+        # Intersects y = x - threshold at x = bl_chi_cut_val + threshold
+        # Intersects y = x - max_diff at x = bl_chi_cut_val + max_diff
+        x_start = bl_chi_cut_val + chi_diff_threshold
+        x_end = bl_chi_cut_val + chi_diff_max
+        ax.plot([x_start, x_end], [bl_chi_cut_val, bl_chi_cut_val], color='orange', linestyle='--', linewidth=1.5, label='BL Chi Cut')
 
     elif plot_key == 'snr_vs_chidiff':
         chi_diff_max = cuts_dict.get('chi_diff_max', 1.5)
