@@ -249,6 +249,43 @@ def main():
                     evt_tuple = (station_id, event_ids_raw[i], chi_diff, snr_array[i], ChiRCR_array[i], Chi2016_array[i])
                     backlobe_2016_events.append(evt_tuple)
 
+    # --- Prioritization Logic (Moved for Bin Optimization) ---
+    # Priority: Backlobe 2016 > Coincidence > Data
+    # Uniqueness key: (StationID, EventID)
+    
+    final_events = {} # Key -> (Category, ChiDiff)
+    
+    # Add Data first (lowest priority)
+    for e in data_passing_rcr + data_passing_bl:
+        key = (e[0], e[1])
+        final_events[key] = ('Data', e[2])
+        
+    # Add Coincidence (overwrites Data)
+    for e in coinc_rcr_events:
+        key = (e[0], e[1])
+        final_events[key] = ('Coincidence-RCR', e[2])
+        
+    for e in coinc_bl_events:
+        key = (e[0], e[1])
+        final_events[key] = ('Coincidence-BL', e[2])
+        
+    # Add Backlobe 2016 (overwrites Coincidence and Data)
+    for e in backlobe_2016_events:
+        key = (e[0], e[1])
+        final_events[key] = ('Backlobe 2016', e[2])
+        
+    # Separate for plotting
+    combined_data = []
+    combined_coinc_rcr = []
+    combined_coinc_bl = []
+    combined_bl2016 = []
+    
+    for cat, diff in final_events.values():
+        if cat == 'Data': combined_data.append(diff)
+        elif cat == 'Coincidence-RCR': combined_coinc_rcr.append(diff)
+        elif cat == 'Coincidence-BL': combined_coinc_bl.append(diff)
+        elif cat == 'Backlobe 2016': combined_bl2016.append(diff)
+
     # --- Plotting ---
     # Optimize bins based on 'Data' events
     data_for_bins = np.array(combined_data)
@@ -304,42 +341,6 @@ def main():
     ax.grid(True, alpha=0.3)
 
     # 4. Combined with Prioritization
-    # Priority: Backlobe 2016 > Coincidence > Data
-    # Uniqueness key: (StationID, EventID)
-    
-    final_events = {} # Key -> (Category, ChiDiff)
-    
-    # Add Data first (lowest priority)
-    for e in data_passing_rcr + data_passing_bl:
-        key = (e[0], e[1])
-        final_events[key] = ('Data', e[2])
-        
-    # Add Coincidence (overwrites Data)
-    for e in coinc_rcr_events:
-        key = (e[0], e[1])
-        final_events[key] = ('Coincidence-RCR', e[2])
-        
-    for e in coinc_bl_events:
-        key = (e[0], e[1])
-        final_events[key] = ('Coincidence-BL', e[2])
-        
-    # Add Backlobe 2016 (overwrites Coincidence and Data)
-    for e in backlobe_2016_events:
-        key = (e[0], e[1])
-        final_events[key] = ('Backlobe 2016', e[2])
-        
-    # Separate for plotting
-    combined_data = []
-    combined_coinc_rcr = []
-    combined_coinc_bl = []
-    combined_bl2016 = []
-    
-    for cat, diff in final_events.values():
-        if cat == 'Data': combined_data.append(diff)
-        elif cat == 'Coincidence-RCR': combined_coinc_rcr.append(diff)
-        elif cat == 'Coincidence-BL': combined_coinc_bl.append(diff)
-        elif cat == 'Backlobe 2016': combined_bl2016.append(diff)
-        
     ax = axs[1, 1]
     ax.hist([combined_data, combined_coinc_rcr, combined_coinc_bl, combined_bl2016], bins=bins, histtype='step', stacked=False, 
             label=['Data', 'Coinc RCR', 'Coinc BL', 'Backlobe 2016'], 
