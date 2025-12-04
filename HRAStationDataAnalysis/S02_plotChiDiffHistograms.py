@@ -250,7 +250,25 @@ def main():
                     backlobe_2016_events.append(evt_tuple)
 
     # --- Plotting ---
-    bins = np.linspace(-0.2, 0.2, 31) # Adjust as needed
+    # Optimize bins based on 'Data' events
+    data_for_bins = np.array(combined_data)
+    bins = np.linspace(-0.2, 0.2, 31) # Default
+    
+    if data_for_bins.size > 0:
+        found_optimal = False
+        # Search for binning where max count is 3 and unique
+        for n_bins in range(5, 1000):
+            test_bins = np.linspace(-0.2, 0.2, n_bins)
+            counts, _ = np.histogram(data_for_bins, bins=test_bins)
+            if counts.size > 0:
+                max_n = np.max(counts)
+                if max_n == 3 and np.sum(counts == max_n) == 1:
+                    bins = test_bins
+                    found_optimal = True
+                    ic(f"Found optimal binning: {n_bins} bins")
+                    break
+        if not found_optimal:
+            ic("Could not find binning with single max bin n=3. Using default.")
     
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
     fig.suptitle(f'Chi Difference Histograms (RCR - BL) - {date}', fontsize=16)
