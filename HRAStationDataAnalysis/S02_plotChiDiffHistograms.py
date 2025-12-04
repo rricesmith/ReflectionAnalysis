@@ -287,8 +287,14 @@ def main():
         elif cat == 'Backlobe 2016': combined_bl2016.append(diff)
 
     # --- Plotting ---
-    # Optimize bins based on 'Data' events
-    data_for_bins = np.array(combined_data)
+    # Simplify: Use all unique data events for binning and the second plot
+    unique_data_map = {}
+    for e in data_passing_rcr + data_passing_bl:
+        unique_data_map[(e[0], e[1])] = e[2]
+    all_data_diffs = list(unique_data_map.values())
+
+    # Optimize bins based on all data events
+    data_for_bins = np.array(all_data_diffs)
     bins = np.linspace(-0.2, 0.2, 31) # Default
     
     if data_for_bins.size > 0:
@@ -359,8 +365,8 @@ def main():
     # --- New Plot: Data Only with Gaussian Fit ---
     fig2, ax2 = plt.subplots(figsize=(10, 8))
     
-    # Data for new plot: combined_data (Data category only)
-    data_to_plot = np.array(combined_data)
+    # Data for new plot: Use all data passing cuts
+    data_to_plot = np.array(all_data_diffs)
 
     # --- Statistics Calculation ---
     bl_region_data = data_to_plot[data_to_plot < 0]
