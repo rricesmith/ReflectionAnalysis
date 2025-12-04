@@ -292,182 +292,187 @@ def main():
     for e in data_passing_rcr + data_passing_bl:
         unique_data_map[(e[0], e[1])] = e[2]
     all_data_diffs = list(unique_data_map.values())
-
-    # Optimize bins based on all data events
     data_for_bins = np.array(all_data_diffs)
-    bins = np.linspace(-0.2, 0.2, 31) # Default
-    
+
+    # Find all valid binnings
+    valid_n_bins = []
     if data_for_bins.size > 0:
-        found_optimal = False
-        # Search for binning where max count is 3 and unique
-        for n_bins in range(5, 1000):
-            test_bins = np.linspace(-0.2, 0.2, n_bins)
+        for n_points in range(5, 1000):
+            test_bins = np.linspace(-0.2, 0.2, n_points)
             counts, _ = np.histogram(data_for_bins, bins=test_bins)
             if counts.size > 0:
                 max_n = np.max(counts)
-                if max_n == 3 and np.sum(counts == max_n) == 1:
-                    bins = test_bins
-                    found_optimal = True
-                    ic(f"Found optimal binning: {n_bins} bins")
-                    break
-        if not found_optimal:
-            ic("Could not find binning with single max bin n=3. Using default.")
+                if max_n == 3:
+                    valid_n_bins.append(n_points)
+                    ic(f"Found valid binning: {n_points} points")
     
-    fig, axs = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle(f'Chi Difference Histograms (RCR - BL) - {date}', fontsize=16)
-    
-    # Helper to extract ChiDiffs
-    def get_diffs(event_list):
-        return [e[2] for e in event_list]
+    if not valid_n_bins:
+        ic("No binning found with max bin n=3. Using default 31 points.")
+        valid_n_bins.append(31)
 
-    # 1. Coincidence Events
-    ax = axs[0, 0]
-    ax.hist(get_diffs(coinc_rcr_events), bins=bins, histtype='step', label='Coinc RCR Pass', color='purple', linewidth=2)
-    ax.hist(get_diffs(coinc_bl_events), bins=bins, histtype='step', label='Coinc BL Pass', color='orange', linewidth=2)
-    ax.set_title('Coincidence Events')
-    ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    # 2. Data Passing Cuts
-    ax = axs[0, 1]
-    ax.hist(get_diffs(data_passing_rcr), bins=bins, histtype='step', label='Data RCR Pass', color='purple', linewidth=2)
-    ax.hist(get_diffs(data_passing_bl), bins=bins, histtype='step', label='Data BL Pass', color='orange', linewidth=2)
-    ax.set_title('Data Passing Cuts')
-    ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    # 3. Backlobe 2016
-    ax = axs[1, 0]
-    ax.hist(get_diffs(backlobe_2016_events), bins=bins, histtype='step', label='Backlobe 2016', color='green', linewidth=2)
-    ax.set_title('Backlobe 2016 Events')
-    ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    # 4. Combined with Prioritization
-    ax = axs[1, 1]
-    ax.hist([combined_data, combined_coinc_rcr, combined_coinc_bl, combined_bl2016], bins=bins, histtype='step', stacked=False, 
-            label=['Data', 'Coinc RCR', 'Coinc BL', 'Backlobe 2016'], 
-            color=['gray', 'purple', 'orange', 'green'], linewidth=2)
-    ax.set_title('Combined (Prioritized)')
-    ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    save_path = f'{plot_folder}ChiDiff_Histograms_Combined.png'
-    plt.savefig(save_path)
-    ic(f"Saved plot to {save_path}")
-    plt.close()
-
-    # --- New Plot: Data Only with Gaussian Fit ---
-    fig2, ax2 = plt.subplots(figsize=(10, 8))
-    
-    # Data for new plot: Use all data passing cuts
-    data_to_plot = np.array(all_data_diffs)
-
-    # --- Statistics Calculation ---
-    bl_region_data = data_to_plot[data_to_plot < 0]
-    rcr_region_data = data_to_plot[data_to_plot >= 0]
-
-    bl_mean = np.mean(bl_region_data) if bl_region_data.size > 0 else np.nan
-    bl_std = np.std(bl_region_data) if bl_region_data.size > 0 else np.nan
-
-    expected_above_0 = np.nan
-    if not np.isnan(bl_mean) and not np.isnan(bl_std) and bl_std > 0:
-        # Calculate probability mass below and above 0 for a Gaussian with these parameters
-        # Using math.erf for CDF: CDF(x) = 0.5 * (1 + erf((x - mu) / (sigma * sqrt(2))))
-        def gaussian_cdf(x, mu, sigma):
-            return 0.5 * (1 + math.erf((x - mu) / (sigma * np.sqrt(2))))
-
-        prob_below_0 = gaussian_cdf(0, bl_mean, bl_std)
-        prob_above_0 = 1 - prob_below_0
+    # Plotting Function
+    def create_plots(n_points):
+        bins = np.linspace(-0.2, 0.2, n_points)
+        suffix = f"_{n_points}bins"
         
-        # Normalize by the number of events observed below 0
-        # N_below = Total * prob_below_0  => Total = N_below / prob_below_0
-        # N_above = Total * prob_above_0 = N_below * (prob_above_0 / prob_below_0)
-        if prob_below_0 > 0:
-            expected_above_0 = len(bl_region_data) * (prob_above_0 / prob_below_0)
+        # 1. Combined Histograms
+        fig, axs = plt.subplots(2, 2, figsize=(15, 12))
+        fig.suptitle(f'Chi Difference Histograms (RCR - BL) - {date} ({n_points} bins)', fontsize=16)
+        
+        # Helper to extract ChiDiffs
+        def get_diffs(event_list):
+            return [e[2] for e in event_list]
 
-    print(f"\n--- Data Statistics ---")
-    print(f"BL Region Data Points ({len(bl_region_data)}): {bl_region_data}")
-    print(f"RCR Region Data Points ({len(rcr_region_data)}): {rcr_region_data}")
-    print(f"BL Region Mean: {bl_mean:.4f}")
-    print(f"BL Region Std Dev: {bl_std:.4f}")
-    print(f"Expected Events > 0 (from BL stats): {expected_above_0:.4f}")
-    print(f"-----------------------\n")
-    
-    # Histogram
-    counts, bin_edges, patches = ax2.hist(data_to_plot, bins=bins, histtype='bar', edgecolor='black', zorder=1)
-    
-    # Color bins
-    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-    for c, p in zip(bin_centers, patches):
-        if c < 0:
-            p.set_facecolor('gray')
+        # 1. Coincidence Events
+        ax = axs[0, 0]
+        ax.hist(get_diffs(coinc_rcr_events), bins=bins, histtype='step', label='Coinc RCR Pass', color='purple', linewidth=2)
+        ax.hist(get_diffs(coinc_bl_events), bins=bins, histtype='step', label='Coinc BL Pass', color='orange', linewidth=2)
+        ax.set_title('Coincidence Events')
+        ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        # 2. Data Passing Cuts
+        ax = axs[0, 1]
+        ax.hist(get_diffs(data_passing_rcr), bins=bins, histtype='step', label='Data RCR Pass', color='purple', linewidth=2)
+        ax.hist(get_diffs(data_passing_bl), bins=bins, histtype='step', label='Data BL Pass', color='orange', linewidth=2)
+        ax.set_title('Data Passing Cuts')
+        ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        # 3. Backlobe 2016
+        ax = axs[1, 0]
+        ax.hist(get_diffs(backlobe_2016_events), bins=bins, histtype='step', label='Backlobe 2016', color='green', linewidth=2)
+        ax.set_title('Backlobe 2016 Events')
+        ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        # 4. Combined with Prioritization
+        ax = axs[1, 1]
+        ax.hist([combined_data, combined_coinc_rcr, combined_coinc_bl, combined_bl2016], bins=bins, histtype='step', stacked=False, 
+                label=['Data', 'Coinc RCR', 'Coinc BL', 'Backlobe 2016'], 
+                color=['gray', 'purple', 'orange', 'green'], linewidth=2)
+        ax.set_title('Combined (Prioritized)')
+        ax.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        save_path = f'{plot_folder}ChiDiff_Histograms_Combined{suffix}.png'
+        plt.savefig(save_path)
+        ic(f"Saved plot to {save_path}")
+        plt.close()
+
+        # --- New Plot: Data Only with Gaussian Fit ---
+        fig2, ax2 = plt.subplots(figsize=(10, 8))
+        
+        # Data for new plot: Use all data passing cuts
+        data_to_plot = np.array(all_data_diffs)
+
+        # --- Statistics Calculation ---
+        bl_region_data = data_to_plot[data_to_plot < 0]
+        rcr_region_data = data_to_plot[data_to_plot >= 0]
+
+        bl_mean = np.mean(bl_region_data) if bl_region_data.size > 0 else np.nan
+        bl_std = np.std(bl_region_data) if bl_region_data.size > 0 else np.nan
+
+        expected_above_0 = np.nan
+        if not np.isnan(bl_mean) and not np.isnan(bl_std) and bl_std > 0:
+            # Calculate probability mass below and above 0 for a Gaussian with these parameters
+            # Using math.erf for CDF: CDF(x) = 0.5 * (1 + erf((x - mu) / (sigma * sqrt(2))))
+            def gaussian_cdf(x, mu, sigma):
+                return 0.5 * (1 + math.erf((x - mu) / (sigma * np.sqrt(2))))
+
+            prob_below_0 = gaussian_cdf(0, bl_mean, bl_std)
+            prob_above_0 = 1 - prob_below_0
+            
+            # Normalize by the number of events observed below 0
+            if prob_below_0 > 0:
+                expected_above_0 = len(bl_region_data) * (prob_above_0 / prob_below_0)
+
+        print(f"\n--- Data Statistics ({n_points} bins) ---")
+        print(f"BL Region Data Points ({len(bl_region_data)}): {bl_region_data}")
+        print(f"RCR Region Data Points ({len(rcr_region_data)}): {rcr_region_data}")
+        print(f"BL Region Mean: {bl_mean:.4f}")
+        print(f"BL Region Std Dev: {bl_std:.4f}")
+        print(f"Expected Events > 0 (from BL stats): {expected_above_0:.4f}")
+        print(f"-----------------------\n")
+        
+        # Histogram
+        counts, bin_edges, patches = ax2.hist(data_to_plot, bins=bins, histtype='bar', edgecolor='black', zorder=1)
+        
+        # Color bins
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        for c, p in zip(bin_centers, patches):
+            if c < 0:
+                p.set_facecolor('gray')
+            else:
+                p.set_facecolor('red')
+
+        # Legend 1: Regions
+        legend_elements1 = [
+            Patch(facecolor='gray', edgecolor='black', label='BL Region'),
+            Patch(facecolor='red', edgecolor='black', label='RCR Region')
+        ]
+        leg1 = ax2.legend(handles=legend_elements1, loc='upper right', bbox_to_anchor=(0.98, 0.98), framealpha=1)
+        ax2.add_artist(leg1)
+                
+        # Fit Gaussian to left side
+        # Select data for fit
+        mask_left = bin_centers < 0
+        X_fit = bin_centers[mask_left]
+        Y_fit = counts[mask_left]
+        
+        def gaussian(x, A, mu, sigma):
+            return A * np.exp(-(x - mu)**2 / (2 * sigma**2))
+            
+        # Initial guess
+        if len(Y_fit) > 0:
+            p0 = [max(Y_fit), 0, 0.1]
+            
+            try:
+                popt, pcov = curve_fit(gaussian, X_fit, Y_fit, p0=p0)
+                
+                # Draw Gaussian
+                x_plot = np.linspace(min(bin_edges), max(bin_edges), 1000)
+                y_plot = gaussian(x_plot, *popt)
+                gauss_line, = ax2.plot(x_plot, y_plot, color='blue', linewidth=2, label='Gaussian Fit', zorder=6)
+                
+                # Shade region > 0
+                x_shade = np.linspace(0, max(bin_edges), 500)
+                y_shade = gaussian(x_shade, *popt)
+                gauss_fill = ax2.fill_between(x_shade, y_shade, color='blue', alpha=0.25, linestyle='--', hatch='//', label='Gaussian>0', zorder=5)
+                
+                # Calculate sum of area > 0
+                area, _ = quad(lambda x: gaussian(x, *popt), 0, np.inf)
+                bin_width = bin_edges[1] - bin_edges[0]
+                expected_events = area / bin_width
+                
+                # Legend 2: Gaussian
+                leg2 = ax2.legend(handles=[gauss_line, gauss_fill], loc='upper right', bbox_to_anchor=(0.98, 0.86), framealpha=1)
+                
+                ax2.text(0.94, 0.66, f'Expected > 0: {expected_events:.1f}', transform=ax2.transAxes, fontsize=12, verticalalignment='top', horizontalalignment='right', bbox=dict(facecolor='white', alpha=0.8))
+                
+            except Exception as e:
+                ic(f"Gaussian fit failed: {e}")
         else:
-            p.set_facecolor('red')
+            ic("Not enough data for Gaussian fit on left side.")
 
-    # Legend 1: Regions
-    legend_elements1 = [
-        Patch(facecolor='gray', edgecolor='black', label='BL Region'),
-        Patch(facecolor='red', edgecolor='black', label='RCR Region')
-    ]
-    leg1 = ax2.legend(handles=legend_elements1, loc='upper right', bbox_to_anchor=(0.98, 0.98), framealpha=1)
-    ax2.add_artist(leg1)
-            
-    # Fit Gaussian to left side
-    # Select data for fit
-    mask_left = bin_centers < 0
-    X_fit = bin_centers[mask_left]
-    Y_fit = counts[mask_left]
-    
-    def gaussian(x, A, mu, sigma):
-        return A * np.exp(-(x - mu)**2 / (2 * sigma**2))
+        ax2.set_title(f'Data Only - Gaussian Fit to Background ({n_points} bins)')
+        ax2.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
+        ax2.set_ylabel('N-Events')
+        ax2.grid(True, alpha=0.3)
         
-    # Initial guess
-    if len(Y_fit) > 0:
-        p0 = [max(Y_fit), 0, 0.1]
-        
-        try:
-            popt, pcov = curve_fit(gaussian, X_fit, Y_fit, p0=p0)
-            
-            # Draw Gaussian
-            x_plot = np.linspace(min(bin_edges), max(bin_edges), 1000)
-            y_plot = gaussian(x_plot, *popt)
-            gauss_line, = ax2.plot(x_plot, y_plot, color='blue', linewidth=2, label='Gaussian Fit', zorder=6)
-            
-            # Shade region > 0
-            x_shade = np.linspace(0, max(bin_edges), 500)
-            y_shade = gaussian(x_shade, *popt)
-            gauss_fill = ax2.fill_between(x_shade, y_shade, color='blue', alpha=0.25, linestyle='--', hatch='//', label='Gaussian>0', zorder=5)
-            
-            # Calculate sum of area > 0
-            area, _ = quad(lambda x: gaussian(x, *popt), 0, np.inf)
-            bin_width = bin_edges[1] - bin_edges[0]
-            expected_events = area / bin_width
-            
-            # Legend 2: Gaussian
-            leg2 = ax2.legend(handles=[gauss_line, gauss_fill], loc='upper right', bbox_to_anchor=(0.98, 0.86), framealpha=1)
-            
-            ax2.text(0.94, 0.66, f'Expected > 0: {expected_events:.1f}', transform=ax2.transAxes, fontsize=12, verticalalignment='top', horizontalalignment='right', bbox=dict(facecolor='white', alpha=0.8))
-            
-        except Exception as e:
-            ic(f"Gaussian fit failed: {e}")
-    else:
-        ic("Not enough data for Gaussian fit on left side.")
+        save_path_2 = f'{plot_folder}ChiDiff_Data_Gaussian{suffix}.png'
+        plt.savefig(save_path_2)
+        ic(f"Saved data plot to {save_path_2}")
+        plt.close()
 
-    ax2.set_title('Data Only - Gaussian Fit to Background')
-    ax2.set_xlabel(r'RCR-$\chi$ - BL-$\chi$')
-    ax2.set_ylabel('N-Events')
-    ax2.grid(True, alpha=0.3)
-    
-    save_path_2 = f'{plot_folder}ChiDiff_Data_Gaussian.png'
-    plt.savefig(save_path_2)
-    ic(f"Saved data plot to {save_path_2}")
-    plt.close()
+    # Generate all plots
+    for n in valid_n_bins:
+        create_plots(n)
 
 if __name__ == "__main__":
     main()
