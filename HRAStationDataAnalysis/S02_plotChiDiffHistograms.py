@@ -249,7 +249,7 @@ def main():
                     backlobe_2016_events.append(evt_tuple)
 
     # --- Plotting ---
-    bins = np.linspace(-0.2, 0.2, 21) # Adjust as needed
+    bins = np.linspace(-0.2, 0.2, 31) # Adjust as needed
     
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
     fig.suptitle(f'Chi Difference Histograms (RCR - BL) - {date}', fontsize=16)
@@ -341,6 +341,20 @@ def main():
     
     # Data for new plot: combined_data (Data category only)
     data_to_plot = np.array(combined_data)
+
+    # --- Statistics Calculation ---
+    bl_region_data = data_to_plot[data_to_plot < 0]
+    rcr_region_data = data_to_plot[data_to_plot >= 0]
+
+    bl_mean = np.mean(bl_region_data) if bl_region_data.size > 0 else np.nan
+    bl_std = np.std(bl_region_data) if bl_region_data.size > 0 else np.nan
+
+    print(f"\n--- Data Statistics ---")
+    print(f"BL Region Data Points ({len(bl_region_data)}): {bl_region_data}")
+    print(f"RCR Region Data Points ({len(rcr_region_data)}): {rcr_region_data}")
+    print(f"BL Region Mean: {bl_mean:.4f}")
+    print(f"BL Region Std Dev: {bl_std:.4f}")
+    print(f"-----------------------\n")
     
     # Histogram
     counts, bin_edges, patches = ax2.hist(data_to_plot, bins=bins, histtype='bar', edgecolor='black', zorder=1)
