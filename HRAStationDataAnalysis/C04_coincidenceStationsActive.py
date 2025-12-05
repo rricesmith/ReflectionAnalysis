@@ -308,7 +308,7 @@ def main():
                     ax.text(sx, sy, str(s), ha='center', va='center', fontsize=8, color='white', fontweight='bold')
                     
                     # Draw Arrow
-                    st_data = event_stations_data.get(str(s), {})
+                    st_data = event_stations_data.get(s, {})
                     zen_list = st_data.get("Zen", [])
                     azi_list = st_data.get("Azi", [])
                     
