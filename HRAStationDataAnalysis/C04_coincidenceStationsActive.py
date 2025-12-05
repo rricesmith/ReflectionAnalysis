@@ -309,8 +309,8 @@ def main():
                     
                     # Draw Arrow
                     st_data = event_stations_data.get(str(s), {})
-                    zen = st_data.get("Zenith")
-                    azi = st_data.get("Azimuth")
+                    zen = st_data.get("Zen")
+                    azi = st_data.get("Azi")
                     
                     if zen is not None and azi is not None:
                         # Calculate components (length proportional to sin(zenith))
@@ -333,6 +333,8 @@ def main():
                         
                         label_text = f"Az:{azi_deg:.0f}°\nZen:{zen_deg:.0f}°"
                         ax.text(tip_x, tip_y, label_text, fontsize=8, color='blue', ha='left', va='bottom')
+                    else:
+                        ic(f"Station {s} missing Zen/Azi for event {event_id}")
 
         ax.set_xlabel("Easting (m)")
         ax.set_ylabel("Northing (m)")
