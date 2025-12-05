@@ -79,6 +79,7 @@ def main():
     # --- Argument Parsing ---
     parser = argparse.ArgumentParser(description='Plot active stations for coincidence events.')
     parser.add_argument('--date', type=str, default=None, help="Date of data (e.g. 9.1.25)")
+    parser.add_argument('--date_cuts', type=str, default=None, help="Date of cuts (e.g. 9.18.25)")
     parser.add_argument('--date_coincidence', type=str, default=None, help="Date of coincidence (e.g. 9.24.25)")
     parser.add_argument('--date_processing', type=str, default=None, help="Date for processing/plots")
     args = parser.parse_args()
@@ -92,6 +93,7 @@ def main():
     
     # Defaults
     date_of_data = "9.1.25"
+    date_cuts = "9.18.25"
     date_of_coincidence = "9.24.25"
     date_of_process = "12.3.25n4"
 
@@ -100,6 +102,8 @@ def main():
         try:
             if config.has_option('PARAMETERS', 'date'):
                 date_of_data = config['PARAMETERS']['date']
+            if config.has_option('PARAMETERS', 'date_cuts'):
+                date_cuts = config['PARAMETERS']['date_cuts']
             if config.has_option('PARAMETERS', 'date_coincidence'):
                 date_of_coincidence = config['PARAMETERS']['date_coincidence']
             if config.has_option('PARAMETERS', 'date_processing'):
@@ -111,10 +115,12 @@ def main():
 
     # Override with args if provided
     if args.date: date_of_data = args.date
+    if args.date_cuts: date_cuts = args.date_cuts
     if args.date_coincidence: date_of_coincidence = args.date_coincidence
     if args.date_processing: date_of_process = args.date_processing
 
     ic(f"Date Data: {date_of_data}")
+    ic(f"Date Cuts: {date_cuts}")
     ic(f"Date Coincidence: {date_of_coincidence}")
     ic(f"Date Processing: {date_of_process}")
 
@@ -183,14 +189,15 @@ def main():
         return
 
     # --- Load Active Periods (GTIs) ---
-    # Path: HRAStationDataAnalysis/plots/{date_of_process}/Station{st_id}/livetime_data/livetime_gti_St{st_id}_{date_of_data}.pkl
+    # Path: HRAStationDataAnalysis/plots/{date_cuts}/Station{st_id}/livetime_data/livetime_gti_St{st_id}_{date_of_data}.pkl
     # Note: C00 uses date_filter (which is date_of_data) for the filename, and date_save (date_of_process) for the folder.
     
     station_gtis = {}
-    plot_folder_base = os.path.join(base_project_path, 'plots', date_of_process)
+    # Use date_cuts for the folder where livetime data is stored
+    livetime_plot_folder_base = os.path.join(base_project_path, 'plots', date_cuts)
     
     for st_id in STATIONS_TO_ANALYZE:
-        gti_path = os.path.join(plot_folder_base, f"Station{st_id}", "livetime_data", f"livetime_gti_St{st_id}_{date_of_data}.pkl")
+        gti_path = os.path.join(livetime_plot_folder_base, f"Station{st_id}", "livetime_data", f"livetime_gti_St{st_id}_{date_of_data}.pkl")
         data = _load_pickle(gti_path)
         if data and LIVETIME_CUT_STAGE in data:
             # data[stage] is (livetime_seconds, gti_list)
@@ -201,6 +208,8 @@ def main():
             station_gtis[st_id] = []
 
     # --- Output Directory ---
+    # Use date_of_process for output plots
+    plot_folder_base = os.path.join(base_project_path, 'plots', date_of_process)
     output_dir = os.path.join(plot_folder_base, "StationActivityMaps")
     os.makedirs(output_dir, exist_ok=True)
     
