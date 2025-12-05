@@ -214,9 +214,11 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
     
     # --- Process Events ---
-    ic(f"Processing {len(events_dict)} events...")
+    # Filter for passing events only
+    passing_events = {k: v for k, v in events_dict.items() if v.get('passes_analysis_cuts', False)}
+    ic(f"Processing {len(passing_events)} passing events (out of {len(events_dict)} total)...")
     
-    for event_id, event_details in events_dict.items():
+    for event_id, event_details in passing_events.items():
         # Get Event Time
         # C03 uses 'datetime' key which stores the timestamp
         event_time = event_details.get("unix_time")
