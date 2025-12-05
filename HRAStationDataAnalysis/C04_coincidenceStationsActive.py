@@ -309,30 +309,36 @@ def main():
                     
                     # Draw Arrow
                     st_data = event_stations_data.get(str(s), {})
-                    zen = st_data.get("Zen")
-                    azi = st_data.get("Azi")
+                    zen_list = st_data.get("Zen", [])
+                    azi_list = st_data.get("Azi", [])
                     
-                    if zen is not None and azi is not None:
-                        # Calculate components (length proportional to sin(zenith))
-                        dx, dy = get_arrow_components(zen, azi)
-                        
-                        # Scale arrow for visibility
-                        # Using a fixed scale factor, but length depends on Zenith
-                        arrow_scale = 150.0 
-                        
-                        ax.arrow(sx, sy, 
-                                 dx * arrow_scale, dy * arrow_scale, 
-                                 head_width=15, head_length=20, fc='blue', ec='blue', alpha=0.8, length_includes_head=True)
-                        
-                        # Label at tip
-                        tip_x = sx + dx * arrow_scale
-                        tip_y = sy + dy * arrow_scale
-                        
-                        zen_deg = np.degrees(zen)
-                        azi_deg = np.degrees(azi)
-                        
-                        label_text = f"Az:{azi_deg:.0f}°\nZen:{zen_deg:.0f}°"
-                        ax.text(tip_x, tip_y, label_text, fontsize=8, color='blue', ha='left', va='bottom')
+                    # Ensure lists (handle case where they might be scalars or None)
+                    if not isinstance(zen_list, list): zen_list = [zen_list] if zen_list is not None else []
+                    if not isinstance(azi_list, list): azi_list = [azi_list] if azi_list is not None else []
+
+                    if zen_list and azi_list:
+                        for zen, azi in zip(zen_list, azi_list):
+                            if zen is not None and azi is not None:
+                                # Calculate components (length proportional to sin(zenith))
+                                dx, dy = get_arrow_components(zen, azi)
+                                
+                                # Scale arrow for visibility
+                                # Using a fixed scale factor, but length depends on Zenith
+                                arrow_scale = 150.0 
+                                
+                                ax.arrow(sx, sy, 
+                                         dx * arrow_scale, dy * arrow_scale, 
+                                         head_width=15, head_length=20, fc='blue', ec='blue', alpha=0.8, length_includes_head=True)
+                                
+                                # Label at tip
+                                tip_x = sx + dx * arrow_scale
+                                tip_y = sy + dy * arrow_scale
+                                
+                                zen_deg = np.degrees(zen)
+                                azi_deg = np.degrees(azi)
+                                
+                                label_text = f"Az:{azi_deg:.0f}°\nZen:{zen_deg:.0f}°"
+                                ax.text(tip_x, tip_y, label_text, fontsize=8, color='blue', ha='left', va='bottom')
                     else:
                         ic(f"Station {s} missing Zen/Azi for event {event_id}")
 
