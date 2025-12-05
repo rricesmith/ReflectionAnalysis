@@ -218,13 +218,11 @@ def main():
     
     for event_id, event_details in events_dict.items():
         # Get Event Time
-        # event_details might have 'unix_time' or we infer from key if it's not there?
-        # Usually event_details has 'unix_time' or similar.
-        # Let's check C03... it uses event_details.get("unix_time") or similar?
-        # Actually C03 iterates and gets timestamps.
-        # Let's assume 'unix_time' is in event_details.
-        
+        # C03 uses 'datetime' key which stores the timestamp
         event_time = event_details.get("unix_time")
+        if event_time is None:
+            event_time = event_details.get("datetime")
+        
         if event_time is None:
             # Try to get from stations
             stations_data = event_details.get("stations", {})
@@ -233,10 +231,14 @@ def main():
                 event_time = first_st.get("unix_time")
         
         if event_time is None:
-            ic(f"Skipping event {event_id}: No timestamp found.")
+            ic(f"Skipping event {event_id}: No timestamp found. Keys: {list(event_details.keys())}")
             continue
             
-        event_dt = datetime.datetime.fromtimestamp(event_time)
+        if isinstance(event_time, datetime.datetime):
+            event_dt = event_time
+            event_time = event_dt.timestamp()
+        else:
+            event_dt = datetime.datetime.fromtimestamp(event_time)
         
         # Determine Status
         triggered_stations = []
