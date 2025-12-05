@@ -273,7 +273,7 @@ def main():
             print(f"Station {st_id}: {status}")
 
         # --- Plotting ---
-        fig, ax = plt.subplots(figsize=(10, 8))
+        fig, ax = plt.subplots(figsize=(12, 10)) # Increased size slightly
         
         # Plot Offline
         if offline_stations:
@@ -301,7 +301,9 @@ def main():
             
             for s in triggered_stations:
                 if s in station_positions:
-                    ax.text(station_positions[s]["x"], station_positions[s]["y"], str(s), ha='center', va='center', fontsize=8, color='white', fontweight='bold')
+                    sx = station_positions[s]["x"]
+                    sy = station_positions[s]["y"]
+                    ax.text(sx, sy, str(s), ha='center', va='center', fontsize=8, color='white', fontweight='bold')
                     
                     # Draw Arrow
                     st_data = event_stations_data.get(str(s), {})
@@ -309,17 +311,35 @@ def main():
                     azi = st_data.get("Azimuth")
                     
                     if zen is not None and azi is not None:
+                        # Calculate components (length proportional to sin(zenith))
                         dx, dy = get_arrow_components(zen, azi)
-                        # Scale arrow
-                        arrow_len = 100 # meters, arbitrary scale for visibility
-                        ax.arrow(station_positions[s]["x"], station_positions[s]["y"], 
-                                 dx * arrow_len, dy * arrow_len, 
-                                 head_width=20, head_length=30, fc='blue', ec='blue', alpha=0.7)
+                        
+                        # Scale arrow for visibility
+                        # Using a fixed scale factor, but length depends on Zenith
+                        arrow_scale = 150.0 
+                        
+                        ax.arrow(sx, sy, 
+                                 dx * arrow_scale, dy * arrow_scale, 
+                                 head_width=15, head_length=20, fc='blue', ec='blue', alpha=0.8, length_includes_head=True)
+                        
+                        # Label at tip
+                        tip_x = sx + dx * arrow_scale
+                        tip_y = sy + dy * arrow_scale
+                        
+                        zen_deg = np.degrees(zen)
+                        azi_deg = np.degrees(azi)
+                        
+                        label_text = f"Az:{azi_deg:.0f}°\nZen:{zen_deg:.0f}°"
+                        ax.text(tip_x, tip_y, label_text, fontsize=8, color='blue', ha='left', va='bottom')
 
         ax.set_xlabel("Easting (m)")
         ax.set_ylabel("Northing (m)")
         ax.set_title(f"Event {event_id}\n{event_dt}")
-        ax.legend(loc='upper right')
+        
+        # Legend: Halfway between top-right and middle-right
+        # bbox_to_anchor=(1, 0.75) places the corner at x=1 (right edge), y=0.75 (3/4 up)
+        ax.legend(loc='upper right', bbox_to_anchor=(1.0, 0.85), framealpha=0.9)
+        
         ax.grid(True, linestyle='--', alpha=0.5)
         ax.set_aspect('equal')
         
