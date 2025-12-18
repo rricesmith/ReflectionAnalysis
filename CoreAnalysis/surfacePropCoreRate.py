@@ -456,7 +456,7 @@ plt.show()
 
 flux = 'auger_19'
 with open(f"data/output_{flux}_{atm_overburden}.pkl", "rb") as fin:
-    shower_energies, weights_shower_energies = pickle.load(fin)
+    shower_energies, weights_shower_energies, shower_xmax = pickle.load(fin)
 
 dCos = 0.05
 coszen_bin_edges = np.arange(np.cos(np.deg2rad(60)), 1.01, dCos)
