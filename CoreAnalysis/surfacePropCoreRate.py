@@ -105,7 +105,7 @@ antenna_provider = antennapattern.AntennaPatternProvider()
 LPDA = antenna_provider.load_antenna_pattern('createLPDA_100MHz_InfFirn')
 dipole = antenna_provider.load_antenna_pattern('RNOG_vpol_v1_n1.4')
 
-use_channels = [0, 9]
+# use_channels = [0, 9]
 
 lpda_electricField = NuRadioReco.framework.electric_field.ElectricField([0])
 dip_electricField = NuRadioReco.framework.electric_field.ElectricField([9])
@@ -158,6 +158,11 @@ for A, B, sigma, inc_zen, inc_az, theta_bool in equations:
 
         for atype in ['LPDA', 'Dipole']:
             use_LPDA = (atype == 'LPDA')
+            if use_LPDA:
+                use_channels = [0]
+            else:
+                use_channels = [9]
+
             n_steps = 20
             prev_r = 0
             r = 100
@@ -292,7 +297,7 @@ for A, B, sigma, inc_zen, inc_az, theta_bool in equations:
 
                 channelResampler.run(event, station, det, sampling_rate=1 * units.GHz)
                 channelSignalReconstructor.run(event, station, det)
-                # channelLengthAdjuster.run(event, station, det)                     #Is this needed?
+                channelLengthAdjuster.run(event, station, det)                     #Is this needed?
 
                 trigger_name = 'trigger_' + str(i_E) + '_' + str(r) + '_' + str(inc_zen) + '_' + str(inc_az) + '_' + str(theta_bool) + '_' + atype
                 print('trigger name ' +trigger_name)
