@@ -63,13 +63,15 @@ def plot_v_e_traces(trace, rad, A_scaling, B_scaling, n_samples):
 
     plt.plot(channel_v_trace, label='v_trace')                                                                                                                                             
     plt.legend()
-    plt.show()
+    # plt.show()
+    plt.savefig('CoreAnalysis/plots/HorPropSurfaceAskaryanVTraceExample.png')
     plt.plot(pulse, label='e_trace')
 #    plt.scatter(np.arange(0, len(channel_v_trace), 1), channel_v_trace, label='v_trace')                                                                                 
 #            plt.scatter(np.arange(0, len(channel_v_trace), 1), test_pulse_sc, label='e_trace')                                                                           
     plt.legend()                                                                                                                                                          
 #            plt.yscale('log')                                                                                                                                            
-    plt.show()                                                                                                                                                            
+    # plt.show()         
+    plt.savefig('CoreAnalysis/plots/HorPropSurfaceAskaryanETraceExample.png')                                                                                                                                                   
     return                                        
 
 #det = detector.Detector(json_filename='configurations/gen2_4LPDA_PA_15m_RNOG_300k_200mdipole_infirn.json')
@@ -394,7 +396,9 @@ plt.title(f'Max Radius Triggered Surface Scattering, {type} {atype} {thresh}muV'
 #plt.xscale('log')
 #plt.legend(['44*r^-1.4'])
 plt.legend()
-plt.show()
+# plt.show()
+plt.savefig(f'CoreAnalysis/plots/HorPropSurfaceAskaryanMaxRadiusTriggered_{type}_{atype}_{thresh}muV.png')
+plt.clf()
 
 
 d_eng = 0.5	#Half step up and down per energy in log10
@@ -530,7 +534,9 @@ plt.ylabel('Events/year/station')
 plt.xlabel('Cosmic Ray Energy (log10 eV)')
 plt.yscale('log')
 plt.legend()
-plt.show()
+# plt.show()
+plt.savefig(f'CoreAnalysis/plots/HorPropSurfaceAskaryanEventRateCR_{type}_f{f}_{threshold}muV.png')
+plt.clf()
 for iS, space in enumerate(spacing):
     plt.scatter(logEs, event_rate_surface_shower[iS], label=f'{space}m, {sum(event_rate_surface_shower[iS]):.6f}evts/yr/stn')
 plt.title(f'Event Rate of Core Scattering per Core Energy Remaining, {type} f={f} {threshold}muV')
@@ -538,7 +544,9 @@ plt.ylabel('Events/year/station')
 plt.xlabel('Core Energy at Surface (log10 eV)')
 plt.yscale('log')
 plt.legend()
-plt.show()
+# plt.show()
+plt.savefig(f'CoreAnalysis/plots/HorPropSurfaceAskaryanEventRateSurface_{type}_f{f}_{threshold}muV.png')
+plt.clf()   
 for iS, space in enumerate(spacing):
     plt.scatter(logEs + np.log10(f), event_rate_surface_shower[iS], label=f'{space}m, {sum(event_rate_surface_shower[iS]):.6f}evts/yr/stn')
 plt.title(f'Event Rates of Core Scattering per Coupled Core energy, {type}, f={f} {threshold}muV')
@@ -546,7 +554,9 @@ plt.ylabel('Events/year/station')
 plt.xlabel('Coupled Core Energy (log10eV)')
 plt.yscale('log')
 plt.legend()
-plt.show()
+# plt.show()
+plt.savefig(f'CoreAnalysis/plots/HorPropSurfaceAskaryanEventRateCoupledCore_{type}_f{f}_{threshold}muV.png')
+plt.clf()
 
 
 """

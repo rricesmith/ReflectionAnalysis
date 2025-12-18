@@ -482,6 +482,13 @@ PUEO100 *= (4 / np.log(10))  # see discussion above about anita binning
 PUEO100 *= 2.44  # convert from single event sensitivty to 90% confidence level
 PUEO100 *= energyBinsPerDecade
 
+PUEO_custom_energy = np.array([317560908451594050, 508693014501360500, 861875782469767400, 1527292032394963200, 3349420016304090600, 7102333103523110000, 20160755924439600000, 66214047020574015000, 192220784642166160000, 440896597206039500000, 988845265580097300000], dtype=np.float64) * units.eV
+PUEO_custom_flux = np.array([2.921655903174247e-15, 3.845517197746975e-16, 5.859143972250661e-17, 1.1714993221948257e-17, 1.8611430634386142e-18, 6.823106973322402e-19, 2.956769531967014e-19, 1.4832225341723678e-19, 9.364099156733908e-20, 6.843515245854245e-20, 5.437622870239972e-20])
+PUEO_custom_flux *= PUEO_custom_energy / units.GeV * (units.GeV * units.cm ** -2 * units.second ** -1 * units.sr ** -1)
+PUEO_custom_flux *= (4 / np.log(10))  # see discussion above about anita binning
+PUEO_custom_flux *= 2.44  # convert from single event sensitivty to 90% confidence level
+PUEO_custom_flux *= energyBinsPerDecade
+
 # TAROGE-M
 # 10 stations, 5 year exposure, nutau only
 # Log(Energy) GeV       Sensitivity*E^2 (GeV/cm^2 s sr)
@@ -641,7 +648,8 @@ def get_E2_limit_figure(diffuse=True,
                         shower_Auger=True,
                         show_ara_1year=False,
                         show_prediction_arianna_200=False,
-                        show_PUEO_100=True,
+                        show_PUEO_100=False,
+                        show_PUEO_30=True,
                         show_beacon=False,
                         show_ice_cube_EHE_limit_18=False  # old IC limit
                         ):
@@ -980,14 +988,17 @@ def get_E2_limit_figure(diffuse=True,
                     horizontalalignment='left', color='purple', rotation=0, fontsize=legendfontsize)
     if show_RNOG:
         # flux limit for 5 years
-        RNOG_E = np.array([1.77827941e+07, 5.62341325e+07, 1.77827941e+08, 5.62341325e+08,
-                           1.77827941e+09, 5.62341325e+09, 1.77827941e+10, 5.62341325e+10]) * units.GeV
-        RNOG_flux = np.array([4.51342568e-08, 1.57748718e-08, 1.03345333e-08, 7.98437261e-09,
-                              7.22245212e-09, 7.62588582e-09, 9.28033358e-09, 1.28698605e-08]) * plotUnitsFlux
-        ax.plot(RNOG_E / plotUnitsEnergy, RNOG_flux / 0.7 / 2 / plotUnitsFlux, color='red', linestyle="-.")  # uses 70% uptime from RNO-G whitepaper and resacling to 10years
+        # RNOG_E = np.array([1.77827941e+07, 5.62341325e+07, 1.77827941e+08, 5.62341325e+08,
+        #                    1.77827941e+09, 5.62341325e+09, 1.77827941e+10, 5.62341325e+10]) * units.GeV
+        # RNOG_flux = np.array([4.51342568e-08, 1.57748718e-08, 1.03345333e-08, 7.98437261e-09,
+        #                       7.22245212e-09, 7.62588582e-09, 9.28033358e-09, 1.28698605e-08]) * plotUnitsFlux
+        # ax.plot(RNOG_E / plotUnitsEnergy, RNOG_flux / 0.7 / 2 / plotUnitsFlux, color='red', linestyle="-.")  # uses 70% uptime from RNO-G whitepaper and resacling to 10years
+        RNOG_E = np.array([25500484.450344495, 37883033.46281888, 57349099.504769035, 117375398.7015553, 191602464.71344835, 343678842.2868297, 817876227.7887244, 1839355846.8026302, 4295512694.304725, 8791550686.505232, 27757692227.41493, 82821789743.66986]) * units.GeV
+        RNOG_flux = np.array([1.1176530673522736e-7, 7.099523287896522e-8, 4.683543023231175e-8, 2.3267311199369254e-8, 1.854416510999255e-8, 1.3964765393980848e-8, 1.1129988891682104e-8, 1.0716959233637974e-8, 1.2004415951488342e-8, 1.3446538257235637e-8, 2.0382862082256548e-8, 3.46090195760654e-8]) * plotUnitsFlux
+        ax.plot(RNOG_E / plotUnitsEnergy, RNOG_flux / plotUnitsFlux, color='red', linestyle="-.")  # RNO-G white paper, 2sigma noise trigger average, 5-yr sensitivity 90% CL
         ax.annotate('RNO-G',
-                    xy=(8e18 * units.eV / plotUnitsEnergy, 1.5e-8), xycoords='data',
-                    horizontalalignment='left', va="top", color='red', rotation=10, fontsize=legendfontsize)
+                    xy=(8e18 * units.eV / plotUnitsEnergy, 1.1e-8), xycoords='data',
+                    horizontalalignment='left', va="top", color='red', rotation=0, fontsize=legendfontsize)
 
     if show_prediction_arianna_200:
         # 10 year sensitivity
@@ -1007,6 +1018,17 @@ def get_E2_limit_figure(diffuse=True,
                     xycoords='data', horizontalalignment='left', color='#EA5A06', rotation=0, fontsize=legendfontsize)
         ax.plot(PUEO100_energy / plotUnitsEnergy, PUEO100 / plotUnitsFlux, linestyle=(0, (3, 1, 1, 1, 1, 1)), color='#EA5A06', label='PUEO (3 flights, 100 days)',
                 lw=2)
+
+    if show_PUEO_30:
+        ax.annotate('PUEO (1 flight)', xy=(3e18 * units.eV / plotUnitsEnergy, 3.2e-8),
+                    xycoords='data', horizontalalignment='left', color='#EA5A06', rotation=0, fontsize=legendfontsize)
+        ax.plot(PUEO30_energy / plotUnitsEnergy, PUEO30 / plotUnitsFlux, linestyle=(0, (3, 1, 1, 1, 1, 1)), color='#EA5A06', label='PUEO (1 flight, 30 days)',
+                lw=2)
+        
+        ax.annotate('PUEO Custom', xy=(1e19 * units.eV / plotUnitsEnergy, 1e-8),
+                    xycoords='data', horizontalalignment='left', color='#EA5A06', rotation=0, fontsize=legendfontsize)
+        ax.plot(PUEO_custom_energy / plotUnitsEnergy, PUEO_custom_flux / plotUnitsFlux, linestyle='--', color='#EA5A06', label='PUEO Custom',
+                lw=2)        
 
     if show_beacon:
         beaconleg, = ax.plot(BEACON_energy / plotUnitsEnergy, BEACON_LF_1000 / plotUnitsFlux,

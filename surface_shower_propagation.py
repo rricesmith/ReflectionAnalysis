@@ -31,11 +31,25 @@ plt.yscale('log')
 plt.title('Power Law Fit to Data')
 plt.ylabel('Sqrt(Surface Air Pulse/d^-2 extrap. from 100m)')
 plt.xlabel('Distance (m)')
-plt.show()
+# plt.show()
+plt.savefig('plots/SurfacePulseDistanceFit.png')
+plt.close()
+
+data = plt.scatter(rad_data, amp_data)
+lower_fit, = plt.plot(xfit, power_fit, '-')
+r, = plt.plot(xfit, r_data)
+plt.legend((data, lower_fit, r), ('Original Data', 'Fit to Data, y=44x^-1.4', '1/r scaling'))
+plt.yscale('log')
+plt.title('Power Law Fit to Data')
+plt.ylabel('Sqrt(Surface Air Pulse / d^2)')
+plt.xlabel('Distance (m)')
+# plt.show()
+plt.savefig('plots/SurfacePulseDistanceFit_NoExtra.png')
+plt.close()
 
 
 
-quit()
+# quit()
 
 n_samples = 512 #define number of sample in the trace
 dt = 0.5 * units.ns #definte time resolution (bin width) 0.5ns
@@ -84,7 +98,9 @@ plt.tick_params(which='both', top=True, right=True)
 plt.ylabel('V/m')
 plt.xlabel('radius (m)')
 plt.yscale('log')
-plt.show()
+# plt.show()
+plt.savefig('plots/SurfaceAskaryanAmplitudeVsRadius.png')
+plt.close()
 
 
 energies = np.arange(1, 100, 1)
@@ -107,4 +123,6 @@ plt.scatter(energies, max_rad)
 plt.title('Max Radius of Voltage past LPDA Threshold for Surface Propogated Signals')
 plt.ylabel('Radius (m)')
 plt.xlabel('Energy (10^17 eV)')
-plt.show()
+# plt.show()
+plt.savefig('plots/SurfaceAskaryanMaxRadiusVsEnergy.png')
+plt.close()

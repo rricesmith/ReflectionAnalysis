@@ -41,36 +41,13 @@ for inc_azi in inc_azis:
         VELs_back = LPDA_antenna.get_antenna_response_vectorized(ff, 180*units.deg-inc_zen, inc_azi,
                                                     orientation_theta_phi[0], orientation_theta_phi[1], rotation_theta_phi[0], rotation_theta_phi[1])
 
-        # Calculate attenuation
-        att_len = calculate_attenuation_length(ff, apply_correction=True, R=0.82)
-        d_ice = 576 * units.m
-        # inc_zen is in radians
-        att_factor = np.exp(-2 * d_ice / (np.cos(inc_zen) * att_len))
-        
-        front_response = np.abs(VELs_front['theta'])
-        front_w_att = front_response * att_factor
-        # Normalize to 1
-        if np.max(front_w_att) > 0:
-            front_w_att_norm = front_w_att / np.max(front_w_att)
-        else:
-            front_w_att_norm = front_w_att
+        # Normalize to the larger of the two sets
+        norm_factor = max(np.max(np.abs(VELs_front['theta'])), np.max(np.abs(VELs_back['theta'])))
 
-        # Normalize Frontlobe to 1
-        front_theta = np.abs(VELs_front['theta'])
-        if np.max(front_theta) > 0:
-            front_theta_norm = front_theta / np.max(front_theta)
-        else:
-            front_theta_norm = front_theta
-
-        # Normalize Backlobe to 1
-        back_theta = np.abs(VELs_back['theta'])
-        if np.max(back_theta) > 0:
-            back_theta_norm = back_theta / np.max(back_theta)
-        else:
-            back_theta_norm = back_theta
-
-        ax.plot(ff / units.MHz, front_theta_norm, label=f'Frontlobe', color='red')
-        ax.plot(ff / units.MHz, front_w_att_norm, label='Frontlobe w/ att.', color='green', linestyle=':')
+        VELs = VELs_front
+        VELs['theta'] = VELs['theta'] / norm_factor
+        VELs['phi'] = VELs['phi'] / np.max(np.abs(VELs['phi']))
+        ax.plot(ff / units.MHz, np.abs(VELs['theta']), label=f'Frontlobe', color='red')
         # ax.plot(ff / units.MHz, np.abs(VELs['phi']), label=f'ePhi LPDA {inc_zen/units.deg:.0f}deg')
 
         # Limit fit to sensitive region of LPDA
@@ -88,7 +65,10 @@ for inc_azi in inc_azis:
         #     continue
         # ax.plot(ff[fitmask] / units.MHz, inverse_func(ff[fitmask]/units.MHz, *fit), label=f'Fit {fit[0]:.5f}/(x+{fit[1]:.2f})+{fit[2]:.2f}', color='red', linestyle='--')
 
-        ax.plot(ff / units.MHz, back_theta_norm, label=f'Backlobe', color='blue')
+        VELs = VELs_back
+        VELs['theta'] = VELs['theta'] / norm_factor
+        VELs['phi'] = VELs['phi'] / np.max(np.abs(VELs['phi']))
+        ax.plot(ff / units.MHz, np.abs(VELs['theta']), label=f'Backlobe', color='blue')
         # ax.plot(ff / units.MHz, np.abs(VELs['phi']), label=f'ePhi LPDA {(180*units.deg-inc_zen)/units.deg:.0f}deg')
 
         # Linear fit
@@ -144,6 +124,52 @@ for inc_azi in inc_azis:
         plt.savefig(savename)
         plt.close(fig)
         ic(f'Saved {savename}')
+
+# Polar plots
+plot_azimuths = [0*units.deg, 45*units.deg, 90*units.deg]
+plot_freqs = np.array([100, 200, 300, 400]) * units.MHz
+polar_angles_deg = np.arange(0, 361, 5)
+polar_angles = polar_angles_deg * units.deg
+
+orientation_theta_phi = [np.deg2rad(0), np.deg2rad(0)]
+rotation_theta_phi = [np.deg2rad(90), np.deg2rad(0)]
+
+for plot_azi in plot_azimuths:
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    
+    responses = np.zeros((len(plot_freqs), len(polar_angles)))
+    
+    idx_180 = np.where(polar_angles_deg == 180)[0][0]
+
+    for i, angle in enumerate(polar_angles):
+        if i <= idx_180:
+            zen = angle
+            azi = plot_azi
+            
+            VELs = LPDA_antenna.get_antenna_response_vectorized(plot_freqs, zen, azi,
+                                                        orientation_theta_phi[0], orientation_theta_phi[1], rotation_theta_phi[0], rotation_theta_phi[1])
+            responses[:, i] = 20 * np.log10(np.abs(VELs['theta']))
+        else:
+            mirror_idx = idx_180 - (i - idx_180)
+            responses[:, i] = responses[:, mirror_idx]
+
+        # Fix 270 by making it same as 90
+        if zen == 270*units.deg:
+            responses[:, i] = responses[:, idx_180 - (idx_180 - np.where(polar_angles_deg == 90)[0][0])]
+
+    ax.set_theta_zero_location("S")
+    ax.set_theta_direction(-1)
+    
+    for i, freq in enumerate(plot_freqs):
+        ax.plot(np.deg2rad(polar_angles_deg), responses[i, :], label=f'{freq/units.MHz:.0f} MHz')
+        
+    ax.set_title(f'LPDA Response Azimuth {plot_azi/units.deg:.0f} deg')
+    ax.legend(loc='lower right', bbox_to_anchor=(1.3, 0))
+    
+    savename = f'plots/AntennaResponse_Polar_Azi{plot_azi/units.deg:.0f}deg.png'
+    plt.savefig(savename, bbox_inches='tight')
+    plt.close(fig)
+    ic(f'Saved {savename}')
 
 quit()
 
