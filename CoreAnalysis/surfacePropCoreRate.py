@@ -292,7 +292,7 @@ for A, B, sigma, inc_zen, inc_az, theta_bool in equations:
 
                 channelResampler.run(event, station, det, sampling_rate=1 * units.GHz)
                 channelSignalReconstructor.run(event, station, det)
-                channelLengthAdjuster.run(event, station, det)                     #Is this needed?
+                # channelLengthAdjuster.run(event, station, det)                     #Is this needed?
 
                 trigger_name = 'trigger_' + str(i_E) + '_' + str(r) + '_' + str(inc_zen) + '_' + str(inc_az) + '_' + str(theta_bool) + '_' + atype
                 print('trigger name ' +trigger_name)
