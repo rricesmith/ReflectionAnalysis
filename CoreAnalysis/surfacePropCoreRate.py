@@ -394,7 +394,7 @@ logEs = 0.5 * (shower_E_bins[1:] + shower_E_bins[:-1])
 log_E_r_edges = np.log10(energies_edges * energy)
 log_E_r = (log_E_r_edges[1:] + log_E_r_edges[:-1]) / 2
 
-spacing = [500, 750, 1000, 1500]
+spacing = [500, 1000, 1500]
 
 # Store results
 results = {}
@@ -405,6 +405,7 @@ for atype in ['LPDA', 'Dipole']:
     event_rate_cr_eng = np.zeros((len(spacing), len(logEs)))
     event_rate_surface_shower = np.zeros_like(event_rate_cr_eng)
     total_rate_cr = np.zeros((len(spacing), len(logEs)))
+    total_rate_surface = np.zeros_like(total_rate_cr)
     
     for iS, space in enumerate(spacing):
         tri_area[iS] = surfaceScatteringAreaEfficiency.area_equilateral_triangle(space * 10**-3)
@@ -426,6 +427,8 @@ for atype in ['LPDA', 'Dipole']:
                     rateN = rate_digit[n]
                     
                     total_rate_cr[iS][iE] += weightsiEiC[n] * tri_area[iS]
+                    if rateN >= 0 and rateN < len(logEs):
+                        total_rate_surface[iS][rateN] += weightsiEiC[n] * tri_area[iS]
 
                     if engN < 0:
                         continue
@@ -443,6 +446,7 @@ for atype in ['LPDA', 'Dipole']:
     red_e_r_cr_eng = np.zeros( (len(spacing), len(reduced_logEs)) )
     red_e_r_surf_sh = np.zeros_like(red_e_r_cr_eng)
     red_total_rate_cr = np.zeros_like(red_e_r_cr_eng)
+    red_total_rate_surf = np.zeros_like(red_e_r_cr_eng)
 
     for iS, space in enumerate(spacing):
         i = 0
@@ -451,16 +455,22 @@ for atype in ['LPDA', 'Dipole']:
                 red_e_r_cr_eng[iS][i] = event_rate_cr_eng[iS][iE]
                 red_e_r_surf_sh[iS][i] = event_rate_surface_shower[iS][iE]
                 red_total_rate_cr[iS][i] = total_rate_cr[iS][iE]
+                red_total_rate_surf[iS][i] = total_rate_surface[iS][iE]
                 i += 1
     
     results[atype] = {
         'event_rate_cr_eng': red_e_r_cr_eng,
         'event_rate_surface_shower': red_e_r_surf_sh,
         'total_rate_cr': red_total_rate_cr,
+        'total_rate_surface': red_total_rate_surf,
         'logEs': reduced_logEs
     }
 
 # Plotting Event Rates
+import matplotlib.lines as mlines
+colors = ['r', 'g', 'b', 'c', 'm', 'y']
+linestyles = {'LPDA': '-', 'Dipole': '--'}
+
 for pconfig in ['LPDA', 'Dipole', 'Both']:
     types_to_plot = []
     if pconfig == 'Both': types_to_plot = ['LPDA', 'Dipole']
@@ -537,8 +547,18 @@ for pconfig in ['LPDA', 'Dipole', 'Both']:
     plt.savefig(f'CoreAnalysis/plots/HorProp/SurfaceAskaryanNtrigVsNtotal_{type}_f{f}_{pconfig}_{threshold}muV.png')
     plt.clf()
 
-    # Fraction of Core Scatters Detected
+    # Fraction of Core Scatters Detected (CR Energy)
     plt.figure()
+    legend_lines = []
+    for iS, space in enumerate(spacing):
+        legend_lines.append(mlines.Line2D([], [], color=colors[iS], label=f'{space}m'))
+    
+    legend_types = []
+    if 'LPDA' in types_to_plot:
+        legend_types.append(mlines.Line2D([], [], color='k', linestyle='-', label='LPDA'))
+    if 'Dipole' in types_to_plot:
+        legend_types.append(mlines.Line2D([], [], color='k', linestyle='--', label='Dipole'))
+
     for atype in types_to_plot:
         data = results[atype]
         logEs_plot = data['logEs']
@@ -550,13 +570,53 @@ for pconfig in ['LPDA', 'Dipole', 'Both']:
             frac[np.isnan(frac)] = 0
         
         for iS, space in enumerate(spacing):
-            plt.scatter(logEs_plot, frac[iS] * 100, label=f'{atype} {space}m')
+            if np.any(frac[iS] > 1.0):
+                 print(f"Warning: Fraction > 100% for {atype} {space}m (CR Energy)")
+                 print(f"Frac: {frac[iS]}")
+                 frac[iS] = np.minimum(frac[iS], 1.0)
+            plt.plot(logEs_plot, frac[iS] * 100, color=colors[iS], linestyle=linestyles[atype])
 
     plt.title(f'Fraction of Core Scatters Detected per Original CR Energy, {type} f={f} {pconfig}')
     plt.ylabel('% Cores Detected')
     plt.xlabel('Cosmic Ray Energy (log10 eV)')
-    plt.legend()
-    plt.savefig(f'CoreAnalysis/plots/HorProp/SurfaceAskaryanFractionDetected_{type}_f{f}_{pconfig}_{threshold}muV.png')
+    
+    l1 = plt.legend(handles=legend_lines, loc='upper left')
+    plt.gca().add_artist(l1)
+    plt.legend(handles=legend_types, loc='lower left')
+
+    plt.savefig(f'CoreAnalysis/plots/HorProp/SurfaceAskaryanFractionDetected_CR_{type}_f{f}_{pconfig}_{threshold}muV.png')
+    plt.clf()
+
+    # Fraction of Core Scatters Detected (Core Energy)
+    plt.figure()
+    # Legends are same
+    
+    for atype in types_to_plot:
+        data = results[atype]
+        logEs_plot = np.array(data['logEs'])
+        er_surf = data['event_rate_surface_shower']
+        tr_surf = data['total_rate_surface']
+        
+        with np.errstate(divide='ignore', invalid='ignore'):
+            frac = er_surf / tr_surf
+            frac[np.isnan(frac)] = 0
+        
+        for iS, space in enumerate(spacing):
+            if np.any(frac[iS] > 1.0):
+                 print(f"Warning: Fraction > 100% for {atype} {space}m (Core Energy)")
+                 print(f"Frac: {frac[iS]}")
+                 frac[iS] = np.minimum(frac[iS], 1.0)
+            plt.plot(logEs_plot + np.log10(f), frac[iS] * 100, color=colors[iS], linestyle=linestyles[atype])
+
+    plt.title(f'Fraction of Core Scatters Detected per Core Energy, {type} f={f} {pconfig}')
+    plt.ylabel('% Cores Detected')
+    plt.xlabel('Core Energy (log10 eV)')
+    
+    l1 = plt.legend(handles=legend_lines, loc='upper left')
+    plt.gca().add_artist(l1)
+    plt.legend(handles=legend_types, loc='lower left')
+
+    plt.savefig(f'CoreAnalysis/plots/HorProp/SurfaceAskaryanFractionDetected_Core_{type}_f{f}_{pconfig}_{threshold}muV.png')
     plt.clf()
 
     # Cores Not Detected
