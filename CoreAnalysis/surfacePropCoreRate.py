@@ -582,7 +582,7 @@ for pconfig in ['LPDA', 'Dipole', 'Both']:
     
     l1 = plt.legend(handles=legend_lines, loc='upper left')
     plt.gca().add_artist(l1)
-    plt.legend(handles=legend_types, loc='lower left')
+    plt.legend(handles=legend_types, loc='upper left', bbox_to_anchor=(0, 0.8))
 
     plt.savefig(f'CoreAnalysis/plots/HorProp/SurfaceAskaryanFractionDetected_CR_{type}_f{f}_{pconfig}_{threshold}muV.png')
     plt.clf()
@@ -606,7 +606,7 @@ for pconfig in ['LPDA', 'Dipole', 'Both']:
                  print(f"Warning: Fraction > 100% for {atype} {space}m (Core Energy)")
                  print(f"Frac: {frac[iS]}")
                  frac[iS] = np.minimum(frac[iS], 1.0)
-            plt.plot(logEs_plot + np.log10(f), frac[iS] * 100, color=colors[iS], linestyle=linestyles[atype])
+            plt.plot((logEs_plot + np.log10(f))[:-1], (frac[iS] * 100)[:-1], color=colors[iS], linestyle=linestyles[atype])
 
     plt.title(f'Fraction of Core Scatters Detected per Core Energy, {type} f={f} {pconfig}')
     plt.ylabel('% Cores Detected')
@@ -614,7 +614,7 @@ for pconfig in ['LPDA', 'Dipole', 'Both']:
     
     l1 = plt.legend(handles=legend_lines, loc='upper left')
     plt.gca().add_artist(l1)
-    plt.legend(handles=legend_types, loc='lower left')
+    plt.legend(handles=legend_types, loc='upper left', bbox_to_anchor=(0, 0.8))
 
     plt.savefig(f'CoreAnalysis/plots/HorProp/SurfaceAskaryanFractionDetected_Core_{type}_f{f}_{pconfig}_{threshold}muV.png')
     plt.clf()
