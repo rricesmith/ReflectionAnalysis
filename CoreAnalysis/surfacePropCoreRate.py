@@ -404,6 +404,7 @@ for atype in ['LPDA', 'Dipole']:
     tri_area = np.zeros(len(spacing))
     event_rate_cr_eng = np.zeros((len(spacing), len(logEs)))
     event_rate_surface_shower = np.zeros_like(event_rate_cr_eng)
+    total_rate_cr = np.zeros((len(spacing), len(logEs)))
     
     for iS, space in enumerate(spacing):
         tri_area[iS] = surfaceScatteringAreaEfficiency.area_equilateral_triangle(space * 10**-3)
@@ -423,6 +424,9 @@ for atype in ['LPDA', 'Dipole']:
                 for n in range(len(engiEiC)):
                     engN = surf_shower_digit[n]
                     rateN = rate_digit[n]
+                    
+                    total_rate_cr[iS][iE] += weightsiEiC[n] * tri_area[iS]
+
                     if engN < 0:
                         continue
                     event_rate_cr_eng[iS][iE] += weightsiEiC[n] * Aeff[iS][engN]
@@ -438,17 +442,21 @@ for atype in ['LPDA', 'Dipole']:
 
     red_e_r_cr_eng = np.zeros( (len(spacing), len(reduced_logEs)) )
     red_e_r_surf_sh = np.zeros_like(red_e_r_cr_eng)
+    red_total_rate_cr = np.zeros_like(red_e_r_cr_eng)
+
     for iS, space in enumerate(spacing):
         i = 0
         for iE, logE in enumerate(logEs):
             if logE >= 16:
                 red_e_r_cr_eng[iS][i] = event_rate_cr_eng[iS][iE]
                 red_e_r_surf_sh[iS][i] = event_rate_surface_shower[iS][iE]
+                red_total_rate_cr[iS][i] = total_rate_cr[iS][iE]
                 i += 1
     
     results[atype] = {
         'event_rate_cr_eng': red_e_r_cr_eng,
         'event_rate_surface_shower': red_e_r_surf_sh,
+        'total_rate_cr': red_total_rate_cr,
         'logEs': reduced_logEs
     }
 
@@ -509,63 +517,65 @@ for pconfig in ['LPDA', 'Dipole', 'Both']:
     plt.savefig(f'CoreAnalysis/plots/HorProp/SurfaceAskaryanEventRateCoupledCore_{type}_f{f}_{pconfig}_{threshold}muV.png')
     plt.clf()
 
+    # Ntrig vs Ntotal
+    plt.figure()
+    for atype in types_to_plot:
+        data = results[atype]
+        logEs_plot = data['logEs']
+        er_cr = data['event_rate_cr_eng']
+        tr_cr = data['total_rate_cr']
+        
+        for iS, space in enumerate(spacing):
+            plt.scatter(logEs_plot, er_cr[iS], label=f'{atype} Ntrig {space}m')
+            plt.scatter(logEs_plot, tr_cr[iS], marker='x', label=f'{atype} Ntotal {space}m')
 
+    plt.title(f'Events per year detected inside triangular station configuration, {type} {pconfig}')
+    plt.ylabel('Events per year per station')
+    plt.xlabel('Cosmic Ray Energy (log10 eV)')
+    plt.yscale('log')
+    plt.legend()
+    plt.savefig(f'CoreAnalysis/plots/HorProp/SurfaceAskaryanNtrigVsNtotal_{type}_f{f}_{pconfig}_{threshold}muV.png')
+    plt.clf()
 
-"""
-total_rate = np.zeros_like(event_rate)
+    # Fraction of Core Scatters Detected
+    plt.figure()
+    for atype in types_to_plot:
+        data = results[atype]
+        logEs_plot = data['logEs']
+        er_cr = data['event_rate_cr_eng']
+        tr_cr = data['total_rate_cr']
+        
+        with np.errstate(divide='ignore', invalid='ignore'):
+            frac = er_cr / tr_cr
+            frac[np.isnan(frac)] = 0
+        
+        for iS, space in enumerate(spacing):
+            plt.scatter(logEs_plot, frac[iS] * 100, label=f'{atype} {space}m')
 
-for iS, space in enumerate(spacing):
-    for iE, eng in enumerate(energies):
-        frac_cov[iS][iE] = surfaceScatteringAreaEfficiency.area_covered(space, max_r[0][iE])
-        tri_area = surfaceScatteringAreaEfficiency.area_equilateral_triangle(space * 10 ** -3)
-        Aeff[iS][iE] = tri_area * frac_cov[iS][iE]
-        for iC, coszen in enumerate(coszens):
-            yy = shower_energies[:, iC].flatten()
-            mask = ~np.isnan(yy)
-            yy = yy[mask]
-            ww = weights_shower_energies[:, iC].flatten()[mask]
-            N, bin_edges = np.histogram(np.log10(yy), bins=shower_E_bins, weights=ww)
-            event_rate[iS][iE] += Aeff[iS][iE] * N[iE]
-            total_rate[iS][iE] += tri_area * N[iE]
+    plt.title(f'Fraction of Core Scatters Detected per Original CR Energy, {type} f={f} {pconfig}')
+    plt.ylabel('% Cores Detected')
+    plt.xlabel('Cosmic Ray Energy (log10 eV)')
+    plt.legend()
+    plt.savefig(f'CoreAnalysis/plots/HorProp/SurfaceAskaryanFractionDetected_{type}_f{f}_{pconfig}_{threshold}muV.png')
+    plt.clf()
 
-    plt.scatter(energy * energies, event_rate[iS], label='Ntrig, Spacing ' + str(spacing[iS]) + 'm')
-    plt.scatter(energy * energies, total_rate[iS], label='Ntotal, Spacing ' + str(spacing[iS]) + 'm')
+    # Cores Not Detected
+    plt.figure()
+    for atype in types_to_plot:
+        data = results[atype]
+        logEs_plot = data['logEs']
+        er_cr = data['event_rate_cr_eng']
+        tr_cr = data['total_rate_cr']
+        
+        missed = tr_cr - er_cr
+        
+        for iS, space in enumerate(spacing):
+            plt.scatter(logEs_plot, missed[iS], label=f'{atype} {space}m, {sum(missed[iS]):.2f}evts/yr/stn')
 
-
-
-#plt.title('Efficiency per spacing assuming Dipole theta polarized 90deg signal antenna response')
-plt.title('Events per year detected inside triangular station configuration of Cores Striking the Surface')
-#plt.title('Effective Area per Energy of triangular staton configuration')
-plt.legend()
-plt.xscale('log')
-plt.yscale('log')
-#plt.ylabel('% Triangle Detectable')
-plt.ylabel('Events per year per station')
-#plt.ylabel('Aeff (km^2)')
-plt.xlabel('Energy (eV)')
-plt.show()
-
-
-scatter_trig_frac = event_rate / total_rate
-for iS, space in enumerate(spacing):
-    plt.scatter(energy * energies, scatter_trig_frac[iS], label='Spacing ' + str(space) + f'm')
-
-plt.title('Fraction of Core Scatters Detected at Moores Bay')
-plt.legend()
-plt.xscale('log')
-plt.ylabel('% Cores Detected')
-plt.xlabel('Energy (eV)')
-plt.show()
-
-scatter_untrig_rate = total_rate - event_rate
-for iS, space in enumerate(spacing):
-    plt.scatter(energy * energies, scatter_untrig_rate[iS], label='Spacing ' + str(space) + f'm, {sum(scatter_untrig_rate[iS]:0f}')
-
-plt.title('Cores Not Detected at Moores Bay')
-plt.legend()
-plt.yscale('log')
-plt.xscale('log')
-plt.ylabel('Events/year/station')
-plt.xlabel('Energy (eV)')
-plt.show()
-"""
+    plt.title(f'Event Rate of Undetected Cores as Original CR Energy, {type} f={f} {pconfig}')
+    plt.ylabel('Events/year/station')
+    plt.xlabel('Cosmic Ray Energy (log10 eV)')
+    plt.yscale('log')
+    plt.legend()
+    plt.savefig(f'CoreAnalysis/plots/HorProp/SurfaceAskaryanUndetectedRate_{type}_f{f}_{pconfig}_{threshold}muV.png')
+    plt.clf()
