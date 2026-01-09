@@ -576,6 +576,12 @@ def plot_pair_categories_dual_axis(
         fig, ax1 = plt.subplots(figsize=(7, 5))
         ax2 = ax1.twinx()
 
+        # Ensure legend (on ax1) draws above ax2 artists.
+        # Make ax1 the top axis but keep its background transparent so ax2 bars remain visible.
+        ax2.set_zorder(0)
+        ax1.set_zorder(1)
+        ax1.patch.set_visible(False)
+
         ax1.bar(x - width / 2, np.maximum(left_totals, _positive_floor(left_totals)), width=width, label=left_label)
         ax2.bar(x + width / 2, np.maximum(right_totals, _positive_floor(right_totals)), width=width, label=right_label, alpha=0.7)
 
@@ -591,7 +597,10 @@ def plot_pair_categories_dual_axis(
         # Single combined legend (bars are on different axes)
         h1, l1 = ax1.get_legend_handles_labels()
         h2, l2 = ax2.get_legend_handles_labels()
-        ax1.legend(h1 + h2, l1 + l2, loc='lower left')
+        leg = ax1.legend(h1 + h2, l1 + l2, loc='lower left')
+        leg.set_zorder(10)
+        if leg.get_frame() is not None:
+            leg.get_frame().set_alpha(0.9)
 
         fig.tight_layout()
         savename = os.path.join(outdir, 'weighted_n2_category_rate_by_group_dual_axis.png')
