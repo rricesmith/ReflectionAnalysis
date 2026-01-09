@@ -42,6 +42,10 @@ DEFAULT_ZEN_BINS_DEG = np.linspace(0, 90, 31)  # ~3 deg bins
 DEFAULT_AZ_BINS_DEG = np.linspace(0, 360, 37)  # 10 deg bins
 DEFAULT_SNR_BINS = np.linspace(0, 30, 31)      # 1 SNR bins
 
+# Requested 2D angle binning
+ANGLE2D_ZEN_BINS_DEG = np.arange(0, 90 + 5, 5)
+ANGLE2D_AZ_BINS_DEG = np.arange(0, 360 + 30, 30)
+
 
 def _positive_floor(values, abs_floor=1e-12):
     """Choose a positive floor for log-scale plotting."""
@@ -135,6 +139,48 @@ def get_direct_and_reflected_bases_for_event(event, base_stations, sigma=4.5, ba
     return direct, refl
 
 
+def event_passes_mode(event, base_stations, mode, sigma=4.5, bad_stations=None):
+    """Mode filter used for 'direct-only' vs 'reflection-required' selections."""
+    direct_bases, refl_bases = get_direct_and_reflected_bases_for_event(
+        event, base_stations, sigma=sigma, bad_stations=bad_stations
+    )
+    if mode == 'direct_only':
+        return len(direct_bases) > 0 and len(refl_bases) == 0
+    if mode == 'reflection_required':
+        return len(direct_bases) > 0 and len(refl_bases) > 0
+    if mode == 'any':
+        return (len(direct_bases) + len(refl_bases)) > 0
+    raise ValueError(f"Unknown mode '{mode}'")
+
+
+def get_event_reco_angles_deg(event, sigma=4.5, bad_stations=None, station_mode='all'):
+    """Return (zen_deg, az_deg) averaged across triggered stations with reco available."""
+    trig = get_triggered_station_ids(event, sigma=sigma, bad_stations=bad_stations, station_mode=station_mode)
+    if len(trig) == 0:
+        return None
+    z_list = []
+    a_list = []
+    for st in trig:
+        z = event.recon_zenith.get(st)
+        a = event.recon_azimuth.get(st)
+        if z is None or a is None:
+            continue
+        try:
+            z = float(z)
+            a = float(a)
+        except (TypeError, ValueError):
+            continue
+        if not (np.isfinite(z) and np.isfinite(a)):
+            continue
+        z_list.append(z)
+        a_list.append(a)
+    if len(z_list) == 0:
+        return None
+    zen_deg = float(np.rad2deg(np.mean(z_list)))
+    az_deg = float(np.rad2deg(np.mean(a_list))) % 360.0
+    return zen_deg, az_deg
+
+
 def get_net_event_weight(event, weight_names, sigma=4.5):
     w = 0.0
     for name in weight_names:
@@ -171,6 +217,69 @@ def weighted_true_angle_distribution(HRAeventList, outdir, weight_names, sigma=4
     plt.colorbar(label='Rate [1/yr]')
     plt.tight_layout()
     savename = os.path.join(outdir, 'weighted_true_angles_avg_station_rate.png')
+    plt.savefig(savename)
+    plt.close(fig)
+    return savename
+
+
+def weighted_angle_distribution_2d_by_mode(
+    HRAeventList,
+    outdir,
+    weight_names,
+    base_stations,
+    mode,
+    sigma=4.5,
+    bad_stations=None,
+    use_reco=False,
+    az_bins=None,
+    zen_bins=None,
+):
+    """2D histogram of angles for a given selection mode.
+
+    mode: 'direct_only' or 'reflection_required'
+    use_reco: True -> reconstructed (event-avg) angles, False -> true angles
+    """
+    az_deg = []
+    zen_deg = []
+    weights = []
+
+    for ev in HRAeventList:
+        if not event_passes_mode(ev, base_stations, mode, sigma=sigma, bad_stations=bad_stations):
+            continue
+        w = get_net_event_weight(ev, weight_names, sigma=sigma)
+        if w <= 0:
+            continue
+
+        if use_reco:
+            # For reco, average across all triggered stations (direct+reflected) since the mode is event-level.
+            reco = get_event_reco_angles_deg(ev, sigma=sigma, bad_stations=bad_stations, station_mode='all')
+            if reco is None:
+                continue
+            zdeg, adeg = reco
+        else:
+            zen, az = ev.getAngles()
+            zdeg = float(np.rad2deg(zen))
+            adeg = float(np.rad2deg(az)) % 360.0
+
+        zen_deg.append(zdeg)
+        az_deg.append(adeg)
+        weights.append(w)
+
+    if len(weights) == 0:
+        return None
+
+    bins_az = ANGLE2D_AZ_BINS_DEG if az_bins is None else az_bins
+    bins_zen = ANGLE2D_ZEN_BINS_DEG if zen_bins is None else zen_bins
+
+    fig = plt.figure(figsize=(8, 6))
+    plt.hist2d(az_deg, zen_deg, bins=[bins_az, bins_zen], weights=weights)
+    plt.xlabel('Azimuth [deg]')
+    plt.ylabel('Zenith [deg]')
+    angle_tag = 'reco' if use_reco else 'true'
+    plt.title(f"Weighted {angle_tag} angular distribution ({mode})")
+    plt.colorbar(label='Rate [1/yr]')
+    plt.tight_layout()
+    savename = os.path.join(outdir, f'weighted_{angle_tag}_angles_2d_{mode}.png')
     plt.savefig(savename)
     plt.close(fig)
     return savename
@@ -376,33 +485,28 @@ def plot_pair_categories(
         if sav is not None:
             saved.append(sav)
 
-    # 4) category totals vs distance
-    cat_names = []
-    cat_dist = []
+    # 4) category totals as a group histogram (more useful than distance scatter)
+    cat_names = list(categories.keys())
     cat_total = []
     for cat_name, pairs in categories.items():
         tot = 0.0
         for a, b in pairs:
             key = tuple(sorted((int(a), int(b))))
             tot += float(pair_rates.get(key, 0.0))
-        dist = _as_float(category_distances_km.get(cat_name), default=np.nan)
-        if not np.isfinite(dist):
-            continue
-        cat_names.append(cat_name)
-        cat_dist.append(dist)
         cat_total.append(tot)
 
     if len(cat_total) > 0:
-        fig = plt.figure(figsize=(7, 5))
-        plt.scatter(cat_dist, cat_total)
-        for name, x, y in zip(cat_names, cat_dist, cat_total):
-            plt.text(x, y, name)
-        plt.xlabel('Pair separation [km] (category constant)')
-        plt.ylabel('Total rate [1/yr]')
-        plt.title('Weighted n=2 Category Rate vs Distance')
-        plt.tight_layout()
-        savename = os.path.join(outdir, 'weighted_n2_category_rate_vs_distance.png')
-        plt.savefig(savename)
+        fig, ax = plt.subplots(figsize=(7, 5))
+        y = np.asarray(cat_total, dtype=float)
+        ax.bar(np.arange(len(cat_names)), np.maximum(y, _positive_floor(y)))
+        ax.set_xticks(np.arange(len(cat_names)))
+        ax.set_xticklabels(cat_names)
+        ax.set_ylabel('Total rate [1/yr]')
+        ax.set_title('Weighted n=2 Category Total Rate')
+        _apply_log_y(ax, y)
+        fig.tight_layout()
+        savename = os.path.join(outdir, 'weighted_n2_category_rate_by_group.png')
+        fig.savefig(savename)
         plt.close(fig)
         saved.append(savename)
 
@@ -440,43 +544,37 @@ def plot_pair_categories_dual_axis(
         if sav is not None:
             saved.append(sav)
 
-    # category totals vs distance with dual y-axis
-    cat_names = []
-    cat_dist = []
+    # category totals as group histogram with dual y-axis
+    cat_names = list(categories.keys())
     left_totals = []
     right_totals = []
     for cat_name, pairs in categories.items():
-        dist = _as_float(category_distances_km.get(cat_name), default=np.nan)
-        if not np.isfinite(dist):
-            continue
         lt = 0.0
         rt = 0.0
         for a, b in pairs:
             key = tuple(sorted((int(a), int(b))))
             lt += float(pair_rates_left.get(key, 0.0))
             rt += float(pair_rates_right.get(key, 0.0))
-        cat_names.append(cat_name)
-        cat_dist.append(dist)
         left_totals.append(lt)
         right_totals.append(rt)
 
-    if len(cat_dist) > 0:
-        fig, ax1 = plt.subplots(figsize=(7, 5))
-        ax2 = ax1.twinx()
-
+    if len(cat_names) > 0:
         left_totals = np.asarray(left_totals, dtype=float)
         right_totals = np.asarray(right_totals, dtype=float)
 
-        ax1.scatter(cat_dist, np.maximum(left_totals, _positive_floor(left_totals)), label=left_label)
-        ax2.scatter(cat_dist, np.maximum(right_totals, _positive_floor(right_totals)), label=right_label, alpha=0.7)
+        x = np.arange(len(cat_names))
+        width = 0.4
+        fig, ax1 = plt.subplots(figsize=(7, 5))
+        ax2 = ax1.twinx()
 
-        for name, x, y in zip(cat_names, cat_dist, left_totals):
-            ax1.text(x, max(y, _positive_floor(left_totals)), name)
+        ax1.bar(x - width / 2, np.maximum(left_totals, _positive_floor(left_totals)), width=width, label=left_label)
+        ax2.bar(x + width / 2, np.maximum(right_totals, _positive_floor(right_totals)), width=width, label=right_label, alpha=0.7)
 
-        ax1.set_xlabel('Pair separation [km] (category constant)')
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(cat_names)
         ax1.set_ylabel(f'Total rate [1/yr] ({left_label})')
         ax2.set_ylabel(f'Total rate [1/yr] ({right_label})')
-        ax1.set_title('Weighted n=2 Category Rate vs Distance')
+        ax1.set_title('Weighted n=2 Category Total Rate (dual axis)')
 
         _apply_log_y(ax1, left_totals)
         _apply_log_y(ax2, right_totals)
@@ -485,7 +583,7 @@ def plot_pair_categories_dual_axis(
         ax2.legend(loc='upper right')
 
         fig.tight_layout()
-        savename = os.path.join(outdir, 'weighted_n2_category_rate_vs_distance_dual_axis.png')
+        savename = os.path.join(outdir, 'weighted_n2_category_rate_by_group_dual_axis.png')
         fig.savefig(savename)
         plt.close(fig)
         saved.append(savename)
@@ -914,6 +1012,57 @@ def main():
         sigma=sigma,
         az_bins=DEFAULT_AZ_BINS_DEG,
         zen_bins=DEFAULT_ZEN_BINS_DEG,
+    )
+
+    # Requested: 2D angular distributions with 30deg az bins and 5deg zen bins
+    # Make separately for direct-only vs reflection-required, and for both true and reconstructed angles.
+    weighted_angle_distribution_2d_by_mode(
+        HRAeventList,
+        outdir,
+        weight_direct,
+        base_stations=args.base_stations,
+        mode='direct_only',
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        use_reco=False,
+        az_bins=ANGLE2D_AZ_BINS_DEG,
+        zen_bins=ANGLE2D_ZEN_BINS_DEG,
+    )
+    weighted_angle_distribution_2d_by_mode(
+        HRAeventList,
+        outdir,
+        weight_reflected,
+        base_stations=args.base_stations,
+        mode='reflection_required',
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        use_reco=False,
+        az_bins=ANGLE2D_AZ_BINS_DEG,
+        zen_bins=ANGLE2D_ZEN_BINS_DEG,
+    )
+    weighted_angle_distribution_2d_by_mode(
+        HRAeventList,
+        outdir,
+        weight_direct,
+        base_stations=args.base_stations,
+        mode='direct_only',
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        use_reco=True,
+        az_bins=ANGLE2D_AZ_BINS_DEG,
+        zen_bins=ANGLE2D_ZEN_BINS_DEG,
+    )
+    weighted_angle_distribution_2d_by_mode(
+        HRAeventList,
+        outdir,
+        weight_reflected,
+        base_stations=args.base_stations,
+        mode='reflection_required',
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        use_reco=True,
+        az_bins=ANGLE2D_AZ_BINS_DEG,
+        zen_bins=ANGLE2D_ZEN_BINS_DEG,
     )
 
     # Also provide 1D true angle hists (direct/reflected + dual-axis)
