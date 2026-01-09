@@ -562,6 +562,15 @@ def plot_pair_categories_dual_axis(
         left_totals = np.asarray(left_totals, dtype=float)
         right_totals = np.asarray(right_totals, dtype=float)
 
+        # Friendly labels for plotting
+        print_label = {
+            'horizontal': 'Horizontal',
+            'forward_diag': '/ diag.',
+            'backward_diag': '\\ diag.',
+            'other': 'All Other',
+        }
+        cat_labels = [print_label.get(name, name) for name in cat_names]
+
         x = np.arange(len(cat_names))
         width = 0.4
         fig, ax1 = plt.subplots(figsize=(7, 5))
@@ -571,7 +580,7 @@ def plot_pair_categories_dual_axis(
         ax2.bar(x + width / 2, np.maximum(right_totals, _positive_floor(right_totals)), width=width, label=right_label, alpha=0.7)
 
         ax1.set_xticks(x)
-        ax1.set_xticklabels(cat_names)
+        ax1.set_xticklabels(cat_labels)
         ax1.set_ylabel(f'Total rate [1/yr] ({left_label})')
         ax2.set_ylabel(f'Total rate [1/yr] ({right_label})')
         ax1.set_title('Weighted n=2 Category Total Rate (dual axis)')
@@ -579,8 +588,10 @@ def plot_pair_categories_dual_axis(
         _apply_log_y(ax1, left_totals)
         _apply_log_y(ax2, right_totals)
 
-        ax1.legend(loc='upper left')
-        ax2.legend(loc='upper right')
+        # Single combined legend (bars are on different axes)
+        h1, l1 = ax1.get_legend_handles_labels()
+        h2, l2 = ax2.get_legend_handles_labels()
+        ax1.legend(h1 + h2, l1 + l2, loc='lower left')
 
         fig.tight_layout()
         savename = os.path.join(outdir, 'weighted_n2_category_rate_by_group_dual_axis.png')
