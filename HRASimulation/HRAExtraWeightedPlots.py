@@ -37,6 +37,29 @@ def load_hra_from_h5(filename):
     return HRAeventList
 
 
+# Plot binning defaults (coarser than prior version)
+DEFAULT_ZEN_BINS_DEG = np.linspace(0, 90, 31)  # ~3 deg bins
+DEFAULT_AZ_BINS_DEG = np.linspace(0, 360, 37)  # 10 deg bins
+DEFAULT_SNR_BINS = np.linspace(0, 30, 31)      # 1 SNR bins
+
+
+def _positive_floor(values, abs_floor=1e-12):
+    """Choose a positive floor for log-scale plotting."""
+    arr = np.asarray(values, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    pos = arr[arr > 0]
+    if pos.size == 0:
+        return abs_floor
+    return max(abs_floor, float(np.min(pos)) * 0.5)
+
+
+def _apply_log_y(ax, values_for_floor, abs_floor=1e-12):
+    floor = _positive_floor(values_for_floor, abs_floor=abs_floor)
+    ax.set_yscale('log')
+    ax.set_ylim(bottom=floor)
+    return floor
+
+
 def _as_float(value, default=None):
     try:
         return float(value)
@@ -65,10 +88,12 @@ def _resolve_path(path):
     return os.path.join(str(_REPO_ROOT), path)
 
 
-def get_triggered_station_ids(event, sigma=4.5, bad_stations=None):
+def get_triggered_station_ids(event, sigma=4.5, bad_stations=None, station_mode='all'):
     """Return triggered station IDs for the given sigma (ints only).
 
     Filters out synthetic string triggers (e.g. 'combined_direct').
+
+    station_mode: 'all' | 'direct' (<100) | 'reflected' (>=100)
     """
     triggered = []
     for key in event.station_triggers.get(sigma, []):
@@ -79,6 +104,10 @@ def get_triggered_station_ids(event, sigma=4.5, bad_stations=None):
         except (TypeError, ValueError):
             continue
         if bad_stations is not None and st_id in bad_stations:
+            continue
+        if station_mode == 'direct' and st_id >= 100:
+            continue
+        if station_mode == 'reflected' and st_id < 100:
             continue
         triggered.append(st_id)
     return triggered
@@ -92,10 +121,18 @@ def get_effective_bases_for_event(event, base_stations, sigma=4.5, bad_stations=
     - reflected triggers contribute (station_id - 100) base station ID
     """
     base_set = set(base_stations)
-    triggered = get_triggered_station_ids(event, sigma=sigma, bad_stations=bad_stations)
+    triggered = get_triggered_station_ids(event, sigma=sigma, bad_stations=bad_stations, station_mode='all')
     direct = {st for st in triggered if st in base_set}
     reflected = {st - 100 for st in triggered if (st - 100) in base_set and st >= 100}
     return direct.union(reflected)
+
+
+def get_direct_and_reflected_bases_for_event(event, base_stations, sigma=4.5, bad_stations=None):
+    base_set = set(base_stations)
+    triggered = get_triggered_station_ids(event, sigma=sigma, bad_stations=bad_stations, station_mode='all')
+    direct = {st for st in triggered if st in base_set}
+    refl = {st - 100 for st in triggered if st >= 100 and (st - 100) in base_set}
+    return direct, refl
 
 
 def get_net_event_weight(event, weight_names, sigma=4.5):
@@ -107,7 +144,7 @@ def get_net_event_weight(event, weight_names, sigma=4.5):
     return w
 
 
-def weighted_true_angle_distribution(HRAeventList, outdir, weight_names, sigma=4.5):
+def weighted_true_angle_distribution(HRAeventList, outdir, weight_names, sigma=4.5, az_bins=None, zen_bins=None):
     az_deg = []
     zen_deg = []
     weights = []
@@ -125,8 +162,8 @@ def weighted_true_angle_distribution(HRAeventList, outdir, weight_names, sigma=4
         return None
 
     fig = plt.figure(figsize=(8, 6))
-    bins_az = np.linspace(0, 360, 73)
-    bins_zen = np.linspace(0, 90, 46)
+    bins_az = DEFAULT_AZ_BINS_DEG if az_bins is None else az_bins
+    bins_zen = DEFAULT_ZEN_BINS_DEG if zen_bins is None else zen_bins
     plt.hist2d(az_deg, zen_deg, bins=[bins_az, bins_zen], weights=weights)
     plt.xlabel('True Azimuth [deg]')
     plt.ylabel('True Zenith [deg]')
@@ -139,14 +176,81 @@ def weighted_true_angle_distribution(HRAeventList, outdir, weight_names, sigma=4
     return savename
 
 
+def weighted_true_angle_1d_hists(
+    HRAeventList,
+    outdir,
+    weight_names,
+    tag,
+    sigma=4.5,
+    az_bins=None,
+    zen_bins=None,
+    logy=True,
+):
+    az_deg = []
+    zen_deg = []
+    weights = []
+    for ev in HRAeventList:
+        w = get_net_event_weight(ev, weight_names, sigma=sigma)
+        if w <= 0:
+            continue
+        zen, az = ev.getAngles()
+        zen_deg.append(float(np.rad2deg(zen)))
+        az_deg.append(float(np.rad2deg(az)) % 360.0)
+        weights.append(w)
+
+    if len(weights) == 0:
+        return []
+
+    bins_az = DEFAULT_AZ_BINS_DEG if az_bins is None else az_bins
+    bins_zen = DEFAULT_ZEN_BINS_DEG if zen_bins is None else zen_bins
+
+    saved = []
+    fig, ax = plt.subplots(figsize=(7, 5))
+    counts, _ = np.histogram(zen_deg, bins=bins_zen, weights=weights)
+    ax.hist(zen_deg, bins=bins_zen, weights=weights)
+    ax.set_xlabel('True Zenith [deg]')
+    ax.set_ylabel('Rate [1/yr]')
+    ax.set_title(f'True Zenith (weighted) - {tag}')
+    if logy:
+        _apply_log_y(ax, counts)
+    fig.tight_layout()
+    savename = os.path.join(outdir, f'weighted_true_zenith_hist_{tag}.png')
+    fig.savefig(savename)
+    plt.close(fig)
+    saved.append(savename)
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    counts, _ = np.histogram(az_deg, bins=bins_az, weights=weights)
+    ax.hist(az_deg, bins=bins_az, weights=weights)
+    ax.set_xlabel('True Azimuth [deg]')
+    ax.set_ylabel('Rate [1/yr]')
+    ax.set_title(f'True Azimuth (weighted) - {tag}')
+    if logy:
+        _apply_log_y(ax, counts)
+    fig.tight_layout()
+    savename = os.path.join(outdir, f'weighted_true_azimuth_hist_{tag}.png')
+    fig.savefig(savename)
+    plt.close(fig)
+    saved.append(savename)
+
+    return saved
+
+
 def compute_n2_pair_rates(
     HRAeventList,
     base_stations,
     weight_names,
     sigma=4.5,
     bad_stations=None,
+    pair_mode='any',
 ):
-    """Return dict { (i,j): rate } for effective n=2 (two base stations) events."""
+    """Return dict { (i,j): rate } for effective n=2 (two base stations) events.
+
+    pair_mode:
+      - 'any': no extra requirement beyond effective bases == 2
+      - 'direct_only': require direct triggers only (no reflected bases)
+      - 'reflection_required': require at least one direct and one reflected base
+    """
     rates = defaultdict(float)
     for ev in HRAeventList:
         w = get_net_event_weight(ev, weight_names, sigma=sigma)
@@ -155,11 +259,25 @@ def compute_n2_pair_rates(
         bases = sorted(get_effective_bases_for_event(ev, base_stations, sigma=sigma, bad_stations=bad_stations))
         if len(bases) != 2:
             continue
+
+        if pair_mode != 'any':
+            direct_bases, refl_bases = get_direct_and_reflected_bases_for_event(
+                ev, base_stations, sigma=sigma, bad_stations=bad_stations
+            )
+            if pair_mode == 'direct_only':
+                if len(refl_bases) != 0:
+                    continue
+                if len(direct_bases) == 0:
+                    continue
+            elif pair_mode == 'reflection_required':
+                if len(refl_bases) == 0 or len(direct_bases) == 0:
+                    continue
+
         rates[(bases[0], bases[1])] += w
     return dict(rates)
 
 
-def plot_pair_rate_bars(pair_rates, outdir, filename, title):
+def plot_pair_rate_bars(pair_rates, outdir, filename, title, logy=True):
     if not pair_rates:
         return None
     items = sorted(pair_rates.items(), key=lambda kv: kv[1], reverse=True)
@@ -168,13 +286,66 @@ def plot_pair_rate_bars(pair_rates, outdir, filename, title):
 
     fig = plt.figure(figsize=(max(10, 0.35 * len(labels)), 5))
     x = np.arange(len(labels))
-    plt.bar(x, values)
+    y = np.asarray(values, dtype=float)
+    y_plot = np.maximum(y, _positive_floor(y)) if logy else y
+    plt.bar(x, y_plot)
     plt.xticks(x, labels, rotation=90)
     plt.ylabel('Rate [1/yr]')
     plt.title(title)
+    if logy:
+        _apply_log_y(plt.gca(), y)
     plt.tight_layout()
     savename = os.path.join(outdir, filename)
     plt.savefig(savename)
+    plt.close(fig)
+    return savename
+
+
+def plot_pair_rate_bars_dual_axis(
+    pair_rates_left,
+    pair_rates_right,
+    outdir,
+    filename,
+    title,
+    left_label='Direct-only',
+    right_label='Reflection-required',
+):
+    keys = sorted(set(pair_rates_left.keys()).union(pair_rates_right.keys()))
+    if not keys:
+        return None
+
+    keys = sorted(keys, key=lambda k: max(pair_rates_left.get(k, 0.0), pair_rates_right.get(k, 0.0)), reverse=True)
+    labels = [f"{a}-{b}" for (a, b) in keys]
+    left_vals = np.array([float(pair_rates_left.get(k, 0.0)) for k in keys], dtype=float)
+    right_vals = np.array([float(pair_rates_right.get(k, 0.0)) for k in keys], dtype=float)
+
+    x = np.arange(len(keys))
+    width = 0.4
+
+    fig, ax1 = plt.subplots(figsize=(max(10, 0.35 * len(labels)), 5))
+    ax2 = ax1.twinx()
+
+    left_plot = np.maximum(left_vals, _positive_floor(left_vals))
+    right_plot = np.maximum(right_vals, _positive_floor(right_vals))
+
+    ax1.bar(x - width / 2, left_plot, width=width, label=left_label)
+    ax2.bar(x + width / 2, right_plot, width=width, label=right_label, alpha=0.7)
+
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(labels, rotation=90)
+    ax1.set_title(title)
+    ax1.set_ylabel(f'Rate [1/yr] ({left_label})')
+    ax2.set_ylabel(f'Rate [1/yr] ({right_label})')
+
+    _apply_log_y(ax1, left_vals)
+    _apply_log_y(ax2, right_vals)
+
+    ax1.legend(loc='upper left')
+    ax2.legend(loc='upper right')
+
+    fig.tight_layout()
+    savename = os.path.join(outdir, filename)
+    fig.savefig(savename)
     plt.close(fig)
     return savename
 
@@ -238,13 +409,99 @@ def plot_pair_categories(
     return saved
 
 
+def plot_pair_categories_dual_axis(
+    pair_rates_left,
+    pair_rates_right,
+    outdir,
+    categories,
+    category_distances_km,
+    left_label='Direct-only',
+    right_label='Reflection-required',
+):
+    saved = []
+
+    for cat_name, pairs in categories.items():
+        left = {}
+        right = {}
+        for a, b in pairs:
+            key = tuple(sorted((int(a), int(b))))
+            left[key] = float(pair_rates_left.get(key, 0.0))
+            right[key] = float(pair_rates_right.get(key, 0.0))
+
+        sav = plot_pair_rate_bars_dual_axis(
+            left,
+            right,
+            outdir,
+            filename=f"weighted_n2_pair_rates_{cat_name}_dual_axis.png",
+            title=f"Weighted n=2 Pair Rates ({cat_name})",
+            left_label=left_label,
+            right_label=right_label,
+        )
+        if sav is not None:
+            saved.append(sav)
+
+    # category totals vs distance with dual y-axis
+    cat_names = []
+    cat_dist = []
+    left_totals = []
+    right_totals = []
+    for cat_name, pairs in categories.items():
+        dist = _as_float(category_distances_km.get(cat_name), default=np.nan)
+        if not np.isfinite(dist):
+            continue
+        lt = 0.0
+        rt = 0.0
+        for a, b in pairs:
+            key = tuple(sorted((int(a), int(b))))
+            lt += float(pair_rates_left.get(key, 0.0))
+            rt += float(pair_rates_right.get(key, 0.0))
+        cat_names.append(cat_name)
+        cat_dist.append(dist)
+        left_totals.append(lt)
+        right_totals.append(rt)
+
+    if len(cat_dist) > 0:
+        fig, ax1 = plt.subplots(figsize=(7, 5))
+        ax2 = ax1.twinx()
+
+        left_totals = np.asarray(left_totals, dtype=float)
+        right_totals = np.asarray(right_totals, dtype=float)
+
+        ax1.scatter(cat_dist, np.maximum(left_totals, _positive_floor(left_totals)), label=left_label)
+        ax2.scatter(cat_dist, np.maximum(right_totals, _positive_floor(right_totals)), label=right_label, alpha=0.7)
+
+        for name, x, y in zip(cat_names, cat_dist, left_totals):
+            ax1.text(x, max(y, _positive_floor(left_totals)), name)
+
+        ax1.set_xlabel('Pair separation [km] (category constant)')
+        ax1.set_ylabel(f'Total rate [1/yr] ({left_label})')
+        ax2.set_ylabel(f'Total rate [1/yr] ({right_label})')
+        ax1.set_title('Weighted n=2 Category Rate vs Distance')
+
+        _apply_log_y(ax1, left_totals)
+        _apply_log_y(ax2, right_totals)
+
+        ax1.legend(loc='upper left')
+        ax2.legend(loc='upper right')
+
+        fig.tight_layout()
+        savename = os.path.join(outdir, 'weighted_n2_category_rate_vs_distance_dual_axis.png')
+        fig.savefig(savename)
+        plt.close(fig)
+        saved.append(savename)
+
+    return saved
+
+
 def weighted_snr_amplitude_histogram(
     HRAeventList,
     outdir,
     weight_names,
     sigma=4.5,
     bad_stations=None,
+    station_mode='all',
     bins=None,
+    logy=True,
 ):
     snr_vals = []
     snr_w = []
@@ -253,7 +510,7 @@ def weighted_snr_amplitude_histogram(
         w = get_net_event_weight(ev, weight_names, sigma=sigma)
         if w <= 0:
             continue
-        trig = get_triggered_station_ids(ev, sigma=sigma, bad_stations=bad_stations)
+        trig = get_triggered_station_ids(ev, sigma=sigma, bad_stations=bad_stations, station_mode=station_mode)
         if len(trig) == 0:
             continue
         # split the event weight across contributing station amplitudes
@@ -272,16 +529,86 @@ def weighted_snr_amplitude_histogram(
         return None
 
     if bins is None:
-        bins = np.linspace(0, 30, 61)
+        bins = DEFAULT_SNR_BINS
 
-    fig = plt.figure(figsize=(7, 5))
-    plt.hist(snr_vals, bins=bins, weights=snr_w)
-    plt.xlabel('Max station SNR (triggered)')
-    plt.ylabel('Rate [1/yr]')
-    plt.title(f"Weighted SNR Amplitude Distribution ({', '.join(weight_names)})")
-    plt.tight_layout()
-    savename = os.path.join(outdir, 'weighted_station_snr_amplitude_hist.png')
-    plt.savefig(savename)
+    fig, ax = plt.subplots(figsize=(7, 5))
+    counts, _ = np.histogram(snr_vals, bins=bins, weights=snr_w)
+    ax.hist(snr_vals, bins=bins, weights=snr_w)
+    ax.set_xlabel('Max station SNR (triggered)')
+    ax.set_ylabel('Rate [1/yr]')
+    ax.set_title(f"Weighted SNR Amplitude ({station_mode})")
+    if logy:
+        _apply_log_y(ax, counts)
+    fig.tight_layout()
+    savename = os.path.join(outdir, f'weighted_station_snr_amplitude_hist_{station_mode}.png')
+    fig.savefig(savename)
+    plt.close(fig)
+    return savename
+
+
+def weighted_snr_amplitude_histogram_dual_axis(
+    HRAeventList,
+    outdir,
+    weight_names_left,
+    weight_names_right,
+    sigma=4.5,
+    bad_stations=None,
+    bins=None,
+    left_label='Direct',
+    right_label='Reflected',
+):
+    if bins is None:
+        bins = DEFAULT_SNR_BINS
+
+    def _collect(mode, weight_names):
+        vals, wts = [], []
+        for ev in HRAeventList:
+            w = get_net_event_weight(ev, weight_names, sigma=sigma)
+            if w <= 0:
+                continue
+            trig = get_triggered_station_ids(ev, sigma=sigma, bad_stations=bad_stations, station_mode=mode)
+            if len(trig) == 0:
+                continue
+            per = w / len(trig)
+            for st in trig:
+                s = ev.getSNR(st)
+                if s is None:
+                    continue
+                s = float(s)
+                if not np.isfinite(s):
+                    continue
+                vals.append(s)
+                wts.append(per)
+        return np.asarray(vals, dtype=float), np.asarray(wts, dtype=float)
+
+    l_vals, l_w = _collect('direct', weight_names_left)
+    r_vals, r_w = _collect('reflected', weight_names_right)
+    l_counts, _ = np.histogram(l_vals, bins=bins, weights=l_w) if l_vals.size else (np.zeros(len(bins) - 1), bins)
+    r_counts, _ = np.histogram(r_vals, bins=bins, weights=r_w) if r_vals.size else (np.zeros(len(bins) - 1), bins)
+
+    centers = 0.5 * (bins[:-1] + bins[1:])
+    width = (bins[1] - bins[0]) * 0.4
+
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+    ax2 = ax1.twinx()
+
+    ax1.bar(centers - width / 2, np.maximum(l_counts, _positive_floor(l_counts)), width=width, label=left_label)
+    ax2.bar(centers + width / 2, np.maximum(r_counts, _positive_floor(r_counts)), width=width, label=right_label, alpha=0.7)
+
+    ax1.set_xlabel('Max station SNR (triggered)')
+    ax1.set_ylabel(f'Rate [1/yr] ({left_label})')
+    ax2.set_ylabel(f'Rate [1/yr] ({right_label})')
+    ax1.set_title('Weighted SNR Amplitude (dual axis)')
+
+    _apply_log_y(ax1, l_counts)
+    _apply_log_y(ax2, r_counts)
+
+    ax1.legend(loc='upper left')
+    ax2.legend(loc='upper right')
+
+    fig.tight_layout()
+    savename = os.path.join(outdir, 'weighted_station_snr_amplitude_hist_dual_axis.png')
+    fig.savefig(savename)
     plt.close(fig)
     return savename
 
@@ -292,6 +619,10 @@ def weighted_reco_angle_hists(
     weight_names,
     sigma=4.5,
     bad_stations=None,
+    station_mode='all',
+    zen_bins=None,
+    az_bins=None,
+    logy=True,
 ):
     reco_zen = []
     reco_az = []
@@ -301,7 +632,7 @@ def weighted_reco_angle_hists(
         w = get_net_event_weight(ev, weight_names, sigma=sigma)
         if w <= 0:
             continue
-        trig = get_triggered_station_ids(ev, sigma=sigma, bad_stations=bad_stations)
+        trig = get_triggered_station_ids(ev, sigma=sigma, bad_stations=bad_stations, station_mode=station_mode)
         if len(trig) == 0:
             continue
 
@@ -332,25 +663,134 @@ def weighted_reco_angle_hists(
 
     saved = []
 
-    fig = plt.figure(figsize=(7, 5))
-    plt.hist(reco_zen, bins=np.linspace(0, 90, 46), weights=wts)
-    plt.xlabel('Reco Zenith [deg] (event-avg across triggered stations)')
-    plt.ylabel('Rate [1/yr]')
-    plt.title(f"Weighted Reco Zenith (net individual rate)")
-    plt.tight_layout()
-    savename = os.path.join(outdir, 'weighted_reco_zenith_hist.png')
-    plt.savefig(savename)
+    zen_bins = DEFAULT_ZEN_BINS_DEG if zen_bins is None else zen_bins
+    az_bins = DEFAULT_AZ_BINS_DEG if az_bins is None else az_bins
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    counts, _ = np.histogram(reco_zen, bins=zen_bins, weights=wts)
+    ax.hist(reco_zen, bins=zen_bins, weights=wts)
+    ax.set_xlabel('Reco Zenith [deg] (event-avg across triggered stations)')
+    ax.set_ylabel('Rate [1/yr]')
+    ax.set_title(f"Weighted Reco Zenith ({station_mode})")
+    if logy:
+        _apply_log_y(ax, counts)
+    fig.tight_layout()
+    savename = os.path.join(outdir, f'weighted_reco_zenith_hist_{station_mode}.png')
+    fig.savefig(savename)
     plt.close(fig)
     saved.append(savename)
 
-    fig = plt.figure(figsize=(7, 5))
-    plt.hist(reco_az, bins=np.linspace(0, 360, 73), weights=wts)
-    plt.xlabel('Reco Azimuth [deg] (event-avg across triggered stations)')
-    plt.ylabel('Rate [1/yr]')
-    plt.title(f"Weighted Reco Azimuth (net individual rate)")
-    plt.tight_layout()
-    savename = os.path.join(outdir, 'weighted_reco_azimuth_hist.png')
-    plt.savefig(savename)
+    fig, ax = plt.subplots(figsize=(7, 5))
+    counts, _ = np.histogram(reco_az, bins=az_bins, weights=wts)
+    ax.hist(reco_az, bins=az_bins, weights=wts)
+    ax.set_xlabel('Reco Azimuth [deg] (event-avg across triggered stations)')
+    ax.set_ylabel('Rate [1/yr]')
+    ax.set_title(f"Weighted Reco Azimuth ({station_mode})")
+    if logy:
+        _apply_log_y(ax, counts)
+    fig.tight_layout()
+    savename = os.path.join(outdir, f'weighted_reco_azimuth_hist_{station_mode}.png')
+    fig.savefig(savename)
+    plt.close(fig)
+    saved.append(savename)
+
+    return saved
+
+
+def weighted_reco_angle_hists_dual_axis(
+    HRAeventList,
+    outdir,
+    weight_names_left,
+    weight_names_right,
+    sigma=4.5,
+    bad_stations=None,
+    zen_bins=None,
+    az_bins=None,
+    left_label='Direct',
+    right_label='Reflected',
+):
+    zen_bins = DEFAULT_ZEN_BINS_DEG if zen_bins is None else zen_bins
+    az_bins = DEFAULT_AZ_BINS_DEG if az_bins is None else az_bins
+
+    def _collect(mode, weight_names):
+        rz, ra, wts = [], [], []
+        for ev in HRAeventList:
+            w = get_net_event_weight(ev, weight_names, sigma=sigma)
+            if w <= 0:
+                continue
+            trig = get_triggered_station_ids(ev, sigma=sigma, bad_stations=bad_stations, station_mode=mode)
+            if len(trig) == 0:
+                continue
+            z_list, a_list = [], []
+            for st in trig:
+                z = ev.recon_zenith.get(st)
+                a = ev.recon_azimuth.get(st)
+                if z is None or a is None:
+                    continue
+                try:
+                    z = float(z)
+                    a = float(a)
+                except (TypeError, ValueError):
+                    continue
+                if not (np.isfinite(z) and np.isfinite(a)):
+                    continue
+                z_list.append(z)
+                a_list.append(a)
+            if len(z_list) == 0:
+                continue
+            rz.append(float(np.rad2deg(np.mean(z_list))))
+            ra.append(float(np.rad2deg(np.mean(a_list))) % 360.0)
+            wts.append(w)
+        return np.asarray(rz, dtype=float), np.asarray(ra, dtype=float), np.asarray(wts, dtype=float)
+
+    l_rz, l_ra, l_w = _collect('direct', weight_names_left)
+    r_rz, r_ra, r_w = _collect('reflected', weight_names_right)
+
+    saved = []
+
+    # Zenith dual-axis
+    l_counts, _ = np.histogram(l_rz, bins=zen_bins, weights=l_w) if l_rz.size else (np.zeros(len(zen_bins) - 1), zen_bins)
+    r_counts, _ = np.histogram(r_rz, bins=zen_bins, weights=r_w) if r_rz.size else (np.zeros(len(zen_bins) - 1), zen_bins)
+    centers = 0.5 * (zen_bins[:-1] + zen_bins[1:])
+    width = (zen_bins[1] - zen_bins[0]) * 0.4
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+    ax2 = ax1.twinx()
+    ax1.bar(centers - width / 2, np.maximum(l_counts, _positive_floor(l_counts)), width=width, label=left_label)
+    ax2.bar(centers + width / 2, np.maximum(r_counts, _positive_floor(r_counts)), width=width, label=right_label, alpha=0.7)
+    ax1.set_xlabel('Reco Zenith [deg]')
+    ax1.set_ylabel(f'Rate [1/yr] ({left_label})')
+    ax2.set_ylabel(f'Rate [1/yr] ({right_label})')
+    ax1.set_title('Weighted Reco Zenith (dual axis)')
+    _apply_log_y(ax1, l_counts)
+    _apply_log_y(ax2, r_counts)
+    ax1.legend(loc='upper left')
+    ax2.legend(loc='upper right')
+    fig.tight_layout()
+    savename = os.path.join(outdir, 'weighted_reco_zenith_hist_dual_axis.png')
+    fig.savefig(savename)
+    plt.close(fig)
+    saved.append(savename)
+
+    # Azimuth dual-axis
+    l_counts, _ = np.histogram(l_ra, bins=az_bins, weights=l_w) if l_ra.size else (np.zeros(len(az_bins) - 1), az_bins)
+    r_counts, _ = np.histogram(r_ra, bins=az_bins, weights=r_w) if r_ra.size else (np.zeros(len(az_bins) - 1), az_bins)
+    centers = 0.5 * (az_bins[:-1] + az_bins[1:])
+    width = (az_bins[1] - az_bins[0]) * 0.4
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+    ax2 = ax1.twinx()
+    ax1.bar(centers - width / 2, np.maximum(l_counts, _positive_floor(l_counts)), width=width, label=left_label)
+    ax2.bar(centers + width / 2, np.maximum(r_counts, _positive_floor(r_counts)), width=width, label=right_label, alpha=0.7)
+    ax1.set_xlabel('Reco Azimuth [deg]')
+    ax1.set_ylabel(f'Rate [1/yr] ({left_label})')
+    ax2.set_ylabel(f'Rate [1/yr] ({right_label})')
+    ax1.set_title('Weighted Reco Azimuth (dual axis)')
+    _apply_log_y(ax1, l_counts)
+    _apply_log_y(ax2, r_counts)
+    ax1.legend(loc='upper left')
+    ax2.legend(loc='upper right')
+    fig.tight_layout()
+    savename = os.path.join(outdir, 'weighted_reco_azimuth_hist_dual_axis.png')
+    fig.savefig(savename)
     plt.close(fig)
     saved.append(savename)
 
@@ -377,6 +817,30 @@ def main():
             "One or more weight names to sum for the net event rate. "
             "Default: combined_direct combined_reflected"
         ),
+    )
+    parser.add_argument(
+        '--weight-direct',
+        nargs='+',
+        default=None,
+        help="Weight name(s) for direct-only plots (default: combined_direct)",
+    )
+    parser.add_argument(
+        '--weight-reflected',
+        nargs='+',
+        default=None,
+        help="Weight name(s) for reflected plots (default: combined_reflected)",
+    )
+    parser.add_argument(
+        '--pair-weight-direct',
+        nargs='+',
+        default=None,
+        help="Weight name(s) for n=2 direct-only pair plots (default: 2_coincidence_norefl)",
+    )
+    parser.add_argument(
+        '--pair-weight-reflected',
+        nargs='+',
+        default=None,
+        help="Weight name(s) for n=2 reflection-required pair plots (default: 2_coincidence_wrefl)",
     )
     parser.add_argument(
         '--base-stations',
@@ -417,6 +881,15 @@ def main():
     if weight_names is None:
         weight_names = ['combined_direct', 'combined_reflected']
 
+    weight_direct = args.weight_direct if args.weight_direct is not None else ['combined_direct']
+    weight_reflected = args.weight_reflected if args.weight_reflected is not None else ['combined_reflected']
+    pair_weight_direct = (
+        args.pair_weight_direct if args.pair_weight_direct is not None else ['2_coincidence_norefl']
+    )
+    pair_weight_reflected = (
+        args.pair_weight_reflected if args.pair_weight_reflected is not None else ['2_coincidence_wrefl']
+    )
+
     if not os.path.exists(h5_path):
         raise FileNotFoundError(
             f"Could not find HRAeventList.h5 at '{h5_path}'. "
@@ -426,24 +899,104 @@ def main():
     print(f"Loading HRA event list: {h5_path}")
     HRAeventList = load_hra_from_h5(h5_path)
     print(f"Loaded {len(HRAeventList)} events")
-    print(f"Using sigma={sigma} and weight_names={weight_names}")
+    print(f"Using sigma={sigma}")
+    print(f"Net weights (combined): {weight_names}")
+    print(f"Direct weights: {weight_direct}")
+    print(f"Reflected weights: {weight_reflected}")
+    print(f"Pair weights direct-only: {pair_weight_direct}")
+    print(f"Pair weights reflection-required: {pair_weight_reflected}")
 
-    # 1) weighted true angular distribution using average station rate
-    weighted_true_angle_distribution(HRAeventList, outdir, weight_names, sigma=sigma)
+    # 1) weighted true angular distribution using average station rate (combined)
+    weighted_true_angle_distribution(
+        HRAeventList,
+        outdir,
+        weight_names,
+        sigma=sigma,
+        az_bins=DEFAULT_AZ_BINS_DEG,
+        zen_bins=DEFAULT_ZEN_BINS_DEG,
+    )
 
-    # 2) weighted rate of all effective n=2 pairs
-    pair_rates = compute_n2_pair_rates(
+    # Also provide 1D true angle hists (direct/reflected + dual-axis)
+    weighted_true_angle_1d_hists(HRAeventList, outdir, weight_direct, tag='direct', sigma=sigma, logy=True)
+    weighted_true_angle_1d_hists(HRAeventList, outdir, weight_reflected, tag='reflected', sigma=sigma, logy=True)
+    # Dual-axis: zenith
+    # (use bar-based dual-axis in the same style as other dual plots)
+    # We reuse the existing helper by building per-bin arrays and plotting as dual-axis bars.
+    # Keep output minimal: one zenith and one azimuth dual-axis plot.
+    for angle_name, bins, getter in [
+        ('zenith', DEFAULT_ZEN_BINS_DEG, lambda ev: float(np.rad2deg(ev.getAngles()[0]))),
+        ('azimuth', DEFAULT_AZ_BINS_DEG, lambda ev: float(np.rad2deg(ev.getAngles()[1])) % 360.0),
+    ]:
+        l_vals, l_w = [], []
+        r_vals, r_w = [], []
+        for ev in HRAeventList:
+            wl = get_net_event_weight(ev, weight_direct, sigma=sigma)
+            if wl > 0:
+                l_vals.append(getter(ev))
+                l_w.append(wl)
+            wr = get_net_event_weight(ev, weight_reflected, sigma=sigma)
+            if wr > 0:
+                r_vals.append(getter(ev))
+                r_w.append(wr)
+        l_counts, _ = np.histogram(l_vals, bins=bins, weights=l_w) if len(l_vals) else (np.zeros(len(bins) - 1), bins)
+        r_counts, _ = np.histogram(r_vals, bins=bins, weights=r_w) if len(r_vals) else (np.zeros(len(bins) - 1), bins)
+        centers = 0.5 * (bins[:-1] + bins[1:])
+        width = (bins[1] - bins[0]) * 0.4
+        fig, ax1 = plt.subplots(figsize=(8, 5))
+        ax2 = ax1.twinx()
+        ax1.bar(centers - width / 2, np.maximum(l_counts, _positive_floor(l_counts)), width=width, label='Direct')
+        ax2.bar(centers + width / 2, np.maximum(r_counts, _positive_floor(r_counts)), width=width, label='Reflected', alpha=0.7)
+        ax1.set_xlabel(f'True {angle_name.title()} [deg]')
+        ax1.set_ylabel('Rate [1/yr] (Direct)')
+        ax2.set_ylabel('Rate [1/yr] (Reflected)')
+        ax1.set_title(f'Weighted True {angle_name.title()} (dual axis)')
+        _apply_log_y(ax1, l_counts)
+        _apply_log_y(ax2, r_counts)
+        ax1.legend(loc='upper left')
+        ax2.legend(loc='upper right')
+        fig.tight_layout()
+        fig.savefig(os.path.join(outdir, f'weighted_true_{angle_name}_hist_dual_axis.png'))
+        plt.close(fig)
+
+    # 2) weighted rate of all effective n=2 pairs (direct-only vs reflection-required)
+    pair_rates_direct = compute_n2_pair_rates(
         HRAeventList,
         base_stations=args.base_stations,
-        weight_names=weight_names,
+        weight_names=pair_weight_direct,
         sigma=sigma,
         bad_stations=args.bad_stations,
+        pair_mode='direct_only',
+    )
+    pair_rates_reflreq = compute_n2_pair_rates(
+        HRAeventList,
+        base_stations=args.base_stations,
+        weight_names=pair_weight_reflected,
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        pair_mode='reflection_required',
     )
     plot_pair_rate_bars(
-        pair_rates,
+        pair_rates_direct,
         outdir,
-        filename='weighted_n2_pair_rates_all.png',
-        title='Weighted effective n=2 pair rates (all pairs)',
+        filename='weighted_n2_pair_rates_all_direct_only.png',
+        title='Weighted effective n=2 pair rates (direct-only)',
+        logy=True,
+    )
+    plot_pair_rate_bars(
+        pair_rates_reflreq,
+        outdir,
+        filename='weighted_n2_pair_rates_all_reflection_required.png',
+        title='Weighted effective n=2 pair rates (reflection-required)',
+        logy=True,
+    )
+    plot_pair_rate_bars_dual_axis(
+        pair_rates_direct,
+        pair_rates_reflreq,
+        outdir,
+        filename='weighted_n2_pair_rates_all_dual_axis.png',
+        title='Weighted effective n=2 pair rates (dual axis)',
+        left_label='Direct-only',
+        right_label='Reflection-required',
     )
 
     # 3-4) category lists (dummy placeholders for now)
@@ -484,24 +1037,81 @@ def main():
         'backward_diag': 1.0,
         'other': 2.0,
     }
-    plot_pair_categories(pair_rates, outdir, categories, category_distances_km)
+    plot_pair_categories(pair_rates_direct, outdir, categories, category_distances_km)
+    # Also separate plots for reflection-required categories
+    plot_pair_categories(pair_rates_reflreq, outdir, categories, category_distances_km)
+    # Dual-axis category plots + dual-axis distance plot
+    plot_pair_categories_dual_axis(
+        pair_rates_direct,
+        pair_rates_reflreq,
+        outdir,
+        categories,
+        category_distances_km,
+        left_label='Direct-only',
+        right_label='Reflection-required',
+    )
 
     # 5) weighted amplitude (station max SNR) distribution
+    # 5) weighted amplitude (station max SNR) distribution (separate + dual-axis)
     weighted_snr_amplitude_histogram(
         HRAeventList,
         outdir,
-        weight_names=weight_names,
+        weight_direct,
         sigma=sigma,
         bad_stations=args.bad_stations,
+        station_mode='direct',
+        logy=True,
+    )
+    weighted_snr_amplitude_histogram(
+        HRAeventList,
+        outdir,
+        weight_reflected,
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        station_mode='reflected',
+        logy=True,
+    )
+    weighted_snr_amplitude_histogram_dual_axis(
+        HRAeventList,
+        outdir,
+        weight_direct,
+        weight_reflected,
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        bins=DEFAULT_SNR_BINS,
+        left_label='Direct',
+        right_label='Reflected',
     )
 
     # 6) weighted reco az/zen hists for net individual rate
+    # 6) weighted reco az/zen hists (separate + dual-axis)
     weighted_reco_angle_hists(
         HRAeventList,
         outdir,
-        weight_names=weight_names,
+        weight_direct,
         sigma=sigma,
         bad_stations=args.bad_stations,
+        station_mode='direct',
+        logy=True,
+    )
+    weighted_reco_angle_hists(
+        HRAeventList,
+        outdir,
+        weight_reflected,
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        station_mode='reflected',
+        logy=True,
+    )
+    weighted_reco_angle_hists_dual_axis(
+        HRAeventList,
+        outdir,
+        weight_direct,
+        weight_reflected,
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        left_label='Direct',
+        right_label='Reflected',
     )
 
     print(f"Saved plots under: {outdir}")
