@@ -204,6 +204,42 @@ def get_best_available_event_weight(event, weight_names_descending, sigma=4.5):
     return 0.0
 
 
+def build_coincidence_weight_name_list(max_n, mode):
+    """Build a descending list of possible coincidence weight keys.
+
+    mode:
+      - 'direct' -> norefl-only weights
+      - 'reflected' -> include common reflected conventions (wrefl, reflReq)
+
+    The returned list is ordered highest-n -> lowest-n and includes n=2.
+    """
+    names = []
+    for n in range(int(max_n), 1, -1):
+        if mode == 'direct':
+            names.append(f'{n}_coincidence_norefl')
+        elif mode == 'reflected':
+            # Different scripts in this repo use different conventions.
+            names.extend(
+                [
+                    f'{n}_coincidence_wrefl',
+                    f'{n}_coincidence_reflReq',
+                    f'{n}_coincidence_reflreq',
+                    f'{n}_coincidence_refl',
+                ]
+            )
+        else:
+            raise ValueError(f"Unknown mode '{mode}'")
+    # de-dupe while preserving order
+    seen = set()
+    ordered = []
+    for name in names:
+        if name in seen:
+            continue
+        seen.add(name)
+        ordered.append(name)
+    return ordered
+
+
 def weighted_true_angle_distribution(HRAeventList, outdir, weight_names, sigma=4.5, az_bins=None, zen_bins=None):
     az_deg = []
     zen_deg = []
@@ -524,6 +560,9 @@ def plot_pair_categories(
     outdir,
     categories,
     category_distances_km,
+    *,
+    file_prefix='weighted_n2',
+    title_prefix='Weighted n=2',
 ):
     saved = []
 
@@ -539,8 +578,8 @@ def plot_pair_categories(
         sav = plot_pair_rate_bars(
             cat_rates,
             outdir,
-            filename=f"weighted_n2_pair_rates_{cat_name}.png",
-            title=f"Weighted n=2 Pair Rates ({cat_name})",
+            filename=f"{file_prefix}_pair_rates_{cat_name}.png",
+            title=f"{title_prefix} Pair Rates ({cat_name})",
         )
         if sav is not None:
             saved.append(sav)
@@ -562,10 +601,10 @@ def plot_pair_categories(
         ax.set_xticks(np.arange(len(cat_names)))
         ax.set_xticklabels(cat_names)
         ax.set_ylabel('Total rate [1/yr]')
-        ax.set_title('Weighted n=2 Category Total Rate')
+        ax.set_title(f'{title_prefix} Category Total Rate')
         _apply_log_y(ax, y)
         fig.tight_layout()
-        savename = os.path.join(outdir, 'weighted_n2_category_rate_by_group.png')
+        savename = os.path.join(outdir, f'{file_prefix}_category_rate_by_group.png')
         fig.savefig(savename)
         plt.close(fig)
         saved.append(savename)
@@ -581,6 +620,9 @@ def plot_pair_categories_dual_axis(
     category_distances_km,
     left_label='Direct-only',
     right_label='Reflection-required',
+    *,
+    file_prefix='weighted_n2',
+    title_prefix='Weighted n=2',
 ):
     saved = []
 
@@ -596,8 +638,8 @@ def plot_pair_categories_dual_axis(
             left,
             right,
             outdir,
-            filename=f"weighted_n2_pair_rates_{cat_name}_dual_axis.png",
-            title=f"Weighted n=2 Pair Rates ({cat_name})",
+            filename=f"{file_prefix}_pair_rates_{cat_name}_dual_axis.png",
+            title=f"{title_prefix} Pair Rates ({cat_name})",
             left_label=left_label,
             right_label=right_label,
         )
@@ -649,7 +691,7 @@ def plot_pair_categories_dual_axis(
         ax1.set_xticklabels(cat_labels)
         ax1.set_ylabel(f'Total rate [1/yr] ({left_label})')
         ax2.set_ylabel(f'Total rate [1/yr] ({right_label})')
-        ax1.set_title('Weighted n=2 Category Total Rate (dual axis)')
+        ax1.set_title(f'{title_prefix} Category Total Rate (dual axis)')
 
         _apply_log_y(ax1, left_totals)
         _apply_log_y(ax2, right_totals)
@@ -663,7 +705,7 @@ def plot_pair_categories_dual_axis(
             leg.get_frame().set_alpha(0.9)
 
         fig.tight_layout()
-        savename = os.path.join(outdir, 'weighted_n2_category_rate_by_group_dual_axis.png')
+        savename = os.path.join(outdir, f'{file_prefix}_category_rate_by_group_dual_axis.png')
         fig.savefig(savename)
         plt.close(fig)
         saved.append(savename)
@@ -1214,23 +1256,23 @@ def main():
     plot_pair_rate_bars(
         pair_rates_direct,
         outdir_n2only,
-        filename='weighted_n2_pair_rates_all_direct_only.png',
-        title='Weighted effective n=2 pair rates (direct-only)',
+        filename='weighted_n2only_pair_rates_all_direct_only.png',
+        title='Weighted effective pair rates (n=2 only, direct-only)',
         logy=True,
     )
     plot_pair_rate_bars(
         pair_rates_reflreq,
         outdir_n2only,
-        filename='weighted_n2_pair_rates_all_reflection_required.png',
-        title='Weighted effective n=2 pair rates (reflection-required)',
+        filename='weighted_n2only_pair_rates_all_reflection_required.png',
+        title='Weighted effective pair rates (n=2 only, reflection-required)',
         logy=True,
     )
     plot_pair_rate_bars_dual_axis(
         pair_rates_direct,
         pair_rates_reflreq,
         outdir_n2only,
-        filename='weighted_n2_pair_rates_all_dual_axis.png',
-        title='Weighted effective n=2 pair rates (dual axis)',
+        filename='weighted_n2only_pair_rates_all_dual_axis.png',
+        title='Weighted effective pair rates (n=2 only, dual axis)',
         left_label='Direct-only',
         right_label='Reflection-required',
     )
@@ -1273,9 +1315,23 @@ def main():
         'backward_diag': 1.0,
         'other': 2.0,
     }
-    plot_pair_categories(pair_rates_direct, outdir_n2only, categories, category_distances_km)
+    plot_pair_categories(
+        pair_rates_direct,
+        outdir_n2only,
+        categories,
+        category_distances_km,
+        file_prefix='weighted_n2only',
+        title_prefix='Weighted n=2 only',
+    )
     # Also separate plots for reflection-required categories
-    plot_pair_categories(pair_rates_reflreq, outdir_n2only, categories, category_distances_km)
+    plot_pair_categories(
+        pair_rates_reflreq,
+        outdir_n2only,
+        categories,
+        category_distances_km,
+        file_prefix='weighted_n2only',
+        title_prefix='Weighted n=2 only',
+    )
     # Dual-axis category plots
     plot_pair_categories_dual_axis(
         pair_rates_direct,
@@ -1285,12 +1341,16 @@ def main():
         category_distances_km,
         left_label='Direct-only',
         right_label='Reflection-required',
+        file_prefix='weighted_n2only',
+        title_prefix='Weighted n=2 only',
     )
 
     # alln/ versions: include events with n>=2 and count each event toward all pairs it contains
     max_n = max(2, len(args.base_stations))
-    pair_weight_direct_alln = [f'{n}_coincidence_norefl' for n in range(max_n, 1, -1)]
-    pair_weight_reflected_alln = [f'{n}_coincidence_wrefl' for n in range(max_n, 1, -1)]
+    # Inclusive: consider all coincidence weights down to n=2 (including n=2).
+    # Use the highest-n available per event, matching the approach in HRAPolarCoincidenceAnalysis.
+    pair_weight_direct_alln = build_coincidence_weight_name_list(max_n, mode='direct')
+    pair_weight_reflected_alln = build_coincidence_weight_name_list(max_n, mode='reflected')
 
     print(f"Pair weights direct-only (all n>=2, highest-n per event): {pair_weight_direct_alln}")
     print(f"Pair weights reflection-required (all n>=2, highest-n per event): {pair_weight_reflected_alln}")
@@ -1317,29 +1377,43 @@ def main():
     plot_pair_rate_bars(
         pair_rates_direct_alln,
         outdir_alln,
-        filename='weighted_n2_pair_rates_all_direct_only.png',
-        title='Weighted effective pair rates (all n>=2, direct-only)',
+        filename='weighted_alln_ge2_pair_rates_all_direct_only.png',
+        title='Weighted effective pair rates (all n>=2 inclusive, direct-only)',
         logy=True,
     )
     plot_pair_rate_bars(
         pair_rates_reflreq_alln,
         outdir_alln,
-        filename='weighted_n2_pair_rates_all_reflection_required.png',
-        title='Weighted effective pair rates (all n>=2, reflection-required)',
+        filename='weighted_alln_ge2_pair_rates_all_reflection_required.png',
+        title='Weighted effective pair rates (all n>=2 inclusive, reflection-required)',
         logy=True,
     )
     plot_pair_rate_bars_dual_axis(
         pair_rates_direct_alln,
         pair_rates_reflreq_alln,
         outdir_alln,
-        filename='weighted_n2_pair_rates_all_dual_axis.png',
-        title='Weighted effective pair rates (all n>=2, dual axis)',
+        filename='weighted_alln_ge2_pair_rates_all_dual_axis.png',
+        title='Weighted effective pair rates (all n>=2 inclusive, dual axis)',
         left_label='Direct-only',
         right_label='Reflection-required',
     )
 
-    plot_pair_categories(pair_rates_direct_alln, outdir_alln, categories, category_distances_km)
-    plot_pair_categories(pair_rates_reflreq_alln, outdir_alln, categories, category_distances_km)
+    plot_pair_categories(
+        pair_rates_direct_alln,
+        outdir_alln,
+        categories,
+        category_distances_km,
+        file_prefix='weighted_alln_ge2',
+        title_prefix='Weighted all n≥2',
+    )
+    plot_pair_categories(
+        pair_rates_reflreq_alln,
+        outdir_alln,
+        categories,
+        category_distances_km,
+        file_prefix='weighted_alln_ge2',
+        title_prefix='Weighted all n≥2',
+    )
     plot_pair_categories_dual_axis(
         pair_rates_direct_alln,
         pair_rates_reflreq_alln,
@@ -1348,6 +1422,8 @@ def main():
         category_distances_km,
         left_label='Direct-only',
         right_label='Reflection-required',
+        file_prefix='weighted_alln_ge2',
+        title_prefix='Weighted all n≥2',
     )
 
     # 5) weighted amplitude (station max SNR) distribution
