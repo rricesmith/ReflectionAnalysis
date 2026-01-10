@@ -1,5 +1,6 @@
 import argparse
 import configparser
+import itertools
 import os
 import sys
 from collections import defaultdict
@@ -188,6 +189,19 @@ def get_net_event_weight(event, weight_names, sigma=4.5):
             continue
         w += _safe_weight(event.getWeight(name, sigma=sigma))
     return w
+
+
+def get_best_available_event_weight(event, weight_names_descending, sigma=4.5):
+    """Return the first (highest-priority) available weight from a list.
+
+    This is useful for inclusive (e.g., n>=2) sums where events may carry multiple
+    coincidence weights; we want to count each event once using its highest-n weight.
+    """
+    for name in weight_names_descending:
+        if not event.hasWeight(name, sigma=sigma):
+            continue
+        return _safe_weight(event.getWeight(name, sigma=sigma))
+    return 0.0
 
 
 def weighted_true_angle_distribution(HRAeventList, outdir, weight_names, sigma=4.5, az_bins=None, zen_bins=None):
@@ -383,6 +397,52 @@ def compute_n2_pair_rates(
                     continue
 
         rates[(bases[0], bases[1])] += w
+    return dict(rates)
+
+
+def compute_alln_pair_rates(
+    HRAeventList,
+    base_stations,
+    weight_names_descending,
+    sigma=4.5,
+    bad_stations=None,
+    pair_mode='any',
+    min_n=2,
+):
+    """Return dict {(i,j): rate} including events with n>=min_n.
+
+    Each event with effective base-station multiplicity >= min_n contributes its
+    event weight to *every* pair (i,j) present in that event.
+
+    weight_names_descending should be ordered highest-n -> lowest-n (e.g., 7..2)
+    so we can take the event's highest available coincidence weight.
+    """
+    rates = defaultdict(float)
+    for ev in HRAeventList:
+        w = get_best_available_event_weight(ev, weight_names_descending, sigma=sigma)
+        if w <= 0:
+            continue
+
+        bases = sorted(get_effective_bases_for_event(ev, base_stations, sigma=sigma, bad_stations=bad_stations))
+        if len(bases) < min_n:
+            continue
+
+        if pair_mode != 'any':
+            direct_bases, refl_bases = get_direct_and_reflected_bases_for_event(
+                ev, base_stations, sigma=sigma, bad_stations=bad_stations
+            )
+            if pair_mode == 'direct_only':
+                if len(refl_bases) != 0:
+                    continue
+                if len(direct_bases) == 0:
+                    continue
+            elif pair_mode == 'reflection_required':
+                if len(refl_bases) == 0 or len(direct_bases) == 0:
+                    continue
+
+        for a, b in itertools.combinations(bases, 2):
+            rates[(a, b)] += w
+
     return dict(rates)
 
 
@@ -995,6 +1055,12 @@ def main():
     outdir = _resolve_path(outdir)
     os.makedirs(outdir, exist_ok=True)
 
+    # Subfolders for pair/coincidence-dependent plots
+    outdir_n2only = os.path.join(outdir, 'n2only')
+    outdir_alln = os.path.join(outdir, 'alln')
+    os.makedirs(outdir_n2only, exist_ok=True)
+    os.makedirs(outdir_alln, exist_ok=True)
+
     weight_names = args.weight_names
     if weight_names is None:
         weight_names = ['combined_direct', 'combined_reflected']
@@ -1128,6 +1194,7 @@ def main():
         plt.close(fig)
 
     # 2) weighted rate of all effective n=2 pairs (direct-only vs reflection-required)
+    # Save under n2only/
     pair_rates_direct = compute_n2_pair_rates(
         HRAeventList,
         base_stations=args.base_stations,
@@ -1146,14 +1213,14 @@ def main():
     )
     plot_pair_rate_bars(
         pair_rates_direct,
-        outdir,
+        outdir_n2only,
         filename='weighted_n2_pair_rates_all_direct_only.png',
         title='Weighted effective n=2 pair rates (direct-only)',
         logy=True,
     )
     plot_pair_rate_bars(
         pair_rates_reflreq,
-        outdir,
+        outdir_n2only,
         filename='weighted_n2_pair_rates_all_reflection_required.png',
         title='Weighted effective n=2 pair rates (reflection-required)',
         logy=True,
@@ -1161,7 +1228,7 @@ def main():
     plot_pair_rate_bars_dual_axis(
         pair_rates_direct,
         pair_rates_reflreq,
-        outdir,
+        outdir_n2only,
         filename='weighted_n2_pair_rates_all_dual_axis.png',
         title='Weighted effective n=2 pair rates (dual axis)',
         left_label='Direct-only',
@@ -1206,14 +1273,77 @@ def main():
         'backward_diag': 1.0,
         'other': 2.0,
     }
-    plot_pair_categories(pair_rates_direct, outdir, categories, category_distances_km)
+    plot_pair_categories(pair_rates_direct, outdir_n2only, categories, category_distances_km)
     # Also separate plots for reflection-required categories
-    plot_pair_categories(pair_rates_reflreq, outdir, categories, category_distances_km)
-    # Dual-axis category plots + dual-axis distance plot
+    plot_pair_categories(pair_rates_reflreq, outdir_n2only, categories, category_distances_km)
+    # Dual-axis category plots
     plot_pair_categories_dual_axis(
         pair_rates_direct,
         pair_rates_reflreq,
-        outdir,
+        outdir_n2only,
+        categories,
+        category_distances_km,
+        left_label='Direct-only',
+        right_label='Reflection-required',
+    )
+
+    # alln/ versions: include events with n>=2 and count each event toward all pairs it contains
+    max_n = max(2, len(args.base_stations))
+    pair_weight_direct_alln = [f'{n}_coincidence_norefl' for n in range(max_n, 1, -1)]
+    pair_weight_reflected_alln = [f'{n}_coincidence_wrefl' for n in range(max_n, 1, -1)]
+
+    print(f"Pair weights direct-only (all n>=2, highest-n per event): {pair_weight_direct_alln}")
+    print(f"Pair weights reflection-required (all n>=2, highest-n per event): {pair_weight_reflected_alln}")
+
+    pair_rates_direct_alln = compute_alln_pair_rates(
+        HRAeventList,
+        base_stations=args.base_stations,
+        weight_names_descending=pair_weight_direct_alln,
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        pair_mode='direct_only',
+        min_n=2,
+    )
+    pair_rates_reflreq_alln = compute_alln_pair_rates(
+        HRAeventList,
+        base_stations=args.base_stations,
+        weight_names_descending=pair_weight_reflected_alln,
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        pair_mode='reflection_required',
+        min_n=2,
+    )
+
+    plot_pair_rate_bars(
+        pair_rates_direct_alln,
+        outdir_alln,
+        filename='weighted_n2_pair_rates_all_direct_only.png',
+        title='Weighted effective pair rates (all n>=2, direct-only)',
+        logy=True,
+    )
+    plot_pair_rate_bars(
+        pair_rates_reflreq_alln,
+        outdir_alln,
+        filename='weighted_n2_pair_rates_all_reflection_required.png',
+        title='Weighted effective pair rates (all n>=2, reflection-required)',
+        logy=True,
+    )
+    plot_pair_rate_bars_dual_axis(
+        pair_rates_direct_alln,
+        pair_rates_reflreq_alln,
+        outdir_alln,
+        filename='weighted_n2_pair_rates_all_dual_axis.png',
+        title='Weighted effective pair rates (all n>=2, dual axis)',
+        left_label='Direct-only',
+        right_label='Reflection-required',
+    )
+
+    plot_pair_categories(pair_rates_direct_alln, outdir_alln, categories, category_distances_km)
+    plot_pair_categories(pair_rates_reflreq_alln, outdir_alln, categories, category_distances_km)
+    plot_pair_categories_dual_axis(
+        pair_rates_direct_alln,
+        pair_rates_reflreq_alln,
+        outdir_alln,
         categories,
         category_distances_km,
         left_label='Direct-only',
@@ -1283,7 +1413,9 @@ def main():
         right_label='Reflected',
     )
 
-    print(f"Saved plots under: {outdir}")
+    print(f"Saved n-independent plots under: {outdir}")
+    print(f"Saved n=2-only pair plots under: {outdir_n2only}")
+    print(f"Saved all-n>=2 pair plots under: {outdir_alln}")
 
 
 if __name__ == '__main__':
