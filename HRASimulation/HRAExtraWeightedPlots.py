@@ -194,14 +194,47 @@ def get_net_event_weight(event, weight_names, sigma=4.5):
 def get_best_available_event_weight(event, weight_names_descending, sigma=4.5):
     """Return the first (highest-priority) available weight from a list.
 
-    This is useful for inclusive (e.g., n>=2) sums where events may carry multiple
-    coincidence weights; we want to count each event once using its highest-n weight.
+    This is useful when multiple naming conventions exist for the same underlying
+    concept (e.g., reflected-coincidence weights can appear as *_wrefl or *_reflReq).
+    Provide candidates in priority order; the first available is used.
     """
     for name in weight_names_descending:
         if not event.hasWeight(name, sigma=sigma):
             continue
         return _safe_weight(event.getWeight(name, sigma=sigma))
     return 0.0
+
+
+def _parse_leading_int_prefix(name):
+    """Parse integer prefix from strings like '3_coincidence_wrefl'."""
+    if not isinstance(name, str):
+        return None
+    parts = name.split('_', 1)
+    if not parts:
+        return None
+    try:
+        return int(parts[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def get_summed_coincidence_weight(event, weight_names_descending, sigma=4.5):
+    """Sum coincidence weights across n while avoiding double-counting per n.
+
+    weight_names_descending may include multiple naming variants per n. For each n,
+    the first available candidate is used, then those per-n weights are summed.
+    """
+    by_n = defaultdict(list)
+    for name in weight_names_descending:
+        n = _parse_leading_int_prefix(name)
+        if n is None:
+            continue
+        by_n[n].append(name)
+
+    total = 0.0
+    for n in sorted(by_n.keys()):
+        total += get_best_available_event_weight(event, by_n[n], sigma=sigma)
+    return total
 
 
 def build_coincidence_weight_name_list(max_n, mode):
@@ -461,11 +494,8 @@ def compute_alln_pair_rates(
     rates = defaultdict(float)
     for ev in HRAeventList:
         # Sum rates across coincidence levels (n=2,3,4,...) for this event.
-        w = 0.0
-        for name in weight_names_descending:
-            if not ev.hasWeight(name, sigma=sigma):
-                continue
-            w += _safe_weight(ev.getWeight(name, sigma=sigma))
+        # Avoid double-counting if multiple naming variants exist for the same n.
+        w = get_summed_coincidence_weight(ev, weight_names_descending, sigma=sigma)
         if w <= 0:
             continue
 
@@ -490,6 +520,228 @@ def compute_alln_pair_rates(
             rates[(a, b)] += w
 
     return dict(rates)
+
+
+def compute_exactn_pair_rates(
+    HRAeventList,
+    base_stations,
+    weight_names_descending,
+    *,
+    sigma=4.5,
+    bad_stations=None,
+    pair_mode='any',
+    exact_n=3,
+):
+    """Return dict {(i,j): rate} using only events with effective multiplicity == exact_n.
+
+    The event contributes its coincidence weight to every pair (i,j) present.
+    For reflected naming variants, pass a candidate list; per-n double counting is
+    avoided via get_summed_coincidence_weight (though for exact_n it typically
+    resolves to a single per-event weight).
+    """
+    rates = defaultdict(float)
+    for ev in HRAeventList:
+        w = get_summed_coincidence_weight(ev, weight_names_descending, sigma=sigma)
+        if w <= 0:
+            continue
+
+        bases = sorted(get_effective_bases_for_event(ev, base_stations, sigma=sigma, bad_stations=bad_stations))
+        if len(bases) != int(exact_n):
+            continue
+
+        if pair_mode != 'any':
+            direct_bases, refl_bases = get_direct_and_reflected_bases_for_event(
+                ev, base_stations, sigma=sigma, bad_stations=bad_stations
+            )
+            if pair_mode == 'direct_only':
+                if len(refl_bases) != 0:
+                    continue
+                if len(direct_bases) == 0:
+                    continue
+            elif pair_mode == 'reflection_required':
+                if len(refl_bases) == 0 or len(direct_bases) == 0:
+                    continue
+
+        for a, b in itertools.combinations(bases, 2):
+            rates[(a, b)] += w
+
+    return dict(rates)
+
+
+def compute_n2n3_pair_rates(
+    HRAeventList,
+    base_stations,
+    weight_names_descending,
+    *,
+    sigma=4.5,
+    bad_stations=None,
+    pair_mode='any',
+):
+    """Return dict {(i,j): rate} including events with effective multiplicity 2 or 3.
+
+    Per-event weight is the sum of the n=2 and n=3 coincidence weights (when present),
+    and that summed weight is assigned to every pair in the event.
+    """
+    rates = defaultdict(float)
+    for ev in HRAeventList:
+        w = get_summed_coincidence_weight(ev, weight_names_descending, sigma=sigma)
+        if w <= 0:
+            continue
+
+        bases = sorted(get_effective_bases_for_event(ev, base_stations, sigma=sigma, bad_stations=bad_stations))
+        if len(bases) not in (2, 3):
+            continue
+
+        if pair_mode != 'any':
+            direct_bases, refl_bases = get_direct_and_reflected_bases_for_event(
+                ev, base_stations, sigma=sigma, bad_stations=bad_stations
+            )
+            if pair_mode == 'direct_only':
+                if len(refl_bases) != 0:
+                    continue
+                if len(direct_bases) == 0:
+                    continue
+            elif pair_mode == 'reflection_required':
+                if len(refl_bases) == 0 or len(direct_bases) == 0:
+                    continue
+
+        for a, b in itertools.combinations(bases, 2):
+            rates[(a, b)] += w
+
+    return dict(rates)
+
+
+def compute_n3_configuration_rates(
+    HRAeventList,
+    base_stations,
+    weight_names_descending,
+    triangular_trios,
+    *,
+    sigma=4.5,
+    bad_stations=None,
+    pair_mode='any',
+):
+    """Return dict with total rates for n=3 configurations.
+
+    Categories:
+      - 'triangular': event effective bases match one of triangular_trios
+      - 'other_n3': all other n=3 configurations
+    """
+    rates = defaultdict(float)
+    triangular = {tuple(sorted(map(int, t))) for t in triangular_trios}
+    for ev in HRAeventList:
+        w = get_summed_coincidence_weight(ev, weight_names_descending, sigma=sigma)
+        if w <= 0:
+            continue
+
+        bases = sorted(get_effective_bases_for_event(ev, base_stations, sigma=sigma, bad_stations=bad_stations))
+        if len(bases) != 3:
+            continue
+
+        if pair_mode != 'any':
+            direct_bases, refl_bases = get_direct_and_reflected_bases_for_event(
+                ev, base_stations, sigma=sigma, bad_stations=bad_stations
+            )
+            if pair_mode == 'direct_only':
+                if len(refl_bases) != 0:
+                    continue
+                if len(direct_bases) == 0:
+                    continue
+            elif pair_mode == 'reflection_required':
+                if len(refl_bases) == 0 or len(direct_bases) == 0:
+                    continue
+
+        key = tuple(map(int, bases))
+        if key in triangular:
+            rates['triangular'] += w
+        else:
+            rates['other_n3'] += w
+    return dict(rates)
+
+
+def plot_category_totals(
+    category_labels,
+    category_totals,
+    outdir,
+    filename,
+    title,
+    *,
+    ylabel='Total rate [1/yr]',
+    logy=True,
+):
+    if not category_labels:
+        return None
+    y = np.asarray(category_totals, dtype=float)
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.bar(np.arange(len(category_labels)), np.maximum(y, _positive_floor(y)))
+    ax.set_xticks(np.arange(len(category_labels)))
+    ax.set_xticklabels(category_labels)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    if logy:
+        _apply_log_y(ax, y)
+    fig.tight_layout()
+    savename = os.path.join(outdir, filename)
+    fig.savefig(savename)
+    plt.close(fig)
+    return savename
+
+
+def plot_category_totals_dual_axis(
+    category_labels,
+    left_totals,
+    right_totals,
+    outdir,
+    filename,
+    title,
+    *,
+    left_label='Direct-only',
+    right_label='Reflection-required',
+):
+    if not category_labels:
+        return None
+
+    left_totals = np.asarray(left_totals, dtype=float)
+    right_totals = np.asarray(right_totals, dtype=float)
+    x = np.arange(len(category_labels))
+    width = 0.4
+    fig, ax1 = plt.subplots(figsize=(7, 5))
+    ax2 = ax1.twinx()
+
+    ax2.set_zorder(0)
+    ax1.set_zorder(1)
+    ax1.patch.set_visible(False)
+
+    ax1.bar(x - width / 2, np.maximum(left_totals, _positive_floor(left_totals)), width=width, label=left_label)
+    ax2.bar(
+        x + width / 2,
+        np.maximum(right_totals, _positive_floor(right_totals)),
+        width=width,
+        label=right_label,
+        alpha=0.7,
+    )
+
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(category_labels)
+    ax1.set_ylabel(f'Total rate [1/yr] ({left_label})')
+    ax2.set_ylabel(f'Total rate [1/yr] ({right_label})')
+    ax1.set_title(title)
+
+    _apply_log_y(ax1, left_totals)
+    _apply_log_y(ax2, right_totals)
+
+    h1, l1 = ax1.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    leg = ax1.legend(h1 + h2, l1 + l2, loc='lower left')
+    leg.set_zorder(10)
+    if leg.get_frame() is not None:
+        leg.get_frame().set_alpha(0.9)
+
+    fig.tight_layout()
+    savename = os.path.join(outdir, filename)
+    fig.savefig(savename)
+    plt.close(fig)
+    return savename
 
 
 def plot_pair_rate_bars(pair_rates, outdir, filename, title, logy=True):
@@ -1110,8 +1362,10 @@ def main():
     # Subfolders for pair/coincidence-dependent plots
     outdir_n2only = os.path.join(outdir, 'n2only')
     outdir_alln = os.path.join(outdir, 'alln')
+    outdir_n2n3 = os.path.join(outdir, 'n2n3')
     os.makedirs(outdir_n2only, exist_ok=True)
     os.makedirs(outdir_alln, exist_ok=True)
+    os.makedirs(outdir_n2n3, exist_ok=True)
 
     weight_names = args.weight_names
     if weight_names is None:
@@ -1357,8 +1611,7 @@ def main():
 
     # alln/ versions: include events with n>=2 and count each event toward all pairs it contains
     max_n = max(2, len(args.base_stations))
-    # Inclusive: consider all coincidence weights down to n=2 (including n=2).
-    # Use the highest-n available per event, matching the approach in HRAPolarCoincidenceAnalysis.
+    # Inclusive: sum coincidence weights across n (n=2..max_n) per event.
     pair_weight_direct_alln = build_coincidence_weight_name_list(max_n, mode='direct')
     pair_weight_reflected_alln = build_coincidence_weight_name_list(max_n, mode='reflected')
 
@@ -1436,6 +1689,208 @@ def main():
         title_prefix='Weighted all n≥2',
     )
 
+    # n2n3/ versions: include ONLY n=2 and n=3, and sum n=2 + n=3 coincidence weights per event.
+    triangular_trios = [
+        [18, 19, 30],
+        [13, 14, 18],
+        [14, 18, 19],
+        [15, 18, 30],
+        [15, 17, 18],
+        [13, 17, 18],
+    ]
+    # Candidate weight keys for n=2 and n=3 only.
+    # Note: reflected mode includes common naming variants.
+    pair_weight_direct_n2n3 = [
+        '3_coincidence_norefl',
+        '2_coincidence_norefl',
+    ]
+    pair_weight_reflected_n2n3 = [
+        '3_coincidence_wrefl',
+        '3_coincidence_reflReq',
+        '3_coincidence_reflreq',
+        '3_coincidence_refl',
+        '2_coincidence_wrefl',
+        '2_coincidence_reflReq',
+        '2_coincidence_reflreq',
+        '2_coincidence_refl',
+    ]
+
+    pair_rates_direct_n2n3 = compute_n2n3_pair_rates(
+        HRAeventList,
+        base_stations=args.base_stations,
+        weight_names_descending=pair_weight_direct_n2n3,
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        pair_mode='direct_only',
+    )
+    pair_rates_reflreq_n2n3 = compute_n2n3_pair_rates(
+        HRAeventList,
+        base_stations=args.base_stations,
+        weight_names_descending=pair_weight_reflected_n2n3,
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        pair_mode='reflection_required',
+    )
+
+    plot_pair_rate_bars(
+        pair_rates_direct_n2n3,
+        outdir_n2n3,
+        filename='weighted_n2n3_pair_rates_all_direct_only.png',
+        title='Weighted effective pair rates (n=2+n=3 inclusive, direct-only)',
+        logy=True,
+    )
+    plot_pair_rate_bars(
+        pair_rates_reflreq_n2n3,
+        outdir_n2n3,
+        filename='weighted_n2n3_pair_rates_all_reflection_required.png',
+        title='Weighted effective pair rates (n=2+n=3 inclusive, reflection-required)',
+        logy=True,
+    )
+    plot_pair_rate_bars_dual_axis(
+        pair_rates_direct_n2n3,
+        pair_rates_reflreq_n2n3,
+        outdir_n2n3,
+        filename='weighted_n2n3_pair_rates_all_dual_axis.png',
+        title='Weighted effective pair rates (n=2+n=3 inclusive, dual axis)',
+        left_label='Direct-only',
+        right_label='Reflection-required',
+    )
+
+    # Reuse existing n=2 pair-category plots, but computed from the n=2+n=3 pair rates.
+    plot_pair_categories(
+        pair_rates_direct_n2n3,
+        outdir_n2n3,
+        categories,
+        category_distances_km,
+        file_prefix='weighted_n2n3',
+        title_prefix='Weighted n=2+n=3',
+    )
+    plot_pair_categories(
+        pair_rates_reflreq_n2n3,
+        outdir_n2n3,
+        categories,
+        category_distances_km,
+        file_prefix='weighted_n2n3',
+        title_prefix='Weighted n=2+n=3',
+    )
+    plot_pair_categories_dual_axis(
+        pair_rates_direct_n2n3,
+        pair_rates_reflreq_n2n3,
+        outdir_n2n3,
+        categories,
+        category_distances_km,
+        left_label='Direct-only',
+        right_label='Reflection-required',
+        file_prefix='weighted_n2n3',
+        title_prefix='Weighted n=2+n=3',
+    )
+
+    # New n=3 configuration categories: Triangular vs Other n=3
+    # For these, we use only the n=3 coincidence weight.
+    n3_weight_direct = ['3_coincidence_norefl']
+    n3_weight_reflected = ['3_coincidence_wrefl', '3_coincidence_reflReq', '3_coincidence_reflreq', '3_coincidence_refl']
+
+    n3_cfg_direct = compute_n3_configuration_rates(
+        HRAeventList,
+        base_stations=args.base_stations,
+        weight_names_descending=n3_weight_direct,
+        triangular_trios=triangular_trios,
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        pair_mode='direct_only',
+    )
+    n3_cfg_reflreq = compute_n3_configuration_rates(
+        HRAeventList,
+        base_stations=args.base_stations,
+        weight_names_descending=n3_weight_reflected,
+        triangular_trios=triangular_trios,
+        sigma=sigma,
+        bad_stations=args.bad_stations,
+        pair_mode='reflection_required',
+    )
+
+    n3_labels = ['Triangular', 'Other n=3']
+    n3_direct_totals = [float(n3_cfg_direct.get('triangular', 0.0)), float(n3_cfg_direct.get('other_n3', 0.0))]
+    n3_refl_totals = [float(n3_cfg_reflreq.get('triangular', 0.0)), float(n3_cfg_reflreq.get('other_n3', 0.0))]
+
+    plot_category_totals(
+        n3_labels,
+        n3_direct_totals,
+        outdir_n2n3,
+        filename='weighted_n3_configuration_totals_direct_only.png',
+        title='Weighted n=3 configuration totals (direct-only)',
+    )
+    plot_category_totals(
+        n3_labels,
+        n3_refl_totals,
+        outdir_n2n3,
+        filename='weighted_n3_configuration_totals_reflection_required.png',
+        title='Weighted n=3 configuration totals (reflection-required)',
+    )
+    plot_category_totals_dual_axis(
+        n3_labels,
+        n3_direct_totals,
+        n3_refl_totals,
+        outdir_n2n3,
+        filename='weighted_n3_configuration_totals_dual_axis.png',
+        title='Weighted n=3 configuration totals (dual axis)',
+        left_label='Direct-only',
+        right_label='Reflection-required',
+    )
+
+    # Combined category totals plot including both n=2 pair categories and n=3 configuration categories.
+    # n=2 categories are computed from the n=2+n=3 pair-rate dicts; n=3 categories are event-level totals.
+    print_label = {
+        'horizontal': 'Horizontal',
+        'forward_diag': '/ diag.',
+        'backward_diag': '\\ diag.',
+        'other': 'All Other',
+    }
+    n2_cat_order = list(categories.keys())
+    n2_cat_labels = [print_label.get(name, name) for name in n2_cat_order]
+
+    def _n2_category_totals_from_pair_rates(pair_rates):
+        totals = []
+        for cat_name in n2_cat_order:
+            tot = 0.0
+            for a, b in categories[cat_name]:
+                key = tuple(sorted((int(a), int(b))))
+                tot += float(pair_rates.get(key, 0.0))
+            totals.append(tot)
+        return totals
+
+    n2_direct_totals = _n2_category_totals_from_pair_rates(pair_rates_direct_n2n3)
+    n2_refl_totals = _n2_category_totals_from_pair_rates(pair_rates_reflreq_n2n3)
+
+    combo_labels = n2_cat_labels + n3_labels
+    combo_direct = list(map(float, n2_direct_totals)) + n3_direct_totals
+    combo_refl = list(map(float, n2_refl_totals)) + n3_refl_totals
+
+    plot_category_totals(
+        combo_labels,
+        combo_direct,
+        outdir_n2n3,
+        filename='weighted_n2n3_category_totals_combined_direct_only.png',
+        title='Weighted category totals (n=2 pair cats + n=3 configs, direct-only)',
+    )
+    plot_category_totals(
+        combo_labels,
+        combo_refl,
+        outdir_n2n3,
+        filename='weighted_n2n3_category_totals_combined_reflection_required.png',
+        title='Weighted category totals (n=2 pair cats + n=3 configs, reflection-required)',
+    )
+    plot_category_totals_dual_axis(
+        combo_labels,
+        combo_direct,
+        combo_refl,
+        outdir_n2n3,
+        filename='weighted_n2n3_category_totals_combined_dual_axis.png',
+        title='Weighted category totals (n=2 pair cats + n=3 configs, dual axis)',
+        left_label='Direct-only',
+        right_label='Reflection-required',
+    )
+
     # 5) weighted amplitude (station max SNR) distribution
     # 5) weighted amplitude (station max SNR) distribution (separate + dual-axis)
     weighted_snr_amplitude_histogram(
@@ -1502,6 +1957,7 @@ def main():
     print(f"Saved n-independent plots under: {outdir}")
     print(f"Saved n=2-only pair plots under: {outdir_n2only}")
     print(f"Saved all-n>=2 pair plots under: {outdir_alln}")
+    print(f"Saved n=2+n=3 pair/config plots under: {outdir_n2n3}")
 
 
 if __name__ == '__main__':
