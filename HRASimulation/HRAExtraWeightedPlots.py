@@ -450,12 +450,22 @@ def compute_alln_pair_rates(
     Each event with effective base-station multiplicity >= min_n contributes its
     event weight to *every* pair (i,j) present in that event.
 
-    weight_names_descending should be ordered highest-n -> lowest-n (e.g., 7..2)
-    so we can take the event's highest available coincidence weight.
+    Inclusive weight logic (per user request):
+      - For each event, sum the available coincidence weights for n=2,3,4,...
+        (i.e., add the rates together), then assign that summed weight to every
+        pair (i,j) present in that event.
+
+    weight_names_descending should include all candidate coincidence weight keys
+    for n>=2 (order does not matter for summing; descending is fine).
     """
     rates = defaultdict(float)
     for ev in HRAeventList:
-        w = get_best_available_event_weight(ev, weight_names_descending, sigma=sigma)
+        # Sum rates across coincidence levels (n=2,3,4,...) for this event.
+        w = 0.0
+        for name in weight_names_descending:
+            if not ev.hasWeight(name, sigma=sigma):
+                continue
+            w += _safe_weight(ev.getWeight(name, sigma=sigma))
         if w <= 0:
             continue
 
@@ -1352,8 +1362,8 @@ def main():
     pair_weight_direct_alln = build_coincidence_weight_name_list(max_n, mode='direct')
     pair_weight_reflected_alln = build_coincidence_weight_name_list(max_n, mode='reflected')
 
-    print(f"Pair weights direct-only (all n>=2, highest-n per event): {pair_weight_direct_alln}")
-    print(f"Pair weights reflection-required (all n>=2, highest-n per event): {pair_weight_reflected_alln}")
+    print(f"Pair weights direct-only (all n>=2, summed across n): {pair_weight_direct_alln}")
+    print(f"Pair weights reflection-required (all n>=2, summed across n): {pair_weight_reflected_alln}")
 
     pair_rates_direct_alln = compute_alln_pair_rates(
         HRAeventList,
