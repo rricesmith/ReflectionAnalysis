@@ -616,6 +616,7 @@ def compute_n3_configuration_rates(
     base_stations,
     weight_names_descending,
     triangular_trios,
+    far_pairs,
     *,
     sigma=4.5,
     bad_stations=None,
@@ -624,11 +625,14 @@ def compute_n3_configuration_rates(
     """Return dict with total rates for n=3 configurations.
 
     Categories:
-      - 'triangular': event effective bases match one of triangular_trios
-      - 'other_n3': all other n=3 configurations
+      - 'triangular_near': triangular trio with NO 2 km pairs inside
+      - 'triangular_far': triangular trio WITH at least one 2 km pair inside
+      - 'other_n3_near': other n=3 config with NO 2 km pairs inside
+      - 'other_n3_far': other n=3 config with at least one 2 km pair inside
     """
     rates = defaultdict(float)
     triangular = {tuple(sorted(map(int, t))) for t in triangular_trios}
+    far_pairs = {tuple(sorted(map(int, p))) for p in far_pairs}
     for ev in HRAeventList:
         w = get_summed_coincidence_weight(ev, weight_names_descending, sigma=sigma)
         if w <= 0:
@@ -652,10 +656,16 @@ def compute_n3_configuration_rates(
                     continue
 
         key = tuple(map(int, bases))
+        has_far_pair = False
+        for a, b in itertools.combinations(key, 2):
+            if tuple(sorted((int(a), int(b)))) in far_pairs:
+                has_far_pair = True
+                break
+
         if key in triangular:
-            rates['triangular'] += w
+            rates['triangular_far' if has_far_pair else 'triangular_near'] += w
         else:
-            rates['other_n3'] += w
+            rates['other_n3_far' if has_far_pair else 'other_n3_near'] += w
     return dict(rates)
 
 
@@ -675,7 +685,7 @@ def plot_category_totals(
     fig, ax = plt.subplots(figsize=(7, 5))
     ax.bar(np.arange(len(category_labels)), np.maximum(y, _positive_floor(y)))
     ax.set_xticks(np.arange(len(category_labels)))
-    ax.set_xticklabels(category_labels)
+    ax.set_xticklabels(category_labels, rotation=35, ha='right')
     ax.set_ylabel(ylabel)
     ax.set_title(title)
     if logy:
@@ -722,7 +732,7 @@ def plot_category_totals_dual_axis(
     )
 
     ax1.set_xticks(x)
-    ax1.set_xticklabels(category_labels)
+    ax1.set_xticklabels(category_labels, rotation=35, ha='right')
     ax1.set_ylabel(f'Total rate [1/yr] ({left_label})')
     ax2.set_ylabel(f'Total rate [1/yr] ({right_label})')
     ax1.set_title(title)
@@ -817,6 +827,84 @@ def plot_pair_rate_bars_dual_axis(
     return savename
 
 
+def plot_pair_distance_group_totals(
+    pair_rates,
+    outdir,
+    filename,
+    title,
+    distance_groups,
+    *,
+    logy=True,
+):
+    """Plot summed pair rates grouped by distance.
+
+    distance_groups: ordered list of (label, iterable_of_pairs)
+      where each pair is (a,b) station ids.
+    """
+    if not pair_rates:
+        return None
+
+    labels = []
+    totals = []
+    for label, pairs in distance_groups:
+        tot = 0.0
+        for a, b in pairs:
+            key = tuple(sorted((int(a), int(b))))
+            tot += float(pair_rates.get(key, 0.0))
+        labels.append(label)
+        totals.append(tot)
+
+    return plot_category_totals(
+        labels,
+        totals,
+        outdir,
+        filename=filename,
+        title=title,
+        ylabel='Total rate [1/yr]',
+        logy=logy,
+    )
+
+
+def plot_pair_distance_group_totals_dual_axis(
+    pair_rates_left,
+    pair_rates_right,
+    outdir,
+    filename,
+    title,
+    distance_groups,
+    *,
+    left_label='Direct-only',
+    right_label='Reflection-required',
+):
+    if not (pair_rates_left or pair_rates_right):
+        return None
+
+    labels = []
+    left_totals = []
+    right_totals = []
+    for label, pairs in distance_groups:
+        lt = 0.0
+        rt = 0.0
+        for a, b in pairs:
+            key = tuple(sorted((int(a), int(b))))
+            lt += float(pair_rates_left.get(key, 0.0))
+            rt += float(pair_rates_right.get(key, 0.0))
+        labels.append(label)
+        left_totals.append(lt)
+        right_totals.append(rt)
+
+    return plot_category_totals_dual_axis(
+        labels,
+        left_totals,
+        right_totals,
+        outdir,
+        filename=filename,
+        title=title,
+        left_label=left_label,
+        right_label=right_label,
+    )
+
+
 def plot_pair_categories(
     pair_rates,
     outdir,
@@ -848,6 +936,15 @@ def plot_pair_categories(
 
     # 4) category totals as a group histogram (more useful than distance scatter)
     cat_names = list(categories.keys())
+    print_label = {
+        'horizontal': 'Horizontal',
+        'forward_diag': '/ diag.',
+        'backward_diag': '\\ diag.',
+        'other': 'All Other',
+        'near_other': 'Near Other',
+        'far_other': 'Far Other',
+    }
+    cat_labels = [print_label.get(name, name) for name in cat_names]
     cat_total = []
     for cat_name, pairs in categories.items():
         tot = 0.0
@@ -861,7 +958,7 @@ def plot_pair_categories(
         y = np.asarray(cat_total, dtype=float)
         ax.bar(np.arange(len(cat_names)), np.maximum(y, _positive_floor(y)))
         ax.set_xticks(np.arange(len(cat_names)))
-        ax.set_xticklabels(cat_names)
+        ax.set_xticklabels(cat_labels)
         ax.set_ylabel('Total rate [1/yr]')
         ax.set_title(f'{title_prefix} Category Total Rate')
         _apply_log_y(ax, y)
@@ -932,6 +1029,8 @@ def plot_pair_categories_dual_axis(
             'forward_diag': '/ diag.',
             'backward_diag': '\\ diag.',
             'other': 'All Other',
+            'near_other': 'Near Other',
+            'far_other': 'Far Other',
         }
         cat_labels = [print_label.get(name, name) for name in cat_names]
 
@@ -1541,44 +1640,92 @@ def main():
         right_label='Reflection-required',
     )
 
-    # 3-4) category lists (dummy placeholders for now)
+    # 3-4) n=2 pair categories
+    # Split the original "other" into near/far based on whether the pair is in the 2 km list.
+    pairs_173km = {tuple(sorted(p)) for p in [(15, 19), (14, 17)]}
+    pairs_2km = {tuple(sorted(p)) for p in [(17, 19), (14, 15), (13, 30)]}
+    other_pairs = [
+        [13, 15],
+        [13, 19],
+        [13, 30],
+        [14, 15],
+        [14, 17],
+        [14, 30],
+        [15, 19],
+        [17, 19],
+        [17, 30],
+    ]
+    far_other_pairs = [p for p in other_pairs if tuple(sorted(map(int, p))) in pairs_2km]
+    near_other_pairs = [p for p in other_pairs if tuple(sorted(map(int, p))) not in pairs_2km]
+
     categories = {
         'horizontal': [
             [14, 19],
             [18, 30],
             [13, 18],
-            [15, 17]
+            [15, 17],
         ],
         'forward_diag': [
             [19, 30],
             [14, 18],
             [15, 18],
-            [13, 17]
+            [13, 17],
         ],
         'backward_diag': [
             [18, 19],
             [13, 14],
             [15, 30],
-            [17, 18]
+            [17, 18],
         ],
-        'other': [
-            [13, 15],
-            [13, 19],
-            [13, 30],
-            [14, 15],
-            [14, 17],
-            [14, 30],
-            [15, 19],
-            [17, 19],
-            [17, 30]
-        ],
+        'near_other': near_other_pairs,
+        'far_other': far_other_pairs,
     }
     category_distances_km = {
         'horizontal': 1.0,
         'forward_diag': 1.0,
         'backward_diag': 1.0,
-        'other': 2.0,
+        'near_other': 1.73,
+        'far_other': 2.0,
     }
+
+    # Additional summary: totals grouped by distance bins
+    distance_groups = [
+        (
+            '1 km',
+            [
+                *categories['horizontal'],
+                *categories['forward_diag'],
+                *categories['backward_diag'],
+            ],
+        ),
+        ('1.73 km', list(pairs_173km)),
+        ('2 km', list(pairs_2km)),
+    ]
+
+    plot_pair_distance_group_totals(
+        pair_rates_direct,
+        outdir_n2only,
+        filename='weighted_n2only_pair_rates_by_distance_direct_only.png',
+        title='Weighted pair-rate totals by distance (n=2 only, direct-only)',
+        distance_groups=distance_groups,
+    )
+    plot_pair_distance_group_totals(
+        pair_rates_reflreq,
+        outdir_n2only,
+        filename='weighted_n2only_pair_rates_by_distance_reflection_required.png',
+        title='Weighted pair-rate totals by distance (n=2 only, reflection-required)',
+        distance_groups=distance_groups,
+    )
+    plot_pair_distance_group_totals_dual_axis(
+        pair_rates_direct,
+        pair_rates_reflreq,
+        outdir_n2only,
+        filename='weighted_n2only_pair_rates_by_distance_dual_axis.png',
+        title='Weighted pair-rate totals by distance (n=2 only, dual axis)',
+        distance_groups=distance_groups,
+        left_label='Direct-only',
+        right_label='Reflection-required',
+    )
     plot_pair_categories(
         pair_rates_direct,
         outdir_n2only,
@@ -1689,6 +1836,31 @@ def main():
         title_prefix='Weighted all n≥2',
     )
 
+    plot_pair_distance_group_totals(
+        pair_rates_direct_alln,
+        outdir_alln,
+        filename='weighted_alln_ge2_pair_rates_by_distance_direct_only.png',
+        title='Weighted pair-rate totals by distance (all n≥2 inclusive, direct-only)',
+        distance_groups=distance_groups,
+    )
+    plot_pair_distance_group_totals(
+        pair_rates_reflreq_alln,
+        outdir_alln,
+        filename='weighted_alln_ge2_pair_rates_by_distance_reflection_required.png',
+        title='Weighted pair-rate totals by distance (all n≥2 inclusive, reflection-required)',
+        distance_groups=distance_groups,
+    )
+    plot_pair_distance_group_totals_dual_axis(
+        pair_rates_direct_alln,
+        pair_rates_reflreq_alln,
+        outdir_alln,
+        filename='weighted_alln_ge2_pair_rates_by_distance_dual_axis.png',
+        title='Weighted pair-rate totals by distance (all n≥2 inclusive, dual axis)',
+        distance_groups=distance_groups,
+        left_label='Direct-only',
+        right_label='Reflection-required',
+    )
+
     # n2n3/ versions: include ONLY n=2 and n=3, and sum n=2 + n=3 coincidence weights per event.
     triangular_trios = [
         [18, 19, 30],
@@ -1785,6 +1957,31 @@ def main():
         title_prefix='Weighted n=2+n=3',
     )
 
+    plot_pair_distance_group_totals(
+        pair_rates_direct_n2n3,
+        outdir_n2n3,
+        filename='weighted_n2n3_pair_rates_by_distance_direct_only.png',
+        title='Weighted pair-rate totals by distance (n=2+n=3 inclusive, direct-only)',
+        distance_groups=distance_groups,
+    )
+    plot_pair_distance_group_totals(
+        pair_rates_reflreq_n2n3,
+        outdir_n2n3,
+        filename='weighted_n2n3_pair_rates_by_distance_reflection_required.png',
+        title='Weighted pair-rate totals by distance (n=2+n=3 inclusive, reflection-required)',
+        distance_groups=distance_groups,
+    )
+    plot_pair_distance_group_totals_dual_axis(
+        pair_rates_direct_n2n3,
+        pair_rates_reflreq_n2n3,
+        outdir_n2n3,
+        filename='weighted_n2n3_pair_rates_by_distance_dual_axis.png',
+        title='Weighted pair-rate totals by distance (n=2+n=3 inclusive, dual axis)',
+        distance_groups=distance_groups,
+        left_label='Direct-only',
+        right_label='Reflection-required',
+    )
+
     # New n=3 configuration categories: Triangular vs Other n=3
     # For these, we use only the n=3 coincidence weight.
     n3_weight_direct = ['3_coincidence_norefl']
@@ -1795,6 +1992,7 @@ def main():
         base_stations=args.base_stations,
         weight_names_descending=n3_weight_direct,
         triangular_trios=triangular_trios,
+        far_pairs=list(pairs_2km),
         sigma=sigma,
         bad_stations=args.bad_stations,
         pair_mode='direct_only',
@@ -1804,14 +2002,25 @@ def main():
         base_stations=args.base_stations,
         weight_names_descending=n3_weight_reflected,
         triangular_trios=triangular_trios,
+        far_pairs=list(pairs_2km),
         sigma=sigma,
         bad_stations=args.bad_stations,
         pair_mode='reflection_required',
     )
 
-    n3_labels = ['Triangular', 'Other n=3']
-    n3_direct_totals = [float(n3_cfg_direct.get('triangular', 0.0)), float(n3_cfg_direct.get('other_n3', 0.0))]
-    n3_refl_totals = [float(n3_cfg_reflreq.get('triangular', 0.0)), float(n3_cfg_reflreq.get('other_n3', 0.0))]
+    n3_labels = ['Triangular (near)', 'Triangular (far)', 'Other n=3 (near)', 'Other n=3 (far)']
+    n3_direct_totals = [
+        float(n3_cfg_direct.get('triangular_near', 0.0)),
+        float(n3_cfg_direct.get('triangular_far', 0.0)),
+        float(n3_cfg_direct.get('other_n3_near', 0.0)),
+        float(n3_cfg_direct.get('other_n3_far', 0.0)),
+    ]
+    n3_refl_totals = [
+        float(n3_cfg_reflreq.get('triangular_near', 0.0)),
+        float(n3_cfg_reflreq.get('triangular_far', 0.0)),
+        float(n3_cfg_reflreq.get('other_n3_near', 0.0)),
+        float(n3_cfg_reflreq.get('other_n3_far', 0.0)),
+    ]
 
     plot_category_totals(
         n3_labels,
@@ -1844,7 +2053,8 @@ def main():
         'horizontal': 'Horizontal',
         'forward_diag': '/ diag.',
         'backward_diag': '\\ diag.',
-        'other': 'All Other',
+        'near_other': 'Near Other',
+        'far_other': 'Far Other',
     }
     n2_cat_order = list(categories.keys())
     n2_cat_labels = [print_label.get(name, name) for name in n2_cat_order]
