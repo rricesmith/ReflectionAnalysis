@@ -624,11 +624,10 @@ def compute_n3_configuration_rates(
 ):
     """Return dict with total rates for n=3 configurations.
 
-    Categories:
-      - 'triangular_near': triangular trio with NO 2 km pairs inside
-      - 'triangular_far': triangular trio WITH at least one 2 km pair inside
-      - 'other_n3_near': other n=3 config with NO 2 km pairs inside
-      - 'other_n3_far': other n=3 config with at least one 2 km pair inside
+        Categories:
+            - 'triangular': event effective bases match one of triangular_trios
+            - 'other_n3_near': other n=3 config with NO 2 km pairs inside
+            - 'other_n3_far': other n=3 config with at least one 2 km pair inside
     """
     rates = defaultdict(float)
     triangular = {tuple(sorted(map(int, t))) for t in triangular_trios}
@@ -663,7 +662,7 @@ def compute_n3_configuration_rates(
                 break
 
         if key in triangular:
-            rates['triangular_far' if has_far_pair else 'triangular_near'] += w
+            rates['triangular'] += w
         else:
             rates['other_n3_far' if has_far_pair else 'other_n3_near'] += w
     return dict(rates)
@@ -742,7 +741,7 @@ def plot_category_totals_dual_axis(
 
     h1, l1 = ax1.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
-    leg = ax1.legend(h1 + h2, l1 + l2, loc='lower left')
+    leg = ax1.legend(h1 + h2, l1 + l2, loc='upper right')
     leg.set_zorder(10)
     if leg.get_frame() is not None:
         leg.get_frame().set_alpha(0.9)
@@ -938,11 +937,11 @@ def plot_pair_categories(
     cat_names = list(categories.keys())
     print_label = {
         'horizontal': 'Horizontal',
-        'forward_diag': '/ diag.',
-        'backward_diag': '\\ diag.',
+        'forward_diag': 'Forward diag.',
+        'backward_diag': 'Backward diag.',
         'other': 'All Other',
-        'near_other': 'Near Other',
-        'far_other': 'Far Other',
+        'near_other': 'Other n=2 (near)',
+        'far_other': 'Other n=2 (far)',
     }
     cat_labels = [print_label.get(name, name) for name in cat_names]
     cat_total = []
@@ -1026,11 +1025,11 @@ def plot_pair_categories_dual_axis(
         # Friendly labels for plotting
         print_label = {
             'horizontal': 'Horizontal',
-            'forward_diag': '/ diag.',
-            'backward_diag': '\\ diag.',
+            'forward_diag': 'Forward diag.',
+            'backward_diag': 'Backward diag.',
             'other': 'All Other',
-            'near_other': 'Near Other',
-            'far_other': 'Far Other',
+            'near_other': 'Other n=2 (near)',
+            'far_other': 'Other n=2 (far)',
         }
         cat_labels = [print_label.get(name, name) for name in cat_names]
 
@@ -1060,7 +1059,7 @@ def plot_pair_categories_dual_axis(
         # Single combined legend (bars are on different axes)
         h1, l1 = ax1.get_legend_handles_labels()
         h2, l2 = ax2.get_legend_handles_labels()
-        leg = ax1.legend(h1 + h2, l1 + l2, loc='lower left')
+        leg = ax1.legend(h1 + h2, l1 + l2, loc='upper right')
         leg.set_zorder(10)
         if leg.get_frame() is not None:
             leg.get_frame().set_alpha(0.9)
@@ -2008,16 +2007,14 @@ def main():
         pair_mode='reflection_required',
     )
 
-    n3_labels = ['Triangular (near)', 'Triangular (far)', 'Other n=3 (near)', 'Other n=3 (far)']
+    n3_labels = ['Triangular', 'Other n=3 (near)', 'Other n=3 (far)']
     n3_direct_totals = [
-        float(n3_cfg_direct.get('triangular_near', 0.0)),
-        float(n3_cfg_direct.get('triangular_far', 0.0)),
+        float(n3_cfg_direct.get('triangular', 0.0)),
         float(n3_cfg_direct.get('other_n3_near', 0.0)),
         float(n3_cfg_direct.get('other_n3_far', 0.0)),
     ]
     n3_refl_totals = [
-        float(n3_cfg_reflreq.get('triangular_near', 0.0)),
-        float(n3_cfg_reflreq.get('triangular_far', 0.0)),
+        float(n3_cfg_reflreq.get('triangular', 0.0)),
         float(n3_cfg_reflreq.get('other_n3_near', 0.0)),
         float(n3_cfg_reflreq.get('other_n3_far', 0.0)),
     ]
@@ -2051,10 +2048,10 @@ def main():
     # n=2 categories are computed from the n=2+n=3 pair-rate dicts; n=3 categories are event-level totals.
     print_label = {
         'horizontal': 'Horizontal',
-        'forward_diag': '/ diag.',
-        'backward_diag': '\\ diag.',
-        'near_other': 'Near Other',
-        'far_other': 'Far Other',
+        'forward_diag': 'Forward diag.',
+        'backward_diag': 'Backward diag.',
+        'near_other': 'Other n=2 (near)',
+        'far_other': 'Other n=2 (far)',
     }
     n2_cat_order = list(categories.keys())
     n2_cat_labels = [print_label.get(name, name) for name in n2_cat_order]
