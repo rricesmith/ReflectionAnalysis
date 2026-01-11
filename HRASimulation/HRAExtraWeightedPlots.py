@@ -680,13 +680,13 @@ def plot_category_totals(
 ):
     if not category_labels:
         return None
-    y = np.asarray(category_totals, dtype=float)
+    y = np.asarray(category_totals, dtype=float) if category_totals else np.zeros(len(category_labels))
     fig, ax = plt.subplots(figsize=(7, 5))
     ax.bar(np.arange(len(category_labels)), np.maximum(y, _positive_floor(y)))
     ax.set_xticks(np.arange(len(category_labels)))
     ax.set_xticklabels(category_labels, rotation=35, ha='right')
     ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    # Title intentionally omitted
     if logy:
         _apply_log_y(ax, y)
     fig.tight_layout()
@@ -705,13 +705,13 @@ def plot_category_totals_dual_axis(
     title,
     *,
     left_label='Direct-only',
-    right_label='Reflection-required',
+    right_label='Refl.-required',
 ):
     if not category_labels:
         return None
 
-    left_totals = np.asarray(left_totals, dtype=float)
-    right_totals = np.asarray(right_totals, dtype=float)
+    left_totals = np.asarray(left_totals, dtype=float) if left_totals else np.zeros(len(category_labels))
+    right_totals = np.asarray(right_totals, dtype=float) if right_totals else np.zeros(len(category_labels))
     x = np.arange(len(category_labels))
     width = 0.4
     fig, ax1 = plt.subplots(figsize=(7, 5))
@@ -734,7 +734,7 @@ def plot_category_totals_dual_axis(
     ax1.set_xticklabels(category_labels, rotation=35, ha='right')
     ax1.set_ylabel(f'Total rate [1/yr] ({left_label})')
     ax2.set_ylabel(f'Total rate [1/yr] ({right_label})')
-    ax1.set_title(title)
+    # Title intentionally omitted
 
     _apply_log_y(ax1, left_totals)
     _apply_log_y(ax2, right_totals)
@@ -767,7 +767,7 @@ def plot_pair_rate_bars(pair_rates, outdir, filename, title, logy=True):
     plt.bar(x, y_plot)
     plt.xticks(x, labels, rotation=90)
     plt.ylabel('Rate [1/yr]')
-    plt.title(title)
+    # Title intentionally omitted
     if logy:
         _apply_log_y(plt.gca(), y)
     plt.tight_layout()
@@ -784,7 +784,7 @@ def plot_pair_rate_bars_dual_axis(
     filename,
     title,
     left_label='Direct-only',
-    right_label='Reflection-required',
+    right_label='Refl.-required',
 ):
     keys = sorted(set(pair_rates_left.keys()).union(pair_rates_right.keys()))
     if not keys:
@@ -809,7 +809,7 @@ def plot_pair_rate_bars_dual_axis(
 
     ax1.set_xticks(x)
     ax1.set_xticklabels(labels, rotation=90)
-    ax1.set_title(title)
+    # Title intentionally omitted
     ax1.set_ylabel(f'Rate [1/yr] ({left_label})')
     ax2.set_ylabel(f'Rate [1/yr] ({right_label})')
 
@@ -873,7 +873,7 @@ def plot_pair_distance_group_totals_dual_axis(
     distance_groups,
     *,
     left_label='Direct-only',
-    right_label='Reflection-required',
+    right_label='Refl.-required',
 ):
     if not (pair_rates_left or pair_rates_right):
         return None
@@ -959,7 +959,7 @@ def plot_pair_categories(
         ax.set_xticks(np.arange(len(cat_names)))
         ax.set_xticklabels(cat_labels)
         ax.set_ylabel('Total rate [1/yr]')
-        ax.set_title(f'{title_prefix} Category Total Rate')
+        # Title intentionally omitted
         _apply_log_y(ax, y)
         fig.tight_layout()
         savename = os.path.join(outdir, f'{file_prefix}_category_rate_by_group.png')
@@ -977,7 +977,7 @@ def plot_pair_categories_dual_axis(
     categories,
     category_distances_km,
     left_label='Direct-only',
-    right_label='Reflection-required',
+    right_label='Refl.-required',
     *,
     file_prefix='weighted_n2',
     title_prefix='Weighted n=2',
@@ -1051,7 +1051,7 @@ def plot_pair_categories_dual_axis(
         ax1.set_xticklabels(cat_labels)
         ax1.set_ylabel(f'Total rate [1/yr] ({left_label})')
         ax2.set_ylabel(f'Total rate [1/yr] ({right_label})')
-        ax1.set_title(f'{title_prefix} Category Total Rate (dual axis)')
+        # Title intentionally omitted
 
         _apply_log_y(ax1, left_totals)
         _apply_log_y(ax2, right_totals)
@@ -1636,7 +1636,7 @@ def main():
         filename='weighted_n2only_pair_rates_all_dual_axis.png',
         title='Weighted effective pair rates (n=2 only, dual axis)',
         left_label='Direct-only',
-        right_label='Reflection-required',
+        right_label='Refl.-required',
     )
 
     # 3-4) n=2 pair categories
@@ -1723,7 +1723,7 @@ def main():
         title='Weighted pair-rate totals by distance (n=2 only, dual axis)',
         distance_groups=distance_groups,
         left_label='Direct-only',
-        right_label='Reflection-required',
+        right_label='Refl.-required',
     )
     plot_pair_categories(
         pair_rates_direct,
@@ -1750,7 +1750,7 @@ def main():
         categories,
         category_distances_km,
         left_label='Direct-only',
-        right_label='Reflection-required',
+        right_label='Refl.-required',
         file_prefix='weighted_n2only',
         title_prefix='Weighted n=2 only',
     )
@@ -1804,7 +1804,7 @@ def main():
         filename='weighted_alln_ge2_pair_rates_all_dual_axis.png',
         title='Weighted effective pair rates (all n>=2 inclusive, dual axis)',
         left_label='Direct-only',
-        right_label='Reflection-required',
+        right_label='Refl.-required',
     )
 
     plot_pair_categories(
@@ -1830,7 +1830,7 @@ def main():
         categories,
         category_distances_km,
         left_label='Direct-only',
-        right_label='Reflection-required',
+        right_label='Refl.-required',
         file_prefix='weighted_alln_ge2',
         title_prefix='Weighted all n≥2',
     )
@@ -1857,7 +1857,7 @@ def main():
         title='Weighted pair-rate totals by distance (all n≥2 inclusive, dual axis)',
         distance_groups=distance_groups,
         left_label='Direct-only',
-        right_label='Reflection-required',
+        right_label='Refl.-required',
     )
 
     # n2n3/ versions: include ONLY n=2 and n=3, and sum n=2 + n=3 coincidence weights per event.
@@ -1924,7 +1924,7 @@ def main():
         filename='weighted_n2n3_pair_rates_all_dual_axis.png',
         title='Weighted effective pair rates (n=2+n=3 inclusive, dual axis)',
         left_label='Direct-only',
-        right_label='Reflection-required',
+        right_label='Refl.-required',
     )
 
     # Reuse existing n=2 pair-category plots, but computed from the n=2+n=3 pair rates.
@@ -1951,7 +1951,7 @@ def main():
         categories,
         category_distances_km,
         left_label='Direct-only',
-        right_label='Reflection-required',
+        right_label='Refl.-required',
         file_prefix='weighted_n2n3',
         title_prefix='Weighted n=2+n=3',
     )
@@ -1978,7 +1978,7 @@ def main():
         title='Weighted pair-rate totals by distance (n=2+n=3 inclusive, dual axis)',
         distance_groups=distance_groups,
         left_label='Direct-only',
-        right_label='Reflection-required',
+        right_label='Refl.-required',
     )
 
     # New n=3 configuration categories: Triangular vs Other n=3
@@ -2041,7 +2041,7 @@ def main():
         filename='weighted_n3_configuration_totals_dual_axis.png',
         title='Weighted n=3 configuration totals (dual axis)',
         left_label='Direct-only',
-        right_label='Reflection-required',
+        right_label='Refl.-required',
     )
 
     # Combined category totals plot including both n=2 pair categories and n=3 configuration categories.
@@ -2095,7 +2095,7 @@ def main():
         filename='weighted_n2n3_category_totals_combined_dual_axis.png',
         title='Weighted category totals (n=2 pair cats + n=3 configs, dual axis)',
         left_label='Direct-only',
-        right_label='Reflection-required',
+        right_label='Refl.-required',
     )
 
     # 5) weighted amplitude (station max SNR) distribution
