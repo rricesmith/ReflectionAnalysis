@@ -7,6 +7,7 @@ from scipy import optimize
 import os
 from NuRadioReco.utilities import fft
 from plotAttenuationLengthsMB import calculate_attenuation_length
+from matplotlib.lines import Line2D
 
 def inverse_func(x, a, b, c):
     return a/(x + b) + c
@@ -23,12 +24,17 @@ LPDA_antenna = provider.load_antenna_pattern("createLPDA_100MHz_InfFirn")
 
 #inc_zen = 0*units.deg
 # inc_azi = 45*units.deg
-inc_azis = [0*units.deg, 30*units.deg, 45*units.deg, 90*units.deg, 240.1*units.deg]
+inc_azis = [0*units.deg, 30*units.deg, 45*units.deg, 90*units.deg, 240.1*units.deg, 315*units.deg]
 
-zen_range = [0, 30, 45]
-for inc_azi in inc_azis:
-    for inc_zen in zen_range:
-        inc_zen = inc_zen * units.deg
+
+zen_range = np.array([0, 30, 45]) * units.deg
+for inc_zen in zen_range:
+    # Want to see if 45 and 315 azimuth produce the same result and are therefor symmetric, so save them
+    vels_45_front = None
+    vels_45_back = None
+    vels_315_front = None
+    vels_315_back = None
+    for inc_azi in inc_azis:
 
         orientation_theta_phi = [np.deg2rad(0), np.deg2rad(0)]
         rotation_theta_phi = [np.deg2rad(90), np.deg2rad(0)]
@@ -44,11 +50,21 @@ for inc_azi in inc_azis:
         # Normalize to the larger of the two sets
         norm_factor = max(np.max(np.abs(VELs_front['theta'])), np.max(np.abs(VELs_back['theta'])))
 
+
+        if inc_azi == 45*units.deg:
+            vels_45_front = VELs_front
+            vels_45_back = VELs_back
+        if inc_azi == 315*units.deg:
+            vels_315_front = VELs_front
+            vels_315_back = VELs_back
+
+
         VELs = VELs_front
         VELs['theta'] = VELs['theta'] / norm_factor
         VELs['phi'] = VELs['phi'] / np.max(np.abs(VELs['phi']))
         ax.plot(ff / units.MHz, np.abs(VELs['theta']), label=f'Frontlobe', color='red')
         # ax.plot(ff / units.MHz, np.abs(VELs['phi']), label=f'ePhi LPDA {inc_zen/units.deg:.0f}deg')
+
 
         # Limit fit to sensitive region of LPDA
         fitmask = (ff > 70*units.MHz) & (ff < 210*units.MHz)
@@ -125,6 +141,77 @@ for inc_azi in inc_azis:
         plt.close(fig)
         ic(f'Saved {savename}')
 
+    # Now do a numeric check to see if results are the same for 45 and 315 azimuth within 1%
+    if vels_45_front is not None and vels_315_front is not None:
+        diff_front = np.abs(vels_45_front['theta'] - vels_315_front['theta'])
+        max_diff_front = np.max(diff_front) / np.max(np.abs(vels_45_front['theta']))
+        ic(f'Max difference between 45 and 315 azimuth front lobe at zen {inc_zen/units.deg:.0f} deg: {max_diff_front*100:.2f} %')
+
+        diff_back = np.abs(vels_45_back['theta'] - vels_315_back['theta'])
+        max_diff_back = np.max(diff_back) / np.max(np.abs(vels_45_back['theta']))
+        ic(f'Max difference between 45 and 315 azimuth back lobe at zen {inc_zen/units.deg:.0f} deg: {max_diff_back*100:.2f} %')
+
+        # Also make a separate plot that's the same as the previous ones, but it has the 45 and 315 azimuths on it for comparison, with the 315 just being dashed lines
+        # We also have to make sure to normalize them the same way
+        fig, (ax) = plt.subplots(1, 1, sharey=True)
+
+        norm_factor = max(np.max(np.abs(vels_45_front["theta"])), np.max(np.abs(vels_315_front["theta"])))
+
+        # Plot lines without legend entries (we'll add two separate legends with proxy artists)
+        VELs = vels_45_front
+        VELs["theta"] = VELs["theta"] / norm_factor
+        ax.plot(ff / units.MHz, np.abs(VELs["theta"]), color="red", linestyle="-", label="_nolegend_")
+
+        VELs = vels_315_front
+        VELs["theta"] = VELs["theta"] / norm_factor
+        ax.plot(ff / units.MHz, np.abs(VELs["theta"]), color="red", linestyle="--", label="_nolegend_")
+
+        VELs = vels_45_back
+        VELs["theta"] = VELs["theta"] / norm_factor
+        ax.plot(ff / units.MHz, np.abs(VELs["theta"]), color="blue", linestyle="-", label="_nolegend_")
+
+        VELs = vels_315_back
+        VELs["theta"] = VELs["theta"] / norm_factor
+        ax.plot(ff / units.MHz, np.abs(VELs["theta"]), color="blue", linestyle="--", label="_nolegend_")
+
+        ax.set_title("LPDA Response Comparison 45 vs 315 deg Azimuth")
+        ax.set_ylabel("Normalized Heff")
+        ax.set_xlabel("frequency [MHz]")
+        ax.set_xlim(0, 500)
+
+        # Legend 1: color meaning (front/back)
+        color_handles = [
+            Line2D([0], [0], color="red", lw=2, linestyle="-", label="Frontlobe"),
+            Line2D([0], [0], color="blue", lw=2, linestyle="-", label="Backlobe"),
+        ]
+        leg1 = ax.legend(
+            handles=color_handles,
+            loc="upper right",
+            bbox_to_anchor=(1.0, 1.0),
+            frameon=True
+        )
+        ax.add_artist(leg1)
+
+        # Legend 2: linestyle meaning (azi 45/315 at this zenith)
+        style_handles = [
+            Line2D([0], [0], color="black", lw=2, linestyle="-",
+               label=f"Zen {inc_zen/units.deg:.0f}°, Azi 45°"),
+            Line2D([0], [0], color="black", lw=2, linestyle="--",
+               label=f"Zen {inc_zen/units.deg:.0f}°, Azi 315°"),
+        ]
+        ax.legend(
+            handles=style_handles,
+            loc="upper right",
+            bbox_to_anchor=(1.0, 0.84),
+            frameon=True
+        )
+
+        savename = f"plots/AntennaResponse_Comparison45vs315_Zen{inc_zen/units.deg:.0f}deg.png"
+        plt.savefig(savename)
+        plt.close(fig)
+        ic(f"Saved {savename}")
+
+
 # Polar plots
 plot_azimuths = [0*units.deg, 45*units.deg, 90*units.deg]
 plot_freqs = np.array([100, 200, 300, 400]) * units.MHz
@@ -156,6 +243,11 @@ for plot_azi in plot_azimuths:
         # Fix 270 by making it same as 90
         if zen == 270*units.deg:
             responses[:, i] = responses[:, idx_180 - (idx_180 - np.where(polar_angles_deg == 90)[0][0])]
+
+    # Do a check to see if the response is symmetric or not (approximately to within a dB)
+    diff = responses - np.flip(responses, axis=1)
+    max_diff = np.max(np.abs(diff))
+    ic(f'Max difference between front and back lobe at Azi {plot_azi/units.deg:.0f} deg: {max_diff:.2f} dB')
 
     ax.set_theta_zero_location("S")
     ax.set_theta_direction(-1)
