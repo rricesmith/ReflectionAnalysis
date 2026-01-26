@@ -14,7 +14,7 @@ sim_folder = config['FOLDERS']['sim_folder']
 
 
 # n_cores = 1000   #Decenty sensitivity to RCRs, so don't overdo
-n_cores = 10000   #Doing for area sensitivity, so can do more cores b/c only 1 footprint each
+n_cores = 2000   #Doing for area sensitivity, so can do more cores b/c only 1 footprint each
 distance = 12 #km, diameter of throws. 5km has triggers at edges still, so can go farther out
 add_noise = True
 # date_sim = '2.25.25'
