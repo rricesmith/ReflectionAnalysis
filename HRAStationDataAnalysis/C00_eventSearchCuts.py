@@ -1220,7 +1220,7 @@ if __name__ == "__main__":
         if base_chiRCR_for_cuts.size > 0:
             plot_cuts_amplitudes(base_times_for_cuts, 
                                 base_chiRCR_for_cuts, 
-                                "ChiRCR", 
+                                r"$\chi_{RCR}$", 
                                 plot_folder_station, 
                                 LIVETIME_THRESHOLD_SECONDS, 
                                 cuts_dict_for_plotting, 
