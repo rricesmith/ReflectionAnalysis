@@ -1195,7 +1195,7 @@ if __name__ == "__main__":
         # Plot Max Amplitudes using pre-calculated ones
         plot_cuts_amplitudes(base_times_for_cuts, 
                             base_max_amplitudes_for_cuts, # Or base_traces_for_cuts if not Max Amp plot
-                            "Max Amplitude", 
+                            r"$|V_{peak}|$", 
                             plot_folder_station, 
                             LIVETIME_THRESHOLD_SECONDS, 
                             cuts_dict_for_plotting, 
