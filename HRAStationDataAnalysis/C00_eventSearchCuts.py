@@ -387,13 +387,18 @@ def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
         is_zoom_plot = False
 
     for season_start_dt, season_end_dt in plot_windows:
-        # Use specific colors: red/orange/yellow for fails, green for pass
-        fail_colors = ['red', 'orange', 'gold']
+        # Colors: red for Fails L1, black for Fails Storm, blue for Fails Burst, green for Pass
+        cut_colors = {'Fails L1': 'red', 'Fails Storm': 'black', 'Fails Burst': 'blue', 'Pass Cuts': 'green'}
         markers = itertools.cycle(("v", "s", "*", "d", "P", "X"))
         season_start_unix, season_end_unix = season_start_dt.timestamp(), season_end_dt.timestamp()
         seasonal_dt_mask_plotting = (dt_times_all_events >= season_start_dt) & (dt_times_all_events <= season_end_dt)
         base_seasonal_mask_for_plot = seasonal_dt_mask_plotting & valid_data_mask_global
         if not np.any(base_seasonal_mask_for_plot): continue
+
+        # Determine x-axis range from actual data (data-driven like rate plot)
+        seasonal_times_for_xlim = times_unix[base_seasonal_mask_for_plot]
+        data_min_time, data_max_time = np.min(seasonal_times_for_xlim), np.max(seasonal_times_for_xlim)
+        x_padding = (data_max_time - data_min_time) * 0.02  # 2% padding
 
         plt.figure(figsize=(14,7)); ax = plt.gca()
         if is_zoom_plot:
@@ -419,26 +424,22 @@ def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
 
         if cuts_to_plot_dict:
             marker_instances = [next(markers) for _ in cuts_to_plot_dict]
-            fail_color_idx = 0
             for idx, (legend_label_base, cut_mask_for_series) in enumerate(cuts_to_plot_dict.items()):
                 final_series_mask_global = valid_data_mask_global & cut_mask_for_series
                 final_series_mask_plotting = base_seasonal_mask_for_plot & cut_mask_for_series
                 current_marker = marker_instances[idx % len(marker_instances)]
-                # Use green for "Pass Cuts", fail colors for others
-                if "Pass" in legend_label_base:
-                    plot_color = 'green'
-                else:
-                    plot_color = fail_colors[fail_color_idx % len(fail_colors)]
-                    fail_color_idx += 1
-                points_collection = ax.scatter(dt_times_all_events[final_series_mask_plotting], max_amps_to_plot[final_series_mask_plotting],
-                                               s=15, label="_nolegend_", marker=current_marker, alpha=0.8, color=plot_color)
+                # Get color from dict, default to gray if not found
+                plot_color = cut_colors.get(legend_label_base, 'gray')
+                # Always scatter (even if empty) to keep consistent legend
+                ax.scatter(dt_times_all_events[final_series_mask_plotting], max_amps_to_plot[final_series_mask_plotting],
+                           s=15, label="_nolegend_", marker=current_marker, alpha=0.8, color=plot_color)
                 if np.any(final_series_mask_plotting): data_y_values_for_ylim.extend(max_amps_to_plot[final_series_mask_plotting])
                 times_for_this_cut_series = times_unix[final_series_mask_global]
                 lt_s, _, _, _ = calculate_livetime(
                     times_for_this_cut_series, livetime_threshold_seconds, season_start_unix, season_end_unix,
                     all_times_before_cuts=times_unix, final_mask=final_series_mask_global
                 )
-                # For "Fails" entries show hours lost, for "Pass" show livetime
+                # For "Fails" entries show hours lost, for "Pass" show livetime (always include in legend)
                 if "Fails" in legend_label_base:
                     plot_label_with_livetime = f"{legend_label_base} (Lost: {format_duration_short(lt_s)})"
                 else:
@@ -454,6 +455,10 @@ def plot_cuts_amplitudes(times_unix, values_data, amp_name, output_dir=".",
         else:
             current_ymin, current_ymax = (0, 1.05)
             ax.set_ylim(current_ymin, current_ymax)
+
+        # Set x-axis limits based on data range (data-driven)
+        ax.set_xlim(datetime.datetime.fromtimestamp(data_min_time - x_padding), 
+                    datetime.datetime.fromtimestamp(data_max_time + x_padding))
 
         if good_gtis_to_fill:
             for start_p, end_p in good_gtis_to_fill:
@@ -493,8 +498,8 @@ def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".",
         is_zoom_plot = False
 
     for season_start_dt, season_end_dt in plot_windows:
-        # Use specific colors: red/orange/yellow for fails, green for pass
-        fail_colors = ['red', 'orange', 'gold']
+        # Colors: red for Fails L1, black for Fails Storm, blue for Fails Burst, green for Pass
+        cut_colors = {'Fails L1': 'red', 'Fails Storm': 'black', 'Fails Burst': 'blue', 'Pass Cuts': 'green'}
         markers = itertools.cycle(("v", "s", "*", "d", "P", "X"))
         season_start_unix, season_end_unix = season_start_dt.timestamp(), season_end_dt.timestamp()
         seasonal_unix_mask_for_plot = (times_unix_valid_global >= season_start_unix) & (times_unix_valid_global <= season_end_unix)
@@ -545,34 +550,33 @@ def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".",
 
         if cuts_to_plot_dict:
             marker_instances_rate = [next(markers) for _ in cuts_to_plot_dict]
-            fail_color_idx = 0
             for idx, (legend_label_base, cut_mask_for_series_orig_len) in enumerate(cuts_to_plot_dict.items()):
                 if not (isinstance(cut_mask_for_series_orig_len, np.ndarray) and len(cut_mask_for_series_orig_len) == len(times_unix)): continue
                 cut_mask_aligned_with_valid_global = cut_mask_for_series_orig_len[valid_times_mask_global]
                 times_for_series_cut_in_season = times_unix_valid_global[seasonal_unix_mask_for_plot & cut_mask_aligned_with_valid_global]
                 current_marker_rate = marker_instances_rate[idx % len(marker_instances_rate)]
-                # Use green for "Pass Cuts", fail colors for others
-                if "Pass" in legend_label_base:
-                    plot_color = 'green'
+                # Get color from dict, default to gray if not found
+                plot_color = cut_colors.get(legend_label_base, 'gray')
+                # Calculate livetime for legend (always include even if 0 events)
+                lt_s, _, _, _ = calculate_livetime(
+                    times_for_series_cut_in_season, livetime_threshold_seconds, season_start_unix, season_end_unix,
+                    all_times_before_cuts=times_unix[valid_times_mask_global], final_mask=cut_mask_aligned_with_valid_global
+                ) if len(times_for_series_cut_in_season) > 0 else (0.0, [], [], [])
+                # For "Fails" entries show hours lost, for "Pass" show livetime
+                if "Fails" in legend_label_base:
+                    label_text = f'{legend_label_base} (Lost: {format_duration_short(lt_s)})'
                 else:
-                    plot_color = fail_colors[fail_color_idx % len(fail_colors)]
-                    fail_color_idx += 1
+                    label_text = f'{legend_label_base} (Livetime: {format_duration_short(lt_s)})'
                 if len(times_for_series_cut_in_season) > 0:
                     count_cut, _ = np.histogram(times_for_series_cut_in_season, bins=bins)
                     rate_cut = count_cut / bin_size_seconds
-                    # Calculate livetime for legend
-                    lt_s, _, _, _ = calculate_livetime(
-                        times_for_series_cut_in_season, livetime_threshold_seconds, season_start_unix, season_end_unix,
-                        all_times_before_cuts=times_unix[valid_times_mask_global], final_mask=cut_mask_aligned_with_valid_global
-                    )
-                    # For "Fails" entries show hours lost, for "Pass" show livetime
-                    if "Fails" in legend_label_base:
-                        label_text = f'{legend_label_base} (Lost: {format_duration_short(lt_s)})'
-                    else:
-                        label_text = f'{legend_label_base} (Livetime: {format_duration_short(lt_s)})'
                     line_cut, = plt.plot(dt_bin_centers, rate_cut, linestyle='None', marker=current_marker_rate, markersize=3, label=label_text, color=plot_color)
                     legend_handles.append(line_cut)
                     if np.any(rate_cut > 0): min_overall_rate_in_season = min(min_overall_rate_in_season, np.min(rate_cut[rate_cut>0]))
+                else:
+                    # Add legend entry even if no data points (for consistency)
+                    legend_handles.append(Line2D([0], [0], marker=current_marker_rate, color='w', markerfacecolor=plot_color,
+                                                 markeredgecolor=plot_color, markersize=5, label=label_text))
 
         if min_overall_rate_in_season < plot_ymax : ax.set_ylim(max(plot_ymin, min_overall_rate_in_season / 2.0) , plot_ymax)
         # Set x-axis limits based on data range (matching amplitude plot behavior)
@@ -588,14 +592,16 @@ def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".",
 def plot_rate_histogram(times_unix, cuts_to_plot_dict, bin_size_seconds=30*60, output_dir=".",
                         livetime_threshold_seconds=3600.0, station_id=None):
     """Plot histogram of event rates combining all seasons for a single station.
-    X-axis: Event Rate (Hz), Y-axis: Count of time bins at that rate."""
+    X-axis: Event Rate (Hz), Y-axis: Count of time bins at that rate.
+    Excludes Pass Cuts and combines Storm+Burst failures into single histogram."""
     if not os.path.exists(output_dir): os.makedirs(output_dir)
     valid_times_mask_global = np.isfinite(times_unix) & (times_unix > 0)
     times_unix_valid_global = times_unix[valid_times_mask_global]
     if len(times_unix_valid_global) == 0: ic("No valid times for rate histogram."); return
 
-    # Collect all rates across all seasons
-    all_rates_by_cut = {label: [] for label in cuts_to_plot_dict.keys()}
+    # Collect rates: Fails L1 separate, Storm+Burst combined
+    all_rates_L1 = []
+    all_rates_storm_burst = []  # Combined Storm and Burst failures
     
     # Define seasons to combine
     plot_windows = [(datetime.datetime(year, 10, 1), datetime.datetime(year + 1, 4, 30, 23, 59, 59)) for year in range(2013, 2020)]
@@ -612,6 +618,8 @@ def plot_rate_histogram(times_unix, cuts_to_plot_dict, bin_size_seconds=30*60, o
         if len(bins) < 2: continue
         
         for legend_label_base, cut_mask_for_series_orig_len in cuts_to_plot_dict.items():
+            # Skip Pass Cuts for histogram
+            if "Pass" in legend_label_base: continue
             if not (isinstance(cut_mask_for_series_orig_len, np.ndarray) and len(cut_mask_for_series_orig_len) == len(times_unix)): continue
             cut_mask_aligned = cut_mask_for_series_orig_len[valid_times_mask_global]
             times_for_cut = times_unix_valid_global[seasonal_unix_mask_for_plot & cut_mask_aligned]
@@ -619,25 +627,26 @@ def plot_rate_histogram(times_unix, cuts_to_plot_dict, bin_size_seconds=30*60, o
                 count_cut, _ = np.histogram(times_for_cut, bins=bins)
                 rate_cut = count_cut / bin_size_seconds
                 # Only include non-zero rates in histogram
-                all_rates_by_cut[legend_label_base].extend(rate_cut[rate_cut > 0])
+                nonzero_rates = rate_cut[rate_cut > 0]
+                if "L1" in legend_label_base:
+                    all_rates_L1.extend(nonzero_rates)
+                elif "Storm" in legend_label_base or "Burst" in legend_label_base:
+                    all_rates_storm_burst.extend(nonzero_rates)
     
     # Create the histogram plot
     plt.figure(figsize=(10, 7))
-    fail_colors = ['red', 'orange', 'gold']
-    fail_color_idx = 0
     
-    for legend_label_base, rates in all_rates_by_cut.items():
-        if len(rates) == 0: continue
-        rates_arr = np.array(rates)
-        # Use log-spaced bins for rate histogram
+    # Plot Fails L1 in red
+    if len(all_rates_L1) > 0:
+        rates_arr = np.array(all_rates_L1)
         rate_bins = np.logspace(np.log10(max(1e-6, rates_arr.min()/2)), np.log10(rates_arr.max()*2), 50)
-        # Use green for "Pass Cuts", fail colors for others
-        if "Pass" in legend_label_base:
-            plot_color = 'green'
-        else:
-            plot_color = fail_colors[fail_color_idx % len(fail_colors)]
-            fail_color_idx += 1
-        plt.hist(rates_arr, bins=rate_bins, alpha=0.6, label=legend_label_base, color=plot_color, edgecolor='black', linewidth=0.5)
+        plt.hist(rates_arr, bins=rate_bins, alpha=0.6, label='Fails L1', color='red', edgecolor='black', linewidth=0.5)
+    
+    # Plot combined Storm+Burst failures in blue
+    if len(all_rates_storm_burst) > 0:
+        rates_arr = np.array(all_rates_storm_burst)
+        rate_bins = np.logspace(np.log10(max(1e-6, rates_arr.min()/2)), np.log10(rates_arr.max()*2), 50)
+        plt.hist(rates_arr, bins=rate_bins, alpha=0.6, label='Fails Storm/Burst', color='blue', edgecolor='black', linewidth=0.5)
     
     plt.xscale('log')
     plt.xlabel(f'Event Rate (Hz, {bin_size_seconds/60:.0f}min bins)')
