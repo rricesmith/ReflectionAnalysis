@@ -602,11 +602,19 @@ def plot_cuts_rates(times_unix, bin_size_seconds=30*60, output_dir=".",
         plt.savefig(out_filename); plt.close(); ic(f"Saved: {out_filename}")
 
 
-def plot_rate_histogram(times_unix, cuts_to_plot_dict, bin_size_seconds=30*60, output_dir=".",
+def plot_rate_histogram(times_unix, cuts_to_plot_dict, output_dir=".",
                         livetime_threshold_seconds=3600.0, station_id=None):
-    """Plot histogram of N-events/hour for all failed cuts combined across all seasons.
-    X-axis: N-events/hour, Y-axis: Count of failure periods at that rate.
-    Combines all failure cuts (L1, Storm, Burst) into single histogram."""
+    """Plot histogram of N-events/hour for contiguous strings of failed events.
+    
+    For each string of failed events where consecutive events are within 1 hour:
+    - Count N events in the string
+    - Measure time span from first to last event (minimum 1 hour)
+    - Calculate rate = N / time_span_hours
+    
+    Creates two plots:
+    1. Unweighted histogram: each string contributes 1 to count
+    2. Weighted density histogram: each string weighted by N events
+    """
     if not os.path.exists(output_dir): os.makedirs(output_dir)
     valid_times_mask_global = np.isfinite(times_unix) & (times_unix > 0)
     times_unix_valid_global = times_unix[valid_times_mask_global]
@@ -619,56 +627,90 @@ def plot_rate_histogram(times_unix, cuts_to_plot_dict, bin_size_seconds=30*60, o
             if isinstance(cut_mask, np.ndarray) and len(cut_mask) == len(times_unix):
                 combined_fails_mask |= cut_mask
     
-    # Get times of all failed events
+    # Get times of all failed events (sorted)
     combined_fails_mask_aligned = combined_fails_mask[valid_times_mask_global]
+    times_failed = np.sort(times_unix_valid_global[combined_fails_mask_aligned])
     
-    # Collect N-events/hour for each failure period across all seasons
-    all_events_per_hour = []
-    bin_size_hours = bin_size_seconds / 3600.0  # 0.5 hours for 30-min bins
+    if len(times_failed) == 0:
+        ic("No failed events for rate histogram.")
+        return
     
-    # Define seasons to combine
-    plot_windows = [(datetime.datetime(year, 10, 1), datetime.datetime(year + 1, 4, 30, 23, 59, 59)) for year in range(2013, 2020)]
+    # Find contiguous strings of failed events within 1 hour of each other
+    # A new string starts when gap between consecutive events > 1 hour
+    max_gap_seconds = 3600.0  # 1 hour
+    min_time_span_hours = 1.0  # minimum time span to use for rate calculation
     
-    for season_start_dt, season_end_dt in plot_windows:
-        season_start_unix, season_end_unix = season_start_dt.timestamp(), season_end_dt.timestamp()
-        seasonal_unix_mask_for_plot = (times_unix_valid_global >= season_start_unix) & (times_unix_valid_global <= season_end_unix)
-        if not np.any(seasonal_unix_mask_for_plot): continue
+    # Calculate gaps between consecutive events
+    if len(times_failed) == 1:
+        # Single event: one string with 1 event over 1 hour
+        strings = [(1, min_time_span_hours)]
+    else:
+        gaps = np.diff(times_failed)
+        # Find indices where a new string starts (gap > 1 hour)
+        string_breaks = np.where(gaps > max_gap_seconds)[0] + 1
         
-        # Get failed events in this season
-        times_failed_in_season = times_unix_valid_global[seasonal_unix_mask_for_plot & combined_fails_mask_aligned]
-        if len(times_failed_in_season) == 0: continue
+        # Split into strings
+        string_start_indices = np.concatenate([[0], string_breaks])
+        string_end_indices = np.concatenate([string_breaks, [len(times_failed)]])
         
-        # Create bins for this season based on data range
-        data_min_time, data_max_time = np.min(times_failed_in_season), np.max(times_failed_in_season)
-        bins = np.arange(data_min_time, data_max_time + bin_size_seconds, bin_size_seconds)
-        if len(bins) < 2: continue
-        
-        # Count events per bin
-        count_per_bin, _ = np.histogram(times_failed_in_season, bins=bins)
-        
-        # Convert to N-events/hour: divide count by bin duration in hours
-        # Single bins represent 30 min = 0.5 hours, so divide by 0.5 (or multiply by 2)
-        events_per_hour = count_per_bin / bin_size_hours
-        
-        # Only include non-zero rates
-        nonzero_rates = events_per_hour[events_per_hour > 0]
-        all_events_per_hour.extend(nonzero_rates)
+        strings = []  # List of (N_events, time_span_hours)
+        for start_idx, end_idx in zip(string_start_indices, string_end_indices):
+            n_events = end_idx - start_idx
+            if n_events < 1:
+                continue
+            
+            # Time span from first to last event in this string
+            t_first = times_failed[start_idx]
+            t_last = times_failed[end_idx - 1]
+            time_span_seconds = t_last - t_first
+            time_span_hours = max(time_span_seconds / 3600.0, min_time_span_hours)
+            
+            strings.append((n_events, time_span_hours))
     
-    # Create the histogram plot
-    plt.figure(figsize=(10, 7))
+    if len(strings) == 0:
+        ic("No failure strings found for histogram.")
+        return
     
-    if len(all_events_per_hour) > 0:
-        rates_arr = np.array(all_events_per_hour)
-        rate_bins = np.logspace(np.log10(max(0.1, rates_arr.min()/2)), np.log10(rates_arr.max()*2), 50)
-        plt.hist(rates_arr, bins=rate_bins, alpha=0.6, label='Fails cuts', color='blue', edgecolor='black', linewidth=0.5)
+    # Calculate rates for each string
+    rates = []
+    weights = []
+    for n_events, time_span_hours in strings:
+        rate = n_events / time_span_hours
+        rates.append(rate)
+        weights.append(n_events)
     
-    plt.xscale('log')
-    plt.xlabel(f'N-events / hour ({bin_size_seconds/60:.0f}min bins)')
-    plt.ylabel('Count of Failure Periods')
+    rates_arr = np.array(rates)
+    weights_arr = np.array(weights)
+    
+    ic(f"Found {len(strings)} failure strings. Min rate: {rates_arr.min():.2f}, Max rate: {rates_arr.max():.2f}")
+    ic(f"Total failed events: {weights_arr.sum()}, Min events per string: {weights_arr.min()}, Max: {weights_arr.max()}")
+    
+    # Create histogram bins (log scale)
+    rate_bins = np.logspace(np.log10(max(0.5, rates_arr.min()/2)), np.log10(rates_arr.max()*2), 50)
+    
+    # Plot 1: Unweighted histogram
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    
+    ax1.hist(rates_arr, bins=rate_bins, alpha=0.6, label='Fails cuts', color='blue', edgecolor='black', linewidth=0.5)
+    ax1.set_xscale('log')
+    ax1.set_xlabel('N-events / hour')
+    ax1.set_ylabel('Count of Failure Strings')
     stn_label = f' Station {station_id}' if station_id else ''
-    plt.title(f'Failed Events Rate Histogram{stn_label} (All Seasons Combined)')
-    plt.legend(fontsize=8)
-    plt.grid(True, linestyle=':', alpha=0.7)
+    ax1.set_title(f'Unweighted{stn_label}')
+    ax1.legend(fontsize=8)
+    ax1.grid(True, linestyle=':', alpha=0.7)
+    
+    # Plot 2: Weighted density histogram
+    ax2.hist(rates_arr, bins=rate_bins, weights=weights_arr, density=True, alpha=0.6, 
+             label='Fails cuts (weighted by N)', color='red', edgecolor='black', linewidth=0.5)
+    ax2.set_xscale('log')
+    ax2.set_xlabel('N-events / hour')
+    ax2.set_ylabel('Density (weighted by N events)')
+    ax2.set_title(f'Weighted Density{stn_label}')
+    ax2.legend(fontsize=8)
+    ax2.grid(True, linestyle=':', alpha=0.7)
+    
+    fig.suptitle(f'Failed Events Rate Histogram (All Seasons Combined)', fontsize=12)
     plt.tight_layout()
     out_filename = os.path.join(output_dir, f"rate_histogram_all_seasons.png")
     plt.savefig(out_filename); plt.close(); ic(f"Saved: {out_filename}")
