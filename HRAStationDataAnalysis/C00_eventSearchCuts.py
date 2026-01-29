@@ -611,109 +611,185 @@ def plot_rate_histogram(times_unix, cuts_to_plot_dict, output_dir=".",
     - Measure time span from first to last event (minimum 1 hour)
     - Calculate rate = N / time_span_hours
     
-    Creates two plots:
-    1. Unweighted histogram: each string contributes 1 to count
-    2. Weighted density histogram: each string weighted by N events
+    Creates two figure files:
+    1. Storm+Burst combined (ignoring L1): unweighted and weighted density histograms
+    2. Storm and Burst separate: unweighted and weighted density histograms for each
     """
     if not os.path.exists(output_dir): os.makedirs(output_dir)
     valid_times_mask_global = np.isfinite(times_unix) & (times_unix > 0)
     times_unix_valid_global = times_unix[valid_times_mask_global]
     if len(times_unix_valid_global) == 0: ic("No valid times for rate histogram."); return
 
-    # Combine all failure masks into one
-    combined_fails_mask = np.zeros(len(times_unix), dtype=bool)
-    for legend_label_base, cut_mask in cuts_to_plot_dict.items():
-        if "Fails" in legend_label_base:  # Only include failure categories
-            if isinstance(cut_mask, np.ndarray) and len(cut_mask) == len(times_unix):
-                combined_fails_mask |= cut_mask
-    
-    # Get times of all failed events (sorted)
-    combined_fails_mask_aligned = combined_fails_mask[valid_times_mask_global]
-    times_failed = np.sort(times_unix_valid_global[combined_fails_mask_aligned])
-    
-    if len(times_failed) == 0:
-        ic("No failed events for rate histogram.")
-        return
-    
-    # Find contiguous strings of failed events within 1 hour of each other
-    # A new string starts when gap between consecutive events > 1 hour
     max_gap_seconds = 3600.0  # 1 hour
     min_time_span_hours = 1.0  # minimum time span to use for rate calculation
     
-    # Calculate gaps between consecutive events
-    if len(times_failed) == 1:
-        # Single event: one string with 1 event over 1 hour
-        strings = [(1, min_time_span_hours)]
-    else:
-        gaps = np.diff(times_failed)
-        # Find indices where a new string starts (gap > 1 hour)
+    def find_strings_and_rates(times_failed_sorted):
+        """Find contiguous strings of failed events and calculate rates."""
+        if len(times_failed_sorted) == 0:
+            return [], [], []
+        
+        if len(times_failed_sorted) == 1:
+            return [1 / min_time_span_hours], [1], [(1, min_time_span_hours)]
+        
+        gaps = np.diff(times_failed_sorted)
         string_breaks = np.where(gaps > max_gap_seconds)[0] + 1
         
-        # Split into strings
         string_start_indices = np.concatenate([[0], string_breaks])
-        string_end_indices = np.concatenate([string_breaks, [len(times_failed)]])
+        string_end_indices = np.concatenate([string_breaks, [len(times_failed_sorted)]])
         
-        strings = []  # List of (N_events, time_span_hours)
+        rates, weights, strings = [], [], []
         for start_idx, end_idx in zip(string_start_indices, string_end_indices):
             n_events = end_idx - start_idx
             if n_events < 1:
                 continue
             
-            # Time span from first to last event in this string
-            t_first = times_failed[start_idx]
-            t_last = times_failed[end_idx - 1]
+            t_first = times_failed_sorted[start_idx]
+            t_last = times_failed_sorted[end_idx - 1]
             time_span_seconds = t_last - t_first
             time_span_hours = max(time_span_seconds / 3600.0, min_time_span_hours)
             
+            rate = n_events / time_span_hours
+            rates.append(rate)
+            weights.append(n_events)
             strings.append((n_events, time_span_hours))
+        
+        return np.array(rates), np.array(weights), strings
     
-    if len(strings) == 0:
-        ic("No failure strings found for histogram.")
-        return
+    # Extract individual cut masks (Storm and Burst only, ignoring L1)
+    storm_mask = None
+    burst_mask = None
+    for legend_label_base, cut_mask in cuts_to_plot_dict.items():
+        if isinstance(cut_mask, np.ndarray) and len(cut_mask) == len(times_unix):
+            if "Storm" in legend_label_base:
+                storm_mask = cut_mask
+            elif "Burst" in legend_label_base:
+                burst_mask = cut_mask
     
-    # Calculate rates for each string
-    rates = []
-    weights = []
-    for n_events, time_span_hours in strings:
-        rate = n_events / time_span_hours
-        rates.append(rate)
-        weights.append(n_events)
+    # Combine Storm+Burst (ignoring L1)
+    storm_burst_combined_mask = np.zeros(len(times_unix), dtype=bool)
+    if storm_mask is not None:
+        storm_burst_combined_mask |= storm_mask
+    if burst_mask is not None:
+        storm_burst_combined_mask |= burst_mask
     
-    rates_arr = np.array(rates)
-    weights_arr = np.array(weights)
-    
-    ic(f"Found {len(strings)} failure strings. Min rate: {rates_arr.min():.2f}, Max rate: {rates_arr.max():.2f}")
-    ic(f"Total failed events: {weights_arr.sum()}, Min events per string: {weights_arr.min()}, Max: {weights_arr.max()}")
-    
-    # Create histogram bins (log scale)
-    rate_bins = np.logspace(np.log10(max(0.5, rates_arr.min()/2)), np.log10(rates_arr.max()*2), 50)
-    
-    # Plot 1: Unweighted histogram
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-    
-    ax1.hist(rates_arr, bins=rate_bins, alpha=0.6, label='Fails cuts', color='blue', edgecolor='black', linewidth=0.5)
-    ax1.set_xscale('log')
-    ax1.set_xlabel('N-events / hour')
-    ax1.set_ylabel('Count of Failure Strings')
     stn_label = f' Station {station_id}' if station_id else ''
-    ax1.set_title(f'Unweighted{stn_label}')
-    ax1.legend(fontsize=8)
-    ax1.grid(True, linestyle=':', alpha=0.7)
     
-    # Plot 2: Weighted density histogram
-    ax2.hist(rates_arr, bins=rate_bins, weights=weights_arr, density=True, alpha=0.6, 
-             label='Fails cuts (weighted by N)', color='red', edgecolor='black', linewidth=0.5)
-    ax2.set_xscale('log')
-    ax2.set_xlabel('N-events / hour')
-    ax2.set_ylabel('Density (weighted by N events)')
-    ax2.set_title(f'Weighted Density{stn_label}')
-    ax2.legend(fontsize=8)
-    ax2.grid(True, linestyle=':', alpha=0.7)
+    # ========== FIGURE 1: Storm+Burst Combined ==========
+    combined_mask_aligned = storm_burst_combined_mask[valid_times_mask_global]
+    times_combined = np.sort(times_unix_valid_global[combined_mask_aligned])
     
-    fig.suptitle(f'Failed Events Rate Histogram (All Seasons Combined)', fontsize=12)
-    plt.tight_layout()
-    out_filename = os.path.join(output_dir, f"rate_histogram_all_seasons.png")
-    plt.savefig(out_filename); plt.close(); ic(f"Saved: {out_filename}")
+    if len(times_combined) > 0:
+        rates_combined, weights_combined, strings_combined = find_strings_and_rates(times_combined)
+        
+        if len(rates_combined) > 0:
+            ic(f"Storm+Burst Combined: {len(strings_combined)} strings, min rate: {rates_combined.min():.2f}, max: {rates_combined.max():.2f}")
+            
+            rate_bins = np.logspace(np.log10(max(0.5, rates_combined.min()/2)), np.log10(rates_combined.max()*2), 50)
+            
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+            
+            ax1.hist(rates_combined, bins=rate_bins, alpha=0.6, label='Fails Storm/Burst', color='blue', edgecolor='black', linewidth=0.5)
+            ax1.set_xscale('log')
+            ax1.set_xlabel('N-events / hour')
+            ax1.set_ylabel('Count of Failure Strings')
+            ax1.set_title(f'Unweighted{stn_label}')
+            ax1.legend(fontsize=8)
+            ax1.grid(True, linestyle=':', alpha=0.7)
+            
+            ax2.hist(rates_combined, bins=rate_bins, weights=weights_combined, density=True, alpha=0.6, 
+                     label='Fails Storm/Burst (weighted by N)', color='red', edgecolor='black', linewidth=0.5)
+            ax2.set_xscale('log')
+            ax2.set_xlabel('N-events / hour')
+            ax2.set_ylabel('Density (weighted by N events)')
+            ax2.set_title(f'Weighted Density{stn_label}')
+            ax2.legend(fontsize=8)
+            ax2.grid(True, linestyle=':', alpha=0.7)
+            
+            fig.suptitle(f'Storm+Burst Combined Rate Histogram (All Seasons)', fontsize=12)
+            plt.tight_layout()
+            out_filename = os.path.join(output_dir, f"rate_histogram_storm_burst_combined.png")
+            plt.savefig(out_filename); plt.close(); ic(f"Saved: {out_filename}")
+    
+    # ========== FIGURE 2: Storm and Burst Separate ==========
+    # Get Storm-only times
+    storm_rates, storm_weights = np.array([]), np.array([])
+    if storm_mask is not None:
+        storm_mask_aligned = storm_mask[valid_times_mask_global]
+        times_storm = np.sort(times_unix_valid_global[storm_mask_aligned])
+        if len(times_storm) > 0:
+            storm_rates, storm_weights, storm_strings = find_strings_and_rates(times_storm)
+            ic(f"Storm only: {len(storm_strings)} strings, {storm_weights.sum()} events")
+    
+    # Get Burst-only times
+    burst_rates, burst_weights = np.array([]), np.array([])
+    if burst_mask is not None:
+        burst_mask_aligned = burst_mask[valid_times_mask_global]
+        times_burst = np.sort(times_unix_valid_global[burst_mask_aligned])
+        if len(times_burst) > 0:
+            burst_rates, burst_weights, burst_strings = find_strings_and_rates(times_burst)
+            ic(f"Burst only: {len(burst_strings)} strings, {burst_weights.sum()} events")
+    
+    # Only create separate plot if we have data for at least one
+    if len(storm_rates) > 0 or len(burst_rates) > 0:
+        # Determine common bin range
+        all_rates = np.concatenate([r for r in [storm_rates, burst_rates] if len(r) > 0])
+        rate_bins = np.logspace(np.log10(max(0.5, all_rates.min()/2)), np.log10(all_rates.max()*2), 50)
+        
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        
+        # Top row: Unweighted histograms
+        ax_storm_uw = axes[0, 0]
+        ax_burst_uw = axes[0, 1]
+        # Bottom row: Weighted density histograms
+        ax_storm_w = axes[1, 0]
+        ax_burst_w = axes[1, 1]
+        
+        # Storm unweighted
+        if len(storm_rates) > 0:
+            ax_storm_uw.hist(storm_rates, bins=rate_bins, alpha=0.6, label='Fails Storm', color='black', edgecolor='gray', linewidth=0.5)
+        ax_storm_uw.set_xscale('log')
+        ax_storm_uw.set_xlabel('N-events / hour')
+        ax_storm_uw.set_ylabel('Count of Failure Strings')
+        ax_storm_uw.set_title(f'Storm - Unweighted{stn_label}')
+        ax_storm_uw.legend(fontsize=8)
+        ax_storm_uw.grid(True, linestyle=':', alpha=0.7)
+        
+        # Burst unweighted
+        if len(burst_rates) > 0:
+            ax_burst_uw.hist(burst_rates, bins=rate_bins, alpha=0.6, label='Fails Burst', color='blue', edgecolor='black', linewidth=0.5)
+        ax_burst_uw.set_xscale('log')
+        ax_burst_uw.set_xlabel('N-events / hour')
+        ax_burst_uw.set_ylabel('Count of Failure Strings')
+        ax_burst_uw.set_title(f'Burst - Unweighted{stn_label}')
+        ax_burst_uw.legend(fontsize=8)
+        ax_burst_uw.grid(True, linestyle=':', alpha=0.7)
+        
+        # Storm weighted density
+        if len(storm_rates) > 0:
+            ax_storm_w.hist(storm_rates, bins=rate_bins, weights=storm_weights, density=True, alpha=0.6, 
+                           label='Fails Storm (weighted)', color='gray', edgecolor='black', linewidth=0.5)
+        ax_storm_w.set_xscale('log')
+        ax_storm_w.set_xlabel('N-events / hour')
+        ax_storm_w.set_ylabel('Density (weighted by N events)')
+        ax_storm_w.set_title(f'Storm - Weighted Density{stn_label}')
+        ax_storm_w.legend(fontsize=8)
+        ax_storm_w.grid(True, linestyle=':', alpha=0.7)
+        
+        # Burst weighted density
+        if len(burst_rates) > 0:
+            ax_burst_w.hist(burst_rates, bins=rate_bins, weights=burst_weights, density=True, alpha=0.6, 
+                           label='Fails Burst (weighted)', color='cyan', edgecolor='black', linewidth=0.5)
+        ax_burst_w.set_xscale('log')
+        ax_burst_w.set_xlabel('N-events / hour')
+        ax_burst_w.set_ylabel('Density (weighted by N events)')
+        ax_burst_w.set_title(f'Burst - Weighted Density{stn_label}')
+        ax_burst_w.legend(fontsize=8)
+        ax_burst_w.grid(True, linestyle=':', alpha=0.7)
+        
+        fig.suptitle(f'Storm vs Burst Rate Histograms (All Seasons)', fontsize=12)
+        plt.tight_layout()
+        out_filename = os.path.join(output_dir, f"rate_histogram_storm_burst_separate.png")
+        plt.savefig(out_filename); plt.close(); ic(f"Saved: {out_filename}")
 
 
 
