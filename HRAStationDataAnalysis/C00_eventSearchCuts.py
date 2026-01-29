@@ -684,23 +684,23 @@ def plot_rate_histogram(times_unix, cuts_to_plot_dict, output_dir=".",
         if len(rates_combined) > 0:
             ic(f"Storm+Burst Combined: {len(strings_combined)} strings, min rate: {rates_combined.min():.2f}, max: {rates_combined.max():.2f}")
             
-            rate_bins = np.logspace(np.log10(max(0.5, rates_combined.min()/2)), np.log10(rates_combined.max()*2), 50)
+            rate_bins = np.logspace(np.log10(max(0.5, rates_combined.min()/2)), np.log10(rates_combined.max()*2), 17)
             
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
             
             ax1.hist(rates_combined, bins=rate_bins, alpha=0.6, label='Fails Storm/Burst', color='blue', edgecolor='black', linewidth=0.5)
             ax1.set_xscale('log')
             ax1.set_xlabel('N-events / hour')
-            ax1.set_ylabel('Count of Failure Strings')
+            ax1.set_ylabel('Counts')
             ax1.set_title(f'Unweighted{stn_label}')
             ax1.legend(fontsize=8)
             ax1.grid(True, linestyle=':', alpha=0.7)
             
-            ax2.hist(rates_combined, bins=rate_bins, weights=weights_combined, density=True, alpha=0.6, 
+            ax2.hist(rates_combined, bins=rate_bins, weights=weights_combined, alpha=0.6, 
                      label='Fails Storm/Burst (weighted by N)', color='red', edgecolor='black', linewidth=0.5)
             ax2.set_xscale('log')
             ax2.set_xlabel('N-events / hour')
-            ax2.set_ylabel('Density (weighted by N events)')
+            ax2.set_ylabel('Weighted Counts (by N-events)')
             ax2.set_title(f'Weighted Density{stn_label}')
             ax2.legend(fontsize=8)
             ax2.grid(True, linestyle=':', alpha=0.7)
@@ -733,7 +733,7 @@ def plot_rate_histogram(times_unix, cuts_to_plot_dict, output_dir=".",
     if len(storm_rates) > 0 or len(burst_rates) > 0:
         # Determine common bin range
         all_rates = np.concatenate([r for r in [storm_rates, burst_rates] if len(r) > 0])
-        rate_bins = np.logspace(np.log10(max(0.5, all_rates.min()/2)), np.log10(all_rates.max()*2), 50)
+        rate_bins = np.logspace(np.log10(max(0.5, all_rates.min()/2)), np.log10(all_rates.max()*2), 17)
         
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
         
@@ -749,7 +749,7 @@ def plot_rate_histogram(times_unix, cuts_to_plot_dict, output_dir=".",
             ax_storm_uw.hist(storm_rates, bins=rate_bins, alpha=0.6, label='Fails Storm', color='black', edgecolor='gray', linewidth=0.5)
         ax_storm_uw.set_xscale('log')
         ax_storm_uw.set_xlabel('N-events / hour')
-        ax_storm_uw.set_ylabel('Count of Failure Strings')
+        ax_storm_uw.set_ylabel('Counts')
         ax_storm_uw.set_title(f'Storm - Unweighted{stn_label}')
         ax_storm_uw.legend(fontsize=8)
         ax_storm_uw.grid(True, linestyle=':', alpha=0.7)
@@ -759,30 +759,30 @@ def plot_rate_histogram(times_unix, cuts_to_plot_dict, output_dir=".",
             ax_burst_uw.hist(burst_rates, bins=rate_bins, alpha=0.6, label='Fails Burst', color='blue', edgecolor='black', linewidth=0.5)
         ax_burst_uw.set_xscale('log')
         ax_burst_uw.set_xlabel('N-events / hour')
-        ax_burst_uw.set_ylabel('Count of Failure Strings')
+        ax_burst_uw.set_ylabel('Counts')
         ax_burst_uw.set_title(f'Burst - Unweighted{stn_label}')
         ax_burst_uw.legend(fontsize=8)
         ax_burst_uw.grid(True, linestyle=':', alpha=0.7)
         
-        # Storm weighted density
+        # Storm weighted
         if len(storm_rates) > 0:
-            ax_storm_w.hist(storm_rates, bins=rate_bins, weights=storm_weights, density=True, alpha=0.6, 
+            ax_storm_w.hist(storm_rates, bins=rate_bins, weights=storm_weights, alpha=0.6, 
                            label='Fails Storm (weighted)', color='gray', edgecolor='black', linewidth=0.5)
         ax_storm_w.set_xscale('log')
         ax_storm_w.set_xlabel('N-events / hour')
-        ax_storm_w.set_ylabel('Density (weighted by N events)')
-        ax_storm_w.set_title(f'Storm - Weighted Density{stn_label}')
+        ax_storm_w.set_ylabel('Weighted Counts (by N-events)')
+        ax_storm_w.set_title(f'Storm - Weighted{stn_label}')
         ax_storm_w.legend(fontsize=8)
         ax_storm_w.grid(True, linestyle=':', alpha=0.7)
         
-        # Burst weighted density
+        # Burst weighted
         if len(burst_rates) > 0:
-            ax_burst_w.hist(burst_rates, bins=rate_bins, weights=burst_weights, density=True, alpha=0.6, 
+            ax_burst_w.hist(burst_rates, bins=rate_bins, weights=burst_weights, alpha=0.6, 
                            label='Fails Burst (weighted)', color='cyan', edgecolor='black', linewidth=0.5)
         ax_burst_w.set_xscale('log')
         ax_burst_w.set_xlabel('N-events / hour')
-        ax_burst_w.set_ylabel('Density (weighted by N events)')
-        ax_burst_w.set_title(f'Burst - Weighted Density{stn_label}')
+        ax_burst_w.set_ylabel('Weighted Counts (by N-events)')
+        ax_burst_w.set_title(f'Burst - Weighted{stn_label}')
         ax_burst_w.legend(fontsize=8)
         ax_burst_w.grid(True, linestyle=':', alpha=0.7)
         
