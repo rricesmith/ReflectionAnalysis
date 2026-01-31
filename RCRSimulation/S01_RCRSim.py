@@ -28,6 +28,7 @@ import NuRadioReco.modules.eventTypeIdentifier
 import NuRadioReco.modules.channelStopFilter
 import NuRadioReco.modules.channelResampler
 import NuRadioReco.modules.trigger.highLowThreshold
+import NuRadioReco.modules.phasedarray.triggerSimulator
 import NuRadioReco.modules.triggerTimeAdjuster
 import NuRadioReco.modules.ARIANNA.hardwareResponseIncorporator
 import NuRadioReco.modules.correlationDirectionFitter
@@ -44,6 +45,7 @@ from SimpleFootprintSimulation.SimHelpers import (
     pullFilesForSimulation,
     calculateNoisePerChannel
 )
+from RCRSimulation.RCREventObject import RCREvent, REFLECTED_STATION_OFFSET
 
 
 LOGGER = logging.getLogger("RCRSimulation")
@@ -54,6 +56,24 @@ COINCIDENCE_WINDOW = 40 * units.ns
 NOISE_TRIGGER_SIGMA = 2.0
 PRIMARY_CHANNELS = [0, 1, 2, 3]
 GEN2_FILTER_RIPPLE = 0.1
+
+# Phased array configuration (from Gen2 TDR)
+PA_CHANNELS_8CH = [4, 5, 6, 7, 8, 9, 10, 11]
+PA_CHANNELS_4CH = [8, 9, 10, 11]
+PA_MAIN_LOW_ANGLE = -59.55 * units.deg
+PA_MAIN_HIGH_ANGLE = 59.55 * units.deg
+PA_REF_INDEX = 1.75
+PA_WINDOW_8CH = 16 * units.ns
+PA_STEP_8CH = 8 * units.ns
+PA_WINDOW_4CH = 16 * units.ns
+PA_STEP_4CH = 8 * units.ns
+PA_N_BEAMS_8CH = 11
+PA_N_BEAMS_4CH = 21
+PA_UPSAMPLING_8CH = 4
+PA_UPSAMPLING_4CH = 2
+# Thresholds calibrated for different noise rates (Vrms^2 units)
+PA_THRESHOLDS_8CH = {100: 46.98, 1: 61.90, 0.001: 99.22}  # Hz -> threshold
+PA_THRESHOLDS_4CH = {100: 30.68, 1: 38.62, 0.001: 50.53}  # Hz -> threshold
 
 
 def layer_depth_to_label(layer_depth: float | None) -> str:
@@ -218,9 +238,10 @@ def resolve_trigger_channels(
     depth_value = station_depth.lower()
 
     if depth_value == "deep":
-        pa_candidates = [ch for ch in channel_ids if ch >= 4]
+        # For phased array, return all available PA channels (4-11)
+        pa_candidates = [ch for ch in channel_ids if ch >= 4 and ch <= 11]
         if len(pa_candidates) >= 4:
-            return pa_candidates[:4]
+            return pa_candidates  # Return all PA channels for phased array
         if len(channel_ids) >= 4:
             return channel_ids[-4:]
         return channel_ids
@@ -340,6 +361,11 @@ def format_sigma_value(sigma: float) -> str:
 
 def primary_trigger_name(sigma: float) -> str:
     return f"primary_LPDA_2of4_{format_sigma_value(sigma)}sigma"
+
+
+def pa_trigger_name(n_channels: int, noise_rate_hz: float) -> str:
+    """Generate trigger name for phased array trigger."""
+    return f"PA_{n_channels}ch_{noise_rate_hz:g}Hz"
 
 
 def _select_detector_config(candidates: Sequence[Path], station_type: str, site: str) -> Path | None:
@@ -937,7 +963,7 @@ def write_debug_log(
 
 
 def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -> None:
-    station_id = settings["station_id"]
+    base_station_id = settings["station_id"]  # Base station ID (direct)
     trigger_sigma: float = settings["trigger_sigma"]
     noise_sigma: float = settings["noise_sigma"]
     add_noise: bool = settings["add_noise"]
@@ -952,7 +978,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
     LOGGER.info(
         "Starting simulation for station %s (%s, %s, propagation=%s, sigma=%.2f, layer_dB=%s dB)",
-        station_id,
+        base_station_id,
         station_type,
         site,
         propagation,
@@ -984,8 +1010,20 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     det = detector.Detector(str(settings["detector_config"]), "json")
     det.update(datetime.datetime(2018, 10, 1))
 
-    configured_trigger_channels = resolve_trigger_channels(det, station_id, station_type, station_depth)
+    # Get all station IDs from detector (includes both direct and reflected)
+    all_station_ids = sorted(det.get_station_ids())
+    LOGGER.info("Processing stations: %s", all_station_ids)
+
+    # Determine trigger channels for the base station type
+    configured_trigger_channels = resolve_trigger_channels(det, base_station_id, station_type, station_depth)
     settings["trigger_channels"] = configured_trigger_channels
+
+    # Per-station data structures
+    thresholds_per_station: Dict[int, Dict[str, Dict[str, Dict[int, float]]]] = {}
+    pre_amp_vrms_per_station: Dict[int, Dict[int, float]] = {}
+    post_amp_vrms_per_station: Dict[int, Dict[int, float]] = {}
+    trigger_channels_per_station: Dict[int, List[int]] = {}
+    gen2_filter_config_per_station: Dict[int, Dict[str, Dict[int, object]]] = {}
 
 
     efieldToVoltageConverter = NuRadioReco.modules.efieldToVoltageConverter.efieldToVoltageConverter()
@@ -1003,9 +1041,10 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     channelBandPassFilter = NuRadioReco.modules.channelBandPassFilter.channelBandPassFilter()
     channelBandPassFilter.begin()
 
-    gen2_filter_config: Dict[str, Dict[int, object]] | None = None
+    # Build filter configs for all stations
     if is_gen2:
-        gen2_filter_config = build_gen2_filter_config(det, station_id, station_depth)
+        for stn_id in all_station_ids:
+            gen2_filter_config_per_station[stn_id] = build_gen2_filter_config(det, stn_id, station_depth)
 
     eventTypeIdentifier = NuRadioReco.modules.eventTypeIdentifier.eventTypeIdentifier()
     channelStopFilter = NuRadioReco.modules.channelStopFilter.channelStopFilter()
@@ -1017,6 +1056,14 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     triggerTimeAdjuster.begin(trigger_name=primary_trigger_name(trigger_sigma))
 
     highLowThreshold = NuRadioReco.modules.trigger.highLowThreshold.triggerSimulator()
+
+    # Initialize phased array trigger for Gen2 deep
+    phasedArrayTrigger = None
+    paTriggerTimeAdjuster = None
+    if is_gen2 and station_depth == "deep":
+        phasedArrayTrigger = NuRadioReco.modules.phasedarray.triggerSimulator.triggerSimulator()
+        # Create PA-specific trigger time adjuster (will set trigger_name in the event loop)
+        paTriggerTimeAdjuster = NuRadioReco.modules.triggerTimeAdjuster.triggerTimeAdjuster()
 
     correlationDirectionFitter = NuRadioReco.modules.correlationDirectionFitter.correlationDirectionFitter()
     correlationDirectionFitter.begin(debug=False)
@@ -1038,11 +1085,11 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
     eventWriter.begin(str(output_paths["nur"]))
 
-    events: List[RCRSimEvent] = []
-    thresholds: Dict[str, Dict[str, Dict[int, float]]] | None = None
-    pre_amp_vrms: Dict[int, float] | None = None
-    post_amp_vrms: Dict[int, float] | None = None
-    active_trigger_channels: List[int] | None = None
+    rcr_events: List[RCREvent] = []
+
+    # Pre-calculated noise values for Gen2
+    GEN2_DEEP_NOISE = 5.627 * units.micro * units.V
+    GEN2_SHALLOW_NOISE = 3.789 * units.micro * units.V
 
     for evt, event_idx, coreas_x, coreas_y in readCoREAS.run(
         detector=det,
@@ -1056,140 +1103,167 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         evt.set_parameter(evtp.coreas_x, coreas_x)
         evt.set_parameter(evtp.coreas_y, coreas_y)
 
-        station = evt.get_station(station_id)
-        if station is None:
-            LOGGER.warning("Station %s not present in event %s, skipping.", station_id, evt.get_id())
-            continue
+        # Process each station (both direct and reflected)
+        for station_id in all_station_ids:
+            station = evt.get_station(station_id)
+            if station is None:
+                LOGGER.debug("Station %s not present in event %s, skipping.", station_id, evt.get_id())
+                continue
 
-        eventTypeIdentifier.run(evt, station, mode="forced", forced_event_type="cosmic ray")
-        efieldToVoltageConverter.run(evt, station, det)
-        if is_gen2:
-            channelResampler.run(evt, station, det, 2.4 * units.GHz)
-        else:
-            channelResampler.run(evt, station, det, 2 * units.GHz)
-
-        if gen2_filter_config is not None:
-            apply_gen2_filters(channelBandPassFilter, evt, station, det, gen2_filter_config)
-
-        if thresholds is None:
+            eventTypeIdentifier.run(evt, station, mode="forced", forced_event_type="cosmic ray")
+            efieldToVoltageConverter.run(evt, station, det)
             if is_gen2:
-                # use pre-calculated noise values for Gen2
-                GEN2_DEEP_NOISE = 5.627 * units.micro * units.V
-                GEN2_SHALLOW_NOISE = 3.789 * units.micro * units.V
-                if station_depth == "deep":
-                    pre_amp_vrms = {ch: GEN2_DEEP_NOISE for ch in PRIMARY_CHANNELS}
-                    post_amp_vrms = {ch: GEN2_DEEP_NOISE for ch in PRIMARY_CHANNELS}
-                elif station_depth == "shallow":
-                    pre_amp_vrms = {ch: GEN2_SHALLOW_NOISE for ch in PRIMARY_CHANNELS}
-                    post_amp_vrms = {ch: GEN2_SHALLOW_NOISE for ch in PRIMARY_CHANNELS}
+                channelResampler.run(evt, station, det, 2.4 * units.GHz)
             else:
-                pre_amp_vrms, post_amp_vrms = calculateNoisePerChannel(
+                channelResampler.run(evt, station, det, 2 * units.GHz)
+
+            # Apply Gen2 filters if configured
+            if station_id in gen2_filter_config_per_station:
+                apply_gen2_filters(channelBandPassFilter, evt, station, det, gen2_filter_config_per_station[station_id])
+
+            # Initialize per-station thresholds on first encounter
+            if station_id not in thresholds_per_station:
+                if is_gen2:
+                    if station_depth == "deep":
+                        pa_channels = [ch for ch in det.get_channel_ids(station_id) if ch >= 4 and ch <= 11]
+                        pre_amp_vrms = {ch: GEN2_DEEP_NOISE for ch in pa_channels}
+                        post_amp_vrms = {ch: GEN2_DEEP_NOISE for ch in pa_channels}
+                    else:
+                        pre_amp_vrms = {ch: GEN2_SHALLOW_NOISE for ch in PRIMARY_CHANNELS}
+                        post_amp_vrms = {ch: GEN2_SHALLOW_NOISE for ch in PRIMARY_CHANNELS}
+                else:
+                    pre_amp_vrms, post_amp_vrms = calculateNoisePerChannel(
+                        det,
+                        station=station,
+                        amp=True,
+                        hardwareResponseIncorporator=hardwareResponseIncorporator,
+                        channelBandPassFilter=channelBandPassFilter,
+                    )
+                pre_amp_vrms_per_station[station_id] = pre_amp_vrms
+                post_amp_vrms_per_station[station_id] = post_amp_vrms
+                thresholds_per_station[station_id] = build_thresholds(post_amp_vrms, [trigger_sigma, noise_sigma])
+
+                # Determine trigger channels for this station
+                configured_channels = settings.get("trigger_channels", list(PRIMARY_CHANNELS))
+                available_channels = [ch for ch in configured_channels if ch in post_amp_vrms]
+                if not available_channels:
+                    available_channels = sorted(post_amp_vrms.keys())
+                trigger_channels_per_station[station_id] = available_channels
+                LOGGER.info("Initialized thresholds for station %s, channels: %s", station_id, available_channels)
+
+            # Get per-station values
+            pre_amp_vrms = pre_amp_vrms_per_station[station_id]
+            post_amp_vrms = post_amp_vrms_per_station[station_id]
+            thresholds = thresholds_per_station[station_id]
+            base_channels = trigger_channels_per_station[station_id]
+
+            if hardwareResponseIncorporator is not None:
+                hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
+
+            if phasedArrayTrigger is not None:
+                # Use phased array trigger for Gen2 deep configuration
+                n_pa_channels = len(base_channels)
+                pa_noise_rate = 100  # Hz - use 100 Hz threshold
+
+                if n_pa_channels >= 8:
+                    pa_threshold = PA_THRESHOLDS_8CH.get(pa_noise_rate, PA_THRESHOLDS_8CH[100])
+                    pa_window = PA_WINDOW_8CH
+                    pa_step = PA_STEP_8CH
+                    pa_n_beams = PA_N_BEAMS_8CH
+                    pa_upsampling = PA_UPSAMPLING_8CH
+                else:
+                    pa_threshold = PA_THRESHOLDS_4CH.get(pa_noise_rate, PA_THRESHOLDS_4CH[100])
+                    pa_window = PA_WINDOW_4CH
+                    pa_step = PA_STEP_4CH
+                    pa_n_beams = PA_N_BEAMS_4CH
+                    pa_upsampling = PA_UPSAMPLING_4CH
+
+                pa_vrms = post_amp_vrms[base_channels[0]]
+                final_trigger = pa_trigger_name(n_pa_channels, pa_noise_rate)
+
+                phasing_angles = np.arcsin(
+                    np.linspace(
+                        np.sin(PA_MAIN_LOW_ANGLE),
+                        np.sin(PA_MAIN_HIGH_ANGLE),
+                        pa_n_beams
+                    )
+                )
+
+                if add_noise:
+                    channelGenericNoiseAdder.run(evt, station, det, type="rayleigh", amplitude=pre_amp_vrms)
+
+                phasedArrayTrigger.run(
+                    evt,
+                    station,
                     det,
-                    station=station,
-                    amp=True,
-                    hardwareResponseIncorporator=hardwareResponseIncorporator,
-                    channelBandPassFilter=channelBandPassFilter,
+                    Vrms=pa_vrms,
+                    threshold=pa_threshold * pa_vrms ** 2,
+                    triggered_channels=base_channels,
+                    phasing_angles=phasing_angles,
+                    ref_index=PA_REF_INDEX,
+                    trigger_name=final_trigger,
+                    trigger_adc_sampling_frequency=0.5 * units.GHz,
+                    adc_output="volts",
+                    window_time=pa_window,
+                    step_time=pa_step,
+                    upsampling_factor=pa_upsampling,
                 )
-            thresholds = build_thresholds(post_amp_vrms, [trigger_sigma, noise_sigma])
-            LOGGER.info("Computed noise thresholds for station %s", station_id)
-            LOGGER.debug("Thresholds: %s", thresholds)
 
-            configured_channels = settings.get("trigger_channels", list(PRIMARY_CHANNELS))
-            available_channels = [ch for ch in configured_channels if ch in post_amp_vrms]
-            if not available_channels:
-                available_channels = sorted(post_amp_vrms.keys())
-                LOGGER.warning(
-                    "No overlap between configured trigger channels %s and available noise channels; using %s instead.",
-                    configured_channels,
-                    available_channels,
+                if station.has_triggered(trigger_name=final_trigger):
+                    paTriggerTimeAdjuster.begin(trigger_name=final_trigger)
+                    paTriggerTimeAdjuster.run(evt, station, det)
+                    channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
+            else:
+                # Use standard high/low threshold trigger for shallow/HRA configurations
+                noise_key = format_sigma_value(noise_sigma)
+                final_key = format_sigma_value(trigger_sigma)
+                noise_trigger = primary_trigger_name(noise_sigma)
+                final_trigger = primary_trigger_name(trigger_sigma)
+
+                highLowThreshold.run(
+                    evt,
+                    station,
+                    det,
+                    threshold_high=thresholds[noise_key]["high"],
+                    threshold_low=thresholds[noise_key]["low"],
+                    coinc_window=COINCIDENCE_WINDOW,
+                    triggered_channels=base_channels,
+                    number_concidences=2,
+                    trigger_name=noise_trigger,
                 )
-            active_trigger_channels = available_channels
-            settings["trigger_channels"] = available_channels
 
-        if active_trigger_channels is None:
-            active_trigger_channels = settings.get("trigger_channels", list(PRIMARY_CHANNELS))
-        if not active_trigger_channels:
-            raise RuntimeError("No trigger channels available for high/low threshold evaluation.")
+                if station.has_triggered(trigger_name=noise_trigger):
+                    if add_noise:
+                        if hardwareResponseIncorporator is not None:
+                            hardwareResponseIncorporator.run(evt, station, det, sim_to_data=False)
+                        channelGenericNoiseAdder.run(evt, station, det, type="rayleigh", amplitude=pre_amp_vrms)
+                        if hardwareResponseIncorporator is not None:
+                            hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
 
-        if hardwareResponseIncorporator is not None:
-            hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
-        
-        base_channels = active_trigger_channels
+                    highLowThreshold.run(
+                        evt,
+                        station,
+                        det,
+                        threshold_high=thresholds[final_key]["high"],
+                        threshold_low=thresholds[final_key]["low"],
+                        coinc_window=COINCIDENCE_WINDOW,
+                        triggered_channels=base_channels,
+                        number_concidences=2,
+                        trigger_name=final_trigger,
+                    )
 
-        noise_key = format_sigma_value(noise_sigma)
-        final_key = format_sigma_value(trigger_sigma)
-        noise_trigger = primary_trigger_name(noise_sigma)
-        final_trigger = primary_trigger_name(trigger_sigma)
+                    triggerTimeAdjuster.run(evt, station, det)
+                    channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
 
-        highLowThreshold.run(
-            evt,
-            station,
-            det,
-            threshold_high=thresholds[noise_key]["high"],
-            threshold_low=thresholds[noise_key]["low"],
-            coinc_window=COINCIDENCE_WINDOW,
-            triggered_channels=base_channels,
-            number_concidences=2,
-            trigger_name=noise_trigger,
-        )
+            LOGGER.debug("Station %s triggered: %s", station_id, station.has_triggered())
+        # End of station loop - now save event with all station triggers
+        rcr_event = RCREvent.from_nuradio_event(evt, layer_dB=settings.get("layer_dB"))
+        rcr_events.append(rcr_event)
 
-        triggered = False
-        stn_zenith = None
-        stn_azimuth = None
-
-        if station.has_triggered(trigger_name=noise_trigger):
-            if add_noise:
-                if hardwareResponseIncorporator is not None:
-                    hardwareResponseIncorporator.run(evt, station, det, sim_to_data=False)
-                channelGenericNoiseAdder.run(evt, station, det, type="rayleigh", amplitude=pre_amp_vrms)
-                if hardwareResponseIncorporator is not None:
-                    hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
-
-            highLowThreshold.run(
-                evt,
-                station,
-                det,
-                threshold_high=thresholds[final_key]["high"],
-                threshold_low=thresholds[final_key]["low"],
-                coinc_window=COINCIDENCE_WINDOW,
-                triggered_channels=base_channels,
-                number_concidences=2,
-                trigger_name=final_trigger,
-            )
-
-            triggerTimeAdjuster.run(evt, station, det)
-            channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
-            triggered = station.has_triggered(trigger_name=final_trigger)
-            # if triggered:
-                # correlationDirectionFitter.run(
-                #     evt,
-                #     station,
-                #     det,
-                #     n_index=1.35,
-                #     ZenLim=[0 * units.deg, 180 * units.deg],
-                #     channel_pairs=((PRIMARY_CHANNELS[0], PRIMARY_CHANNELS[2]), (PRIMARY_CHANNELS[1], PRIMARY_CHANNELS[3])),
-                # )
-                # stn_zenith = station.get_parameter(stnp.zenith)
-                # stn_azimuth = station.get_parameter(stnp.azimuth)
-
-
-        sim_shower = evt.get_sim_shower(0)
-        events.append(
-            RCRSimEvent(
-                event_id=evt.get_id(),
-                station_id=station_id,
-                coreas_x_m=float(evt.get_parameter(evtp.coreas_x) / units.m),
-                coreas_y_m=float(evt.get_parameter(evtp.coreas_y) / units.m),
-                energy_eV=float(sim_shower[shp.energy] / units.eV),
-                zenith_deg=float(sim_shower[shp.zenith] / units.deg),
-                azimuth_deg=float(sim_shower[shp.azimuth] / units.deg),
-                stn_zenith=stn_zenith / units.deg if stn_zenith is not None else None,
-                stn_azimuth=stn_azimuth / units.deg if stn_azimuth is not None else None,
-                trigger_sigma=trigger_sigma,
-                layer_dB=settings.get("layer_dB"),
-                triggered=triggered,
-            )
-        )
+        # Log summary for this event
+        n_direct = sum(len(rcr_event.direct_triggers(t)) for t in rcr_event.all_trigger_names())
+        n_reflected = sum(len(rcr_event.reflected_triggers(t)) for t in rcr_event.all_trigger_names())
+        LOGGER.debug("Event %s: %d direct triggers, %d reflected triggers", evt.get_id(), n_direct, n_reflected)
 
         eventWriter.run(evt)
 
@@ -1203,21 +1277,23 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         run_time_s = float(run_time)
     LOGGER.info("Processed %s events. readCoREAS runtime: %.2fs", nevents, run_time_s)
 
-    npy_array = np.array(events, dtype=object)
+    # Save RCREvent list
+    npy_array = np.array(rcr_events, dtype=object)
     np.save(output_paths["numpy"], npy_array, allow_pickle=True)
-    LOGGER.info("Saved %d event summaries to %s", len(events), output_paths["numpy"])
+    LOGGER.info("Saved %d event summaries to %s", len(rcr_events), output_paths["numpy"])
 
     if debug_enabled:
+        # Collect noise stats from all stations
         noise_stats = {
-            "pre_amp_vrms": pre_amp_vrms or {},
-            "post_amp_vrms": post_amp_vrms or {},
+            "pre_amp_vrms_per_station": pre_amp_vrms_per_station,
+            "post_amp_vrms_per_station": post_amp_vrms_per_station,
         }
         write_debug_log(
             settings,
             output_paths,
-            thresholds,
+            thresholds_per_station,
             noise_stats,
-            events,
+            rcr_events,
             run_time_s,
         )
 
