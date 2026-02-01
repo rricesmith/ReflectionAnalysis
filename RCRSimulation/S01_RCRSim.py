@@ -1206,7 +1206,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                     # trigger_adc_sampling_frequency=0.5 * units.GHz,
                     adc_output="voltage",
                     window=pa_window,
-                    step_time=pa_step,
+                    step=pa_step,
                     upsampling_factor=pa_upsampling,
                 )
 
