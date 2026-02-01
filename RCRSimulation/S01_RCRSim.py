@@ -1222,9 +1222,9 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     ):
         # Energy-dependent importance sampling: skip events probabilistically at high energy
         if energy_scaling_enabled:
-            shower = evt.get_first_shower()
+            shower = evt.get_sim_shower(0)
             if shower is not None:
-                event_energy = shower.get_parameter(shp.energy)
+                event_energy = shower[shp.energy]
                 if event_energy is not None and event_energy > 0:
                     log_energy = np.log10(event_energy)
                     acceptance_prob = calculate_energy_acceptance(
