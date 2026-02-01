@@ -53,6 +53,9 @@ class RCREvent:
     recon_zenith: Dict[int, Optional[float]] = field(default_factory=dict)
     recon_azimuth: Dict[int, Optional[float]] = field(default_factory=dict)
 
+    # Event rate weights: weight_name -> weight value (for analysis)
+    weights: Dict[str, float] = field(default_factory=dict)
+
     @classmethod
     def from_nuradio_event(cls, event, layer_dB: Optional[float] = None) -> "RCREvent":
         """Create RCREvent from a NuRadioReco event object.
@@ -173,6 +176,34 @@ class RCREvent:
         """Get list of all trigger names that have at least one station triggered."""
         return [name for name, stations in self.station_triggers.items() if stations]
 
+    def has_any_trigger(self) -> bool:
+        """Check if any trigger fired for any station."""
+        return any(len(stations) > 0 for stations in self.station_triggers.values())
+
+    def set_weight(self, weight: float, weight_name: str) -> None:
+        """Set event rate weight for a specific weight category.
+
+        Args:
+            weight: The weight value (typically evts/yr contribution)
+            weight_name: Name identifying the weight type (e.g., 'direct', 'reflected')
+        """
+        self.weights[weight_name] = weight
+
+    def get_weight(self, weight_name: str) -> float:
+        """Get event rate weight for a specific weight category.
+
+        Args:
+            weight_name: Name identifying the weight type
+
+        Returns:
+            Weight value, or 0.0 if not set
+        """
+        return self.weights.get(weight_name, 0.0)
+
+    def get_radius(self) -> float:
+        """Get radial distance from station (at origin) in meters."""
+        return np.sqrt(self.coreas_x**2 + self.coreas_y**2)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
@@ -187,6 +218,7 @@ class RCREvent:
             "station_snr": self.station_snr,
             "recon_zenith": self.recon_zenith,
             "recon_azimuth": self.recon_azimuth,
+            "weights": self.weights,
         }
 
     def __repr__(self) -> str:
