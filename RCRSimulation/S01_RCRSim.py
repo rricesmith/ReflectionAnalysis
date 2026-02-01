@@ -76,6 +76,48 @@ PA_UPSAMPLING_4CH = 2
 PA_THRESHOLDS_8CH = {100: 46.98, 1: 61.90, 0.001: 99.22}  # Hz -> threshold
 PA_THRESHOLDS_4CH = {100: 30.68, 1: 38.62, 0.001: 50.53}  # Hz -> threshold
 
+# Energy-dependent throw scaling defaults
+# Linear scaling: more throws at low energy for better statistics
+ENERGY_SCALE_LOG_MIN = 16.0  # log10(E/eV) for maximum throws
+ENERGY_SCALE_LOG_MAX = 20.0  # log10(E/eV) for minimum throws
+ENERGY_SCALE_CORES_MIN = 500  # n_cores at high energy (1e20 eV)
+ENERGY_SCALE_CORES_MAX = 5000  # n_cores at low energy (1e16 eV)
+
+
+def calculate_energy_acceptance(log_energy: float, n_cores_thrown: int,
+                                 log_e_min: float = ENERGY_SCALE_LOG_MIN,
+                                 log_e_max: float = ENERGY_SCALE_LOG_MAX,
+                                 cores_at_low_e: int = ENERGY_SCALE_CORES_MAX,
+                                 cores_at_high_e: int = ENERGY_SCALE_CORES_MIN) -> float:
+    """Calculate acceptance probability for energy-dependent importance sampling.
+
+    This allows throwing a fixed number of cores uniformly, then accepting/rejecting
+    events probabilistically to achieve energy-dependent effective statistics.
+
+    Args:
+        log_energy: log10(E/eV) of the event
+        n_cores_thrown: Actual number of cores thrown per file (should be max)
+        log_e_min: log10(E/eV) where we want maximum statistics
+        log_e_max: log10(E/eV) where we want minimum statistics
+        cores_at_low_e: Desired effective cores at low energy
+        cores_at_high_e: Desired effective cores at high energy
+
+    Returns:
+        Acceptance probability in [0, 1]
+    """
+    # Clamp energy to valid range
+    log_e_clamped = max(log_e_min, min(log_e_max, log_energy))
+
+    # Linear interpolation of desired cores
+    # At log_e_min: cores_at_low_e, at log_e_max: cores_at_high_e
+    slope = (cores_at_high_e - cores_at_low_e) / (log_e_max - log_e_min)
+    desired_cores = cores_at_low_e + slope * (log_e_clamped - log_e_min)
+
+    # Acceptance probability = desired / thrown
+    acceptance = desired_cores / n_cores_thrown
+
+    return min(1.0, max(0.0, acceptance))
+
 
 def layer_depth_to_label(layer_depth: float | None) -> str:
     """Translate a numeric layer depth to the config filename label."""
@@ -344,6 +386,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--numpy-folder",
         help="Optional folder to place the numpy event summaries (overrides config numpy_folder).",
+    )
+    # Energy scaling arguments
+    parser.add_argument(
+        "--energy-scaling",
+        action="store_true",
+        help="Enable energy-dependent throw scaling (more throws at low energy).",
+    )
+    parser.add_argument(
+        "--no-energy-scaling",
+        action="store_true",
+        help="Disable energy-dependent throw scaling.",
+    )
+    parser.add_argument(
+        "--energy-scale-cores-low",
+        type=int,
+        help=f"Effective cores at low energy (default: {ENERGY_SCALE_CORES_MAX}).",
+    )
+    parser.add_argument(
+        "--energy-scale-cores-high",
+        type=int,
+        help=f"Effective cores at high energy (default: {ENERGY_SCALE_CORES_MIN}).",
     )
     return parser.parse_args()
 
@@ -746,6 +809,31 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         "log_folder": log_folder,
     }
 
+    # Energy scaling settings
+    # Determine if energy scaling is enabled
+    if args.energy_scaling:
+        energy_scaling_enabled = True
+    elif args.no_energy_scaling:
+        energy_scaling_enabled = False
+    else:
+        # Default: enabled
+        energy_scaling_enabled = parse_bool(cfg_sim.get("energy_scaling", "true"))
+
+    energy_scale_cores_low = (
+        args.energy_scale_cores_low
+        if args.energy_scale_cores_low is not None
+        else config.getint("SIMULATION", "energy_scale_cores_low", fallback=ENERGY_SCALE_CORES_MAX)
+    )
+    energy_scale_cores_high = (
+        args.energy_scale_cores_high
+        if args.energy_scale_cores_high is not None
+        else config.getint("SIMULATION", "energy_scale_cores_high", fallback=ENERGY_SCALE_CORES_MIN)
+    )
+
+    settings["energy_scaling_enabled"] = energy_scaling_enabled
+    settings["energy_scale_cores_low"] = energy_scale_cores_low
+    settings["energy_scale_cores_high"] = energy_scale_cores_high
+
     settings["filename_tags"] = [
         str(value).lower()
         for value in (
@@ -1112,6 +1200,18 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         "after_pa_adjuster": False,
     }
 
+    # Energy scaling settings
+    energy_scaling_enabled = settings.get("energy_scaling_enabled", False)
+    energy_scale_cores_low = settings.get("energy_scale_cores_low", ENERGY_SCALE_CORES_MAX)
+    energy_scale_cores_high = settings.get("energy_scale_cores_high", ENERGY_SCALE_CORES_MIN)
+    n_cores_thrown = settings["n_cores"]
+
+    # Track skipped events for logging
+    events_skipped_by_energy_scaling = 0
+
+    # Random generator for energy scaling acceptance
+    energy_rng = np.random.default_rng(seed=settings["seed"])
+
     for evt, event_idx, coreas_x, coreas_y in readCoREAS.run(
         detector=det,
         ray_type=propagation,
@@ -1120,6 +1220,25 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         attenuation_model=settings["attenuation_model"],
         output_mode=2,
     ):
+        # Energy-dependent importance sampling: skip events probabilistically at high energy
+        if energy_scaling_enabled:
+            shower = evt.get_first_shower()
+            if shower is not None:
+                event_energy = shower.get_parameter(shp.energy)
+                if event_energy is not None and event_energy > 0:
+                    log_energy = np.log10(event_energy)
+                    acceptance_prob = calculate_energy_acceptance(
+                        log_energy, n_cores_thrown,
+                        log_e_min=ENERGY_SCALE_LOG_MIN,
+                        log_e_max=ENERGY_SCALE_LOG_MAX,
+                        cores_at_low_e=energy_scale_cores_low,
+                        cores_at_high_e=energy_scale_cores_high,
+                    )
+                    # Accept/reject based on probability
+                    if energy_rng.random() > acceptance_prob:
+                        events_skipped_by_energy_scaling += 1
+                        continue  # Skip this event
+
         LOGGER.debug("Processing event %s (index %s)", evt.get_id(), event_idx)
         evt.set_parameter(evtp.coreas_x, coreas_x)
         evt.set_parameter(evtp.coreas_y, coreas_y)
@@ -1342,6 +1461,8 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     else:
         run_time_s = float(run_time)
     LOGGER.info("Processed %s events. readCoREAS runtime: %.2fs", nevents, run_time_s)
+    if energy_scaling_enabled and events_skipped_by_energy_scaling > 0:
+        LOGGER.info("Energy scaling: skipped %d events (importance sampling)", events_skipped_by_energy_scaling)
 
     # Save RCREvent list
     npy_array = np.array(rcr_events, dtype=object)

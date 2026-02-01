@@ -160,7 +160,7 @@ submit_simulation \
     "-576" \
     "1.7" \
     "MB_freq" \
-    "RCRSimulation/configurations/MB/HRA_shallow_576m.json" \
+    "RCRSimulation/configurations/MB/HRA_shallow_576m_combined.json" \
     ${MAX_FILE_MB}
 
 # 2. Gen2 deep MB (576m layer)
