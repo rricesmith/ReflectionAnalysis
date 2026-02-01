@@ -1112,14 +1112,42 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
             eventTypeIdentifier.run(evt, station, mode="forced", forced_event_type="cosmic ray")
             efieldToVoltageConverter.run(evt, station, det)
+
+            # Debug: trace length after voltage conversion
+            if station_id == base_station_id:
+                for ch in station.iter_channels():
+                    LOGGER.info(
+                        "TRACE DEBUG [after efieldToVoltage] station %s ch %s: %d samples, %.3f GHz",
+                        station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
+                    )
+                    break  # Just log first channel
+
             if is_gen2:
                 channelResampler.run(evt, station, det, 2.4 * units.GHz)
             else:
                 channelResampler.run(evt, station, det, 2 * units.GHz)
 
+            # Debug: trace length after resampling
+            if station_id == base_station_id:
+                for ch in station.iter_channels():
+                    LOGGER.info(
+                        "TRACE DEBUG [after resampler] station %s ch %s: %d samples, %.3f GHz",
+                        station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
+                    )
+                    break
+
             # Apply Gen2 filters if configured
             if station_id in gen2_filter_config_per_station:
                 apply_gen2_filters(channelBandPassFilter, evt, station, det, gen2_filter_config_per_station[station_id])
+
+            # Debug: trace length after filters
+            if station_id == base_station_id and station_id in gen2_filter_config_per_station:
+                for ch in station.iter_channels():
+                    LOGGER.info(
+                        "TRACE DEBUG [after filters] station %s ch %s: %d samples, %.3f GHz",
+                        station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
+                    )
+                    break
 
             # Initialize per-station thresholds on first encounter
             if station_id not in thresholds_per_station:
@@ -1160,6 +1188,15 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
             if hardwareResponseIncorporator is not None:
                 hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
 
+            # Debug: trace length after hardware response
+            if station_id == base_station_id and hardwareResponseIncorporator is not None:
+                for ch in station.iter_channels():
+                    LOGGER.info(
+                        "TRACE DEBUG [after hardwareResponse] station %s ch %s: %d samples, %.3f GHz",
+                        station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
+                    )
+                    break
+
             if phasedArrayTrigger is not None:
                 # Use phased array trigger for Gen2 deep configuration
                 n_pa_channels = len(base_channels)
@@ -1192,6 +1229,15 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                 if add_noise:
                     channelGenericNoiseAdder.run(evt, station, det, type="rayleigh", amplitude=pre_amp_vrms)
 
+                # Debug: trace length before PA trigger
+                if station_id == base_station_id:
+                    for ch in station.iter_channels():
+                        LOGGER.info(
+                            "TRACE DEBUG [before PA trigger] station %s ch %s: %d samples, %.3f GHz",
+                            station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
+                        )
+                        break
+
                 phasedArrayTrigger.run(
                     evt,
                     station,
@@ -1210,9 +1256,37 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                     upsampling_factor=pa_upsampling,
                 )
 
+                # Debug: trace length after PA trigger
+                if station_id == base_station_id:
+                    for ch in station.iter_channels():
+                        LOGGER.info(
+                            "TRACE DEBUG [after PA trigger] station %s ch %s: %d samples, %.3f GHz",
+                            station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
+                        )
+                        break
+
                 if station.has_triggered(trigger_name=final_trigger):
+                    # Debug: trace length before trigger time adjuster
+                    if station_id == base_station_id:
+                        for ch in station.iter_channels():
+                            LOGGER.info(
+                                "TRACE DEBUG [before paTriggerTimeAdjuster] station %s ch %s: %d samples, %.3f GHz",
+                                station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
+                            )
+                            break
+
                     paTriggerTimeAdjuster.begin(trigger_name=final_trigger, pre_trigger_time=200*units.ns)
                     paTriggerTimeAdjuster.run(evt, station, det)
+
+                    # Debug: trace length after trigger time adjuster
+                    if station_id == base_station_id:
+                        for ch in station.iter_channels():
+                            LOGGER.info(
+                                "TRACE DEBUG [after paTriggerTimeAdjuster] station %s ch %s: %d samples, %.3f GHz",
+                                station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
+                            )
+                            break
+
                     channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
             else:
                 # Use standard high/low threshold trigger for shallow/HRA configurations
