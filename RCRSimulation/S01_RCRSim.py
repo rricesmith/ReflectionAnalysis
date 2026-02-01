@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 import numpy as np
+from icecream import ic
 
 from NuRadioReco.utilities import units
 import NuRadioReco.modules.efieldToVoltageConverter
@@ -1091,6 +1092,18 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     GEN2_DEEP_NOISE = 5.627 * units.micro * units.V
     GEN2_SHALLOW_NOISE = 3.789 * units.micro * units.V
 
+    # Debug flags - only print trace info once
+    _debug_printed = {
+        "after_efield": False,
+        "after_resampler": False,
+        "after_filters": False,
+        "after_hardware": False,
+        "before_pa": False,
+        "after_pa": False,
+        "before_pa_adjuster": False,
+        "after_pa_adjuster": False,
+    }
+
     for evt, event_idx, coreas_x, coreas_y in readCoREAS.run(
         detector=det,
         ray_type=propagation,
@@ -1114,13 +1127,11 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
             efieldToVoltageConverter.run(evt, station, det)
 
             # Debug: trace length after voltage conversion
-            if station_id == base_station_id:
+            if not _debug_printed["after_efield"]:
                 for ch in station.iter_channels():
-                    LOGGER.info(
-                        "TRACE DEBUG [after efieldToVoltage] station %s ch %s: %d samples, %.3f GHz",
-                        station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
-                    )
-                    break  # Just log first channel
+                    ic("after_efield", station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz)
+                    break
+                _debug_printed["after_efield"] = True
 
             if is_gen2:
                 channelResampler.run(evt, station, det, 2.4 * units.GHz)
@@ -1128,26 +1139,22 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                 channelResampler.run(evt, station, det, 2 * units.GHz)
 
             # Debug: trace length after resampling
-            if station_id == base_station_id:
+            if not _debug_printed["after_resampler"]:
                 for ch in station.iter_channels():
-                    LOGGER.info(
-                        "TRACE DEBUG [after resampler] station %s ch %s: %d samples, %.3f GHz",
-                        station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
-                    )
+                    ic("after_resampler", station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz)
                     break
+                _debug_printed["after_resampler"] = True
 
             # Apply Gen2 filters if configured
             if station_id in gen2_filter_config_per_station:
                 apply_gen2_filters(channelBandPassFilter, evt, station, det, gen2_filter_config_per_station[station_id])
 
             # Debug: trace length after filters
-            if station_id == base_station_id and station_id in gen2_filter_config_per_station:
+            if not _debug_printed["after_filters"] and station_id in gen2_filter_config_per_station:
                 for ch in station.iter_channels():
-                    LOGGER.info(
-                        "TRACE DEBUG [after filters] station %s ch %s: %d samples, %.3f GHz",
-                        station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
-                    )
+                    ic("after_filters", station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz)
                     break
+                _debug_printed["after_filters"] = True
 
             # Initialize per-station thresholds on first encounter
             if station_id not in thresholds_per_station:
@@ -1189,13 +1196,11 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                 hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
 
             # Debug: trace length after hardware response
-            if station_id == base_station_id and hardwareResponseIncorporator is not None:
+            if not _debug_printed["after_hardware"] and hardwareResponseIncorporator is not None:
                 for ch in station.iter_channels():
-                    LOGGER.info(
-                        "TRACE DEBUG [after hardwareResponse] station %s ch %s: %d samples, %.3f GHz",
-                        station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
-                    )
+                    ic("after_hardware", station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz)
                     break
+                _debug_printed["after_hardware"] = True
 
             if phasedArrayTrigger is not None:
                 # Use phased array trigger for Gen2 deep configuration
@@ -1230,13 +1235,11 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                     channelGenericNoiseAdder.run(evt, station, det, type="rayleigh", amplitude=pre_amp_vrms)
 
                 # Debug: trace length before PA trigger
-                if station_id == base_station_id:
+                if not _debug_printed["before_pa"]:
                     for ch in station.iter_channels():
-                        LOGGER.info(
-                            "TRACE DEBUG [before PA trigger] station %s ch %s: %d samples, %.3f GHz",
-                            station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
-                        )
+                        ic("before_pa", station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz)
                         break
+                    _debug_printed["before_pa"] = True
 
                 phasedArrayTrigger.run(
                     evt,
@@ -1257,35 +1260,29 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                 )
 
                 # Debug: trace length after PA trigger
-                if station_id == base_station_id:
+                if not _debug_printed["after_pa"]:
                     for ch in station.iter_channels():
-                        LOGGER.info(
-                            "TRACE DEBUG [after PA trigger] station %s ch %s: %d samples, %.3f GHz",
-                            station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
-                        )
+                        ic("after_pa", station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz)
                         break
+                    _debug_printed["after_pa"] = True
 
                 if station.has_triggered(trigger_name=final_trigger):
                     # Debug: trace length before trigger time adjuster
-                    if station_id == base_station_id:
+                    if not _debug_printed["before_pa_adjuster"]:
                         for ch in station.iter_channels():
-                            LOGGER.info(
-                                "TRACE DEBUG [before paTriggerTimeAdjuster] station %s ch %s: %d samples, %.3f GHz",
-                                station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
-                            )
+                            ic("before_pa_adjuster", station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz)
                             break
+                        _debug_printed["before_pa_adjuster"] = True
 
                     paTriggerTimeAdjuster.begin(trigger_name=final_trigger, pre_trigger_time=200*units.ns)
                     paTriggerTimeAdjuster.run(evt, station, det)
 
                     # Debug: trace length after trigger time adjuster
-                    if station_id == base_station_id:
+                    if not _debug_printed["after_pa_adjuster"]:
                         for ch in station.iter_channels():
-                            LOGGER.info(
-                                "TRACE DEBUG [after paTriggerTimeAdjuster] station %s ch %s: %d samples, %.3f GHz",
-                                station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz
-                            )
+                            ic("after_pa_adjuster", station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz)
                             break
+                        _debug_printed["after_pa_adjuster"] = True
 
                     channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
             else:
