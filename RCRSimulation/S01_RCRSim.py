@@ -1133,18 +1133,6 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                     break
                 _debug_printed["after_efield"] = True
 
-            if is_gen2:
-                channelResampler.run(evt, station, det, 2.4 * units.GHz)
-            else:
-                channelResampler.run(evt, station, det, 2 * units.GHz)
-
-            # Debug: trace length after resampling
-            if not _debug_printed["after_resampler"]:
-                for ch in station.iter_channels():
-                    ic("after_resampler", station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz)
-                    break
-                _debug_printed["after_resampler"] = True
-
             # Apply Gen2 filters if configured
             if station_id in gen2_filter_config_per_station:
                 apply_gen2_filters(channelBandPassFilter, evt, station, det, gen2_filter_config_per_station[station_id])
@@ -1277,6 +1265,16 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                     paTriggerTimeAdjuster.begin(trigger_name=final_trigger, pre_trigger_time=200*units.ns)
                     paTriggerTimeAdjuster.run(evt, station, det)
 
+                    # Resample after trigger time adjustment
+                    channelResampler.run(evt, station, det, 2.4 * units.GHz)
+
+                    # Debug: trace length after resampling
+                    if not _debug_printed["after_resampler"]:
+                        for ch in station.iter_channels():
+                            ic("after_resampler", station_id, ch.get_id(), ch.get_number_of_samples(), ch.get_sampling_rate() / units.GHz)
+                            break
+                        _debug_printed["after_resampler"] = True
+
                     # Debug: trace length after trigger time adjuster
                     if not _debug_printed["after_pa_adjuster"]:
                         for ch in station.iter_channels():
@@ -1325,6 +1323,10 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                     )
 
                     triggerTimeAdjuster.run(evt, station, det)
+
+                    # Resample after trigger time adjustment
+                    channelResampler.run(evt, station, det, 2 * units.GHz)
+
                     channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
 
             LOGGER.debug("Station %s triggered: %s", station_id, station.has_triggered())
