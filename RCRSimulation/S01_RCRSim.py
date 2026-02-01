@@ -1007,7 +1007,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         quit()
 
 
-    det = detector.Detector(str(settings["detector_config"]), "json")
+    det = detector.Detector(str(settings["detector_config"]), "json", antenna_by_depth=False)
     det.update(datetime.datetime(2018, 10, 1))
 
     # Get all station IDs from detector (includes both direct and reflected)
