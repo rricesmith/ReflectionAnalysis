@@ -816,16 +816,17 @@ def build_thresholds(post_amp_vrms: Dict[int, float], sigmas: List[float]) -> Di
     return thresholds
 
 
-def summarize_events(events: Sequence[RCRSimEvent]) -> Dict[Tuple[str, str, str], Dict[str, int]]:
+def summarize_events(events: Sequence[RCREvent]) -> Dict[Tuple[str, str, str], Dict[str, int]]:
     summary: Dict[Tuple[str, str, str], Dict[str, int]] = {}
     for event in events:
-        energy_label = f"{event.energy_eV:.6e}" if event.energy_eV is not None else "n/a"
-        zenith_label = f"{event.zenith_deg:.3f}" if event.zenith_deg is not None else "n/a"
-        azimuth_label = f"{event.azimuth_deg:.3f}" if event.azimuth_deg is not None else "n/a"
+        energy_label = f"{event.energy:.6e}" if event.energy is not None else "n/a"
+        zenith_label = f"{np.rad2deg(event.zenith):.3f}" if event.zenith is not None else "n/a"
+        azimuth_label = f"{np.rad2deg(event.azimuth):.3f}" if event.azimuth is not None else "n/a"
         key = (energy_label, zenith_label, azimuth_label)
         entry = summary.setdefault(key, {"count": 0, "triggered": 0})
         entry["count"] += 1
-        if event.triggered:
+        # Check if any trigger fired
+        if any(event.has_triggered(t) for t in event.all_trigger_names()):
             entry["triggered"] += 1
     return summary
 
@@ -835,7 +836,7 @@ def write_debug_log(
     output_paths: Dict[str, Path],
     thresholds: Dict[str, Dict[str, Dict[int, float]]] | None,
     noise_stats: Dict[str, Dict[int, float]],
-    events: Sequence[RCRSimEvent],
+    events: Sequence[RCREvent],
     run_time_s: float,
 ) -> None:
     log_folder: Path = settings["log_folder"]
@@ -846,7 +847,10 @@ def write_debug_log(
     log_path = log_folder / f"{base_label}_{timestamp}_debug.txt"
 
     total_events = len(events)
-    triggered_total = sum(1 for event in events if event.triggered)
+    triggered_total = sum(
+        1 for event in events
+        if any(event.has_triggered(t) for t in event.all_trigger_names())
+    )
     global_rate = triggered_total / total_events if total_events else 0.0
 
     summary_map = summarize_events(events)
