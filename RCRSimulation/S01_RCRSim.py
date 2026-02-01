@@ -834,7 +834,7 @@ def summarize_events(events: Sequence[RCREvent]) -> Dict[Tuple[str, str, str], D
 def write_debug_log(
     settings: Dict[str, Any],
     output_paths: Dict[str, Path],
-    thresholds: Dict[str, Dict[str, Dict[int, float]]] | None,
+    thresholds: Dict[int, Dict[str, Dict[str, Dict[int, float]]]] | None,
     noise_stats: Dict[str, Dict[int, float]],
     events: Sequence[RCREvent],
     run_time_s: float,
@@ -929,15 +929,19 @@ def write_debug_log(
             lines.append(f"  ch{ch}: {post_amp_vrms[ch]:.6g}")
 
     if thresholds:
-        for sigma_key in sorted(thresholds.keys(), key=lambda s: float(s)):
-            sigma_data = thresholds[sigma_key]
-            lines.append(f"Thresholds for {sigma_key} sigma (V):")
-            lines.append("  High:")
-            for ch in sorted(sigma_data["high"]):
-                lines.append(f"    ch{ch}: {sigma_data['high'][ch]:.6g}")
-            lines.append("  Low:")
-            for ch in sorted(sigma_data["low"]):
-                lines.append(f"    ch{ch}: {sigma_data['low'][ch]:.6g}")
+        # thresholds is Dict[station_id, Dict[sigma_key, Dict["high"/"low", Dict[ch, float]]]]
+        for stn_id in sorted(thresholds.keys()):
+            stn_thresholds = thresholds[stn_id]
+            lines.append(f"Station {stn_id} Thresholds (V):")
+            for sigma_key in sorted(stn_thresholds.keys(), key=lambda s: float(s)):
+                sigma_data = stn_thresholds[sigma_key]
+                lines.append(f"  {sigma_key} sigma:")
+                lines.append("    High:")
+                for ch in sorted(sigma_data["high"]):
+                    lines.append(f"      ch{ch}: {sigma_data['high'][ch]:.6g}")
+                lines.append("    Low:")
+                for ch in sorted(sigma_data["low"]):
+                    lines.append(f"      ch{ch}: {sigma_data['low'][ch]:.6g}")
     else:
         lines.append("Thresholds were not computed (no events processed).")
 
