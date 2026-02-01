@@ -1202,7 +1202,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                     phasing_angles=phasing_angles,
                     ref_index=PA_REF_INDEX,
                     trigger_name=final_trigger,
-                    trigger_adc=False,  # Reference code uses true, but I'm getting incorrect sizing doing so
+                    trigger_adc=True,  # Reference code uses true, but I'm getting incorrect sizing doing so
                     # trigger_adc_sampling_frequency=0.5 * units.GHz,
                     adc_output="voltage",
                     window=pa_window,
@@ -1211,7 +1211,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                 )
 
                 if station.has_triggered(trigger_name=final_trigger):
-                    paTriggerTimeAdjuster.begin(trigger_name=final_trigger)
+                    paTriggerTimeAdjuster.begin(trigger_name=final_trigger, pre_trigger_time=200*units.ns)
                     paTriggerTimeAdjuster.run(evt, station, det)
                     channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
             else:
