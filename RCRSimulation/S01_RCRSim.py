@@ -645,7 +645,8 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
     seed = args.seed if args.seed is not None else config.getint("SIMULATION", "seed", fallback=0)
 
     site_lower = site.lower()
-    if site_lower == "icetop":
+    # SP and IceTop both use the same IceTop-style energy/sin2 binned simulations
+    if site_lower in ("icetop", "sp"):
         energy_min = args.energy_min if args.energy_min is not None else config.getfloat(
             "SIMULATION", "energy_min", fallback=16.0
         )
@@ -654,13 +655,13 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         )
         sin2_value = args.sin2 if args.sin2 is not None else config.getfloat("SIMULATION", "sin2", fallback=0.0)
         num_icetop = args.num_icetop if args.num_icetop is not None else config.getint(
-            "SIMULATION", "num_icetop", fallback=10
+            "SIMULATION", "num_icetop", fallback=20
         )
 
         if energy_max <= energy_min:
-            raise ValueError("IceTop energy_max must be greater than energy_min.")
+            raise ValueError("IceTop/SP energy_max must be greater than energy_min.")
         if not 0.0 <= sin2_value <= 1.0:
-            raise ValueError("IceTop sin2 must be within [0, 1].")
+            raise ValueError("IceTop/SP sin2 must be within [0, 1].")
         energy_settings = (energy_min, energy_max, sin2_value, num_icetop)
     else:
         energy_settings = (None, None, None, None)
@@ -1084,12 +1085,13 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     )
 
     site_lower = site.lower()
-    if site_lower == "icetop":
+    # SP and IceTop both use the same IceTop-style energy/sin2 binned simulations
+    if site_lower in ("icetop", "sp"):
         energy_range = (settings["energy_min"], settings["energy_max"])
         sin2_value = settings["sin2"]
-        num_icetop = settings["num_icetop"] or 10
+        num_icetop = settings["num_icetop"] or 20
         input_files = pullFilesForSimulation(
-            site,
+            "IceTop",  # Always use IceTop loading for SP/IceTop sites
             settings["min_file"],
             settings["max_file"],
             energy_range=energy_range,
