@@ -81,7 +81,7 @@ PA_THRESHOLDS_4CH = {100: 30.68, 1: 38.62, 0.001: 50.53}  # Hz -> threshold
 ENERGY_SCALE_LOG_MIN = 16.0  # log10(E/eV) for maximum throws
 ENERGY_SCALE_LOG_MAX = 20.0  # log10(E/eV) for minimum throws
 ENERGY_SCALE_CORES_MIN = 500  # n_cores at high energy (1e20 eV)
-ENERGY_SCALE_CORES_MAX = 5000  # n_cores at low energy (1e16 eV)
+ENERGY_SCALE_CORES_MAX = 2000  # n_cores at low energy (1e16 eV)
 
 
 def calculate_energy_acceptance(log_energy: float, n_cores_thrown: int,
