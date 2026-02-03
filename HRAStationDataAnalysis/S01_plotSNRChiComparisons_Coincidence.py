@@ -914,6 +914,23 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
     sim_direct_rcr_stats = calculate_cut_stats_table(sim_direct, cuts, True, "Coinc BL Sim (RCR Cuts)", cut_type='rcr')
     sim_reflected_rcr_stats = calculate_cut_stats_table(sim_reflected, cuts, True, "Coinc RCR Sim (RCR Cuts)", cut_type='rcr')
 
+    # --- Histogram Updates ---
+    # Update histograms to be step filters, red for fail, dashed black for pass, thicker lines
+    
+    def plot_hist_comparison(ax, data, bins, label_prefix, weights=None, density=True):
+        if weights is None:
+            weights = np.ones_like(data)
+            
+        kwargs = {'bins': bins, 'density': density, 'histtype': 'step', 'linewidth': 2}
+        
+        if density:
+             ax.set_ylabel('Probability Density')
+        else:
+             ax.set_ylabel('Weighted Counts')
+            
+        # Total
+        # ax.hist(data, weights=weights, color='gray', label=f'{label_prefix} All', linestyle=':', **kwargs)
+        pass # Don't plot "All"
 
     # --- Requested Plot 1: Coinc BL Sim ---
     ic("Generating Plot 1: Coinc BL Sim...")
@@ -1013,6 +1030,58 @@ def run_analysis_for_station(station_id, station_data, event_ids, unique_indices
         fig3_nc.tight_layout(rect=[0, 0.28, 1, 0.95])
     plt.savefig(f'{plot_folder}CoincBLSim_vs_CoincRCRSim_vs_2016_vs_Coinc_NoCuts_Station{station_id}_{date}.png')
     plt.close(fig3_nc)
+
+    # --- Parameter Distributions (Pass/Fail) ---
+    ic("Generating parameter distribution plots...")
+    
+    # Define keys to plot
+    param_keys = ['snr', 'Chi2016', 'ChiRCR']
+    
+    # Create figure
+    fig_params, axs_params = plt.subplots(1, 3, figsize=(18, 5))
+    fig_params.suptitle(f'Parameter Distributions (Pass/Fail RCR Cuts) - Station {station_id}', fontsize=14)
+    
+    # Get mask for RCR passing events
+    mask_pass = masks_rcr['all_cuts']
+    mask_fail = ~mask_pass
+    
+    for i, key in enumerate(param_keys):
+        ax = axs_params[i]
+        
+        # Get data for this parameter from main station data
+        # Note: station_data only contains post-C00 cut events as passed to this function
+        # If you need "All Events" including those cut by C00, you don't have them here.
+        # But 'pre_mask_count' variable tells you how many there were.
+        # Here we only plot what we have in station_data
+        
+        data_all = station_data[key]
+        data_pass = data_all[mask_pass]
+        data_fail = data_all[mask_fail]
+        
+        # Define bins based on key
+        if key == 'snr':
+            bins = hist_bins['snr_vs_chi2016'][0] # Log bins
+            ax.set_xscale('log')
+        elif key == 'Chi2016':
+            bins = hist_bins['chi_vs_chi'][0] # Linear bins 0-1
+        elif key == 'ChiRCR':
+            bins = hist_bins['chi_vs_chi'][1] # Linear bins 0-1
+            
+        # Plot Fail (Red, Step)
+        ax.hist(data_fail, bins=bins, color='red', label='Fail RCR Cuts', histtype='step', linewidth=2)
+        
+        # Plot Pass (Black, Dashed, Step) 
+        ax.hist(data_pass, bins=bins, color='black', linestyle='--', label='Pass RCR Cuts', histtype='step', linewidth=2)
+        
+        ax.set_title(key)
+        ax.set_xlabel(key)
+        ax.set_ylabel('Counts')
+        ax.legend()
+        ax.grid(True, which="both", ls="-", alpha=0.5)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.savefig(f'{plot_folder}ParameterDistributions_PassFail_{station_id}_{date}.png')
+    plt.close(fig_params)
 
 
 if __name__ == "__main__":
