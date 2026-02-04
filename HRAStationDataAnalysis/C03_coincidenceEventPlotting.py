@@ -820,10 +820,9 @@ def plot_parameter_histograms(events_dict, output_dir, dataset_name):
         else:
             bins = 50
         
-        # Plot in order: All (bottom), Fail (middle), Pass (top) for better visibility
-        if values_all: ax.hist(values_all, bins=bins, edgecolor='black', linewidth=1, alpha=0.2, label='All Events', color='grey'); has_data=True
-        if values_fail: ax.hist(values_fail, bins=bins, edgecolor='darkred', linewidth=1, alpha=0.3, label='Fail Analysis Cuts', color='lightcoral'); has_data=True
-        if values_pass: ax.hist(values_pass, bins=bins, edgecolor='darkgreen', linewidth=1, alpha=0.4, label='Pass Analysis Cuts', color='lightgreen'); has_data=True
+        # Plot Fail/Pass only (step histograms)
+        if values_fail: ax.hist(values_fail, bins=bins, color='red', label='Fail Analysis Cuts', histtype='step', linewidth=2); has_data=True
+        if values_pass: ax.hist(values_pass, bins=bins, color='black', linestyle='--', label='Pass Analysis Cuts', histtype='step', linewidth=2); has_data=True
         
         if has_data:
             if param_name in ['ChiRCR','Chi2016','ChiBad','SNR'] and any(v > 0 for v in values_all): ax.set_yscale('log'); ax.set_ylabel('Frequency (log scale)')
