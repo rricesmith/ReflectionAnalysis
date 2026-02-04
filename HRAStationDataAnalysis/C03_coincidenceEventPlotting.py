@@ -809,8 +809,13 @@ def plot_parameter_histograms(events_dict, output_dir, dataset_name):
     num_hist_params = len(params_to_histogram); cols = 3 if num_hist_params > 4 else (2 if num_hist_params > 1 else 1)
     rows = (num_hist_params + cols - 1) // cols
     fig, axs = plt.subplots(rows, cols, figsize=(5 * cols, 4.5 * rows), squeeze=False); axs_flat = axs.flatten()
+    label_map = {
+        'ChiRCR': r'RCR-$\chi$',
+        'Chi2016': r'BL-$\chi$',
+    }
     for i, param_name in enumerate(params_to_histogram):
-        ax = axs_flat[i]; ax.set_title(f'{param_name}'); ax.set_xlabel("Value"); ax.set_ylabel('Frequency')
+        display_label = label_map.get(param_name, param_name)
+        ax = axs_flat[i]; ax.set_title(''); ax.set_xlabel(display_label); ax.set_ylabel('Count')
         values_all, values_pass, values_fail = param_values_all.get(param_name,[]), param_values_passing_cuts.get(param_name,[]), param_values_failing_cuts.get(param_name,[])
         has_data = False
         
@@ -825,11 +830,11 @@ def plot_parameter_histograms(events_dict, output_dir, dataset_name):
         if values_pass: ax.hist(values_pass, bins=bins, color='black', linestyle='--', label='Pass Analysis Cuts', histtype='step', linewidth=2); has_data=True
         
         if has_data:
-            if param_name in ['ChiRCR','Chi2016','ChiBad','SNR'] and any(v > 0 for v in values_all): ax.set_yscale('log'); ax.set_ylabel('Frequency (log scale)')
+            if param_name in ['ChiRCR','Chi2016','ChiBad','SNR'] and any(v > 0 for v in values_all): ax.set_yscale('log'); ax.set_ylabel('Count')
             if param_name in ['ChiRCR','Chi2016','ChiBad']: ax.set_xlim(0, 1)
             if param_name == 'SNR': ax.set_xlim(3, 100); ax.set_xscale('log')
             ax.grid(True, linestyle='--', alpha=0.6); ax.legend(fontsize='x-small')
-        else: ax.text(0.5,0.5,f"No data for\n{param_name}",ha='center',va='center',transform=ax.transAxes); ax.set_title(f'{param_name}')
+        else: ax.text(0.5,0.5,f"No data for\n{display_label}",ha='center',va='center',transform=ax.transAxes)
     for j in range(i + 1, len(axs_flat)): fig.delaxes(axs_flat[j])
     plt.suptitle(f'Parameter Histograms for {dataset_name} (by Cut Status)', fontsize=16); plt.tight_layout(rect=[0,0,1,0.96])
     plot_filename = os.path.join(output_dir, f"{dataset_name}_parameter_histograms_by_cut.png")
