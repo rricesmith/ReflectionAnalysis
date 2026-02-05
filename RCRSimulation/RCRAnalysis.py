@@ -738,6 +738,132 @@ def runAnalysis(
 
 
 # =============================================================================
+# Event Loading and Merging
+# =============================================================================
+
+def loadEventsFromFolder(
+    folder: str | Path,
+    pattern: str = "*_RCReventList.npy",
+) -> List[RCREvent]:
+    """Load all RCREvent objects from a folder.
+
+    Args:
+        folder: Path to folder containing .npy event files
+        pattern: Glob pattern for event files
+
+    Returns:
+        List of RCREvent objects from all matching files
+    """
+    folder_path = Path(folder)
+    event_files = list(folder_path.glob(pattern))
+
+    all_events: List[RCREvent] = []
+    for event_file in event_files:
+        try:
+            events = np.load(event_file, allow_pickle=True)
+            all_events.extend(events)
+        except Exception as e:
+            print(f"Warning: Failed to load {event_file}: {e}")
+
+    return all_events
+
+
+def loadSeparatedSimulations(
+    direct_folder: str | Path,
+    reflected_folder: str | Path,
+    direct_pattern: str = "*direct*_RCReventList.npy",
+    reflected_pattern: str = "*_RCReventList.npy",
+) -> List[RCREvent]:
+    """Load and merge separately-run direct and reflected simulations.
+
+    Combines trigger information from direct-only and reflected simulations.
+    For events that exist in both, takes direct triggers from direct sim
+    and reflected triggers from reflected sim.
+
+    Args:
+        direct_folder: Path to folder with direct simulation outputs
+        reflected_folder: Path to folder with reflected simulation outputs
+        direct_pattern: Glob pattern for direct event files
+        reflected_pattern: Glob pattern for reflected event files
+
+    Returns:
+        List of merged RCREvent objects
+    """
+    direct_events = loadEventsFromFolder(direct_folder, direct_pattern)
+    reflected_events = loadEventsFromFolder(reflected_folder, reflected_pattern)
+
+    return mergeSeparatedEvents(direct_events, reflected_events)
+
+
+def mergeSeparatedEvents(
+    direct_events: List[RCREvent],
+    reflected_events: List[RCREvent],
+    position_tolerance: float = 1.0,
+) -> List[RCREvent]:
+    """Merge trigger information from separate direct and reflected runs.
+
+    Matches events by (event_id, coreas_x, coreas_y) within tolerance.
+    For matched events, combines triggers from both sources.
+    Unmatched reflected events are added with no direct trigger.
+    Unmatched direct events are added with no reflected trigger.
+
+    Args:
+        direct_events: Events from direct-only simulation (smaller throw area)
+        reflected_events: Events from reflected simulation (full area)
+        position_tolerance: Max distance (m) for matching event positions
+
+    Returns:
+        List of merged RCREvent objects
+    """
+    # Build lookup for direct events by (event_id, rounded position)
+    direct_lookup: Dict[Tuple[int, float, float], RCREvent] = {}
+    for evt in direct_events:
+        key = (evt.event_id, round(evt.coreas_x, 0), round(evt.coreas_y, 0))
+        direct_lookup[key] = evt
+
+    merged_events: List[RCREvent] = []
+    matched_direct_keys = set()
+
+    # Process reflected events, merging with matching direct events
+    for ref_evt in reflected_events:
+        key = (ref_evt.event_id, round(ref_evt.coreas_x, 0), round(ref_evt.coreas_y, 0))
+
+        if key in direct_lookup:
+            # Merge: use direct event as base, add reflected triggers
+            direct_evt = direct_lookup[key]
+            matched_direct_keys.add(key)
+
+            # Copy direct event and add reflected triggers
+            merged_evt = RCREvent(
+                event_id=direct_evt.event_id,
+                energy=direct_evt.energy,
+                zenith=direct_evt.zenith,
+                azimuth=direct_evt.azimuth,
+                coreas_x=direct_evt.coreas_x,
+                coreas_y=direct_evt.coreas_y,
+                station_triggers=dict(direct_evt.station_triggers),
+                layer_dB=direct_evt.layer_dB,
+            )
+            # Add reflected triggers
+            for trigger_name, station_ids in ref_evt.station_triggers.items():
+                for stn_id in station_ids:
+                    if stn_id >= REFLECTED_STATION_OFFSET:
+                        merged_evt.add_trigger(trigger_name, stn_id)
+
+            merged_events.append(merged_evt)
+        else:
+            # Reflected event outside direct throw area - add as-is
+            merged_events.append(ref_evt)
+
+    # Add unmatched direct events (have direct but no reflected)
+    for key, direct_evt in direct_lookup.items():
+        if key not in matched_direct_keys:
+            merged_events.append(direct_evt)
+
+    return merged_events
+
+
+# =============================================================================
 # Main Entry Point
 # =============================================================================
 

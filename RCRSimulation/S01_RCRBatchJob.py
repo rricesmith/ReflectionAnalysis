@@ -1,8 +1,8 @@
 """RCR Simulation Batch Job Submitter.
 
-Submits all 9 simulation configurations needed for Chapter 4, with each split
-into multiple subjobs for parallel execution. Each subjob processes a subset
-of input files with its own seed.
+Submits simulation configurations for Chapter 4, with each split into multiple
+subjobs for parallel execution. Each subjob processes a subset of input files
+with its own seed.
 
 Usage:
     python RCRSimulation/S01_RCRBatchJob.py [--test] [--dry-run] [--simulations SIM1 SIM2 ...]
@@ -11,17 +11,26 @@ Options:
     --test          Run small test simulations (50 cores, 10 files, 5 subjobs)
     --dry-run       Print commands without submitting
     --simulations   Only run specified simulations (by name)
+    --direct-only   Only run direct simulations
+    --reflected-only Only run reflected (layer) simulations
 
-Simulations:
-    1. HRA_MB_shallow       - HRA baseline comparison
-    2. Gen2_deep_MB_576m    - Gen2 deep at Moore's Bay
-    3. Gen2_shallow_MB_576m - Gen2 shallow at Moore's Bay
-    4. Gen2_deep_SP_300m    - Gen2 deep at South Pole (300m layer)
-    5. Gen2_deep_SP_500m    - Gen2 deep at South Pole (500m layer)
-    6. Gen2_deep_SP_830m    - Gen2 deep at South Pole (830m layer)
-    7. Gen2_shallow_SP_300m - Gen2 shallow at South Pole (300m layer)
-    8. Gen2_shallow_SP_500m - Gen2 shallow at South Pole (500m layer)
-    9. Gen2_shallow_SP_830m - Gen2 shallow at South Pole (830m layer)
+Direct Simulations (reduced throw area - 0.5x width = 0.25x cores):
+    1. HRA_MB_direct        - HRA direct at Moore's Bay
+    2. Gen2_deep_MB_direct  - Gen2 deep direct at Moore's Bay
+    3. Gen2_shallow_MB_direct - Gen2 shallow direct at Moore's Bay
+    4. Gen2_deep_SP_direct  - Gen2 deep direct at South Pole
+    5. Gen2_shallow_SP_direct - Gen2 shallow direct at South Pole
+
+Reflected Simulations (layer-specific):
+    6. HRA_MB_576m          - HRA reflected at Moore's Bay (576m layer)
+    7. Gen2_deep_MB_576m    - Gen2 deep at Moore's Bay (576m layer)
+    8. Gen2_shallow_MB_576m - Gen2 shallow at Moore's Bay (576m layer)
+    9. Gen2_deep_SP_300m    - Gen2 deep at South Pole (300m layer)
+    10. Gen2_deep_SP_500m   - Gen2 deep at South Pole (500m layer)
+    11. Gen2_deep_SP_830m   - Gen2 deep at South Pole (830m layer)
+    12. Gen2_shallow_SP_300m - Gen2 shallow at South Pole (300m layer)
+    13. Gen2_shallow_SP_500m - Gen2 shallow at South Pole (500m layer)
+    14. Gen2_shallow_SP_830m - Gen2 shallow at South Pole (830m layer)
 """
 
 from __future__ import annotations
@@ -58,83 +67,137 @@ class SimulationConfig:
     atten_model: str
     detector_config: str
     max_file: int
+    is_direct: bool = False  # True for direct sims (reduced throw area)
 
 
-# All 9 simulation configurations for Chapter 4
-SIMULATIONS: list[SimulationConfig] = [
-    # 1. HRA MB (shallow) - baseline comparison
+# Direct simulation configurations (reduced throw area)
+# layer_depth="surface" means no reflective layer (direct signals only)
+DIRECT_SIMULATIONS: list[SimulationConfig] = [
+    # 1. HRA direct MB
     SimulationConfig(
-        name="HRA_MB_shallow",
+        name="HRA_MB_direct",
+        station_type="HRA", station_depth="shallow", site="MB",
+        layer_depth="surface", layer_dB="0", atten_model="MB_freq",
+        detector_config="RCRSimulation/configurations/MB/HRA_shallow_direct.json",
+        max_file=1000,
+        is_direct=True,
+    ),
+    # 2. Gen2 deep direct MB
+    SimulationConfig(
+        name="Gen2_deep_MB_direct",
+        station_type="Gen2", station_depth="deep", site="MB",
+        layer_depth="surface", layer_dB="0", atten_model="MB_freq",
+        detector_config="RCRSimulation/configurations/MB/Gen2_deep_direct.json",
+        max_file=1000,
+        is_direct=True,
+    ),
+    # 3. Gen2 shallow direct MB
+    SimulationConfig(
+        name="Gen2_shallow_MB_direct",
+        station_type="Gen2", station_depth="shallow", site="MB",
+        layer_depth="surface", layer_dB="0", atten_model="MB_freq",
+        detector_config="RCRSimulation/configurations/MB/Gen2_shallow_direct.json",
+        max_file=1000,
+        is_direct=True,
+    ),
+    # 4. Gen2 deep direct SP
+    SimulationConfig(
+        name="Gen2_deep_SP_direct",
+        station_type="Gen2", station_depth="deep", site="SP",
+        layer_depth="surface", layer_dB="0", atten_model="None",
+        detector_config="RCRSimulation/configurations/SP/Gen2_deep_direct.json",
+        max_file=2100,
+        is_direct=True,
+    ),
+    # 5. Gen2 shallow direct SP
+    SimulationConfig(
+        name="Gen2_shallow_SP_direct",
+        station_type="Gen2", station_depth="shallow", site="SP",
+        layer_depth="surface", layer_dB="0", atten_model="None",
+        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_direct.json",
+        max_file=2100,
+        is_direct=True,
+    ),
+]
+
+# Reflected simulation configurations (layer-specific)
+REFLECTED_SIMULATIONS: list[SimulationConfig] = [
+    # 6. HRA MB (576m layer)
+    SimulationConfig(
+        name="HRA_MB_576m",
         station_type="HRA", station_depth="shallow", site="MB",
         layer_depth="-576", layer_dB="1.7", atten_model="MB_freq",
-        detector_config="RCRSimulation/configurations/MB/HRA_shallow_576m_combined.json",
+        detector_config="RCRSimulation/configurations/MB/HRA_shallow_576m.json",
         max_file=1000,
     ),
-    # 2. Gen2 deep MB (576m layer)
+    # 7. Gen2 deep MB (576m layer)
     SimulationConfig(
         name="Gen2_deep_MB_576m",
         station_type="Gen2", station_depth="deep", site="MB",
         layer_depth="-576", layer_dB="1.7", atten_model="MB_freq",
-        detector_config="RCRSimulation/configurations/MB/Gen2_deep_576m_combined.json",
+        detector_config="RCRSimulation/configurations/MB/Gen2_deep_576m.json",
         max_file=1000,
     ),
-    # 3. Gen2 shallow MB (576m layer)
+    # 8. Gen2 shallow MB (576m layer)
     SimulationConfig(
         name="Gen2_shallow_MB_576m",
         station_type="Gen2", station_depth="shallow", site="MB",
         layer_depth="-576", layer_dB="1.7", atten_model="MB_freq",
-        detector_config="RCRSimulation/configurations/MB/Gen2_shallow_576m_combined.json",
+        detector_config="RCRSimulation/configurations/MB/Gen2_shallow_576m.json",
         max_file=1000,
     ),
-    # 4. Gen2 deep SP (300m layer)
+    # 9. Gen2 deep SP (300m layer)
     SimulationConfig(
         name="Gen2_deep_SP_300m",
         station_type="Gen2", station_depth="deep", site="SP",
         layer_depth="-300", layer_dB="0", atten_model="None",
-        detector_config="RCRSimulation/configurations/SP/Gen2_deep_300m_combined.json",
+        detector_config="RCRSimulation/configurations/SP/Gen2_deep_300m.json",
         max_file=2100,
     ),
-    # 5. Gen2 deep SP (500m layer)
+    # 10. Gen2 deep SP (500m layer)
     SimulationConfig(
         name="Gen2_deep_SP_500m",
         station_type="Gen2", station_depth="deep", site="SP",
         layer_depth="-500", layer_dB="0", atten_model="None",
-        detector_config="RCRSimulation/configurations/SP/Gen2_deep_500m_combined.json",
+        detector_config="RCRSimulation/configurations/SP/Gen2_deep_500m.json",
         max_file=2100,
     ),
-    # 6. Gen2 deep SP (830m layer)
+    # 11. Gen2 deep SP (830m layer)
     SimulationConfig(
         name="Gen2_deep_SP_830m",
         station_type="Gen2", station_depth="deep", site="SP",
         layer_depth="-830", layer_dB="0", atten_model="None",
-        detector_config="RCRSimulation/configurations/SP/Gen2_deep_830m_combined.json",
+        detector_config="RCRSimulation/configurations/SP/Gen2_deep_830m.json",
         max_file=2100,
     ),
-    # 7. Gen2 shallow SP (300m layer)
+    # 12. Gen2 shallow SP (300m layer)
     SimulationConfig(
         name="Gen2_shallow_SP_300m",
         station_type="Gen2", station_depth="shallow", site="SP",
         layer_depth="-300", layer_dB="0", atten_model="None",
-        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_300m_combined.json",
+        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_300m.json",
         max_file=2100,
     ),
-    # 8. Gen2 shallow SP (500m layer)
+    # 13. Gen2 shallow SP (500m layer)
     SimulationConfig(
         name="Gen2_shallow_SP_500m",
         station_type="Gen2", station_depth="shallow", site="SP",
         layer_depth="-500", layer_dB="0", atten_model="None",
-        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_500m_combined.json",
+        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_500m.json",
         max_file=2100,
     ),
-    # 9. Gen2 shallow SP (830m layer)
+    # 14. Gen2 shallow SP (830m layer)
     SimulationConfig(
         name="Gen2_shallow_SP_830m",
         station_type="Gen2", station_depth="shallow", site="SP",
         layer_depth="-830", layer_dB="0", atten_model="None",
-        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_830m_combined.json",
+        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_830m.json",
         max_file=2100,
     ),
 ]
+
+# All simulations combined
+SIMULATIONS: list[SimulationConfig] = DIRECT_SIMULATIONS + REFLECTED_SIMULATIONS
 
 
 def chunk_file_range(min_file: int, max_file: int, num_subjobs: int) -> list[tuple[int, int]]:
@@ -170,6 +233,10 @@ def submit_simulation_jobs(
     Splits the file range [0, max_file] into num_subjobs subjobs,
     each processing a subset of files.
 
+    For direct simulations (is_direct=True), reduces throw area:
+    - distance_km reduced by 0.5x (half width = quarter area)
+    - n_cores reduced by 0.25x (proportional to area)
+
     Returns:
         Number of jobs submitted.
     """
@@ -177,12 +244,22 @@ def submit_simulation_jobs(
     max_file = max_file_override if max_file_override is not None else sim.max_file
     file_ranges = chunk_file_range(min_file, max_file, num_subjobs)
 
+    # Reduce throw area for direct simulations
+    if sim.is_direct:
+        effective_distance_km = distance_km * 0.5  # Half width
+        effective_n_cores = max(1, int(n_cores * 0.25))  # Quarter cores (area ratio)
+        sim_type_label = "DIRECT"
+    else:
+        effective_distance_km = distance_km
+        effective_n_cores = n_cores
+        sim_type_label = "REFLECTED"
+
     print(f"\n{'='*60}")
-    print(f"Simulation: {sim.name}")
+    print(f"Simulation: {sim.name} [{sim_type_label}]")
     print(f"  Type: {sim.station_type}, Depth: {sim.station_depth}, Site: {sim.site}")
-    print(f"  Layer: {sim.layer_depth}m, dB: {sim.layer_dB}")
+    print(f"  Layer: {sim.layer_depth}, dB: {sim.layer_dB}")
     print(f"  Files: {min_file} to {max_file}, split into {len(file_ranges)} subjobs")
-    print(f"  Cores per subjob: {n_cores}")
+    print(f"  Distance: {effective_distance_km} km, Cores per subjob: {effective_n_cores}")
     print(f"{'='*60}")
 
     jobs_submitted = 0
@@ -191,7 +268,7 @@ def submit_simulation_jobs(
         seed = lower_file
 
         # Output name includes file range
-        output_name = f"{sim.name}_files{lower_file}-{upper_file}_{n_cores}cores"
+        output_name = f"{sim.name}_files{lower_file}-{upper_file}_{effective_n_cores}cores"
         job_name = f"RCR_{sim.name}_{lower_file}-{upper_file}"
 
         # Build command
@@ -202,8 +279,8 @@ def submit_simulation_jobs(
             f"--site {sim.site} "
             f"--propagation by_depth "
             f"--detector-config {sim.detector_config} "
-            f"--n-cores {n_cores} "
-            f"--distance-km {distance_km} "
+            f"--n-cores {effective_n_cores} "
+            f"--distance-km {effective_distance_km} "
             f"--min-file {lower_file} "
             f"--max-file {upper_file} "
             f"--seed {seed} "
@@ -238,15 +315,24 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Available simulations:
-  HRA_MB_shallow       - HRA baseline comparison
-  Gen2_deep_MB_576m    - Gen2 deep at Moore's Bay
-  Gen2_shallow_MB_576m - Gen2 shallow at Moore's Bay
-  Gen2_deep_SP_300m    - Gen2 deep at South Pole (300m layer)
-  Gen2_deep_SP_500m    - Gen2 deep at South Pole (500m layer)
-  Gen2_deep_SP_830m    - Gen2 deep at South Pole (830m layer)
-  Gen2_shallow_SP_300m - Gen2 shallow at South Pole (300m layer)
-  Gen2_shallow_SP_500m - Gen2 shallow at South Pole (500m layer)
-  Gen2_shallow_SP_830m - Gen2 shallow at South Pole (830m layer)
+
+Direct (reduced throw area - 0.5x width = 0.25x cores):
+  HRA_MB_direct         - HRA direct at Moore's Bay
+  Gen2_deep_MB_direct   - Gen2 deep direct at Moore's Bay
+  Gen2_shallow_MB_direct - Gen2 shallow direct at Moore's Bay
+  Gen2_deep_SP_direct   - Gen2 deep direct at South Pole
+  Gen2_shallow_SP_direct - Gen2 shallow direct at South Pole
+
+Reflected (layer-specific):
+  HRA_MB_576m           - HRA reflected at Moore's Bay (576m)
+  Gen2_deep_MB_576m     - Gen2 deep at Moore's Bay (576m)
+  Gen2_shallow_MB_576m  - Gen2 shallow at Moore's Bay (576m)
+  Gen2_deep_SP_300m     - Gen2 deep at South Pole (300m)
+  Gen2_deep_SP_500m     - Gen2 deep at South Pole (500m)
+  Gen2_deep_SP_830m     - Gen2 deep at South Pole (830m)
+  Gen2_shallow_SP_300m  - Gen2 shallow at South Pole (300m)
+  Gen2_shallow_SP_500m  - Gen2 shallow at South Pole (500m)
+  Gen2_shallow_SP_830m  - Gen2 shallow at South Pole (830m)
         """,
     )
     parser.add_argument("--test", action="store_true", help="Run small test simulations")
@@ -254,6 +340,14 @@ Available simulations:
     parser.add_argument(
         "--simulations", nargs="+",
         help="Only run specified simulations (by name, e.g., Gen2_deep_MB_576m)",
+    )
+    parser.add_argument(
+        "--direct-only", action="store_true",
+        help="Only run direct simulations (reduced throw area)",
+    )
+    parser.add_argument(
+        "--reflected-only", action="store_true",
+        help="Only run reflected (layer) simulations",
     )
     parser.add_argument(
         "--num-subjobs", type=int, default=None,
@@ -300,17 +394,29 @@ Available simulations:
     Path(numpy_folder).mkdir(parents=True, exist_ok=True)
     Path("run/RCRSimulation/logs").mkdir(parents=True, exist_ok=True)
 
-    # Filter simulations if specified
-    simulations_to_run = SIMULATIONS
+    # Filter simulations based on flags
+    if args.direct_only and args.reflected_only:
+        print("Error: Cannot specify both --direct-only and --reflected-only")
+        return
+    elif args.direct_only:
+        simulations_to_run = DIRECT_SIMULATIONS
+        print("Running DIRECT simulations only (reduced throw area)")
+    elif args.reflected_only:
+        simulations_to_run = REFLECTED_SIMULATIONS
+        print("Running REFLECTED simulations only")
+    else:
+        simulations_to_run = SIMULATIONS
+
+    # Further filter by name if specified
     if args.simulations:
-        sim_names = {s.name for s in SIMULATIONS}
+        sim_names = {s.name for s in simulations_to_run}
         unknown = set(args.simulations) - sim_names
         if unknown:
             print(f"Warning: Unknown simulations ignored: {unknown}")
             print(f"Available: {sorted(sim_names)}")
 
         simulations_to_run = [
-            sim for sim in SIMULATIONS
+            sim for sim in simulations_to_run
             if sim.name in args.simulations
         ]
         if not simulations_to_run:
