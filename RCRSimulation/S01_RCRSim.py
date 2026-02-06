@@ -58,6 +58,10 @@ NOISE_TRIGGER_SIGMA = 2.0
 PRIMARY_CHANNELS = [0, 1, 2, 3]
 GEN2_FILTER_RIPPLE = 0.1
 
+# Gen2 shallow LPDA channel definitions (for direct configs with 8 LPDAs)
+GEN2_SHALLOW_DOWN_CHANNELS = [0, 1, 2, 3]  # Down-pointing LPDAs (theta=0)
+GEN2_SHALLOW_UP_CHANNELS = [4, 5, 6, 7]    # Up-pointing LPDAs (theta=180)
+
 # Phased array configuration (from Gen2 TDR)
 PA_CHANNELS_8CH = [4, 5, 6, 7, 8, 9, 10, 11]
 PA_CHANNELS_4CH = [8, 9, 10, 11]
@@ -1404,22 +1408,15 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                 # Use standard high/low threshold trigger for shallow/HRA configurations
                 noise_key = format_sigma_value(noise_sigma)
                 final_key = format_sigma_value(trigger_sigma)
-                noise_trigger = primary_trigger_name(noise_sigma)
-                final_trigger = primary_trigger_name(trigger_sigma)
 
-                highLowThreshold.run(
-                    evt,
-                    station,
-                    det,
-                    threshold_high=thresholds[noise_key]["high"],
-                    threshold_low=thresholds[noise_key]["low"],
-                    coinc_window=COINCIDENCE_WINDOW,
-                    triggered_channels=base_channels,
-                    number_concidences=2,
-                    trigger_name=noise_trigger,
-                )
+                # Check if this is Gen2 shallow direct config with both down and up channels
+                has_down_channels = all(ch in base_channels for ch in GEN2_SHALLOW_DOWN_CHANNELS)
+                has_up_channels = all(ch in base_channels for ch in GEN2_SHALLOW_UP_CHANNELS)
+                is_gen2_shallow_direct = has_down_channels and has_up_channels
 
-                if station.has_triggered(trigger_name=noise_trigger):
+                if is_gen2_shallow_direct:
+                    # Gen2 shallow direct: Run separate triggers for down and up pointing LPDAs
+                    # Add noise once at start so both directions see same noise
                     if add_noise:
                         if hardwareResponseIncorporator is not None:
                             hardwareResponseIncorporator.run(evt, station, det, sim_to_data=False)
@@ -1427,20 +1424,69 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                         if hardwareResponseIncorporator is not None:
                             hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
 
+                    channel_sets = [
+                        (GEN2_SHALLOW_DOWN_CHANNELS, "down"),
+                        (GEN2_SHALLOW_UP_CHANNELS, "up"),
+                    ]
+
+                    for trigger_channels, direction_suffix in channel_sets:
+                        final_trigger = f"primary_{direction_suffix}_{final_key}sigma"
+
+                        highLowThreshold.run(
+                            evt,
+                            station,
+                            det,
+                            threshold_high=thresholds[final_key]["high"],
+                            threshold_low=thresholds[final_key]["low"],
+                            coinc_window=COINCIDENCE_WINDOW,
+                            triggered_channels=trigger_channels,
+                            number_concidences=2,
+                            trigger_name=final_trigger,
+                        )
+
+                    # Finalize if any trigger fired
+                    if station.has_triggered():
+                        triggerTimeAdjuster.run(evt, station, det)
+                        channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
+                else:
+                    # Standard single trigger for HRA and Gen2 shallow reflected (4 channels)
+                    noise_trigger = primary_trigger_name(noise_sigma)
+                    final_trigger = primary_trigger_name(trigger_sigma)
+
                     highLowThreshold.run(
                         evt,
                         station,
                         det,
-                        threshold_high=thresholds[final_key]["high"],
-                        threshold_low=thresholds[final_key]["low"],
+                        threshold_high=thresholds[noise_key]["high"],
+                        threshold_low=thresholds[noise_key]["low"],
                         coinc_window=COINCIDENCE_WINDOW,
                         triggered_channels=base_channels,
                         number_concidences=2,
-                        trigger_name=final_trigger,
+                        trigger_name=noise_trigger,
                     )
 
-                    triggerTimeAdjuster.run(evt, station, det)
-                    channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
+                    if station.has_triggered(trigger_name=noise_trigger):
+                        if add_noise:
+                            if hardwareResponseIncorporator is not None:
+                                hardwareResponseIncorporator.run(evt, station, det, sim_to_data=False)
+                            channelGenericNoiseAdder.run(evt, station, det, type="rayleigh", amplitude=pre_amp_vrms)
+                            if hardwareResponseIncorporator is not None:
+                                hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
+
+                        highLowThreshold.run(
+                            evt,
+                            station,
+                            det,
+                            threshold_high=thresholds[final_key]["high"],
+                            threshold_low=thresholds[final_key]["low"],
+                            coinc_window=COINCIDENCE_WINDOW,
+                            triggered_channels=base_channels,
+                            number_concidences=2,
+                            trigger_name=final_trigger,
+                        )
+
+                        triggerTimeAdjuster.run(evt, station, det)
+                        channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
 
             LOGGER.debug("Station %s triggered: %s", station_id, station.has_triggered())
         # End of station loop - now save event with all station triggers
