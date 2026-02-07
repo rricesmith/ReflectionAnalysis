@@ -127,7 +127,7 @@ REFLECTED_SIMULATIONS: list[SimulationConfig] = [
         name="HRA_MB_576m",
         station_type="HRA", station_depth="shallow", site="MB",
         layer_depth="-576", layer_dB="1.7", atten_model="MB_freq",
-        detector_config="RCRSimulation/configurations/MB/HRA_shallow_576m.json",
+        detector_config="RCRSimulation/configurations/MB/HRA_shallow_576m_combined.json",
         max_file=1000,
     ),
     # 7. Gen2 deep MB (576m layer)
@@ -135,7 +135,7 @@ REFLECTED_SIMULATIONS: list[SimulationConfig] = [
         name="Gen2_deep_MB_576m",
         station_type="Gen2", station_depth="deep", site="MB",
         layer_depth="-576", layer_dB="1.7", atten_model="MB_freq",
-        detector_config="RCRSimulation/configurations/MB/Gen2_deep_576m.json",
+        detector_config="RCRSimulation/configurations/MB/Gen2_deep_576m_combined.json",
         max_file=1000,
     ),
     # 8. Gen2 shallow MB (576m layer)
@@ -143,7 +143,7 @@ REFLECTED_SIMULATIONS: list[SimulationConfig] = [
         name="Gen2_shallow_MB_576m",
         station_type="Gen2", station_depth="shallow", site="MB",
         layer_depth="-576", layer_dB="1.7", atten_model="MB_freq",
-        detector_config="RCRSimulation/configurations/MB/Gen2_shallow_576m.json",
+        detector_config="RCRSimulation/configurations/MB/Gen2_shallow_576m_combined.json",
         max_file=1000,
     ),
     # 9. Gen2 deep SP (300m layer)
@@ -151,7 +151,7 @@ REFLECTED_SIMULATIONS: list[SimulationConfig] = [
         name="Gen2_deep_SP_300m",
         station_type="Gen2", station_depth="deep", site="SP",
         layer_depth="-300", layer_dB="0", atten_model="None",
-        detector_config="RCRSimulation/configurations/SP/Gen2_deep_300m.json",
+        detector_config="RCRSimulation/configurations/SP/Gen2_deep_300m_combined.json",
         max_file=2100,
     ),
     # 10. Gen2 deep SP (500m layer)
@@ -159,7 +159,7 @@ REFLECTED_SIMULATIONS: list[SimulationConfig] = [
         name="Gen2_deep_SP_500m",
         station_type="Gen2", station_depth="deep", site="SP",
         layer_depth="-500", layer_dB="0", atten_model="None",
-        detector_config="RCRSimulation/configurations/SP/Gen2_deep_500m.json",
+        detector_config="RCRSimulation/configurations/SP/Gen2_deep_500m_combined.json",
         max_file=2100,
     ),
     # 11. Gen2 deep SP (830m layer)
@@ -167,7 +167,7 @@ REFLECTED_SIMULATIONS: list[SimulationConfig] = [
         name="Gen2_deep_SP_830m",
         station_type="Gen2", station_depth="deep", site="SP",
         layer_depth="-830", layer_dB="0", atten_model="None",
-        detector_config="RCRSimulation/configurations/SP/Gen2_deep_830m.json",
+        detector_config="RCRSimulation/configurations/SP/Gen2_deep_830m_combined.json",
         max_file=2100,
     ),
     # 12. Gen2 shallow SP (300m layer)
@@ -175,7 +175,7 @@ REFLECTED_SIMULATIONS: list[SimulationConfig] = [
         name="Gen2_shallow_SP_300m",
         station_type="Gen2", station_depth="shallow", site="SP",
         layer_depth="-300", layer_dB="0", atten_model="None",
-        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_300m.json",
+        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_300m_combined.json",
         max_file=2100,
     ),
     # 13. Gen2 shallow SP (500m layer)
@@ -183,7 +183,7 @@ REFLECTED_SIMULATIONS: list[SimulationConfig] = [
         name="Gen2_shallow_SP_500m",
         station_type="Gen2", station_depth="shallow", site="SP",
         layer_depth="-500", layer_dB="0", atten_model="None",
-        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_500m.json",
+        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_500m_combined.json",
         max_file=2100,
     ),
     # 14. Gen2 shallow SP (830m layer)
@@ -191,7 +191,7 @@ REFLECTED_SIMULATIONS: list[SimulationConfig] = [
         name="Gen2_shallow_SP_830m",
         station_type="Gen2", station_depth="shallow", site="SP",
         layer_depth="-830", layer_dB="0", atten_model="None",
-        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_830m.json",
+        detector_config="RCRSimulation/configurations/SP/Gen2_shallow_830m_combined.json",
         max_file=2100,
     ),
 ]
@@ -288,6 +288,7 @@ def submit_simulation_jobs(
             f"--layer-db {sim.layer_dB} "
             f"--attenuation-model {sim.atten_model} "
             f"--add-noise "
+            f"--no-energy-scaling "
             f"--output-folder {output_folder} "
             f"--numpy-folder {numpy_folder}"
         )
