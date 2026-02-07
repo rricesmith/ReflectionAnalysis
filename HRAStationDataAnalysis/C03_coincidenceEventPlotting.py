@@ -1538,7 +1538,7 @@ if __name__ == '__main__':
     datasets_to_plot_info = []
 
     prefixes = [
-        f"{date_of_coincidence}_CoincidenceDatetimes_passing_cuts",
+        # f"{date_of_coincidence}_CoincidenceDatetimes_passing_cuts",
         f"{date_of_coincidence}_CoincidenceDatetimes",
     ]
     # Ensure calcPol is tried first within each prefix
