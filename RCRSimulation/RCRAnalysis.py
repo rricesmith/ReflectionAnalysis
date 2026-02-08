@@ -893,11 +893,16 @@ if __name__ == "__main__":
             # Get label from filename
             label = event_file.stem.replace('_RCReventList', '')
 
-            # Determine trigger name from first event
+            # Determine trigger name by scanning events until we find one that triggered
             if len(event_list) > 0:
-                trigger_names = event_list[0].all_trigger_names()
+                trigger_names = set()
+                for evt in event_list:
+                    trigger_names.update(evt.all_trigger_names())
+                    if trigger_names:
+                        break
+
                 if trigger_names:
-                    trigger_name = trigger_names[0]
+                    trigger_name = sorted(trigger_names)[0]
                     ic(f'Using trigger: {trigger_name}')
 
                     results = runAnalysis(
@@ -910,3 +915,5 @@ if __name__ == "__main__":
 
                     ic(f'Direct event rate: {np.nansum(results["direct_event_rate"]):.3f} evts/yr')
                     ic(f'Reflected event rate: {np.nansum(results["reflected_event_rate"]):.3f} evts/yr')
+                else:
+                    ic(f'No triggered events found in {event_file}')
