@@ -1274,9 +1274,8 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                     # Get max trace voltage across PA channels for signal strength context
                     max_voltage = 0
                     for ch_id in base_channels:
-                        if station.has_channel(ch_id):
-                            ch_trace = station.get_channel(ch_id).get_trace()
-                            max_voltage = max(max_voltage, np.max(np.abs(ch_trace)))
+                        ch_trace = station.get_channel(ch_id).get_trace()
+                        max_voltage = max(max_voltage, np.max(np.abs(ch_trace)))
                     LOGGER.info(
                         "TRIGGER_DIAG event=%s stn=%d E=%.2e eV zen=%.1f° triggered=%s "
                         "max_ch_V=%.3e Vrms=%.3e ratio=%.1f",
