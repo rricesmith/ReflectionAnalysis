@@ -880,10 +880,11 @@ if __name__ == "__main__":
 
     # Look for event files
     numpy_path = Path(numpy_folder)
-    event_files = list(numpy_path.glob('*_RCReventList.npy'))
+    event_files = list(numpy_path.glob('*combined_RCReventList.npy'))
+    # event_files = list(numpy_path.glob('*_RCReventList.npy'))
 
     if not event_files:
-        ic('No event files found in', numpy_folder)
+        ic('No combined event files found in', numpy_folder)
     else:
         for event_file in event_files:
             ic(f'Processing {event_file}')
