@@ -94,12 +94,14 @@ esac
 # Test vs production settings
 if [ "$TEST_MODE" = true ]; then
     N_CORES=50
-    MAX_FILE=10
+    MIN_FILE_START=600
+    MAX_FILE=610
     FILES_PER_JOB=10
     N_TASKS=1
     TIME_LIMIT="0-04:00:00"
-    echo "=== TEST MODE ==="
+    echo "=== TEST MODE (files ${MIN_FILE_START}-${MAX_FILE}) ==="
 else
+    MIN_FILE_START=0
     FILES_PER_JOB=50
     N_TASKS=$(( (MAX_FILE + FILES_PER_JOB - 1) / FILES_PER_JOB ))
     N_CORES=100
@@ -128,7 +130,7 @@ echo "Simulation: ${SIM_NAME}"
 echo "  Type: ${STATION_TYPE}, Depth: ${DEPTH}, Site: ${SITE}"
 echo "  Layer: ${LAYER_DEPTH}, dB: ${LAYER_DB}"
 echo "  Config: ${CONFIG}"
-echo "  Files: 0-${MAX_FILE}, ${FILES_PER_JOB} per task, ${N_TASKS} tasks"
+echo "  Files: ${MIN_FILE_START}-${MAX_FILE}, ${FILES_PER_JOB} per task, ${N_TASKS} tasks"
 echo "  Cores: ${N_CORES}, Distance: ${DISTANCE_KM} km"
 echo "  Array spec: ${ARRAY_SPEC}"
 echo "  Output: ${OUTPUT_DIR}"
@@ -142,7 +144,7 @@ if [ "$DRY_RUN" = true ]; then
     echo "    --station-type ${STATION_TYPE} --station-depth ${DEPTH} --site ${SITE} \\"
     echo "    --propagation by_depth --detector-config ${CONFIG} \\"
     echo "    --n-cores ${N_CORES} --distance-km ${DISTANCE_KM} \\"
-    echo "    --min-file 0 --max-file ${FILES_PER_JOB} --seed 0 \\"
+    echo "    --min-file ${MIN_FILE_START} --max-file $((MIN_FILE_START + FILES_PER_JOB)) --seed 0 \\"
     echo "    --layer-depth ${LAYER_DEPTH} --layer-db ${LAYER_DB} \\"
     echo "    --attenuation-model ${ATTEN} --add-noise \\"
     echo "    --output-folder ${OUTPUT_DIR} --numpy-folder ${NUMPY_DIR}"
@@ -179,8 +181,9 @@ module load python/3.8.0
 cd \$ReflectiveAnalysis
 
 # Calculate file range for this array task
+MIN_FILE_START=${MIN_FILE_START}
 FILES_PER_JOB=${FILES_PER_JOB}
-MIN_FILE=\$((SLURM_ARRAY_TASK_ID * FILES_PER_JOB))
+MIN_FILE=\$((MIN_FILE_START + SLURM_ARRAY_TASK_ID * FILES_PER_JOB))
 MAX_FILE=\$((MIN_FILE + FILES_PER_JOB))
 if [ \$MAX_FILE -gt ${MAX_FILE} ]; then MAX_FILE=${MAX_FILE}; fi
 
