@@ -123,15 +123,13 @@ def main():
             print(f"Error: {output_base} does not exist")
             sys.exit(1)
 
-        # Find directories with numpy subdirs, sorted by name (date-based)
-        candidates = sorted(
-            [d / "numpy" for d in output_base.iterdir() if d.is_dir() and (d / "numpy").exists()],
-            reverse=True,
-        )
+        # Find directories with numpy subdirs, sorted by modification time (most recent first)
+        candidates = [d / "numpy" for d in output_base.iterdir() if d.is_dir() and (d / "numpy").exists()]
         if not candidates:
             print(f"Error: No numpy output directories found under {output_base}")
             sys.exit(1)
 
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         numpy_dir = candidates[0]
         print(f"Using most recent numpy dir: {numpy_dir}")
 
