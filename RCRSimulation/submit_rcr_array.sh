@@ -102,8 +102,8 @@ if [ "$TEST_MODE" = true ]; then
 else
     FILES_PER_JOB=50
     N_TASKS=$(( (MAX_FILE + FILES_PER_JOB - 1) / FILES_PER_JOB ))
-    N_CORES=1000
-    TIME_LIMIT="3-00:00:00"
+    N_CORES=100
+    TIME_LIMIT="1-00:00:00"
     echo "=== PRODUCTION MODE ==="
 fi
 
@@ -167,7 +167,7 @@ cat > ${BATCH_SCRIPT} << EOF
 #SBATCH --mem=18G
 #SBATCH --output=${LOG_DIR}/${SIM_NAME}_%A_%a.out
 #SBATCH --error=${LOG_DIR}/${SIM_NAME}_%A_%a.err
-#SBATCH --mail-type=fail,end
+#SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=rricesmi@uci.edu
 #SBATCH --array=${ARRAY_SPEC}
 

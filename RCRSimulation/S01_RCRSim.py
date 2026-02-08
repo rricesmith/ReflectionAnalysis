@@ -65,16 +65,17 @@ PA_CHANNELS_4CH = [8, 9, 10, 11]
 PA_MAIN_LOW_ANGLE = -59.55 * units.deg
 PA_MAIN_HIGH_ANGLE = 59.55 * units.deg
 PA_REF_INDEX = 1.75
-PA_WINDOW_8CH = 16 * units.ns
-PA_STEP_8CH = 8 * units.ns
-PA_WINDOW_4CH = 16 * units.ns
-PA_STEP_4CH = 8 * units.ns
-PA_N_BEAMS_8CH = 11
-PA_N_BEAMS_4CH = 21
+PA_N_BEAMS_8CH = 21
+PA_N_BEAMS_4CH = 11
 PA_UPSAMPLING_8CH = 4
 PA_UPSAMPLING_4CH = 2
+# Window/step are computed at runtime from detector trigger_adc_sampling_frequency
+PA_WINDOW_NS = 16  # ns, converted to samples in event loop
+PA_STEP_NS = 8     # ns, converted to samples in event loop
 # Thresholds calibrated for different noise rates (Vrms^2 units)
-PA_THRESHOLDS_8CH = {100: 46.98, 1: 61.90, 0.001: 99.22}  # Hz -> threshold
+# From reference: 10kHz->46.98, 100Hz->61.90, 1Hz->76.83, 1mHz->99.22 (8ch)
+# From reference: 100Hz->30.68, 1Hz->38.62, 1mHz->50.53 (4ch)
+PA_THRESHOLDS_8CH = {100: 61.90, 1: 76.83, 0.001: 99.22}  # Hz -> threshold
 PA_THRESHOLDS_4CH = {100: 30.68, 1: 38.62, 0.001: 50.53}  # Hz -> threshold
 
 
@@ -139,6 +140,25 @@ def format_layer_db_metadata(layer_db: float | None) -> tuple[str, str]:
         return "unknown", ""
     text = f"{numeric:g}"
     return text, f"{text}dB".lower()
+
+
+def calcSNR(traces, Vrms, n_avg=2):
+    """Calculate SNR from the average of top n_avg channel p2p amplitudes.
+
+    For each channel trace, computes peak-to-peak / (2 * Vrms).
+    Returns the mean of the top n_avg values.
+
+    Args:
+        traces: List of voltage trace arrays (one per channel)
+        Vrms: Noise RMS voltage (single value, same units as traces)
+        n_avg: Number of top channels to average (2 for shallow, 4 for deep)
+    """
+    SNRs = []
+    for trace in traces:
+        p2p = np.max(trace) - np.min(trace)
+        SNRs.append(p2p / (2 * Vrms))
+    SNRs.sort(reverse=True)
+    return np.mean(SNRs[:n_avg])
 
 
 def build_gen2_filter_config(
@@ -1114,6 +1134,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         LOGGER.debug("Processing event %s (index %s)", evt.get_id(), event_idx)
         evt.set_parameter(evtp.coreas_x, coreas_x)
         evt.set_parameter(evtp.coreas_y, coreas_y)
+        evt_snr_cache: Dict[int, float] = {}  # station_id -> SNR for this event
 
         # Process each station (both direct and reflected)
         for station_id in all_station_ids:
@@ -1180,16 +1201,18 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
                 if n_pa_channels >= 8:
                     pa_threshold = PA_THRESHOLDS_8CH.get(pa_noise_rate, PA_THRESHOLDS_8CH[100])
-                    pa_window = PA_WINDOW_8CH
-                    pa_step = PA_STEP_8CH
                     pa_n_beams = PA_N_BEAMS_8CH
                     pa_upsampling = PA_UPSAMPLING_8CH
                 else:
                     pa_threshold = PA_THRESHOLDS_4CH.get(pa_noise_rate, PA_THRESHOLDS_4CH[100])
-                    pa_window = PA_WINDOW_4CH
-                    pa_step = PA_STEP_4CH
                     pa_n_beams = PA_N_BEAMS_4CH
                     pa_upsampling = PA_UPSAMPLING_4CH
+
+                # Calculate window/step in samples from detector ADC rate (reference approach)
+                det_channel = det.get_channel(station_id, base_channels[0])
+                sampling_rate_pa = det_channel["trigger_adc_sampling_frequency"]
+                pa_window = int(PA_WINDOW_NS * units.ns * sampling_rate_pa * pa_upsampling)
+                pa_step = int(PA_STEP_NS * units.ns * sampling_rate_pa * pa_upsampling)
 
                 pa_vrms = post_amp_vrms[base_channels[0]]
                 final_trigger = pa_trigger_name(n_pa_channels, pa_noise_rate)
@@ -1215,8 +1238,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                     phasing_angles=phasing_angles,
                     ref_index=PA_REF_INDEX,
                     trigger_name=final_trigger,
-                    trigger_adc=True,  # Reference code uses true, but I'm getting incorrect sizing doing so
-                    # trigger_adc_sampling_frequency=0.5 * units.GHz,
+                    trigger_adc=True,
                     adc_output="voltage",
                     window=pa_window,
                     step=pa_step,
@@ -1312,9 +1334,22 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                         triggerTimeAdjuster.run(evt, station, det)
                         channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
 
+            # Calculate SNR on post-noise traces for stations that triggered
+            if station.has_triggered():
+                snr_channels = base_channels
+                snr_traces = [station.get_channel(ch).get_trace() for ch in snr_channels if station.has_channel(ch)]
+                if snr_traces:
+                    snr_vrms = post_amp_vrms[snr_channels[0]]
+                    # Deep: average top half of channels; Shallow: average top 2
+                    n_avg = max(len(snr_traces) // 2, 1) if (phasedArrayTrigger is not None) else min(2, len(snr_traces))
+                    station_snr = calcSNR(snr_traces, snr_vrms, n_avg=n_avg)
+                    evt_snr_cache[station_id] = station_snr
+
             LOGGER.debug("Station %s triggered: %s", station_id, station.has_triggered())
         # End of station loop - now save event with all station triggers
         rcr_event = RCREvent.from_nuradio_event(evt, layer_dB=settings.get("layer_dB"))
+        for snr_sid, snr_val in evt_snr_cache.items():
+            rcr_event.set_snr(snr_sid, snr_val)
         rcr_events.append(rcr_event)
 
         # Log summary for this event

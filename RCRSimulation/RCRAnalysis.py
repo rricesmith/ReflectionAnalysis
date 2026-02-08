@@ -440,7 +440,8 @@ def imshowRate(
     e_bins = np.log10(e_bins / units.eV)
     cos_bins = np.cos(z_bins)
 
-    rate_masked, cmap = set_bad_imshow(rate.T, 0)
+    # Flip zenith axis so row 0 (lowest zenith) maps to cos=1 (top), not cos=0 (bottom)
+    rate_masked, cmap = set_bad_imshow(rate.T[::-1], 0)
 
     fig, ax = plt.subplots()
 
@@ -454,8 +455,9 @@ def imshowRate(
     )
 
     # Set y-axis labels to zenith in degrees
+    # cos_bins descends (1.0 → 0.0) as z_bins ascends (0° → 90°)
+    # After flipping data, labels map directly: cos=1→0°, cos=0→90°
     ax_labels = [f'{z/units.deg:.0f}' for z in z_bins]
-    ax_labels.reverse()
     ax.set_yticks(cos_bins)
     ax.set_yticklabels(ax_labels)
     ax.set_ylabel('Zenith (deg)')
@@ -604,6 +606,246 @@ def histAreaRate(
     plt.close(fig)
 
 
+def plotCombinedRateWithError(
+    direct_rate: np.ndarray,
+    direct_error: np.ndarray,
+    reflected_rate: np.ndarray,
+    reflected_error: np.ndarray,
+    savename: str,
+    title: str,
+) -> None:
+    """Plot direct and reflected event rates overlaid on the same axes.
+
+    Colors represent zenith bins, line style distinguishes direct (solid) vs
+    reflected (dashed). Two legends: one for zenith colors, one for line styles.
+
+    Args:
+        direct_rate: 2D array of direct event rates [energy, zenith]
+        direct_error: 2D array of direct rate errors [energy, zenith]
+        reflected_rate: 2D array of reflected event rates [energy, zenith]
+        reflected_error: 2D array of reflected rate errors [energy, zenith]
+        savename: Output file path
+        title: Plot title
+    """
+    e_bins, z_bins = getEnergyZenithBins()
+    e_bins = np.log10(e_bins / units.eV)
+    e_centers = (e_bins[1:] + e_bins[:-1]) / 2
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    color = plt.cm.rainbow(np.linspace(0, 1, len(z_bins) - 1))
+
+    direct_rate = np.nan_to_num(direct_rate)
+    direct_error = np.nan_to_num(direct_error)
+    reflected_rate = np.nan_to_num(reflected_rate)
+    reflected_error = np.nan_to_num(reflected_error)
+
+    # Plot each zenith bin for both direct and reflected
+    for iZ in range(len(z_bins) - 1):
+        zen_label = f'{z_bins[iZ]/units.deg:.1f}-{z_bins[iZ+1]/units.deg:.1f}deg'
+
+        # Direct: solid line + shaded error
+        ax.fill_between(
+            e_centers,
+            direct_rate[:, iZ] - direct_error[:, iZ],
+            direct_rate[:, iZ] + direct_error[:, iZ],
+            alpha=0.2, color=color[iZ]
+        )
+        ax.plot(e_centers, direct_rate[:, iZ], color=color[iZ], linestyle='-',
+                label=zen_label)
+
+        # Reflected: dashed line + shaded error
+        ax.fill_between(
+            e_centers,
+            reflected_rate[:, iZ] - reflected_error[:, iZ],
+            reflected_rate[:, iZ] + reflected_error[:, iZ],
+            alpha=0.1, color=color[iZ]
+        )
+        ax.plot(e_centers, reflected_rate[:, iZ], color=color[iZ], linestyle='--')
+
+    # Plot totals
+    direct_total = np.nansum(direct_rate, axis=1)
+    reflected_total = np.nansum(reflected_rate, axis=1)
+    ax.plot(e_centers, direct_total, color='black', linestyle='-', linewidth=2,
+            label=f'Direct total: {np.sum(direct_rate):.2f} Evts/Yr')
+    ax.plot(e_centers, reflected_total, color='black', linestyle='--', linewidth=2,
+            label=f'Reflected total: {np.sum(reflected_rate):.2f} Evts/Yr')
+
+    ax.set_xlabel('log10(E/eV)')
+    ax.set_ylabel('Evts/Yr')
+    ax.set_yscale('log')
+    ax.set_ylim(bottom=10**-3)
+
+    # Dual legend: zenith colors + line style
+    zenith_legend = ax.legend(loc='lower left', fontsize=7, ncol=2)
+    ax.add_artist(zenith_legend)
+    # Add style legend
+    from matplotlib.lines import Line2D
+    style_handles = [
+        Line2D([0], [0], color='gray', linestyle='-', label='Direct'),
+        Line2D([0], [0], color='gray', linestyle='--', label='Reflected'),
+    ]
+    ax.legend(handles=style_handles, loc='upper right', fontsize=9)
+
+    ax.set_title(title)
+    fig.savefig(savename, dpi=150, bbox_inches='tight')
+    ic(f'Saved {savename}')
+    plt.close(fig)
+
+
+def plotCombinedRadiusRate(
+    event_list: Sequence[RCREvent],
+    title: str,
+    savename: str,
+    max_distance: float = 6.0 * units.km,
+    n_bins: int = 30,
+) -> None:
+    """Plot direct and reflected event rate vs radius on same axes.
+
+    Args:
+        event_list: List of RCREvent objects with weights set
+        title: Plot title
+        savename: Output file path
+        max_distance: Maximum distance for binning
+        n_bins: Number of radial bins
+    """
+    radius_bins = np.linspace(0, max_distance / units.m, n_bins + 1)
+    bin_centers = (radius_bins[1:] + radius_bins[:-1]) / 2
+    bin_width = radius_bins[1] - radius_bins[0]
+
+    radii = np.array([event.get_radius() for event in event_list])
+    direct_weights = np.array([event.get_weight('direct') for event in event_list])
+    reflected_weights = np.array([event.get_weight('reflected') for event in event_list])
+
+    direct_hist, _ = np.histogram(radii, bins=radius_bins, weights=direct_weights)
+    reflected_hist, _ = np.histogram(radii, bins=radius_bins, weights=reflected_weights)
+
+    fig, ax = plt.subplots()
+    ax.bar(bin_centers - bin_width * 0.2, direct_hist, width=bin_width * 0.4,
+           alpha=0.7, edgecolor='black', label=f'Direct: {np.sum(direct_hist):.3f} Evts/Yr')
+    ax.bar(bin_centers + bin_width * 0.2, reflected_hist, width=bin_width * 0.4,
+           alpha=0.7, edgecolor='black', color='red',
+           label=f'Reflected: {np.sum(reflected_hist):.3f} Evts/Yr')
+
+    ax.set_xlabel('Distance from Station (m)')
+    ax.set_ylabel('Event Rate (Evts/Yr)')
+    ax.set_title(title)
+    ax.legend(fontsize=9)
+
+    fig.savefig(savename, dpi=150, bbox_inches='tight')
+    ic(f'Saved {savename}')
+    plt.close(fig)
+
+
+def plotWeightedHistograms(
+    event_list: Sequence[RCREvent],
+    savename: str,
+    title: str = 'Weighted Distributions',
+) -> None:
+    """Plot 3 side-by-side histograms of SNR, Azimuth, Zenith weighted by event rate.
+
+    Each histogram overlays direct (solid) and reflected (dashed/hatched).
+
+    Args:
+        event_list: List of RCREvent objects with weights and SNR set
+        savename: Output file path
+        title: Plot super-title
+    """
+    # Collect data
+    direct_snr, reflected_snr = [], []
+    direct_azimuth, reflected_azimuth = [], []
+    direct_zenith, reflected_zenith = [], []
+    direct_snr_w, reflected_snr_w = [], []
+    direct_az_w, reflected_az_w = [], []
+    direct_zen_w, reflected_zen_w = [], []
+
+    for event in event_list:
+        zen_deg = np.rad2deg(event.zenith)
+        az_deg = np.rad2deg(event.azimuth)
+
+        d_w = event.get_weight('direct')
+        r_w = event.get_weight('reflected')
+
+        if d_w > 0:
+            direct_zenith.append(zen_deg)
+            direct_azimuth.append(az_deg)
+            direct_zen_w.append(d_w)
+            direct_az_w.append(d_w)
+            # SNR: check all direct stations (id < 100)
+            for sid, snr_val in event.station_snr.items():
+                if sid < 100:
+                    direct_snr.append(snr_val)
+                    direct_snr_w.append(d_w)
+
+        if r_w > 0:
+            reflected_zenith.append(zen_deg)
+            reflected_azimuth.append(az_deg)
+            reflected_zen_w.append(r_w)
+            reflected_az_w.append(r_w)
+            # SNR: check all reflected stations (id >= 100)
+            for sid, snr_val in event.station_snr.items():
+                if sid >= 100:
+                    reflected_snr.append(snr_val)
+                    reflected_snr_w.append(r_w)
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    fig.suptitle(title, fontsize=14)
+
+    # Panel 1: SNR
+    ax = axes[0]
+    has_snr = len(direct_snr) > 0 or len(reflected_snr) > 0
+    if has_snr:
+        all_snr = direct_snr + reflected_snr
+        snr_bins = np.linspace(0, min(max(all_snr) * 1.1, 50), 30)
+        if direct_snr:
+            ax.hist(direct_snr, bins=snr_bins, weights=direct_snr_w,
+                    alpha=0.6, label='Direct', edgecolor='black')
+        if reflected_snr:
+            ax.hist(reflected_snr, bins=snr_bins, weights=reflected_snr_w,
+                    alpha=0.6, label='Reflected', edgecolor='black',
+                    histtype='step', linewidth=2, linestyle='--')
+    else:
+        ax.text(0.5, 0.5, 'No SNR data', transform=ax.transAxes, ha='center', va='center')
+    ax.set_xlabel('SNR')
+    ax.set_ylabel('Weighted Count (Evts/Yr)')
+    ax.legend(fontsize=8)
+    ax.set_title('SNR')
+
+    # Panel 2: Azimuth
+    ax = axes[1]
+    az_bins = np.linspace(0, 360, 37)
+    if direct_azimuth:
+        ax.hist(direct_azimuth, bins=az_bins, weights=direct_az_w,
+                alpha=0.6, label='Direct', edgecolor='black')
+    if reflected_azimuth:
+        ax.hist(reflected_azimuth, bins=az_bins, weights=reflected_az_w,
+                alpha=0.6, label='Reflected', edgecolor='black',
+                histtype='step', linewidth=2, linestyle='--')
+    ax.set_xlabel('Azimuth (deg)')
+    ax.set_ylabel('Weighted Count (Evts/Yr)')
+    ax.legend(fontsize=8)
+    ax.set_title('Azimuth')
+
+    # Panel 3: Zenith
+    ax = axes[2]
+    zen_bins = np.linspace(0, 90, 19)
+    if direct_zenith:
+        ax.hist(direct_zenith, bins=zen_bins, weights=direct_zen_w,
+                alpha=0.6, label='Direct', edgecolor='black')
+    if reflected_zenith:
+        ax.hist(reflected_zenith, bins=zen_bins, weights=reflected_zen_w,
+                alpha=0.6, label='Reflected', edgecolor='black',
+                histtype='step', linewidth=2, linestyle='--')
+    ax.set_xlabel('Zenith (deg)')
+    ax.set_ylabel('Weighted Count (Evts/Yr)')
+    ax.legend(fontsize=8)
+    ax.set_title('Zenith')
+
+    plt.tight_layout()
+    fig.savefig(savename, dpi=150, bbox_inches='tight')
+    ic(f'Saved {savename}')
+    plt.close(fig)
+
+
 # =============================================================================
 # Analysis Runner
 # =============================================================================
@@ -722,6 +964,27 @@ def runAnalysis(
         f'Reflected Event Rate - {label}',
         os.path.join(save_folder, f'{prefix}reflected_rate_area.png'),
         max_distance=max_distance
+    )
+
+    # Combined direct+reflected overlays
+    plotCombinedRateWithError(
+        direct_event_rate, direct_error,
+        reflected_event_rate, reflected_error,
+        os.path.join(save_folder, f'{prefix}combined_event_rate_vs_energy.png'),
+        f'Combined Event Rate - {label}'
+    )
+    plotCombinedRadiusRate(
+        event_list,
+        f'Combined Event Rate vs Distance - {label}',
+        os.path.join(save_folder, f'{prefix}combined_rate_vs_radius.png'),
+        max_distance=max_distance
+    )
+
+    # Weighted distribution histograms (SNR, Azimuth, Zenith)
+    plotWeightedHistograms(
+        event_list,
+        os.path.join(save_folder, f'{prefix}weighted_distributions.png'),
+        title=f'Weighted Distributions - {label}'
     )
 
     return {
