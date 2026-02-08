@@ -1375,7 +1375,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
             # Calculate SNR on post-noise traces for stations that triggered
             if station.has_triggered():
                 snr_channels = base_channels
-                snr_traces = [station.get_channel(ch).get_trace() for ch in snr_channels if station.has_channel(ch)]
+                snr_traces = [station.get_channel(ch).get_trace() for ch in snr_channels]
                 if snr_traces:
                     snr_vrms = post_amp_vrms[snr_channels[0]]
                     # Deep: average top half of channels; Shallow: average top 2
