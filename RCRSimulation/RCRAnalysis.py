@@ -315,7 +315,7 @@ def set_bad_imshow(array: np.ndarray, value: float):
         Tuple of (masked_array, colormap)
     """
     ma = np.ma.masked_where(array == value, array)
-    cmap = matplotlib.cm.viridis.copy()
+    cmap = matplotlib.cm.get_cmap('viridis')
     cmap.set_bad(color='white')
     return ma, cmap
 
