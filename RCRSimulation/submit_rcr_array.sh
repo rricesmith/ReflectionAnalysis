@@ -94,9 +94,9 @@ esac
 # Test vs production settings
 if [ "$TEST_MODE" = true ]; then
     N_CORES=50
-    MIN_FILE_START=600
-    MAX_FILE=610
-    FILES_PER_JOB=10
+    MIN_FILE_START=100
+    MAX_FILE=300
+    FILES_PER_JOB=200
     N_TASKS=1
     TIME_LIMIT="0-04:00:00"
     echo "=== TEST MODE (files ${MIN_FILE_START}-${MAX_FILE}) ==="

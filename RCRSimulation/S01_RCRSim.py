@@ -34,6 +34,7 @@ import NuRadioReco.modules.correlationDirectionFitter
 import NuRadioReco.modules.io.eventWriter
 
 from NuRadioReco.framework.parameters import eventParameters as evtp
+from NuRadioReco.framework.parameters import showerParameters as shp
 from NuRadioReco.framework.parameters import stationParameters as stnp
 from NuRadioReco.detector import detector
 
@@ -1123,6 +1124,9 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     GEN2_DEEP_NOISE = 5.627 * units.micro * units.V
     GEN2_SHALLOW_NOISE = 3.789 * units.micro * units.V
 
+    _trigger_params_logged = False  # Log PA trigger params once
+    _n_events_processed = 0
+
     for evt, event_idx, coreas_x, coreas_y in readCoREAS.run(
         detector=det,
         ray_type=propagation,
@@ -1135,6 +1139,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         evt.set_parameter(evtp.coreas_x, coreas_x)
         evt.set_parameter(evtp.coreas_y, coreas_y)
         evt_snr_cache: Dict[int, float] = {}  # station_id -> SNR for this event
+        _n_events_processed += 1
 
         # Process each station (both direct and reflected)
         for station_id in all_station_ids:
@@ -1225,6 +1230,21 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                     )
                 )
 
+                # One-time log of PA trigger parameters
+                if not _trigger_params_logged:
+                    LOGGER.info("=== PA TRIGGER PARAMS (station %s) ===", station_id)
+                    LOGGER.info("  channels: %s (%d ch)", base_channels, n_pa_channels)
+                    LOGGER.info("  Vrms: %.6e", pa_vrms)
+                    LOGGER.info("  threshold_factor: %.2f", pa_threshold)
+                    LOGGER.info("  threshold_abs: %.6e (factor * Vrms^2)", pa_threshold * pa_vrms ** 2)
+                    LOGGER.info("  n_beams: %d", pa_n_beams)
+                    LOGGER.info("  upsampling: %d", pa_upsampling)
+                    LOGGER.info("  ADC sampling rate: %s", sampling_rate_pa)
+                    LOGGER.info("  window: %d samples, step: %d samples", pa_window, pa_step)
+                    LOGGER.info("  trigger_name: %s", final_trigger)
+                    LOGGER.info("  phasing_angles (deg): %s", np.rad2deg(phasing_angles).round(2))
+                    _trigger_params_logged = True
+
                 if add_noise:
                     channelGenericNoiseAdder.run(evt, station, det, type="rayleigh", amplitude=pre_amp_vrms)
 
@@ -1244,6 +1264,25 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                     step=pa_step,
                     upsampling_factor=pa_upsampling,
                 )
+
+                # Per-event trigger diagnostics (first 20 events per station)
+                triggered = station.has_triggered(trigger_name=final_trigger)
+                if _n_events_processed <= 20 or triggered:
+                    sim_shower = evt.get_sim_shower(0)
+                    energy_eV = sim_shower[shp.energy] / units.eV
+                    zenith_deg = sim_shower[shp.zenith] / units.deg
+                    # Get max trace voltage across PA channels for signal strength context
+                    max_voltage = 0
+                    for ch_id in base_channels:
+                        if station.has_channel(ch_id):
+                            ch_trace = station.get_channel(ch_id).get_trace()
+                            max_voltage = max(max_voltage, np.max(np.abs(ch_trace)))
+                    LOGGER.info(
+                        "TRIGGER_DIAG event=%s stn=%d E=%.2e eV zen=%.1f° triggered=%s "
+                        "max_ch_V=%.3e Vrms=%.3e ratio=%.1f",
+                        evt.get_id(), station_id, energy_eV, zenith_deg, triggered,
+                        max_voltage, pa_vrms, max_voltage / pa_vrms if pa_vrms > 0 else 0,
+                    )
 
                 if station.has_triggered(trigger_name=final_trigger):
                     # Note: Skipping triggerTimeAdjuster - simulation traces are shorter than
@@ -1368,6 +1407,16 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     else:
         run_time_s = float(run_time)
     LOGGER.info("Processed %s events. readCoREAS runtime: %.2fs", nevents, run_time_s)
+
+    # Trigger summary
+    n_triggered = sum(1 for e in rcr_events if e.has_any_trigger())
+    LOGGER.info("=== TRIGGER SUMMARY ===")
+    LOGGER.info("  Total events: %d, Triggered: %d (%.1f%%)",
+                len(rcr_events), n_triggered,
+                100 * n_triggered / max(len(rcr_events), 1))
+    if rcr_events:
+        energies = [e.energy for e in rcr_events]
+        LOGGER.info("  Energy range: %.2e - %.2e eV", min(energies), max(energies))
 
     # Save RCREvent list
     npy_array = np.array(rcr_events, dtype=object)
