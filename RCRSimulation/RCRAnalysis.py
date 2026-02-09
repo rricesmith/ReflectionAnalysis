@@ -438,10 +438,10 @@ def imshowRate(
     """
     e_bins, z_bins = getEnergyZenithBins()
     e_bins = np.log10(e_bins / units.eV)
-    cos_bins = np.cos(z_bins)
+    z_bins_deg = z_bins / units.deg
 
-    # Flip zenith axis so row 0 (lowest zenith) maps to cos=1 (top), not cos=0 (bottom)
-    rate_masked, cmap = set_bad_imshow(rate.T[::-1], 0)
+    # No flip: origin='lower' puts row 0 (lowest zenith bin) at bottom → 0° at bottom, 90° at top
+    rate_masked, cmap = set_bad_imshow(rate.T, 0)
 
     fig, ax = plt.subplots()
 
@@ -449,26 +449,21 @@ def imshowRate(
         rate_masked,
         aspect='auto',
         origin='lower',
-        extent=[min(e_bins), max(e_bins), min(cos_bins), max(cos_bins)],
+        extent=[min(e_bins), max(e_bins), min(z_bins_deg), max(z_bins_deg)],
         norm=matplotlib.colors.LogNorm(),
         cmap=cmap
     )
 
-    # Set y-axis labels to zenith in degrees
-    # cos_bins descends (1.0 → 0.0) as z_bins ascends (0° → 90°)
-    # After flipping data, labels map directly: cos=1→0°, cos=0→90°
-    ax_labels = [f'{z/units.deg:.0f}' for z in z_bins]
-    ax.set_yticks(cos_bins)
-    ax.set_yticklabels(ax_labels)
+    ax.set_yticks(z_bins_deg)
+    ax.set_yticklabels([f'{z:.0f}' for z in z_bins_deg])
     ax.set_ylabel('Zenith (deg)')
     ax.set_xlabel('log(Energy (eV))')
 
     # Overlay unique energy-zenith pairs
     if event_list is not None:
         log_energies, zeniths_deg = getUniqueEnergyZenithPairs(event_list)
-        cos_zeniths = np.cos(np.deg2rad(zeniths_deg))
         ax.scatter(
-            log_energies, cos_zeniths,
+            log_energies, zeniths_deg,
             facecolors='none', edgecolors='black',
             s=20, linewidths=0.5
         )
@@ -523,6 +518,7 @@ def histRadiusRate(
 
     ax.set_xlabel('Distance from Station (m)')
     ax.set_ylabel('Event Rate (Evts/Yr)')
+    ax.set_yscale('log')
     ax.set_title(title)
 
     # Add total rate annotation
@@ -678,13 +674,14 @@ def plotCombinedRateWithError(
     # Dual legend: zenith colors + line style
     zenith_legend = ax.legend(loc='lower left', fontsize=7, ncol=2)
     ax.add_artist(zenith_legend)
-    # Add style legend
+    # Add style legend with explicit dash pattern for visibility
     from matplotlib.lines import Line2D
     style_handles = [
-        Line2D([0], [0], color='gray', linestyle='-', label='Direct'),
-        Line2D([0], [0], color='gray', linestyle='--', label='Reflected'),
+        Line2D([0], [0], color='gray', linestyle='-', linewidth=2, label='Direct'),
+        Line2D([0], [0], color='gray', linestyle='--', linewidth=2,
+               dashes=(5, 3), label='Reflected'),
     ]
-    ax.legend(handles=style_handles, loc='upper right', fontsize=9)
+    ax.legend(handles=style_handles, loc='upper right', fontsize=9, handlelength=3.5)
 
     ax.set_title(title)
     fig.savefig(savename, dpi=150, bbox_inches='tight')
@@ -728,6 +725,7 @@ def plotCombinedRadiusRate(
 
     ax.set_xlabel('Distance from Station (m)')
     ax.set_ylabel('Event Rate (Evts/Yr)')
+    ax.set_yscale('log')
     ax.set_title(title)
     ax.legend(fontsize=9)
 
@@ -790,12 +788,12 @@ def plotWeightedHistograms(
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     fig.suptitle(title, fontsize=14)
 
-    # Panel 1: SNR
+    # Panel 1: SNR (20 bins, ~50% wider than original 30)
     ax = axes[0]
     has_snr = len(direct_snr) > 0 or len(reflected_snr) > 0
     if has_snr:
         all_snr = direct_snr + reflected_snr
-        snr_bins = np.linspace(0, min(max(all_snr) * 1.1, 50), 30)
+        snr_bins = np.linspace(0, min(max(all_snr) * 1.1, 50), 20)
         if direct_snr:
             ax.hist(direct_snr, bins=snr_bins, weights=direct_snr_w,
                     alpha=0.6, label='Direct', edgecolor='black')
@@ -807,12 +805,13 @@ def plotWeightedHistograms(
         ax.text(0.5, 0.5, 'No SNR data', transform=ax.transAxes, ha='center', va='center')
     ax.set_xlabel('SNR')
     ax.set_ylabel('Weighted Count (Evts/Yr)')
+    ax.set_yscale('log')
     ax.legend(fontsize=8)
     ax.set_title('SNR')
 
-    # Panel 2: Azimuth
+    # Panel 2: Azimuth (24 bins of 15°, ~50% wider than original 36 bins of 10°)
     ax = axes[1]
-    az_bins = np.linspace(0, 360, 37)
+    az_bins = np.linspace(0, 360, 25)
     if direct_azimuth:
         ax.hist(direct_azimuth, bins=az_bins, weights=direct_az_w,
                 alpha=0.6, label='Direct', edgecolor='black')
@@ -822,12 +821,13 @@ def plotWeightedHistograms(
                 histtype='step', linewidth=2, linestyle='--')
     ax.set_xlabel('Azimuth (deg)')
     ax.set_ylabel('Weighted Count (Evts/Yr)')
+    ax.set_yscale('log')
     ax.legend(fontsize=8)
     ax.set_title('Azimuth')
 
-    # Panel 3: Zenith
+    # Panel 3: Zenith (12 bins of 7.5°, ~50% wider than original 18 bins of 5°)
     ax = axes[2]
-    zen_bins = np.linspace(0, 90, 19)
+    zen_bins = np.linspace(0, 90, 13)
     if direct_zenith:
         ax.hist(direct_zenith, bins=zen_bins, weights=direct_zen_w,
                 alpha=0.6, label='Direct', edgecolor='black')
@@ -837,6 +837,7 @@ def plotWeightedHistograms(
                 histtype='step', linewidth=2, linestyle='--')
     ax.set_xlabel('Zenith (deg)')
     ax.set_ylabel('Weighted Count (Evts/Yr)')
+    ax.set_yscale('log')
     ax.legend(fontsize=8)
     ax.set_title('Zenith')
 

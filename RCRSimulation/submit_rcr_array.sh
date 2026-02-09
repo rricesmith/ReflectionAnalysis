@@ -38,6 +38,17 @@ for arg in "$@"; do
     esac
 done
 
+# Read simulation size settings from config.ini
+CONFIG_FILE="RCRSimulation/config.ini"
+cfg_val() { grep "^$1" "$CONFIG_FILE" 2>/dev/null | tail -1 | sed 's/.*= *//' | tr -d ' '; }
+CFG_N_CORES_PROD=$(cfg_val n_cores_production)
+CFG_N_CORES_TEST=$(cfg_val n_cores_test)
+CFG_FILES_PER_JOB=$(cfg_val files_per_job)
+# Apply defaults if config values are empty
+N_CORES_PROD=${CFG_N_CORES_PROD:-100}
+N_CORES_TEST=${CFG_N_CORES_TEST:-50}
+FILES_PER_JOB_CFG=${CFG_FILES_PER_JOB:-50}
+
 # Lookup simulation parameters: STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MAX_FILE IS_DIRECT
 case $SIM_NAME in
     # Direct simulations (layer_depth=surface, layer_dB=0)
@@ -93,20 +104,20 @@ esac
 
 # Test vs production settings
 if [ "$TEST_MODE" = true ]; then
-    N_CORES=50
+    N_CORES=$N_CORES_TEST
     MIN_FILE_START=100
     MAX_FILE=300
     FILES_PER_JOB=200
     N_TASKS=1
     TIME_LIMIT="0-04:00:00"
-    echo "=== TEST MODE (files ${MIN_FILE_START}-${MAX_FILE}) ==="
+    echo "=== TEST MODE (files ${MIN_FILE_START}-${MAX_FILE}, ${N_CORES} cores) ==="
 else
     MIN_FILE_START=0
-    FILES_PER_JOB=50
+    FILES_PER_JOB=$FILES_PER_JOB_CFG
     N_TASKS=$(( (MAX_FILE + FILES_PER_JOB - 1) / FILES_PER_JOB ))
-    N_CORES=100
+    N_CORES=$N_CORES_PROD
     TIME_LIMIT="1-00:00:00"
-    echo "=== PRODUCTION MODE ==="
+    echo "=== PRODUCTION MODE (${N_CORES} cores, ${FILES_PER_JOB} files/job) ==="
 fi
 
 # Direct sims use reduced throw area (0.5x width = 0.25x cores)
