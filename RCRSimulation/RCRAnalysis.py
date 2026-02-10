@@ -30,7 +30,7 @@ import astrotools.auger as auger
 
 # Must match NOISE_TRIGGER_SIGMA in S01_RCRSim.py — used to filter out
 # noise pre-check triggers when auto-selecting the analysis trigger name
-NOISE_PRECHECK_SIGMA = 2.0
+NOISE_PRECHECK_SIGMA = 3.5
 
 from RCRSimulation.RCREventObject import RCREvent, REFLECTED_STATION_OFFSET
 

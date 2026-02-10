@@ -52,7 +52,7 @@ LOGGER = logging.getLogger("RCRSimulation")
 
 DEFAULT_CONFIG_PATH = Path("RCRSimulation/config.ini")
 COINCIDENCE_WINDOW = 40 * units.ns
-NOISE_TRIGGER_SIGMA = 2.0
+NOISE_TRIGGER_SIGMA = 3.5
 PRIMARY_CHANNELS = [0, 1, 2, 3]
 GEN2_FILTER_RIPPLE = 0.1
 
@@ -604,8 +604,8 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
     seed = args.seed if args.seed is not None else config.getint("SIMULATION", "seed", fallback=0)
 
     site_lower = site.lower()
-    # SP and IceTop both use the same IceTop-style energy/sin2 binned simulations
-    if site_lower in ("icetop", "sp"):
+    # IceTop uses energy/sin2 binned simulations; SP and MB use sequential file loading
+    if site_lower == "icetop":
         energy_min = args.energy_min if args.energy_min is not None else config.getfloat(
             "SIMULATION", "energy_min", fallback=16.0
         )
@@ -618,9 +618,9 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         )
 
         if energy_max <= energy_min:
-            raise ValueError("IceTop/SP energy_max must be greater than energy_min.")
+            raise ValueError("IceTop energy_max must be greater than energy_min.")
         if not 0.0 <= sin2_value <= 1.0:
-            raise ValueError("IceTop/SP sin2 must be within [0, 1].")
+            raise ValueError("IceTop sin2 must be within [0, 1].")
         energy_settings = (energy_min, energy_max, sin2_value, num_icetop)
     else:
         energy_settings = (None, None, None, None)
@@ -1019,13 +1019,12 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     )
 
     site_lower = site.lower()
-    # SP and IceTop both use the same IceTop-style energy/sin2 binned simulations
-    if site_lower in ("icetop", "sp"):
+    if site_lower == "icetop":
         energy_range = (settings["energy_min"], settings["energy_max"])
         sin2_value = settings["sin2"]
         num_icetop = settings["num_icetop"] or 20
         input_files = pullFilesForSimulation(
-            "IceTop",  # Always use IceTop loading for SP/IceTop sites
+            "IceTop",
             settings["min_file"],
             settings["max_file"],
             energy_range=energy_range,
@@ -1033,6 +1032,8 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
             num_icetop=num_icetop,
         )
     else:
+        # SP uses sequential file loading (000XXX.hdf5 / SIM00XXX.hdf5 up to 2100)
+        # MB uses sequential file loading (00XXXX.hdf5 up to ~3999)
         input_files = pullFilesForSimulation(site, settings["min_file"], settings["max_file"])
     if not input_files:
         # Some selections will have no files, return with no error
