@@ -28,6 +28,10 @@ from icecream import ic
 from NuRadioReco.utilities import units
 import astrotools.auger as auger
 
+# Must match NOISE_TRIGGER_SIGMA in S01_RCRSim.py — used to filter out
+# noise pre-check triggers when auto-selecting the analysis trigger name
+NOISE_PRECHECK_SIGMA = 2.0
+
 from RCRSimulation.RCREventObject import RCREvent, REFLECTED_STATION_OFFSET
 
 
@@ -1166,7 +1170,14 @@ if __name__ == "__main__":
                         break
 
                 if trigger_names:
-                    trigger_name = sorted(trigger_names)[0]
+                    # Filter out the noise pre-check trigger (2σ screening threshold)
+                    # so we use the actual physics trigger for rate calculations
+                    noise_tag = f"{NOISE_PRECHECK_SIGMA:g}sigma"
+                    real_triggers = [t for t in trigger_names if noise_tag not in t]
+                    if real_triggers:
+                        trigger_name = sorted(real_triggers)[0]
+                    else:
+                        trigger_name = sorted(trigger_names)[0]
                     ic(f'Using trigger: {trigger_name}')
 
                     results = runAnalysis(
