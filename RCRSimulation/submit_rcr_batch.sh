@@ -32,11 +32,12 @@ set -e
 
 # ---- All available simulation names ----
 ALL_SIMS=(
-    HRA_MB_direct Gen2_deep_MB_direct Gen2_shallow_MB_direct
-    Gen2_deep_SP_direct Gen2_shallow_SP_direct
+    # HRA_MB_direct Gen2_deep_MB_direct Gen2_shallow_MB_direct
+    # Gen2_deep_SP_direct Gen2_shallow_SP_direct
     HRA_MB_576m Gen2_deep_MB_576m Gen2_shallow_MB_576m
-    Gen2_deep_SP_300m Gen2_deep_SP_500m Gen2_deep_SP_830m
-    Gen2_shallow_SP_300m Gen2_shallow_SP_500m Gen2_shallow_SP_830m
+    Gen2_deep_SP_300m Gen2_shallow_SP_300m
+    # Gen2_deep_SP_500m Gen2_shallow_SP_500m 
+    # Gen2_deep_SP_830m Gen2_shallow_SP_830m
 )
 
 # ---- Parse arguments ----
