@@ -1142,7 +1142,8 @@ if __name__ == "__main__":
 
     numpy_folder = config.get('FOLDERS', 'numpy_folder', fallback='RCRSimulation/output/numpy')
     save_folder = config.get('FOLDERS', 'save_folder', fallback='RCRSimulation/plots')
-    max_distance = float(config.get('SIMULATION', 'distance_km', fallback='5')) * units.km
+    # distance_km is the diameter of the throw box; throw radius = distance_km / 2
+    max_distance = float(config.get('SIMULATION', 'distance_km', fallback='5')) / 2 * units.km
 
     os.makedirs(save_folder, exist_ok=True)
 
