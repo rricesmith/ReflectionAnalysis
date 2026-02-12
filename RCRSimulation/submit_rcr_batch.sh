@@ -90,29 +90,30 @@ lookup_sim() {
             echo "Gen2 deep SP -300 0 None RCRSimulation/configurations/SP/Gen2_deep_300m_combined.json 2100 false 40,45,50,55" ;;
         Gen2_shallow_SP_300m)
             echo "Gen2 shallow SP -300 0 None RCRSimulation/configurations/SP/Gen2_shallow_300m_combined.json 2100 false 40,45,50,55" ;;
+        HRA_MB_direct)
+            echo "HRA shallow MB surface 0 MB_freq RCRSimulation/configurations/MB/HRA_shallow_direct.json 1000 true" ;;
+        Gen2_deep_MB_direct)
+            echo "Gen2 deep MB surface 0 MB_freq RCRSimulation/configurations/MB/Gen2_deep_direct.json 1000 true" ;;
+        Gen2_shallow_MB_direct)
+            echo "Gen2 shallow MB surface 0 MB_freq RCRSimulation/configurations/MB/Gen2_shallow_direct.json 1000 true" ;;
+        Gen2_deep_SP_direct)
+            echo "Gen2 deep SP surface 0 None RCRSimulation/configurations/SP/Gen2_deep_direct.json 2100 true" ;;
+        Gen2_shallow_SP_direct)
+            echo "Gen2 shallow SP surface 0 None RCRSimulation/configurations/SP/Gen2_shallow_direct.json 2100 true" ;;
+        Gen2_deep_SP_500m)
+            echo "Gen2 deep SP -500 0 None RCRSimulation/configurations/SP/Gen2_deep_500m_combined.json 2100 false" ;;
+        Gen2_deep_SP_830m)
+            echo "Gen2 deep SP -830 0 None RCRSimulation/configurations/SP/Gen2_deep_830m_combined.json 2100 false" ;;
+        Gen2_shallow_SP_500m)
+            echo "Gen2 shallow SP -500 0 None RCRSimulation/configurations/SP/Gen2_shallow_500m_combined.json 2100 false" ;;
+        Gen2_shallow_SP_830m)
+            echo "Gen2 shallow SP -830 0 None RCRSimulation/configurations/SP/Gen2_shallow_830m_combined.json 2100 false" ;;
         *)
             echo "UNKNOWN"; return 1 ;;
     esac
 }
 # Can add in to above the below
-        # HRA_MB_direct)
-        #     echo "HRA shallow MB surface 0 MB_freq RCRSimulation/configurations/MB/HRA_shallow_direct.json 1000 true" ;;
-        # Gen2_deep_MB_direct)
-        #     echo "Gen2 deep MB surface 0 MB_freq RCRSimulation/configurations/MB/Gen2_deep_direct.json 1000 true" ;;
-        # Gen2_shallow_MB_direct)
-        #     echo "Gen2 shallow MB surface 0 MB_freq RCRSimulation/configurations/MB/Gen2_shallow_direct.json 1000 true" ;;
-        # Gen2_deep_SP_direct)
-        #     echo "Gen2 deep SP surface 0 None RCRSimulation/configurations/SP/Gen2_deep_direct.json 2100 true" ;;
-        # Gen2_shallow_SP_direct)
-        #     echo "Gen2 shallow SP surface 0 None RCRSimulation/configurations/SP/Gen2_shallow_direct.json 2100 true" ;;
-        # Gen2_deep_SP_500m)
-        #     echo "Gen2 deep SP -500 0 None RCRSimulation/configurations/SP/Gen2_deep_500m_combined.json 2100 false" ;;
-        # Gen2_deep_SP_830m)
-        #     echo "Gen2 deep SP -830 0 None RCRSimulation/configurations/SP/Gen2_deep_830m_combined.json 2100 false" ;;
-        # Gen2_shallow_SP_500m)
-        #     echo "Gen2 shallow SP -500 0 None RCRSimulation/configurations/SP/Gen2_shallow_500m_combined.json 2100 false" ;;
-        # Gen2_shallow_SP_830m)
-        #     echo "Gen2 shallow SP -830 0 None RCRSimulation/configurations/SP/Gen2_shallow_830m_combined.json 2100 false" ;;
+
 
 # ---- Build the task list ----
 # Each line: SIM_NAME STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MIN_FILE MAX_FILE N_CORES DISTANCE_KM SEED LAYER_DB_LIST
