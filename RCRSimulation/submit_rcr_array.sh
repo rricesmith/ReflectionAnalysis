@@ -51,51 +51,68 @@ FILES_PER_JOB_CFG=${CFG_FILES_PER_JOB:-50}
 
 # Lookup simulation parameters: STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MAX_FILE IS_DIRECT
 case $SIM_NAME in
-    # Direct simulations (layer_depth=surface, layer_dB=0)
+    # Direct simulations (layer_depth=surface, layer_dB=0, no multi-dB)
     HRA_MB_direct)
         STATION_TYPE=HRA; DEPTH=shallow; SITE=MB; LAYER_DEPTH=surface; LAYER_DB=0; ATTEN=MB_freq
-        CONFIG=RCRSimulation/configurations/MB/HRA_shallow_direct.json; MAX_FILE=1000; IS_DIRECT=true ;;
+        CONFIG=RCRSimulation/configurations/MB/HRA_shallow_direct.json; MAX_FILE=1000; IS_DIRECT=true
+        LAYER_DB_LIST="" ;;
     Gen2_deep_MB_direct)
         STATION_TYPE=Gen2; DEPTH=deep; SITE=MB; LAYER_DEPTH=surface; LAYER_DB=0; ATTEN=MB_freq
-        CONFIG=RCRSimulation/configurations/MB/Gen2_deep_direct.json; MAX_FILE=1000; IS_DIRECT=true ;;
+        CONFIG=RCRSimulation/configurations/MB/Gen2_deep_direct.json; MAX_FILE=1000; IS_DIRECT=true
+        LAYER_DB_LIST="" ;;
     Gen2_shallow_MB_direct)
         STATION_TYPE=Gen2; DEPTH=shallow; SITE=MB; LAYER_DEPTH=surface; LAYER_DB=0; ATTEN=MB_freq
-        CONFIG=RCRSimulation/configurations/MB/Gen2_shallow_direct.json; MAX_FILE=1000; IS_DIRECT=true ;;
+        CONFIG=RCRSimulation/configurations/MB/Gen2_shallow_direct.json; MAX_FILE=1000; IS_DIRECT=true
+        LAYER_DB_LIST="" ;;
     Gen2_deep_SP_direct)
         STATION_TYPE=Gen2; DEPTH=deep; SITE=SP; LAYER_DEPTH=surface; LAYER_DB=0; ATTEN=None
-        CONFIG=RCRSimulation/configurations/SP/Gen2_deep_direct.json; MAX_FILE=2100; IS_DIRECT=true ;;
+        CONFIG=RCRSimulation/configurations/SP/Gen2_deep_direct.json; MAX_FILE=2100; IS_DIRECT=true
+        LAYER_DB_LIST="" ;;
     Gen2_shallow_SP_direct)
         STATION_TYPE=Gen2; DEPTH=shallow; SITE=SP; LAYER_DEPTH=surface; LAYER_DB=0; ATTEN=None
-        CONFIG=RCRSimulation/configurations/SP/Gen2_shallow_direct.json; MAX_FILE=2100; IS_DIRECT=true ;;
+        CONFIG=RCRSimulation/configurations/SP/Gen2_shallow_direct.json; MAX_FILE=2100; IS_DIRECT=true
+        LAYER_DB_LIST="" ;;
 
     # Reflected simulations (combined configs)
+    # LAYER_DB_LIST: comma-separated dB values for multi-reflectivity sweep
+    #   SP: 40,45,50,55 dB (R_amp = 0.01, 0.0056, 0.0032, 0.0018)
+    #   MB: 0,1.5,3.0 dB (R_power ≈ 1.0, 0.7, 0.5)
     HRA_MB_576m)
         STATION_TYPE=HRA; DEPTH=shallow; SITE=MB; LAYER_DEPTH=-576; LAYER_DB=1.7; ATTEN=MB_freq
-        CONFIG=RCRSimulation/configurations/MB/HRA_shallow_576m_combined.json; MAX_FILE=1000; IS_DIRECT=false ;;
+        CONFIG=RCRSimulation/configurations/MB/HRA_shallow_576m_combined.json; MAX_FILE=1000; IS_DIRECT=false
+        LAYER_DB_LIST="0,1.5,3.0" ;;
     Gen2_deep_MB_576m)
         STATION_TYPE=Gen2; DEPTH=deep; SITE=MB; LAYER_DEPTH=-576; LAYER_DB=1.7; ATTEN=MB_freq
-        CONFIG=RCRSimulation/configurations/MB/Gen2_deep_576m_combined.json; MAX_FILE=1000; IS_DIRECT=false ;;
+        CONFIG=RCRSimulation/configurations/MB/Gen2_deep_576m_combined.json; MAX_FILE=1000; IS_DIRECT=false
+        LAYER_DB_LIST="0,1.5,3.0" ;;
     Gen2_shallow_MB_576m)
         STATION_TYPE=Gen2; DEPTH=shallow; SITE=MB; LAYER_DEPTH=-576; LAYER_DB=1.7; ATTEN=MB_freq
-        CONFIG=RCRSimulation/configurations/MB/Gen2_shallow_576m_combined.json; MAX_FILE=1000; IS_DIRECT=false ;;
+        CONFIG=RCRSimulation/configurations/MB/Gen2_shallow_576m_combined.json; MAX_FILE=1000; IS_DIRECT=false
+        LAYER_DB_LIST="0,1.5,3.0" ;;
     Gen2_deep_SP_300m)
         STATION_TYPE=Gen2; DEPTH=deep; SITE=SP; LAYER_DEPTH=-300; LAYER_DB=0; ATTEN=None
-        CONFIG=RCRSimulation/configurations/SP/Gen2_deep_300m_combined.json; MAX_FILE=2100; IS_DIRECT=false ;;
+        CONFIG=RCRSimulation/configurations/SP/Gen2_deep_300m_combined.json; MAX_FILE=2100; IS_DIRECT=false
+        LAYER_DB_LIST="40,45,50,55" ;;
     Gen2_deep_SP_500m)
         STATION_TYPE=Gen2; DEPTH=deep; SITE=SP; LAYER_DEPTH=-500; LAYER_DB=0; ATTEN=None
-        CONFIG=RCRSimulation/configurations/SP/Gen2_deep_500m_combined.json; MAX_FILE=2100; IS_DIRECT=false ;;
+        CONFIG=RCRSimulation/configurations/SP/Gen2_deep_500m_combined.json; MAX_FILE=2100; IS_DIRECT=false
+        LAYER_DB_LIST="40,45,50,55" ;;
     Gen2_deep_SP_830m)
         STATION_TYPE=Gen2; DEPTH=deep; SITE=SP; LAYER_DEPTH=-830; LAYER_DB=0; ATTEN=None
-        CONFIG=RCRSimulation/configurations/SP/Gen2_deep_830m_combined.json; MAX_FILE=2100; IS_DIRECT=false ;;
+        CONFIG=RCRSimulation/configurations/SP/Gen2_deep_830m_combined.json; MAX_FILE=2100; IS_DIRECT=false
+        LAYER_DB_LIST="40,45,50,55" ;;
     Gen2_shallow_SP_300m)
         STATION_TYPE=Gen2; DEPTH=shallow; SITE=SP; LAYER_DEPTH=-300; LAYER_DB=0; ATTEN=None
-        CONFIG=RCRSimulation/configurations/SP/Gen2_shallow_300m_combined.json; MAX_FILE=2100; IS_DIRECT=false ;;
+        CONFIG=RCRSimulation/configurations/SP/Gen2_shallow_300m_combined.json; MAX_FILE=2100; IS_DIRECT=false
+        LAYER_DB_LIST="40,45,50,55" ;;
     Gen2_shallow_SP_500m)
         STATION_TYPE=Gen2; DEPTH=shallow; SITE=SP; LAYER_DEPTH=-500; LAYER_DB=0; ATTEN=None
-        CONFIG=RCRSimulation/configurations/SP/Gen2_shallow_500m_combined.json; MAX_FILE=2100; IS_DIRECT=false ;;
+        CONFIG=RCRSimulation/configurations/SP/Gen2_shallow_500m_combined.json; MAX_FILE=2100; IS_DIRECT=false
+        LAYER_DB_LIST="40,45,50,55" ;;
     Gen2_shallow_SP_830m)
         STATION_TYPE=Gen2; DEPTH=shallow; SITE=SP; LAYER_DEPTH=-830; LAYER_DB=0; ATTEN=None
-        CONFIG=RCRSimulation/configurations/SP/Gen2_shallow_830m_combined.json; MAX_FILE=2100; IS_DIRECT=false ;;
+        CONFIG=RCRSimulation/configurations/SP/Gen2_shallow_830m_combined.json; MAX_FILE=2100; IS_DIRECT=false
+        LAYER_DB_LIST="40,45,50,55" ;;
     *)
         echo "Error: Unknown simulation '$SIM_NAME'"
         echo "Run with no arguments to see available simulations."
@@ -140,6 +157,9 @@ LOG_DIR="RCRSimulation/logs/${DATE_TAG}/"
 echo "Simulation: ${SIM_NAME}"
 echo "  Type: ${STATION_TYPE}, Depth: ${DEPTH}, Site: ${SITE}"
 echo "  Layer: ${LAYER_DEPTH}, dB: ${LAYER_DB}"
+if [ -n "${LAYER_DB_LIST}" ]; then
+    echo "  Multi-dB sweep: ${LAYER_DB_LIST}"
+fi
 echo "  Config: ${CONFIG}"
 echo "  Files: ${MIN_FILE_START}-${MAX_FILE}, ${FILES_PER_JOB} per task, ${N_TASKS} tasks"
 echo "  Cores: ${N_CORES}, Distance: ${DISTANCE_KM} km"
@@ -159,7 +179,16 @@ if [ "$DRY_RUN" = true ]; then
     echo "    --layer-depth ${LAYER_DEPTH} --layer-db ${LAYER_DB} \\"
     echo "    --attenuation-model ${ATTEN} --add-noise \\"
     echo "    --output-folder ${OUTPUT_DIR} --numpy-folder ${NUMPY_DIR}"
+    if [ -n "${LAYER_DB_LIST}" ]; then
+        echo "    --layer-db-list ${LAYER_DB_LIST}"
+    fi
     exit 0
+fi
+
+# Build optional CLI flags for S01_RCRSim.py
+EXTRA_ARGS=""
+if [ -n "${LAYER_DB_LIST}" ]; then
+    EXTRA_ARGS="--layer-db-list ${LAYER_DB_LIST}"
 fi
 
 # Create directories
@@ -220,7 +249,7 @@ python RCRSimulation/S01_RCRSim.py \\
     --attenuation-model ${ATTEN} \\
     --add-noise \\
     --output-folder ${OUTPUT_DIR} \\
-    --numpy-folder ${NUMPY_DIR}
+    --numpy-folder ${NUMPY_DIR} ${EXTRA_ARGS}
 
 echo "Task \${SLURM_ARRAY_TASK_ID} complete at \$(date)"
 EOF

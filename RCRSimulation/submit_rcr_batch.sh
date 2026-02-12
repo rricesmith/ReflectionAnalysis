@@ -75,20 +75,21 @@ N_CORES_TEST=${CFG_N_CORES_TEST:-50}
 FILES_PER_JOB_CFG=${CFG_FILES_PER_JOB:-50}
 
 # ---- Lookup simulation parameters ----
-# Returns: STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MAX_FILE IS_DIRECT
+# Returns: STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MAX_FILE IS_DIRECT LAYER_DB_LIST
+# LAYER_DB_LIST: comma-separated dB values for multi-reflectivity sweep (or "none" if not used)
 lookup_sim() {
     local sim=$1
     case $sim in
         HRA_MB_576m)
-            echo "HRA shallow MB -576 1.7 MB_freq RCRSimulation/configurations/MB/HRA_shallow_576m_combined.json 1000 false" ;;
+            echo "HRA shallow MB -576 1.7 MB_freq RCRSimulation/configurations/MB/HRA_shallow_576m_combined.json 1000 false 0,1.5,3.0" ;;
         Gen2_deep_MB_576m)
-            echo "Gen2 deep MB -576 1.7 MB_freq RCRSimulation/configurations/MB/Gen2_deep_576m_combined.json 1000 false" ;;
+            echo "Gen2 deep MB -576 1.7 MB_freq RCRSimulation/configurations/MB/Gen2_deep_576m_combined.json 1000 false 0,1.5,3.0" ;;
         Gen2_shallow_MB_576m)
-            echo "Gen2 shallow MB -576 1.7 MB_freq RCRSimulation/configurations/MB/Gen2_shallow_576m_combined.json 1000 false" ;;
+            echo "Gen2 shallow MB -576 1.7 MB_freq RCRSimulation/configurations/MB/Gen2_shallow_576m_combined.json 1000 false 0,1.5,3.0" ;;
         Gen2_deep_SP_300m)
-            echo "Gen2 deep SP -300 0 None RCRSimulation/configurations/SP/Gen2_deep_300m_combined.json 2100 false" ;;
+            echo "Gen2 deep SP -300 0 None RCRSimulation/configurations/SP/Gen2_deep_300m_combined.json 2100 false 40,45,50,55" ;;
         Gen2_shallow_SP_300m)
-            echo "Gen2 shallow SP -300 0 None RCRSimulation/configurations/SP/Gen2_shallow_300m_combined.json 2100 false" ;;
+            echo "Gen2 shallow SP -300 0 None RCRSimulation/configurations/SP/Gen2_shallow_300m_combined.json 2100 false 40,45,50,55" ;;
         *)
             echo "UNKNOWN"; return 1 ;;
     esac
@@ -114,7 +115,7 @@ lookup_sim() {
         #     echo "Gen2 shallow SP -830 0 None RCRSimulation/configurations/SP/Gen2_shallow_830m_combined.json 2100 false" ;;
 
 # ---- Build the task list ----
-# Each line: SIM_NAME STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MIN_FILE MAX_FILE N_CORES DISTANCE_KM SEED
+# Each line: SIM_NAME STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MIN_FILE MAX_FILE N_CORES DISTANCE_KM SEED LAYER_DB_LIST
 DATE_TAG=$(date +%m.%d.%y)
 OUTPUT_DIR="/dfs8/sbarwick_lab/ariannaproject/rricesmi/simulatedRCRs/${DATE_TAG}/"
 NUMPY_DIR="RCRSimulation/output/${DATE_TAG}/numpy/"
@@ -134,7 +135,7 @@ for SIM_NAME in "${SIMS[@]}"; do
         exit 1
     fi
 
-    read -r STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG SIM_MAX_FILE IS_DIRECT <<< "$PARAMS"
+    read -r STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG SIM_MAX_FILE IS_DIRECT LAYER_DB_LIST <<< "$PARAMS"
 
     # Test vs production settings
     if [ "$TEST_MODE" = true ]; then
@@ -166,8 +167,8 @@ for SIM_NAME in "${SIMS[@]}"; do
         CHUNK_MAX=$(( CHUNK_MIN + FILES_PER_JOB ))
         if [ $CHUNK_MAX -gt $SIM_MAX_FILE ]; then CHUNK_MAX=$SIM_MAX_FILE; fi
         SEED=$t
-        # Tab-separated: SIM_NAME STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MIN_FILE MAX_FILE N_CORES DISTANCE_KM SEED
-        TASK_LINES+=("${SIM_NAME}	${STATION_TYPE}	${DEPTH}	${SITE}	${LAYER_DEPTH}	${LAYER_DB}	${ATTEN}	${CONFIG}	${CHUNK_MIN}	${CHUNK_MAX}	${N_CORES}	${DISTANCE_KM}	${SEED}")
+        # Tab-separated: SIM_NAME STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MIN_FILE MAX_FILE N_CORES DISTANCE_KM SEED LAYER_DB_LIST
+        TASK_LINES+=("${SIM_NAME}	${STATION_TYPE}	${DEPTH}	${SITE}	${LAYER_DEPTH}	${LAYER_DB}	${ATTEN}	${CONFIG}	${CHUNK_MIN}	${CHUNK_MAX}	${N_CORES}	${DISTANCE_KM}	${SEED}	${LAYER_DB_LIST}")
     done
 
     TOTAL_TASKS=$(( TOTAL_TASKS + N_TASKS ))
@@ -238,7 +239,13 @@ cd \$ReflectiveAnalysis
 TASK_LIST="${TASK_LIST_FILE}"
 LINE=\$(sed -n "\$((SLURM_ARRAY_TASK_ID + 1))p" "\$TASK_LIST")
 
-IFS=\$'\\t' read -r SIM_NAME STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MIN_FILE MAX_FILE N_CORES DISTANCE_KM SEED <<< "\$LINE"
+IFS=\$'\\t' read -r SIM_NAME STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MIN_FILE MAX_FILE N_CORES DISTANCE_KM SEED LAYER_DB_LIST <<< "\$LINE"
+
+# Build optional --layer-db-list flag
+EXTRA_ARGS=""
+if [ -n "\${LAYER_DB_LIST}" ]; then
+    EXTRA_ARGS="--layer-db-list \${LAYER_DB_LIST}"
+fi
 
 echo "Starting batch task \${SLURM_ARRAY_TASK_ID}: \${SIM_NAME} (files \${MIN_FILE}-\${MAX_FILE}) at \$(date)"
 
@@ -261,7 +268,7 @@ python RCRSimulation/S01_RCRSim.py \\
     --attenuation-model \${ATTEN} \\
     --add-noise \\
     --output-folder ${OUTPUT_DIR} \\
-    --numpy-folder ${NUMPY_DIR}
+    --numpy-folder ${NUMPY_DIR} \${EXTRA_ARGS}
 
 echo "Task \${SLURM_ARRAY_TASK_ID} (\${SIM_NAME} part\${SEED}) complete at \$(date)"
 EOF

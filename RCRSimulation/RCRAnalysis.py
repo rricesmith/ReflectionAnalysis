@@ -15,8 +15,10 @@ Key functions:
 
 from __future__ import annotations
 
+import argparse
 import os
 import configparser
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Sequence
 
@@ -33,6 +35,35 @@ import astrotools.auger as auger
 NOISE_PRECHECK_SIGMA = 3.5
 
 from RCRSimulation.RCREventObject import RCREvent, REFLECTED_STATION_OFFSET
+
+# Regex to extract dB value from trigger names like "primary_LPDA_2of4_4.5sigma_40.0dB"
+_DB_TAG_PATTERN = re.compile(r'_(\d+(?:\.\d+)?)dB$')
+
+
+def parse_db_from_trigger_name(trigger_name: str) -> Optional[float]:
+    """Extract dB value from a dB-tagged trigger name.
+
+    Returns None if trigger name has no dB tag (single-dB simulation).
+    """
+    match = _DB_TAG_PATTERN.search(trigger_name)
+    if match:
+        return float(match.group(1))
+    return None
+
+
+def collect_trigger_names(event_list: Sequence[RCREvent]) -> set[str]:
+    """Collect all unique trigger names from an event list."""
+    names: set[str] = set()
+    for evt in event_list:
+        names.update(evt.all_trigger_names())
+    return names
+
+
+def filter_real_triggers(trigger_names: set[str]) -> list[str]:
+    """Filter out noise pre-check triggers, return sorted real triggers."""
+    noise_tag = f"{NOISE_PRECHECK_SIGMA:g}sigma"
+    real = [t for t in trigger_names if noise_tag not in t]
+    return sorted(real) if real else sorted(trigger_names)
 
 
 # =============================================================================
@@ -1136,9 +1167,17 @@ def mergeSeparatedEvents(
 # =============================================================================
 
 if __name__ == "__main__":
-    # Example usage
+    parser = argparse.ArgumentParser(description="RCR Simulation Analysis")
+    parser.add_argument("--config", type=str, default="RCRSimulation/config.ini",
+                        help="Path to config.ini")
+    parser.add_argument("--layer-db", type=float, default=None,
+                        help="Analyze only this dB value (for multi-dB simulations)")
+    parser.add_argument("--pattern", type=str, default="*combined_RCReventList.npy",
+                        help="Glob pattern for event files")
+    cli_args = parser.parse_args()
+
     config = configparser.ConfigParser()
-    config.read('RCRSimulation/config.ini')
+    config.read(cli_args.config)
 
     numpy_folder = config.get('FOLDERS', 'numpy_folder', fallback='RCRSimulation/output/numpy')
     save_folder = config.get('FOLDERS', 'save_folder', fallback='RCRSimulation/plots')
@@ -1149,11 +1188,10 @@ if __name__ == "__main__":
 
     # Look for event files
     numpy_path = Path(numpy_folder)
-    event_files = list(numpy_path.glob('*combined_RCReventList.npy'))
-    # event_files = list(numpy_path.glob('*_RCReventList.npy'))
+    event_files = list(numpy_path.glob(cli_args.pattern))
 
     if not event_files:
-        ic('No combined event files found in', numpy_folder)
+        ic('No event files found in', numpy_folder, 'with pattern', cli_args.pattern)
     else:
         for event_file in event_files:
             ic(f'Processing {event_file}')
@@ -1162,34 +1200,54 @@ if __name__ == "__main__":
             # Get label from filename
             label = event_file.stem.replace('_RCReventList', '')
 
-            # Determine trigger name by scanning events until we find one that triggered
-            if len(event_list) > 0:
-                trigger_names = set()
-                for evt in event_list:
-                    trigger_names.update(evt.all_trigger_names())
-                    if trigger_names:
-                        break
+            if len(event_list) == 0:
+                ic(f'Empty event list in {event_file}')
+                continue
 
-                if trigger_names:
-                    # Filter out the noise pre-check trigger (2σ screening threshold)
-                    # so we use the actual physics trigger for rate calculations
-                    noise_tag = f"{NOISE_PRECHECK_SIGMA:g}sigma"
-                    real_triggers = [t for t in trigger_names if noise_tag not in t]
-                    if real_triggers:
-                        trigger_name = sorted(real_triggers)[0]
-                    else:
-                        trigger_name = sorted(trigger_names)[0]
-                    ic(f'Using trigger: {trigger_name}')
+            # Collect all trigger names from ALL events (not just first)
+            all_triggers = collect_trigger_names(event_list)
+            real_triggers = filter_real_triggers(all_triggers)
 
-                    results = runAnalysis(
-                        event_list,
-                        trigger_name,
-                        os.path.join(save_folder, label),
-                        max_distance=max_distance,
-                        label=label
-                    )
+            if not real_triggers:
+                ic(f'No triggered events found in {event_file}')
+                continue
 
-                    ic(f'Direct event rate: {np.nansum(results["direct_event_rate"]):.3f} evts/yr')
-                    ic(f'Reflected event rate: {np.nansum(results["reflected_event_rate"]):.3f} evts/yr')
+            # Check if this is a multi-dB simulation by parsing dB tags
+            db_triggers: Dict[Optional[float], str] = {}  # dB value -> trigger name
+            for t in real_triggers:
+                db_val = parse_db_from_trigger_name(t)
+                db_triggers[db_val] = t
+
+            # Apply --layer-db filter if specified
+            if cli_args.layer_db is not None:
+                target_db = cli_args.layer_db
+                # Find the trigger matching the requested dB value
+                matching = {db: t for db, t in db_triggers.items()
+                            if db is not None and abs(db - target_db) < 0.01}
+                if not matching:
+                    ic(f'No trigger found for --layer-db {target_db}. '
+                       f'Available: {sorted(db for db in db_triggers if db is not None)}')
+                    continue
+                db_triggers = matching
+
+            is_multi_db = any(db is not None for db in db_triggers)
+
+            # Run analysis for each trigger (one per dB value, or single for non-dB sims)
+            for db_val, trigger_name in sorted(db_triggers.items(), key=lambda x: (x[0] is None, x[0])):
+                if is_multi_db and db_val is not None:
+                    db_label = f"{label}_{db_val:.0f}dB"
+                    ic(f'  Analyzing dB={db_val:.1f}: trigger={trigger_name}')
                 else:
-                    ic(f'No triggered events found in {event_file}')
+                    db_label = label
+                    ic(f'  Using trigger: {trigger_name}')
+
+                results = runAnalysis(
+                    event_list,
+                    trigger_name,
+                    os.path.join(save_folder, db_label),
+                    max_distance=max_distance,
+                    label=db_label
+                )
+
+                ic(f'  Direct event rate: {np.nansum(results["direct_event_rate"]):.3f} evts/yr')
+                ic(f'  Reflected event rate: {np.nansum(results["reflected_event_rate"]):.3f} evts/yr')

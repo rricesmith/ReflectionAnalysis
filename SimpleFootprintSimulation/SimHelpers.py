@@ -1,5 +1,7 @@
 from NuRadioReco.utilities import units
+import glob
 import os
+import re
 import numpy as np
 from scipy import constants
 
@@ -40,36 +42,40 @@ def pullFilesForSimulation(
         Not a great range but useable for simple studies
     """
 
-    i = min_file
     input_files = []
     if sim_type == 'SP':
         if max_file == -1:
             max_file = 2100
-        while i < max_file:
-            file = 'none'
-            if i < 1000:
-                file = f'../SPFootprints/000{i:03d}.hdf5'
-            else:
-                file = f'../SPFootprints/SIM00{i}.hdf5'
-            if os.path.exists(file):
-                input_files.append(file)
-            i += 1
+        # Glob both SP filename patterns at once instead of per-file os.path.exists()
+        sp_dir = '../SPFootprints/'
+        all_sp = sorted(glob.glob(os.path.join(sp_dir, '*.hdf5')))
+        # Extract index from filename: "000XXX.hdf5" (i<1000) or "SIM00XXXX.hdf5" (i>=1000)
+        _sp_idx_re = re.compile(r'^(?:0*|SIM0*)(\d+)\.hdf5$')
+        for f in all_sp:
+            m = _sp_idx_re.match(os.path.basename(f))
+            if m:
+                idx = int(m.group(1))
+                if min_file <= idx < max_file:
+                    input_files.append(f)
     elif sim_type == 'MB':
         if max_file == -1:
             max_file = 3999
-        while i < max_file:
-            file = f'../MBFootprints/00{i:04d}.hdf5'
-            if os.path.exists(file):
-                input_files.append(file)
-            i += 1
+        # Glob all MB footprints at once (1-2 directory reads vs N stat() calls)
+        mb_dir = '../MBFootprints/'
+        all_mb = sorted(glob.glob(os.path.join(mb_dir, '00[0-9][0-9][0-9][0-9].hdf5')))
+        for f in all_mb:
+            idx = int(os.path.basename(f).replace('.hdf5', ''))
+            if min_file <= idx < max_file:
+                input_files.append(f)
     elif sim_type == 'GL':
         if max_file == -1:
             max_file = 600
-        while i < max_file:
-            file = f'../../../../pub/arianna/SIM/greenland/output/hdf5/SIM{i:06d}.hdf5'
-            if os.path.exists(file):
-                input_files.append(file)
-            i += 1
+        gl_dir = '../../../../pub/arianna/SIM/greenland/output/hdf5/'
+        all_gl = sorted(glob.glob(os.path.join(gl_dir, 'SIM[0-9][0-9][0-9][0-9][0-9][0-9].hdf5')))
+        for f in all_gl:
+            idx = int(os.path.basename(f).replace('SIM', '').replace('.hdf5', ''))
+            if min_file <= idx < max_file:
+                input_files.append(f)
     elif sim_type.lower() == 'icetop':
         if energy_range is None:
             raise ValueError("energy_range must be supplied for IceTop simulations.")

@@ -17,6 +17,40 @@ from NuRadioReco.framework.parameters import electricFieldParameters as efp
 
 import matplotlib.pyplot as plt
 
+def compute_MB_freq_attenuation(freqs, dist_traveled, R=0.82, d_ice=576 * units.m):
+    """
+    Compute frequency-dependent attenuation factor for the MB_freq model.
+
+    Based on the attenuation model from NuRadioMC. The base attenuation length
+    formula (460m - 180m/GHz * f) was measured assuming R=1 at the ice bottom.
+    The correction factor adjusts for the actual reflectivity R.
+
+    Parameters
+    ----------
+    freqs : array-like
+        Frequency array (in NuRadioReco units, i.e. Hz * units.Hz or GHz * units.GHz)
+    dist_traveled : float
+        Total ray path length through ice (meters, no units)
+    R : float
+        Amplitude reflectivity of the ice bottom (default 0.82 for Moore's Bay)
+    d_ice : float
+        Depth of ice at the site (default 576m for Moore's Bay), in NuRadioReco units
+
+    Returns
+    -------
+    efield_adjust : ndarray
+        Multiplicative factor for the electric field frequency spectrum
+    """
+    att_length = 460 * units.m - 180 * units.m / units.GHz * freqs / units.GHz
+    # Correction factor: base formula assumed R=1, adjust for actual reflectivity
+    att_length *= (1 + att_length / (2 * d_ice) * np.log(R)) ** -1
+    att_length[att_length <= 0] = 1
+    efield_adjust = np.exp(-dist_traveled / (att_length / units.m))
+    efield_adjust[att_length <= 0] = 0  # Remove negative attenuation lengths
+    efield_adjust[efield_adjust > 1] = 1  # Remove increases in electric field
+    return efield_adjust
+
+
 class readCoREAS:
     """
     coreas input module for fixed grid of stations.
@@ -36,6 +70,9 @@ class readCoREAS:
         self.__current_input_file = None
         self.__random_generator = None
         self.logger = logging.getLogger('NuRadioReco.readCoREAS')
+        # Per-channel ray path length through ice, populated during run()
+        # Structure: {station_id: {channel_id: dist_traveled}}
+        self.channel_dist_traveled = {}
 
     def begin(self, input_files, xmin, xmax, ymin, ymax, n_cores=10, shape='square', seed=None, log_level=logging.INFO):
         """
@@ -75,8 +112,8 @@ class readCoREAS:
         self.__random_generator = numpy.random.RandomState(seed)
         self.logger.setLevel(log_level)
 
-    def modify_eField(self, electric_field, ant_surface_position, ant_ice_position, cr_xmax, ray_type, refl_layer_depth = 0*units.m, 
-                            reflective_dB=0, force_dB = False, attenuation_model=None):
+    def modify_eField(self, electric_field, ant_surface_position, ant_ice_position, cr_xmax, ray_type, refl_layer_depth = 0*units.m,
+                            reflective_dB=0, force_dB = False, attenuation_model=None, R_attenuation=0.82):
         """
         Take in a NuRadioReco Electric Field object
         And modify the trace of the electric field by 1/R travel distance,
@@ -106,7 +143,10 @@ class readCoREAS:
         attenuation_model: string (default None)
             Attenuation model to be used.
             'MB_flat' applies a flat attenuation length of 460m - 180m/GHz * frequency
-        """        
+        R_attenuation: float (default 0.82)
+            Amplitude reflectivity for the MB_freq attenuation model. The base attenuation
+            length formula assumed R=1; this corrects for the actual reflectivity.
+        """
         n_ice = 1.78
 
         # Removing zenith adjustment, if station is in cosmic_ray mode then it will be computed when convoluting antenna response
@@ -119,7 +159,7 @@ class readCoREAS:
         if surf_to_ant > max_zen*1.1:   # 10% buffer to account for some antenna's being further back relative to station by a few meters
             self.logger.debug(f'Zenith angle exceeds maximum after refraction, setting eField to 0')
             electric_field.set_frequency_spectrum(electric_field.get_frequency_spectrum() * 0, electric_field.get_sampling_rate())
-            return electric_field
+            return electric_field, 0.0
 
         # Untested configuration
         if ray_type == 'reflected':
@@ -140,25 +180,8 @@ class readCoREAS:
             att_length = 420*units.m
             efield_adjust = np.exp(-np.abs(dist_traveled) / att_length)
         elif attenuation_model == 'MB_freq':
-            # Model is from https://github.com/nu-radio/NuRadioMC/blob/4f19eb9e0343300af5ab061ce7a3a8916edb2c2f/NuRadioMC/utilities/attenuation.py#L224
             freqs = electric_field.get_frequencies()
-            R = 0.82 # reflectivity of MB ice bottom
-            d_ice = 576 * units.m  # depth of ice at Moore's Bay
-            att_length = 460 * units.m - 180 * units.m / units.GHz * freqs / units.GHz
-            # Correction factor due to previous line being calculated assuming R=1
-            att_length *= (1 + att_length / (2 * d_ice) * np.log(R)) ** -1
-
-            # Additional adjustment from temperature profile of ice
-            # Temperature dependence is currently IGNORED
-            # Probably needs to be added in at some point.
-
-            att_length[att_length <= 0] = 1
-            efield_adjust = np.exp(-dist_traveled / (att_length/units.m) )
-#            print(f'efield adjust from atten {np.exp(-dist_traveled / att_length)} of dist {dist_traveled}')
-            efield_adjust[att_length <= 0] = 0	#Remove negative attenuation lenghts
-            efield_adjust[efield_adjust > 1] = 1 #Remove increases in electric field
-
-
+            efield_adjust = compute_MB_freq_attenuation(freqs, dist_traveled, R=R_attenuation)
         else:
             print(f'There exists no attenuation model {attenuation_model}')
             quit()
@@ -191,31 +214,8 @@ class readCoREAS:
 #            efield_adjust *= 10**(-reflective_dB / 20)
 
         electric_field.set_frequency_spectrum(electric_field.get_frequency_spectrum() * efield_adjust, electric_field.get_sampling_rate())
-#        electric_field.set_parameter(efp.zenith, refr_zenith)
 
-        """
-        post_val = 0
-        for iF, fre in enumerate(freqs):
-            if 190 <= fre/units.MHz <= 200:
-                for i in range(20):
-                    post_val += np.abs(electric_field.get_frequency_spectrum()[2])[iF+10-i]               
-                break 
-
-        if pre_val == 0:
-            pre_val = 1
-        print(f'pre at {pre_val}, post {post_val}, ratio {post_val/pre_val} compared to 200MHz att of {efield_adjust[iF]} for dist traveled of {dist_traveled} and att length {att_length[iF]}')
-
-        plt.plot(freqs/units.MHz, np.abs(electric_field.get_frequency_spectrum()[0]), label='Post-att 0')
-        plt.plot(freqs/units.MHz, np.abs(electric_field.get_frequency_spectrum()[1]), label='Post-att 1')
-        plt.plot(freqs/units.MHz, np.abs(electric_field.get_frequency_spectrum()[2]), label='Post-att 2')
-        plt.plot(freqs/units.MHz,efield_adjust, color='black', label='E field reduction')
-        plt.legend()
-        plt.xlabel('Freqs (MHz)')
-        plt.yscale('log')
-        plt.show()
-        """
-
-        return electric_field
+        return electric_field, dist_traveled
 
 
     @register_run()
@@ -454,8 +454,9 @@ class readCoREAS:
 #                                    print(f'efield channels {efield.get_channel_ids()} for chids {ch_ids}')
                                     channel_dict = detector.get_channel(station_id, efield.get_channel_ids()[0])
                                     ant_surf_pos = np.array([channel_dict['ant_position_x'],channel_dict['ant_position_y'],channel_dict['ant_position_z']]) + det_station_position
-                                    efield = self.modify_eField(efield, station_position, ant_surf_pos, corsika['CoREAS'].attrs['DepthOfShowerMaximum'], 
+                                    efield, ch_dist = self.modify_eField(efield, station_position, ant_surf_pos, corsika['CoREAS'].attrs['DepthOfShowerMaximum'],
                                                                 ray_type, layer_depth, layer_dB, force_dB, attenuation_model)
+                                    self.channel_dist_traveled.setdefault(station_id, {})[efield.get_channel_ids()[0]] = ch_dist
                                 sim_station.set_electric_fields(efields)
                             main_station.set_sim_station(sim_station)
                             main_sim_station = main_station.get_sim_station()
@@ -466,8 +467,9 @@ class readCoREAS:
 #                                    print(f'efield channels {efield.get_channel_ids()} for chids {ch_ids}')
                                     channel_dict = detector.get_channel(station_id, efield.get_channel_ids()[0])
                                     ant_surf_pos = np.array([channel_dict['ant_position_x'],channel_dict['ant_position_y'],channel_dict['ant_position_z']]) + det_station_position
-                                    efield = self.modify_eField(efield, station_position, ant_surf_pos, corsika['CoREAS'].attrs['DepthOfShowerMaximum'], 
+                                    efield, ch_dist = self.modify_eField(efield, station_position, ant_surf_pos, corsika['CoREAS'].attrs['DepthOfShowerMaximum'],
                                                                 ray_type, layer_depth, layer_dB, force_dB, attenuation_model)
+                                    self.channel_dist_traveled.setdefault(station_id, {})[efield.get_channel_ids()[0]] = ch_dist
 #                                main_station.set_sim_station(sim_station)
                                 main_sim_station = main_station.get_sim_station()
                                 main_sim_station.add_electric_field(efield)
