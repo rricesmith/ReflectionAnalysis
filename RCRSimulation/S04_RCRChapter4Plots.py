@@ -52,12 +52,6 @@ MB_REFLECTED_SIMS = {
     "Gen2 Deep": "Gen2_deep_MB_576m",
 }
 
-MB_DIRECT_SIMS = {
-    "HRA": "HRA_MB_direct",
-    "Gen2 Shallow": "Gen2_shallow_MB_direct",
-    "Gen2 Deep": "Gen2_deep_MB_direct",
-}
-
 SP_DEPTHS = ["300m", "500m", "830m"]
 
 # SP sims keyed by (depth, station_type)
@@ -70,9 +64,11 @@ SP_REFLECTED_SIMS = {
     ("830m", "deep"): "Gen2_deep_SP_830m",
 }
 
+# For direct rates, use the combined sims (which contain both direct and reflected stations).
+# These are the "canonical" sims used for direct rates (one per site/station-type).
 SP_DIRECT_SIMS = {
-    "Gen2 Shallow": "Gen2_shallow_SP_direct",
-    "Gen2 Deep": "Gen2_deep_SP_direct",
+    "Gen2 Shallow": "Gen2_shallow_SP_300m",
+    "Gen2 Deep": "Gen2_deep_SP_300m",
 }
 
 # Expected dB sweep values
@@ -784,10 +780,9 @@ def main():
 
     max_distance = float(config.get("SIMULATION", "distance_km", fallback="5")) / 2 * units.km
 
-    # Collect all sim names to load
+    # Collect all sim names to load (direct rates come from the combined sims)
     all_sim_names = set()
     all_sim_names.update(MB_REFLECTED_SIMS.values())
-    all_sim_names.update(SP_DIRECT_SIMS.values())
     all_sim_names.update(SP_REFLECTED_SIMS.values())
 
     ic("Loading simulations from", numpy_folder)

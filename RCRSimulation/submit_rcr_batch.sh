@@ -101,13 +101,13 @@ lookup_sim() {
         Gen2_shallow_SP_direct)
             echo "Gen2 shallow SP surface 0 None RCRSimulation/configurations/SP/Gen2_shallow_direct.json 2100 true" ;;
         Gen2_deep_SP_500m)
-            echo "Gen2 deep SP -500 0 None RCRSimulation/configurations/SP/Gen2_deep_500m_combined.json 2100 false" ;;
+            echo "Gen2 deep SP -500 0 None RCRSimulation/configurations/SP/Gen2_deep_500m_combined.json 2100 false 40,45,50,55" ;;
         Gen2_deep_SP_830m)
-            echo "Gen2 deep SP -830 0 None RCRSimulation/configurations/SP/Gen2_deep_830m_combined.json 2100 false" ;;
+            echo "Gen2 deep SP -830 0 None RCRSimulation/configurations/SP/Gen2_deep_830m_combined.json 2100 false 40,45,50,55" ;;
         Gen2_shallow_SP_500m)
-            echo "Gen2 shallow SP -500 0 None RCRSimulation/configurations/SP/Gen2_shallow_500m_combined.json 2100 false" ;;
+            echo "Gen2 shallow SP -500 0 None RCRSimulation/configurations/SP/Gen2_shallow_500m_combined.json 2100 false 40,45,50,55" ;;
         Gen2_shallow_SP_830m)
-            echo "Gen2 shallow SP -830 0 None RCRSimulation/configurations/SP/Gen2_shallow_830m_combined.json 2100 false" ;;
+            echo "Gen2 shallow SP -830 0 None RCRSimulation/configurations/SP/Gen2_shallow_830m_combined.json 2100 false 40,45,50,55" ;;
         *)
             echo "UNKNOWN"; return 1 ;;
     esac
