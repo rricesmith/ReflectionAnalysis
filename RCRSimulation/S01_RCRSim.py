@@ -1408,7 +1408,13 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
                         # Finalize if any trigger fired
                         if station.has_triggered():
-                            triggerTimeAdjuster.run(evt, station, det)
+                            # Re-begin adjuster with whichever directional trigger fired
+                            for _, dsuffix in channel_sets:
+                                adj_name = f"primary_{dsuffix}_{final_key}sigma"
+                                if station.has_triggered(trigger_name=adj_name):
+                                    triggerTimeAdjuster.begin(trigger_name=adj_name)
+                                    triggerTimeAdjuster.run(evt, station, det)
+                                    break
                             channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
                     else:
                         # Standard single trigger for HRA and Gen2 shallow reflected (4 channels)
@@ -1447,6 +1453,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                                 trigger_name=final_trigger,
                             )
 
+                            triggerTimeAdjuster.begin(trigger_name=final_trigger)
                             triggerTimeAdjuster.run(evt, station, det)
                             channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
                         else:
