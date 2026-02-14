@@ -53,6 +53,9 @@ class RCREvent:
     recon_zenith: Dict[int, Optional[float]] = field(default_factory=dict)
     recon_azimuth: Dict[int, Optional[float]] = field(default_factory=dict)
 
+    # Per-station average polarization angle (radians)
+    polarization_angle: Dict[int, float] = field(default_factory=dict)
+
     # Event rate weights: weight_name -> weight value (for analysis)
     weights: Dict[str, float] = field(default_factory=dict)
 
@@ -200,6 +203,29 @@ class RCREvent:
         """
         return self.weights.get(weight_name, 0.0)
 
+    def set_polarization_angle(self, station_id: int, angle: float) -> None:
+        """Set average polarization angle (radians) for a station."""
+        pa = getattr(self, 'polarization_angle', {})
+        pa[station_id] = angle
+        self.polarization_angle = pa
+
+    def get_polarization_angle(self, station_id: int) -> Optional[float]:
+        """Get polarization angle for a station, or None if not set."""
+        pa = getattr(self, 'polarization_angle', {})
+        return pa.get(station_id)
+
+    def get_direct_polarization_angle(self) -> Optional[float]:
+        """Average polarization angle across direct stations (id < 100)."""
+        pa = getattr(self, 'polarization_angle', {})
+        angles = [a for sid, a in pa.items() if sid < REFLECTED_STATION_OFFSET]
+        return float(np.mean(angles)) if angles else None
+
+    def get_reflected_polarization_angle(self) -> Optional[float]:
+        """Average polarization angle across reflected stations (id >= 100)."""
+        pa = getattr(self, 'polarization_angle', {})
+        angles = [a for sid, a in pa.items() if sid >= REFLECTED_STATION_OFFSET]
+        return float(np.mean(angles)) if angles else None
+
     def get_radius(self) -> float:
         """Get radial distance from station (at origin) in meters."""
         return np.sqrt(self.coreas_x**2 + self.coreas_y**2)
@@ -218,6 +244,7 @@ class RCREvent:
             "station_snr": self.station_snr,
             "recon_zenith": self.recon_zenith,
             "recon_azimuth": self.recon_azimuth,
+            "polarization_angle": getattr(self, 'polarization_angle', {}),
             "weights": self.weights,
         }
 

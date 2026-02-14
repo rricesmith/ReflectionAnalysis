@@ -1487,6 +1487,14 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         rcr_event = RCREvent.from_nuradio_event(evt, layer_dB=event_layer_dB)
         for snr_sid, snr_val in evt_snr_cache.items():
             rcr_event.set_snr(snr_sid, snr_val)
+
+        # Compute per-station average polarization angle from readCoREAS
+        for stn_id in all_station_ids:
+            pol_angles = readCoREAS.channel_polarization_angle.get(stn_id, {})
+            if pol_angles:
+                avg_pol = float(np.mean(list(pol_angles.values())))
+                rcr_event.set_polarization_angle(stn_id, avg_pol)
+
         rcr_events.append(rcr_event)
 
         # Log summary for this event

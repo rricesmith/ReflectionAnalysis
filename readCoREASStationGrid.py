@@ -73,6 +73,9 @@ class readCoREAS:
         # Per-channel ray path length through ice, populated during run()
         # Structure: {station_id: {channel_id: dist_traveled}}
         self.channel_dist_traveled = {}
+        # Per-channel polarization angle (radians), populated during run()
+        # Structure: {station_id: {channel_id: polarization_angle}}
+        self.channel_polarization_angle = {}
 
     def begin(self, input_files, xmin, xmax, ymin, ymax, n_cores=10, shape='square', seed=None, log_level=logging.INFO):
         """
@@ -457,7 +460,18 @@ class readCoREAS:
                                     efield, ch_dist = self.modify_eField(efield, station_position, ant_surf_pos, corsika['CoREAS'].attrs['DepthOfShowerMaximum'],
                                                                 ray_type, layer_depth, layer_dB, force_dB, attenuation_model)
                                     self.channel_dist_traveled.setdefault(station_id, {})[efield.get_channel_ids()[0]] = ch_dist
+                                    try:
+                                        self.channel_polarization_angle.setdefault(station_id, {})[efield.get_channel_ids()[0]] = float(efield[efp.polarization_angle])
+                                    except (KeyError, TypeError):
+                                        pass
                                 sim_station.set_electric_fields(efields)
+                            else:
+                                # Direct: extract polarization angle from efields
+                                for efield in sim_station.get_electric_fields():
+                                    try:
+                                        self.channel_polarization_angle.setdefault(station_id, {})[efield.get_channel_ids()[0]] = float(efield[efp.polarization_angle])
+                                    except (KeyError, TypeError):
+                                        pass
                             main_station.set_sim_station(sim_station)
                             main_sim_station = main_station.get_sim_station()
                         else:
@@ -470,6 +484,11 @@ class readCoREAS:
                                     efield, ch_dist = self.modify_eField(efield, station_position, ant_surf_pos, corsika['CoREAS'].attrs['DepthOfShowerMaximum'],
                                                                 ray_type, layer_depth, layer_dB, force_dB, attenuation_model)
                                     self.channel_dist_traveled.setdefault(station_id, {})[efield.get_channel_ids()[0]] = ch_dist
+                                # Extract polarization angle for both direct and non-direct
+                                try:
+                                    self.channel_polarization_angle.setdefault(station_id, {})[efield.get_channel_ids()[0]] = float(efield[efp.polarization_angle])
+                                except (KeyError, TypeError):
+                                    pass
 #                                main_station.set_sim_station(sim_station)
                                 main_sim_station = main_station.get_sim_station()
                                 main_sim_station.add_electric_field(efield)

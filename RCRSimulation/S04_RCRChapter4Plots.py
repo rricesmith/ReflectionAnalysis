@@ -30,6 +30,8 @@ from RCRSimulation.RCRAnalysis import (
     getEnergyZenithBins,
     getBinnedTriggerRate,
     getEventRate,
+    getErrorEventRates,
+    getnThrows,
     setEventListRateWeight,
     set_bad_imshow,
     getUniqueEnergyZenithPairs,
@@ -77,6 +79,9 @@ SP_DB_VALUES = [40.0, 45.0, 50.0, 55.0]
 
 # MB dB-to-R labels for display
 MB_DB_LABELS = {0.0: "R=1.0", 1.5: "R=0.7", 3.0: "R=0.5"}
+
+# Index of refraction for Snell's law (air → ice)
+N_ICE = 1.78
 
 
 # ============================================================================
@@ -166,6 +171,7 @@ def plot_trigger_rate_panels(
     suptitle: str,
     savename: str,
     rate_type: str = "reflected",
+    info_texts: Optional[List[str]] = None,
 ):
     """Multi-panel 2D trigger rate histograms with circle overlay.
 
@@ -179,6 +185,7 @@ def plot_trigger_rate_panels(
         suptitle: Figure super-title
         savename: Output file path
         rate_type: 'reflected' or 'direct'
+        info_texts: Optional info string per panel (upper-left annotation)
     """
     n = len(event_lists)
     fig, axes = plt.subplots(1, n, figsize=(5.5 * n + 1, 4.5))
@@ -212,7 +219,7 @@ def plot_trigger_rate_panels(
     norm = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
 
     im = None
-    for ax, rate, events, title in zip(axes, panel_data, event_lists, panel_titles):
+    for ip, (ax, rate, events, title) in enumerate(zip(axes, panel_data, event_lists, panel_titles)):
         masked, cmap = set_bad_imshow(rate, 0)
         # Flip zenith axis so row 0 (smallest zenith = largest cos) maps to top
         im = ax.imshow(
@@ -228,6 +235,11 @@ def plot_trigger_rate_panels(
         )
         ax.set_title(title, fontsize=10)
         ax.set_xlabel("log$_{10}$(E/eV)")
+
+        if info_texts and ip < len(info_texts):
+            ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
+                    fontsize=6, verticalalignment="top", family="monospace", color="white",
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="black", alpha=0.6))
 
     axes[0].set_ylabel("cos(zenith)")
     for ax in axes[1:]:
@@ -253,14 +265,21 @@ def plot_event_rate_bands(
     panel_titles: List[str],
     suptitle: str,
     savename: str,
+    error_arrays_per_panel: Optional[List[List[np.ndarray]]] = None,
+    info_texts: Optional[List[str]] = None,
 ):
     """Multi-panel event rate band plots showing min/max across dB values.
+
+    When error arrays are provided, bands extend from (min - 1sigma) to
+    (max + 1sigma) across dB values.
 
     Args:
         rate_arrays_per_panel: [panel_idx][db_idx] -> event_rate 2D array (energy, zenith)
         panel_titles: Subtitle per panel
         suptitle: Figure super-title
         savename: Output file path
+        error_arrays_per_panel: Optional matching error arrays
+        info_texts: Optional info string per panel (upper-left annotation)
     """
     n = len(rate_arrays_per_panel)
     fig, axes = plt.subplots(1, n, figsize=(5.5 * n, 5), sharey=True)
@@ -277,23 +296,37 @@ def plot_event_rate_bands(
     global_ymax = 0
     data_x_mask = np.zeros(len(x_vals), dtype=bool)
 
-    for ax, rates_list, title in zip(axes, rate_arrays_per_panel, panel_titles):
+    for ip, (ax, rates_list, title) in enumerate(zip(axes, rate_arrays_per_panel, panel_titles)):
         # Stack: shape (n_db, n_energy, n_zenith)
         stacked = np.array([np.nan_to_num(r) for r in rates_list])
+        has_errors = (error_arrays_per_panel is not None and ip < len(error_arrays_per_panel))
+        if has_errors:
+            err_stacked = np.array([np.nan_to_num(e) for e in error_arrays_per_panel[ip]])
 
         # Per zenith bin band
         for iz in range(n_zenith):
-            lo = np.nanmin(stacked[:, :, iz], axis=0)
-            hi = np.nanmax(stacked[:, :, iz], axis=0)
+            if has_errors:
+                lo = np.nanmin(stacked[:, :, iz] - err_stacked[:, :, iz], axis=0)
+                hi = np.nanmax(stacked[:, :, iz] + err_stacked[:, :, iz], axis=0)
+                lo = np.maximum(lo, 0)
+            else:
+                lo = np.nanmin(stacked[:, :, iz], axis=0)
+                hi = np.nanmax(stacked[:, :, iz], axis=0)
             zen_lo = z_bins[iz] / units.deg
             zen_hi = z_bins[iz + 1] / units.deg
             label = f"{zen_lo:.0f}-{zen_hi:.0f}\u00b0"
             ax.fill_between(x_vals, lo, hi, alpha=0.3, color=colors[iz], label=label)
 
         # Total (sum of zenith bins) band
-        totals = np.nansum(stacked, axis=2)  # shape (n_db, n_energy)
-        lo_total = np.nanmin(totals, axis=0)
-        hi_total = np.nanmax(totals, axis=0)
+        total_rates = np.nansum(stacked, axis=2)  # shape (n_db, n_energy)
+        if has_errors:
+            total_errors = np.sqrt(np.nansum(err_stacked**2, axis=2))
+            lo_total = np.nanmin(total_rates - total_errors, axis=0)
+            hi_total = np.nanmax(total_rates + total_errors, axis=0)
+            lo_total = np.maximum(lo_total, 0)
+        else:
+            lo_total = np.nanmin(total_rates, axis=0)
+            hi_total = np.nanmax(total_rates, axis=0)
         ax.fill_between(x_vals, lo_total, hi_total, alpha=0.2, color="black", label="Total")
 
         # Track global y-max and x-range where data exists
@@ -304,6 +337,12 @@ def plot_event_rate_bands(
         ax.set_yscale("log")
         ax.set_xlabel("log$_{10}$(E/eV)")
         ax.set_title(title, fontsize=10)
+
+        # Info text annotation
+        if info_texts and ip < len(info_texts):
+            ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
+                    fontsize=7, verticalalignment="top", family="monospace",
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
     # Set consistent axis limits across all panels
     if data_x_mask.any():
@@ -332,47 +371,132 @@ def plot_event_rate_bands(
 # Plot 5: Radii Probability Density
 # ============================================================================
 
+def _compute_weighted_density(
+    values: np.ndarray,
+    weights: np.ndarray,
+    bins: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute normalized probability density histogram with error.
+
+    Returns (bin_centers, density, density_error).
+    Error uses sqrt(sum(w^2)) per bin, normalized the same as density.
+    """
+    centers = (bins[:-1] + bins[1:]) / 2
+    n_bins = len(centers)
+    bin_width = bins[1] - bins[0]
+
+    if len(values) == 0:
+        return centers, np.zeros(n_bins), np.zeros(n_bins)
+
+    hist, _ = np.histogram(values, bins=bins, weights=weights)
+    hist_w2, _ = np.histogram(values, bins=bins, weights=weights**2)
+
+    total = hist.sum()
+    if total > 0:
+        density = hist / (total * bin_width)
+        density_error = np.sqrt(hist_w2) / (total * bin_width)
+    else:
+        density = np.zeros(n_bins)
+        density_error = np.zeros(n_bins)
+
+    return centers, density, density_error
+
+
+def _collect_weighted_values(
+    event_list: Sequence[RCREvent],
+    weight_name: str,
+    value_fn,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Collect (values, weights) from events using a value extraction function.
+
+    Args:
+        event_list: Events to iterate
+        weight_name: Name of weight to query
+        value_fn: Callable(event) -> float, extracts the x-axis value
+
+    Returns:
+        (values, weights) arrays for events with positive weight
+    """
+    vals = []
+    ws = []
+    for evt in event_list:
+        w = evt.get_weight(weight_name)
+        if w > 0:
+            vals.append(value_fn(evt))
+            ws.append(w)
+    return np.array(vals), np.array(ws)
+
+
 def _compute_radii_density(
     event_list: Sequence[RCREvent],
     weight_name: str,
     max_distance: float,
-    n_bins: int = 30,
-) -> Tuple[np.ndarray, np.ndarray]:
+    n_bins: int = 15,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute normalized probability density histogram of radii.
 
-    Returns (bin_centers, density) where density integrates to ~1.
+    Returns (bin_centers, density, density_error).
     """
-    radii = []
-    weights = []
-    for evt in event_list:
-        w = evt.get_weight(weight_name)
-        if w > 0:
-            radii.append(evt.get_radius())
-            weights.append(w)
-
-    if not radii:
-        bins = np.linspace(0, max_distance, n_bins + 1)
-        centers = (bins[:-1] + bins[1:]) / 2
-        return centers, np.zeros(n_bins)
-
-    radii = np.array(radii)
-    weights = np.array(weights)
     bins = np.linspace(0, max_distance, n_bins + 1)
-    hist, _ = np.histogram(radii, bins=bins, weights=weights)
-
-    # Normalize to probability density: integral = 1
-    bin_width = bins[1] - bins[0]
-    total = hist.sum()
-    if total > 0:
-        density = hist / (total * bin_width)
-    else:
-        density = hist
-
-    centers = (bins[:-1] + bins[1:]) / 2
-    return centers, density
+    vals, ws = _collect_weighted_values(event_list, weight_name, lambda e: e.get_radius())
+    return _compute_weighted_density(vals, ws, bins)
 
 
-def plot_radii_density_panels(
+def _compute_arrival_angle_density(
+    event_list: Sequence[RCREvent],
+    weight_name: str,
+    n_bins: int = 15,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute normalized probability density of refracted arrival angle.
+
+    Applies Snell's law: arrival_angle = arcsin(sin(zenith) / N_ICE).
+    Returns (bin_centers_deg, density, density_error).
+    """
+    # Max possible arrival angle after refraction
+    max_arrival = np.arcsin(1.0 / N_ICE)  # ~34.2 deg
+    bins = np.linspace(0, np.rad2deg(max_arrival), n_bins + 1)
+
+    def arrival_angle_deg(evt):
+        sin_refr = np.sin(evt.zenith) / N_ICE
+        sin_refr = np.clip(sin_refr, -1, 1)
+        return np.rad2deg(np.arcsin(sin_refr))
+
+    vals, ws = _collect_weighted_values(event_list, weight_name, arrival_angle_deg)
+    return _compute_weighted_density(vals, ws, bins)
+
+
+def _compute_polarization_angle_density(
+    event_list: Sequence[RCREvent],
+    weight_name: str,
+    n_bins: int = 15,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute normalized probability density of polarization angle.
+
+    Uses direct station polarization when weight_name starts with 'direct',
+    otherwise uses reflected station polarization.
+    Returns (bin_centers_deg, density, density_error).
+    """
+    bins = np.linspace(0, 180, n_bins + 1)
+    use_direct = weight_name.startswith("direct")
+
+    def pol_angle_deg(evt):
+        if use_direct:
+            a = evt.get_direct_polarization_angle()
+        else:
+            a = evt.get_reflected_polarization_angle()
+        if a is None:
+            return np.nan
+        return np.rad2deg(a)
+
+    vals, ws = _collect_weighted_values(event_list, weight_name, pol_angle_deg)
+    # Filter out events with no polarization data
+    if len(vals) > 0:
+        mask = np.isfinite(vals)
+        vals, ws = vals[mask], ws[mask]
+    return _compute_weighted_density(vals, ws, bins)
+
+
+def _plot_density_panels(
     event_lists: List[np.ndarray],
     direct_triggers: List[str],
     reflected_db_triggers: List[Dict[float, str]],
@@ -380,10 +504,17 @@ def plot_radii_density_panels(
     suptitle: str,
     savename: str,
     max_distance: float,
+    density_fn,
+    xlabel: str,
+    ylabel: str = "Probability Density",
     db_labels: Dict[float, str] | None = None,
     n_bins: int = 15,
+    info_texts: Optional[List[str]] = None,
 ):
-    """Multi-panel radii probability density with direct line + reflected band.
+    """Generic multi-panel density plot with direct band + reflected band.
+
+    Direct lines become bands (±1sigma). Reflected bands extend from
+    (min - 1sigma) to (max + 1sigma) across dB values.
 
     Args:
         event_lists: One event array per panel
@@ -392,9 +523,13 @@ def plot_radii_density_panels(
         panel_titles: Subtitle per panel
         suptitle: Figure super-title
         savename: Output path
-        max_distance: Max radius (meters)
+        max_distance: Max radius (meters), used for weight computation
+        density_fn: Callable(event_list, weight_name, n_bins) -> (centers, density, error)
+        xlabel: X-axis label
+        ylabel: Y-axis label
         db_labels: Optional {db_value: display_label} for legend
-        n_bins: Number of radial bins (fewer = wider bins, smoother curves)
+        n_bins: Number of bins
+        info_texts: Optional info string per panel (upper-left annotation)
     """
     n = len(event_lists)
     fig, axes = plt.subplots(1, n, figsize=(5.5 * n, 4.5), sharey=True)
@@ -403,26 +538,28 @@ def plot_radii_density_panels(
 
     e_bins, z_bins = getEnergyZenithBins()
 
-    for ax, events, dir_trig, db_trigs, title in zip(
+    for ip, (ax, events, dir_trig, db_trigs, title) in enumerate(zip(
         axes, event_lists, direct_triggers, reflected_db_triggers, panel_titles
-    ):
+    )):
         events_list = list(events)
 
-        # Direct: set weights and plot density
+        # Direct: band with ±1sigma
         if dir_trig:
             direct_rate, _, _ = getBinnedTriggerRate(events_list, dir_trig)
-            direct_event_rate = getEventRate(direct_rate, e_bins, z_bins, max_distance)
             setEventListRateWeight(
                 events_list, direct_rate, "direct", dir_trig,
                 max_distance=max_distance, use_direct=True,
             )
-            centers, density = _compute_radii_density(events_list, "direct", max_distance, n_bins)
+            centers, density, density_err = density_fn(events_list, "direct", n_bins)
+            ax.fill_between(centers, np.maximum(density - density_err, 0), density + density_err,
+                            alpha=0.3, color="black")
             ax.plot(centers, density, color="black", linewidth=1.5, label="Direct")
 
-        # Reflected: band showing min/max across all dB (R) values
+        # Reflected: band from (min - 1sigma) to (max + 1sigma)
         if db_trigs:
             sorted_dbs = sorted(db_trigs.keys())
             all_densities = []
+            all_errors = []
             for db_val in sorted_dbs:
                 ref_trig = db_trigs[db_val]
                 weight_name = f"reflected_{db_val:.1f}dB"
@@ -431,15 +568,21 @@ def plot_radii_density_panels(
                     events_list, reflected_rate, weight_name, ref_trig,
                     max_distance=max_distance, use_direct=False,
                 )
-                centers, density = _compute_radii_density(
-                    events_list, weight_name, max_distance, n_bins,
-                )
+                centers, density, density_err = density_fn(events_list, weight_name, n_bins)
                 all_densities.append(density)
+                all_errors.append(density_err)
 
             if all_densities:
                 all_densities = np.array(all_densities)
-                lo = np.min(all_densities, axis=0)
-                hi = np.max(all_densities, axis=0)
+                all_errors = np.array(all_errors)
+                # Band: lowest dB value - its error to highest dB value + its error
+                lo_idx = np.argmin(all_densities, axis=0)
+                hi_idx = np.argmax(all_densities, axis=0)
+                lo = np.array([all_densities[lo_idx[i], i] - all_errors[lo_idx[i], i]
+                               for i in range(len(centers))])
+                hi = np.array([all_densities[hi_idx[i], i] + all_errors[hi_idx[i], i]
+                               for i in range(len(centers))])
+                lo = np.maximum(lo, 0)
                 if db_labels:
                     labels_sorted = [db_labels.get(d, f"{d:.0f} dB") for d in sorted_dbs]
                     band_label = f"Reflected ({labels_sorted[0]}\u2013{labels_sorted[-1]})"
@@ -447,10 +590,15 @@ def plot_radii_density_panels(
                     band_label = f"Reflected ({sorted_dbs[0]:.0f}\u2013{sorted_dbs[-1]:.0f} dB)"
                 ax.fill_between(centers, lo, hi, alpha=0.3, color="tab:blue", label=band_label)
 
-        ax.set_xlabel("Radius (m)")
+        ax.set_xlabel(xlabel)
         ax.set_title(title, fontsize=10)
 
-    axes[0].set_ylabel("Probability Density")
+        if info_texts and ip < len(info_texts):
+            ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
+                    fontsize=7, verticalalignment="top", family="monospace",
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+    axes[0].set_ylabel(ylabel)
     axes[0].legend(fontsize=7)
 
     fig.suptitle(suptitle, fontsize=13, y=1.02)
@@ -458,6 +606,51 @@ def plot_radii_density_panels(
     plt.savefig(savename, dpi=150, bbox_inches="tight")
     plt.close()
     ic(f"Saved: {savename}")
+
+
+def plot_radii_density_panels(
+    event_lists, direct_triggers, reflected_db_triggers, panel_titles,
+    suptitle, savename, max_distance, db_labels=None, n_bins=15, info_texts=None,
+):
+    """Multi-panel radii probability density with direct band + reflected band."""
+    def radii_density_fn(events_list, weight_name, nbins):
+        return _compute_radii_density(events_list, weight_name, max_distance, nbins)
+
+    _plot_density_panels(
+        event_lists, direct_triggers, reflected_db_triggers, panel_titles,
+        suptitle, savename, max_distance, radii_density_fn,
+        xlabel="Radius (m)", db_labels=db_labels, n_bins=n_bins, info_texts=info_texts,
+    )
+
+
+def plot_arrival_angle_panels(
+    event_lists, direct_triggers, reflected_db_triggers, panel_titles,
+    suptitle, savename, max_distance, db_labels=None, n_bins=15, info_texts=None,
+):
+    """Multi-panel refracted arrival angle density with direct band + reflected band."""
+    def arrival_density_fn(events_list, weight_name, nbins):
+        return _compute_arrival_angle_density(events_list, weight_name, nbins)
+
+    _plot_density_panels(
+        event_lists, direct_triggers, reflected_db_triggers, panel_titles,
+        suptitle, savename, max_distance, arrival_density_fn,
+        xlabel="Arrival Angle (deg)", db_labels=db_labels, n_bins=n_bins, info_texts=info_texts,
+    )
+
+
+def plot_polarization_angle_panels(
+    event_lists, direct_triggers, reflected_db_triggers, panel_titles,
+    suptitle, savename, max_distance, db_labels=None, n_bins=15, info_texts=None,
+):
+    """Multi-panel polarization angle density with direct band + reflected band."""
+    def pol_density_fn(events_list, weight_name, nbins):
+        return _compute_polarization_angle_density(events_list, weight_name, nbins)
+
+    _plot_density_panels(
+        event_lists, direct_triggers, reflected_db_triggers, panel_titles,
+        suptitle, savename, max_distance, pol_density_fn,
+        xlabel="Polarization Angle (deg)", db_labels=db_labels, n_bins=n_bins, info_texts=info_texts,
+    )
 
 
 # ============================================================================
@@ -592,6 +785,22 @@ def generate_rate_table(
 
 
 # ============================================================================
+# Info Text Builder
+# ============================================================================
+
+def _build_info(site: str, station: str, trigger: str | None = None,
+                reflectivity: str | None = None) -> str:
+    """Build info annotation string for a plot panel."""
+    site_full = "Moore's Bay" if site == "MB" else "South Pole"
+    parts = [f"Site: {site_full}", f"Station: {station}"]
+    if trigger:
+        parts.append(f"Trigger: {trigger}")
+    if reflectivity:
+        parts.append(reflectivity)
+    return "\n".join(parts)
+
+
+# ============================================================================
 # High-Level Plot Generators
 # ============================================================================
 
@@ -607,31 +816,34 @@ def generate_mb_trigger_rate_plots(loaded, save_folder, max_distance):
     # Reflected at R=0.7 (1.5 dB)
     ref_triggers = [find_trigger_for_db(e, 1.5) for e in event_lists]
     if all(t is not None for t in ref_triggers):
+        infos = [_build_info("MB", lab, trig, "R=0.7 (1.5 dB)")
+                 for lab, trig in zip(labels, ref_triggers)]
         plot_trigger_rate_panels(
             event_lists, ref_triggers, labels,
             suptitle="MB Reflected Trigger Rate ($R_{power}$=0.7, 1.5 dB)",
             savename=os.path.join(save_folder, "mb_trigger_rate_reflected.png"),
-            rate_type="reflected",
+            rate_type="reflected", info_texts=infos,
         )
     else:
-        # Fallback: try single (non-dB) trigger for non-multi-dB data
         ref_triggers = [find_direct_trigger(e) for e in event_lists]
         if all(t is not None for t in ref_triggers):
+            infos = [_build_info("MB", lab, trig) for lab, trig in zip(labels, ref_triggers)]
             plot_trigger_rate_panels(
                 event_lists, ref_triggers, labels,
                 suptitle="MB Reflected Trigger Rate",
                 savename=os.path.join(save_folder, "mb_trigger_rate_reflected.png"),
-                rate_type="reflected",
+                rate_type="reflected", info_texts=infos,
             )
 
     # Direct
     dir_triggers = [find_direct_trigger(e) for e in event_lists]
     if all(t is not None for t in dir_triggers):
+        infos = [_build_info("MB", lab, trig) for lab, trig in zip(labels, dir_triggers)]
         plot_trigger_rate_panels(
             event_lists, dir_triggers, labels,
             suptitle="MB Direct Trigger Rate",
             savename=os.path.join(save_folder, "mb_trigger_rate_direct.png"),
-            rate_type="direct",
+            rate_type="direct", info_texts=infos,
         )
 
 
@@ -647,35 +859,39 @@ def generate_sp_trigger_rate_plots(loaded, save_folder, max_distance):
     # Reflected at 40 dB
     ref_triggers = [find_trigger_for_db(e, 40.0) for e in event_lists]
     if all(t is not None for t in ref_triggers):
+        infos = [_build_info("SP", lab, trig, "300m, 40 dB")
+                 for lab, trig in zip(labels, ref_triggers)]
         plot_trigger_rate_panels(
             event_lists, ref_triggers, labels,
             suptitle="SP Reflected Trigger Rate (300m, 40 dB)",
             savename=os.path.join(save_folder, "sp_trigger_rate_reflected.png"),
-            rate_type="reflected",
+            rate_type="reflected", info_texts=infos,
         )
     else:
         ref_triggers = [find_direct_trigger(e) for e in event_lists]
         if all(t is not None for t in ref_triggers):
+            infos = [_build_info("SP", lab, trig, "300m") for lab, trig in zip(labels, ref_triggers)]
             plot_trigger_rate_panels(
                 event_lists, ref_triggers, labels,
                 suptitle="SP Reflected Trigger Rate (300m)",
                 savename=os.path.join(save_folder, "sp_trigger_rate_reflected.png"),
-                rate_type="reflected",
+                rate_type="reflected", info_texts=infos,
             )
 
     # Direct
     dir_triggers = [find_direct_trigger(e) for e in event_lists]
     if all(t is not None for t in dir_triggers):
+        infos = [_build_info("SP", lab, trig) for lab, trig in zip(labels, dir_triggers)]
         plot_trigger_rate_panels(
             event_lists, dir_triggers, labels,
             suptitle="SP Direct Trigger Rate",
             savename=os.path.join(save_folder, "sp_trigger_rate_direct.png"),
-            rate_type="direct",
+            rate_type="direct", info_texts=infos,
         )
 
 
 def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
-    """Plot 3: MB event rate bands across R values."""
+    """Plot 3: MB event rate bands across R values, with statistical uncertainty."""
     e_bins, z_bins = getEnergyZenithBins()
     labels = list(MB_REFLECTED_SIMS.keys())
     sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
@@ -686,43 +902,57 @@ def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
         return
 
     rate_arrays_per_panel = []
-    for events in event_lists:
+    error_arrays_per_panel = []
+    info_texts = []
+    for label, events in zip(labels, event_lists):
         db_triggers = get_all_db_triggers(events)
         db_vals = sorted(db_triggers.keys()) if db_triggers else [None]
 
         rates_for_dbs = []
+        errors_for_dbs = []
+        trig_name = None
         for db in db_vals:
             if db is not None:
                 trig = db_triggers[db]
             else:
-                # Fallback for non-multi-dB data
                 trig = find_direct_trigger(events)
             if trig is None:
                 continue
+            if trig_name is None:
+                trig_name = trig
             _, ref_rate, _ = getBinnedTriggerRate(events, trig)
             event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+            error_rate = getErrorEventRates(ref_rate, events, max_distance)
             rates_for_dbs.append(event_rate)
+            errors_for_dbs.append(error_rate)
 
         if rates_for_dbs:
             rate_arrays_per_panel.append(rates_for_dbs)
+            error_arrays_per_panel.append(errors_for_dbs)
         else:
-            rate_arrays_per_panel.append([np.zeros_like(getEventRate(
-                np.zeros((len(e_bins)-1, len(z_bins)-1)), e_bins, z_bins, max_distance
-            ))])
+            zero = np.zeros((len(e_bins)-1, len(z_bins)-1))
+            rate_arrays_per_panel.append([getEventRate(zero, e_bins, z_bins, max_distance)])
+            error_arrays_per_panel.append([getEventRate(zero, e_bins, z_bins, max_distance)])
+
+        info_texts.append(_build_info("MB", label, trig_name, "R=0.5\u20131.0"))
 
     plot_event_rate_bands(
         rate_arrays_per_panel, labels,
         suptitle="MB Reflected Event Rate ($R_{power}$ = 0.5\u20131.0)",
         savename=os.path.join(save_folder, "mb_event_rate_bands.png"),
+        error_arrays_per_panel=error_arrays_per_panel,
+        info_texts=info_texts,
     )
 
 
 def generate_sp_event_rate_bands(loaded, save_folder, max_distance):
-    """Plot 4: SP event rate bands — combined Gen2 shallow+deep per depth."""
+    """Plot 4: SP event rate bands — combined Gen2 shallow+deep per depth, with uncertainty."""
     e_bins, z_bins = getEnergyZenithBins()
 
     rate_arrays_per_panel = []
+    error_arrays_per_panel = []
     available_depths = []
+    info_texts = []
 
     for depth in SP_DEPTHS:
         shallow_key = SP_REFLECTED_SIMS.get((depth, "shallow"))
@@ -737,14 +967,14 @@ def generate_sp_event_rate_bands(loaded, save_folder, max_distance):
         shallow_db_trigs = get_all_db_triggers(shallow_events)
         deep_db_trigs = get_all_db_triggers(deep_events)
 
-        # Use the intersection of available dB values
         if shallow_db_trigs and deep_db_trigs:
             common_dbs = sorted(set(shallow_db_trigs.keys()) & set(deep_db_trigs.keys()))
         else:
-            # Fallback for non-multi-dB
             common_dbs = [None]
 
         rates_for_dbs = []
+        errors_for_dbs = []
+        trig_name = None
         for db in common_dbs:
             if db is not None:
                 s_trig = shallow_db_trigs.get(db)
@@ -755,17 +985,25 @@ def generate_sp_event_rate_bands(loaded, save_folder, max_distance):
 
             if s_trig is None or d_trig is None:
                 continue
+            if trig_name is None:
+                trig_name = s_trig
 
             _, s_ref_rate, _ = getBinnedTriggerRate(shallow_events, s_trig)
             _, d_ref_rate, _ = getBinnedTriggerRate(deep_events, d_trig)
             s_event_rate = getEventRate(s_ref_rate, e_bins, z_bins, max_distance)
             d_event_rate = getEventRate(d_ref_rate, e_bins, z_bins, max_distance)
+            s_error = getErrorEventRates(s_ref_rate, shallow_events, max_distance)
+            d_error = getErrorEventRates(d_ref_rate, deep_events, max_distance)
             combined = np.nan_to_num(s_event_rate) + np.nan_to_num(d_event_rate)
+            combined_err = np.sqrt(np.nan_to_num(s_error)**2 + np.nan_to_num(d_error)**2)
             rates_for_dbs.append(combined)
+            errors_for_dbs.append(combined_err)
 
         if rates_for_dbs:
             rate_arrays_per_panel.append(rates_for_dbs)
+            error_arrays_per_panel.append(errors_for_dbs)
             available_depths.append(depth)
+            info_texts.append(_build_info("SP", "Gen2 Combined", trig_name, f"{depth}, 40\u201355 dB"))
 
     if not available_depths:
         LOGGER.warning("No SP depth data available, skipping SP event rate bands")
@@ -775,28 +1013,125 @@ def generate_sp_event_rate_bands(loaded, save_folder, max_distance):
         rate_arrays_per_panel, available_depths,
         suptitle="SP Reflected Event Rate \u2014 Combined Gen2 (dB = 40\u201355)",
         savename=os.path.join(save_folder, "sp_event_rate_bands.png"),
+        error_arrays_per_panel=error_arrays_per_panel,
+        info_texts=info_texts,
     )
 
 
 def generate_sp_radii_plots(loaded, save_folder, max_distance):
-    """Plot 5a: SP radii probability density."""
-    labels = ["Gen2 Shallow", "Gen2 Deep"]
-    sim_names = [SP_REFLECTED_SIMS[("300m", "shallow")], SP_REFLECTED_SIMS[("300m", "deep")]]
-    event_lists = [loaded.get(s) for s in sim_names]
+    """Plot 5a: SP radii probability density — all three depths on same panels.
 
-    if any(e is None for e in event_lists):
-        LOGGER.warning("Missing SP 300m data, skipping SP radii plots")
+    Two panels: Gen2 Shallow, Gen2 Deep.
+    Each panel shows direct (black band) + one colored band per depth (300m, 500m, 830m).
+    """
+    station_types = [("shallow", "Gen2 Shallow"), ("deep", "Gen2 Deep")]
+    depth_colors = {"300m": "tab:blue", "500m": "tab:orange", "830m": "tab:green"}
+
+    e_bins, z_bins = getEnergyZenithBins()
+    n_bins = 15
+
+    panels_data = []
+    panel_titles = []
+    info_texts = []
+
+    for stype, slabel in station_types:
+        # Direct trigger from the 300m sim (direct is depth-independent)
+        direct_sim = SP_REFLECTED_SIMS.get(("300m", stype))
+        direct_events = loaded.get(direct_sim)
+        if direct_events is None:
+            LOGGER.warning("Missing SP %s 300m data, skipping SP radii panel", stype)
+            continue
+
+        panels_data.append((stype, slabel, direct_events))
+        panel_titles.append(slabel)
+
+        dir_trig = find_direct_trigger(direct_events)
+        info_texts.append(_build_info("SP", slabel, dir_trig, "300/500/830m, 40\u201355 dB"))
+
+    if not panels_data:
         return
 
-    direct_triggers = [find_direct_trigger(e) for e in event_lists]
-    reflected_db_triggers = [get_all_db_triggers(e) for e in event_lists]
+    n = len(panels_data)
+    fig, axes = plt.subplots(1, n, figsize=(5.5 * n, 4.5), sharey=True)
+    if n == 1:
+        axes = [axes]
 
-    plot_radii_density_panels(
-        event_lists, direct_triggers, reflected_db_triggers, labels,
-        suptitle="SP Radii Distribution \u2014 Event Rate Weighted Density",
-        savename=os.path.join(save_folder, "sp_radii_density.png"),
-        max_distance=max_distance,
-    )
+    for ip, (ax, (stype, slabel, direct_events)) in enumerate(zip(axes, panels_data)):
+        events_list = list(direct_events)
+
+        # Direct band
+        dir_trig = find_direct_trigger(direct_events)
+        if dir_trig:
+            direct_rate, _, _ = getBinnedTriggerRate(events_list, dir_trig)
+            setEventListRateWeight(
+                events_list, direct_rate, "direct", dir_trig,
+                max_distance=max_distance, use_direct=True,
+            )
+            bins_r = np.linspace(0, max_distance, n_bins + 1)
+            vals, ws = _collect_weighted_values(events_list, "direct", lambda e: e.get_radius())
+            centers, density, derr = _compute_weighted_density(vals, ws, bins_r)
+            ax.fill_between(centers, np.maximum(density - derr, 0), density + derr,
+                            alpha=0.3, color="black")
+            ax.plot(centers, density, color="black", linewidth=1.5, label="Direct")
+
+        # One band per depth
+        for depth in SP_DEPTHS:
+            sim_key = SP_REFLECTED_SIMS.get((depth, stype))
+            depth_events = loaded.get(sim_key)
+            if depth_events is None:
+                continue
+
+            depth_events_list = list(depth_events)
+            db_trigs = get_all_db_triggers(depth_events_list)
+            if not db_trigs:
+                continue
+
+            sorted_dbs = sorted(db_trigs.keys())
+            all_densities = []
+            all_errors = []
+            for db_val in sorted_dbs:
+                ref_trig = db_trigs[db_val]
+                weight_name = f"refl_{depth}_{db_val:.1f}dB"
+                _, ref_rate, _ = getBinnedTriggerRate(depth_events_list, ref_trig)
+                setEventListRateWeight(
+                    depth_events_list, ref_rate, weight_name, ref_trig,
+                    max_distance=max_distance, use_direct=False,
+                )
+                bins_r = np.linspace(0, max_distance, n_bins + 1)
+                vals, ws = _collect_weighted_values(depth_events_list, weight_name, lambda e: e.get_radius())
+                centers, dens, derr = _compute_weighted_density(vals, ws, bins_r)
+                all_densities.append(dens)
+                all_errors.append(derr)
+
+            if all_densities:
+                all_densities = np.array(all_densities)
+                all_errors = np.array(all_errors)
+                lo_idx = np.argmin(all_densities, axis=0)
+                hi_idx = np.argmax(all_densities, axis=0)
+                lo = np.array([all_densities[lo_idx[i], i] - all_errors[lo_idx[i], i]
+                               for i in range(len(centers))])
+                hi = np.array([all_densities[hi_idx[i], i] + all_errors[hi_idx[i], i]
+                               for i in range(len(centers))])
+                lo = np.maximum(lo, 0)
+                color = depth_colors.get(depth, "tab:gray")
+                ax.fill_between(centers, lo, hi, alpha=0.3, color=color, label=f"{depth}")
+
+        ax.set_xlabel("Radius (m)")
+        ax.set_title(slabel, fontsize=10)
+
+        if ip < len(info_texts):
+            ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
+                    fontsize=7, verticalalignment="top", family="monospace",
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+    axes[0].set_ylabel("Probability Density")
+    axes[0].legend(fontsize=7)
+    fig.suptitle("SP Radii Distribution \u2014 All Depths", fontsize=13, y=1.02)
+    plt.tight_layout()
+    savename = os.path.join(save_folder, "sp_radii_density.png")
+    plt.savefig(savename, dpi=150, bbox_inches="tight")
+    plt.close()
+    ic(f"Saved: {savename}")
 
 
 def generate_mb_radii_plots(loaded, save_folder, max_distance):
@@ -811,13 +1146,106 @@ def generate_mb_radii_plots(loaded, save_folder, max_distance):
 
     direct_triggers = [find_direct_trigger(e) for e in event_lists]
     reflected_db_triggers = [get_all_db_triggers(e) for e in event_lists]
+    info_texts = [_build_info("MB", lab, dt, "R=0.5\u20131.0")
+                  for lab, dt in zip(labels, direct_triggers)]
 
     plot_radii_density_panels(
         event_lists, direct_triggers, reflected_db_triggers, labels,
         suptitle="MB Radii Distribution \u2014 Event Rate Weighted Density",
         savename=os.path.join(save_folder, "mb_radii_density.png"),
-        max_distance=max_distance,
-        db_labels=MB_DB_LABELS,
+        max_distance=max_distance, db_labels=MB_DB_LABELS, info_texts=info_texts,
+    )
+
+
+def generate_mb_arrival_angle_plots(loaded, save_folder, max_distance):
+    """MB arrival angle (refracted zenith) density."""
+    labels = list(MB_REFLECTED_SIMS.keys())
+    sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
+    event_lists = [loaded.get(s) for s in sim_names]
+
+    if any(e is None for e in event_lists):
+        LOGGER.warning("Missing MB data, skipping MB arrival angle plots")
+        return
+
+    direct_triggers = [find_direct_trigger(e) for e in event_lists]
+    reflected_db_triggers = [get_all_db_triggers(e) for e in event_lists]
+    info_texts = [_build_info("MB", lab, dt, "R=0.5\u20131.0")
+                  for lab, dt in zip(labels, direct_triggers)]
+
+    plot_arrival_angle_panels(
+        event_lists, direct_triggers, reflected_db_triggers, labels,
+        suptitle="MB Arrival Angle Distribution (Snell's Law, n$_{ice}$=1.78)",
+        savename=os.path.join(save_folder, "mb_arrival_angle.png"),
+        max_distance=max_distance, db_labels=MB_DB_LABELS, info_texts=info_texts,
+    )
+
+
+def generate_sp_arrival_angle_plots(loaded, save_folder, max_distance):
+    """SP arrival angle (refracted zenith) density."""
+    labels = ["Gen2 Shallow", "Gen2 Deep"]
+    sim_names = [SP_REFLECTED_SIMS[("300m", "shallow")], SP_REFLECTED_SIMS[("300m", "deep")]]
+    event_lists = [loaded.get(s) for s in sim_names]
+
+    if any(e is None for e in event_lists):
+        LOGGER.warning("Missing SP 300m data, skipping SP arrival angle plots")
+        return
+
+    direct_triggers = [find_direct_trigger(e) for e in event_lists]
+    reflected_db_triggers = [get_all_db_triggers(e) for e in event_lists]
+    info_texts = [_build_info("SP", lab, dt, "300m, 40\u201355 dB")
+                  for lab, dt in zip(labels, direct_triggers)]
+
+    plot_arrival_angle_panels(
+        event_lists, direct_triggers, reflected_db_triggers, labels,
+        suptitle="SP Arrival Angle Distribution (Snell's Law, n$_{ice}$=1.78)",
+        savename=os.path.join(save_folder, "sp_arrival_angle.png"),
+        max_distance=max_distance, info_texts=info_texts,
+    )
+
+
+def generate_mb_polarization_angle_plots(loaded, save_folder, max_distance):
+    """MB polarization angle density."""
+    labels = list(MB_REFLECTED_SIMS.keys())
+    sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
+    event_lists = [loaded.get(s) for s in sim_names]
+
+    if any(e is None for e in event_lists):
+        LOGGER.warning("Missing MB data, skipping MB polarization angle plots")
+        return
+
+    direct_triggers = [find_direct_trigger(e) for e in event_lists]
+    reflected_db_triggers = [get_all_db_triggers(e) for e in event_lists]
+    info_texts = [_build_info("MB", lab, dt, "R=0.5\u20131.0")
+                  for lab, dt in zip(labels, direct_triggers)]
+
+    plot_polarization_angle_panels(
+        event_lists, direct_triggers, reflected_db_triggers, labels,
+        suptitle="MB Polarization Angle Distribution",
+        savename=os.path.join(save_folder, "mb_polarization_angle.png"),
+        max_distance=max_distance, db_labels=MB_DB_LABELS, info_texts=info_texts,
+    )
+
+
+def generate_sp_polarization_angle_plots(loaded, save_folder, max_distance):
+    """SP polarization angle density."""
+    labels = ["Gen2 Shallow", "Gen2 Deep"]
+    sim_names = [SP_REFLECTED_SIMS[("300m", "shallow")], SP_REFLECTED_SIMS[("300m", "deep")]]
+    event_lists = [loaded.get(s) for s in sim_names]
+
+    if any(e is None for e in event_lists):
+        LOGGER.warning("Missing SP 300m data, skipping SP polarization angle plots")
+        return
+
+    direct_triggers = [find_direct_trigger(e) for e in event_lists]
+    reflected_db_triggers = [get_all_db_triggers(e) for e in event_lists]
+    info_texts = [_build_info("SP", lab, dt, "300m, 40\u201355 dB")
+                  for lab, dt in zip(labels, direct_triggers)]
+
+    plot_polarization_angle_panels(
+        event_lists, direct_triggers, reflected_db_triggers, labels,
+        suptitle="SP Polarization Angle Distribution",
+        savename=os.path.join(save_folder, "sp_polarization_angle.png"),
+        max_distance=max_distance, info_texts=info_texts,
     )
 
 
@@ -879,6 +1307,10 @@ def main():
         ("SP event rate bands", lambda: generate_sp_event_rate_bands(loaded, save_folder, max_distance)),
         ("SP radii density", lambda: generate_sp_radii_plots(loaded, save_folder, max_distance)),
         ("MB radii density", lambda: generate_mb_radii_plots(loaded, save_folder, max_distance)),
+        ("MB arrival angle", lambda: generate_mb_arrival_angle_plots(loaded, save_folder, max_distance)),
+        ("SP arrival angle", lambda: generate_sp_arrival_angle_plots(loaded, save_folder, max_distance)),
+        ("MB polarization angle", lambda: generate_mb_polarization_angle_plots(loaded, save_folder, max_distance)),
+        ("SP polarization angle", lambda: generate_sp_polarization_angle_plots(loaded, save_folder, max_distance)),
         ("Rate table", lambda: generate_rate_table(
             loaded, max_distance, os.path.join(save_folder, "rate_table.txt"),
         )),

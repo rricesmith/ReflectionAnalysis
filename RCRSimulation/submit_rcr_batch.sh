@@ -181,7 +181,7 @@ ARRAY_SPEC="0-${ARRAY_MAX}%${MAX_CONCURRENT}"
 if [ "$TEST_MODE" = true ]; then
     TIME_LIMIT="0-04:00:00"
 else
-    TIME_LIMIT="1-00:00:00"
+    TIME_LIMIT="3-00:00:00"
 fi
 
 echo "--------------------------------------------"
