@@ -377,6 +377,14 @@ def parse_args() -> argparse.Namespace:
              "When provided, reflected stations are tested at each dB value "
              "with separate triggers. Overrides --layer-db for reflected stations.",
     )
+    parser.add_argument(
+        "--min-energy-log10",
+        type=float,
+        default=None,
+        help="Skip events with log10(E/eV) below this value "
+             "(e.g., 18.0 to only simulate showers >= 10^18 eV). "
+             "Skipped events are not recorded, reducing output size and runtime.",
+    )
     return parser.parse_args()
 
 
@@ -792,6 +800,8 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         "log_folder": log_folder,
     }
 
+    settings["min_energy_log10"] = args.min_energy_log10
+
     settings["filename_tags"] = [
         str(value).lower()
         for value in (
@@ -935,6 +945,7 @@ def write_debug_log(
         "energy_max",
         "sin2",
         "num_icetop",
+        "min_energy_log10",
         "noise_sigma",
         "add_noise",
         "noise_text",
@@ -1169,6 +1180,17 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         output_mode=2,
     ):
         LOGGER.debug("Processing event %s (index %s)", evt.get_id(), event_idx)
+
+        # Energy cutoff: skip events below threshold to save compute time
+        min_energy_log10 = settings.get("min_energy_log10")
+        if min_energy_log10 is not None:
+            sim_shower = evt.get_sim_shower(0)
+            energy_eV = sim_shower[shp.energy] / units.eV
+            if np.log10(energy_eV) < min_energy_log10:
+                LOGGER.debug("Skipping event %s: energy %.2e eV below cutoff 10^%.1f eV",
+                             evt.get_id(), energy_eV, min_energy_log10)
+                continue
+
         evt.set_parameter(evtp.coreas_x, coreas_x)
         evt.set_parameter(evtp.coreas_y, coreas_y)
         evt_snr_cache: Dict[int, float] = {}  # station_id -> SNR for this event

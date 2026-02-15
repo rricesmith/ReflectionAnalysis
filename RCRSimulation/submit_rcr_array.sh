@@ -6,12 +6,23 @@
 # 50 CoREAS files. Run one simulation at a time to avoid filesystem overload.
 #
 # Usage:
-#   bash RCRSimulation/submit_rcr_array.sh <sim_name> [--test] [--dry-run]
+#   bash RCRSimulation/submit_rcr_array.sh <sim_name> [flags]
+#
+# Flags:
+#   --test              Small test mode (files 100-300)
+#   --dry-run           Print what would be submitted without submitting
+#   --n-cores N         Override n_cores_production from config.ini
+#   --min-energy E      Skip events with log10(E/eV) < E (e.g., 18.0)
+#   --run-suffix TAG    Append TAG to output names (avoids filename clashes)
+#   --numpy-dir DIR     Override numpy output directory
+#   --output-dir DIR    Override .nur output directory
 #
 # Examples:
 #   bash RCRSimulation/submit_rcr_array.sh Gen2_deep_MB_576m          # production
 #   bash RCRSimulation/submit_rcr_array.sh Gen2_deep_MB_576m --test   # small test
 #   bash RCRSimulation/submit_rcr_array.sh Gen2_deep_MB_576m --dry-run
+#   bash RCRSimulation/submit_rcr_array.sh Gen2_deep_SP_300m --n-cores 2000 \
+#       --min-energy 18.0 --run-suffix highstats --numpy-dir RCRSimulation/output/02.14.26/numpy/
 #
 # Available simulations (14 total):
 #   Direct (5):
@@ -31,11 +42,23 @@ shift
 # Parse flags
 TEST_MODE=false
 DRY_RUN=false
-for arg in "$@"; do
-    case $arg in
+CLI_N_CORES=""
+MIN_ENERGY=""
+RUN_SUFFIX=""
+CLI_NUMPY_DIR=""
+CLI_OUTPUT_DIR=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
         --test) TEST_MODE=true ;;
         --dry-run) DRY_RUN=true ;;
+        --n-cores) CLI_N_CORES="$2"; shift ;;
+        --min-energy) MIN_ENERGY="$2"; shift ;;
+        --run-suffix) RUN_SUFFIX="$2"; shift ;;
+        --numpy-dir) CLI_NUMPY_DIR="$2"; shift ;;
+        --output-dir) CLI_OUTPUT_DIR="$2"; shift ;;
     esac
+    shift
 done
 
 # Read simulation size settings from config.ini
@@ -48,6 +71,12 @@ CFG_FILES_PER_JOB=$(cfg_val files_per_job)
 N_CORES_PROD=${CFG_N_CORES_PROD:-100}
 N_CORES_TEST=${CFG_N_CORES_TEST:-50}
 FILES_PER_JOB_CFG=${CFG_FILES_PER_JOB:-50}
+
+# CLI --n-cores overrides config value
+if [ -n "${CLI_N_CORES}" ]; then
+    N_CORES_PROD=${CLI_N_CORES}
+    echo "n_cores_production overridden to ${N_CORES_PROD} via --n-cores"
+fi
 
 # Lookup simulation parameters: STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MAX_FILE IS_DIRECT
 case $SIM_NAME in
@@ -154,6 +183,14 @@ OUTPUT_DIR="/dfs8/sbarwick_lab/ariannaproject/rricesmi/simulatedRCRs/${DATE_TAG}
 NUMPY_DIR="RCRSimulation/output/${DATE_TAG}/numpy/"
 LOG_DIR="RCRSimulation/logs/${DATE_TAG}/"
 
+# CLI overrides for output directories
+if [ -n "${CLI_OUTPUT_DIR}" ]; then
+    OUTPUT_DIR="${CLI_OUTPUT_DIR}"
+fi
+if [ -n "${CLI_NUMPY_DIR}" ]; then
+    NUMPY_DIR="${CLI_NUMPY_DIR}"
+fi
+
 echo "Simulation: ${SIM_NAME}"
 echo "  Type: ${STATION_TYPE}, Depth: ${DEPTH}, Site: ${SITE}"
 echo "  Layer: ${LAYER_DEPTH}, dB: ${LAYER_DB}"
@@ -166,12 +203,23 @@ echo "  Cores: ${N_CORES}, Distance: ${DISTANCE_KM} km"
 echo "  Array spec: ${ARRAY_SPEC}"
 echo "  Output: ${OUTPUT_DIR}"
 echo "  Numpy:  ${NUMPY_DIR}"
+if [ -n "${MIN_ENERGY}" ]; then
+    echo "  Min energy: 10^${MIN_ENERGY} eV"
+fi
+if [ -n "${RUN_SUFFIX}" ]; then
+    echo "  Run suffix: ${RUN_SUFFIX}"
+fi
 
 if [ "$DRY_RUN" = true ]; then
+    # Build sample output name
+    DRY_OUTPUT_NAME="${SIM_NAME}_part0"
+    if [ -n "${RUN_SUFFIX}" ]; then
+        DRY_OUTPUT_NAME="${DRY_OUTPUT_NAME}_${RUN_SUFFIX}"
+    fi
     echo ""
     echo "[DRY-RUN] Would submit array job with ${N_TASKS} tasks"
     echo "[DRY-RUN] Sample command for task 0:"
-    echo "  python RCRSimulation/S01_RCRSim.py ${SIM_NAME}_part0 \\"
+    echo "  python RCRSimulation/S01_RCRSim.py ${DRY_OUTPUT_NAME} \\"
     echo "    --station-type ${STATION_TYPE} --station-depth ${DEPTH} --site ${SITE} \\"
     echo "    --propagation by_depth --detector-config ${CONFIG} \\"
     echo "    --n-cores ${N_CORES} --distance-km ${DISTANCE_KM} \\"
@@ -182,13 +230,19 @@ if [ "$DRY_RUN" = true ]; then
     if [ -n "${LAYER_DB_LIST}" ]; then
         echo "    --layer-db-list ${LAYER_DB_LIST}"
     fi
+    if [ -n "${MIN_ENERGY}" ]; then
+        echo "    --min-energy-log10 ${MIN_ENERGY}"
+    fi
     exit 0
 fi
 
 # Build optional CLI flags for S01_RCRSim.py
 EXTRA_ARGS=""
 if [ -n "${LAYER_DB_LIST}" ]; then
-    EXTRA_ARGS="--layer-db-list ${LAYER_DB_LIST}"
+    EXTRA_ARGS="${EXTRA_ARGS} --layer-db-list ${LAYER_DB_LIST}"
+fi
+if [ -n "${MIN_ENERGY}" ]; then
+    EXTRA_ARGS="${EXTRA_ARGS} --min-energy-log10 ${MIN_ENERGY}"
 fi
 
 # Create directories
@@ -232,8 +286,16 @@ mkdir -p ${NUMPY_DIR}
 echo "Starting ${SIM_NAME} task \${SLURM_ARRAY_TASK_ID} at \$(date)"
 echo "File range: \${MIN_FILE} - \${MAX_FILE}"
 
+# Build output name with optional run suffix
+RUN_SUFFIX_VAL="${RUN_SUFFIX}"
+if [ -n "\${RUN_SUFFIX_VAL}" ]; then
+    OUTPUT_NAME="${SIM_NAME}_part\${SLURM_ARRAY_TASK_ID}_\${RUN_SUFFIX_VAL}"
+else
+    OUTPUT_NAME="${SIM_NAME}_part\${SLURM_ARRAY_TASK_ID}"
+fi
+
 python RCRSimulation/S01_RCRSim.py \\
-    ${SIM_NAME}_part\${SLURM_ARRAY_TASK_ID} \\
+    \${OUTPUT_NAME} \\
     --station-type ${STATION_TYPE} \\
     --station-depth ${DEPTH} \\
     --site ${SITE} \\

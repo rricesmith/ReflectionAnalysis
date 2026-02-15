@@ -15,12 +15,20 @@
 #   --test              Small test mode (files 100-300 per sim)
 #   --dry-run           Print what would be submitted without submitting
 #   --max-concurrent N  Max tasks running at once (default: 40)
+#   --n-cores N         Override n_cores_production from config.ini
+#   --min-energy E      Skip events with log10(E/eV) < E (e.g., 18.0)
+#   --run-suffix TAG    Append TAG to output names (avoids filename clashes)
+#   --numpy-dir DIR     Override numpy output directory
+#   --output-dir DIR    Override .nur output directory
 #
 # Examples:
 #   bash RCRSimulation/submit_rcr_batch.sh --all                    # all 14 sims
 #   bash RCRSimulation/submit_rcr_batch.sh --all --max-concurrent 20
 #   bash RCRSimulation/submit_rcr_batch.sh HRA_MB_576m Gen2_deep_MB_576m
 #   bash RCRSimulation/submit_rcr_batch.sh --all --test --dry-run
+#   # Higher stats for SP sims, only E >= 10^18, output alongside existing data:
+#   bash RCRSimulation/submit_rcr_batch.sh Gen2_deep_SP_300m --n-cores 2000 \
+#       --min-energy 18.0 --run-suffix highstats --numpy-dir RCRSimulation/output/02.14.26/numpy/
 #
 # How it works:
 #   1. Builds a task list mapping each array index to (sim, file range)
@@ -45,6 +53,11 @@ SIMS=()
 TEST_MODE=false
 DRY_RUN=false
 MAX_CONCURRENT=40
+CLI_N_CORES=""
+MIN_ENERGY=""
+RUN_SUFFIX=""
+CLI_NUMPY_DIR=""
+CLI_OUTPUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -52,6 +65,11 @@ while [[ $# -gt 0 ]]; do
         --test) TEST_MODE=true ;;
         --dry-run) DRY_RUN=true ;;
         --max-concurrent) MAX_CONCURRENT="$2"; shift ;;
+        --n-cores) CLI_N_CORES="$2"; shift ;;
+        --min-energy) MIN_ENERGY="$2"; shift ;;
+        --run-suffix) RUN_SUFFIX="$2"; shift ;;
+        --numpy-dir) CLI_NUMPY_DIR="$2"; shift ;;
+        --output-dir) CLI_OUTPUT_DIR="$2"; shift ;;
         --*) echo "Unknown flag: $1"; exit 1 ;;
         *) SIMS+=("$1") ;;
     esac
@@ -73,6 +91,12 @@ CFG_FILES_PER_JOB=$(cfg_val files_per_job)
 N_CORES_PROD=${CFG_N_CORES_PROD:-100}
 N_CORES_TEST=${CFG_N_CORES_TEST:-50}
 FILES_PER_JOB_CFG=${CFG_FILES_PER_JOB:-50}
+
+# CLI --n-cores overrides config value
+if [ -n "${CLI_N_CORES}" ]; then
+    N_CORES_PROD=${CLI_N_CORES}
+    echo "n_cores_production overridden to ${N_CORES_PROD} via --n-cores"
+fi
 
 # ---- Lookup simulation parameters ----
 # Returns: STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MAX_FILE IS_DIRECT LAYER_DB_LIST
@@ -121,6 +145,14 @@ DATE_TAG=$(date +%m.%d.%y)
 OUTPUT_DIR="/dfs8/sbarwick_lab/ariannaproject/rricesmi/simulatedRCRs/${DATE_TAG}/"
 NUMPY_DIR="RCRSimulation/output/${DATE_TAG}/numpy/"
 LOG_DIR="RCRSimulation/logs/${DATE_TAG}/"
+
+# CLI overrides for output directories
+if [ -n "${CLI_OUTPUT_DIR}" ]; then
+    OUTPUT_DIR="${CLI_OUTPUT_DIR}"
+fi
+if [ -n "${CLI_NUMPY_DIR}" ]; then
+    NUMPY_DIR="${CLI_NUMPY_DIR}"
+fi
 
 TASK_LINES=()
 TOTAL_TASKS=0
@@ -190,6 +222,12 @@ echo "Max concurrent: ${MAX_CONCURRENT}"
 echo "Array spec: ${ARRAY_SPEC}"
 echo "Output: ${OUTPUT_DIR}"
 echo "Numpy:  ${NUMPY_DIR}"
+if [ -n "${MIN_ENERGY}" ]; then
+    echo "Min energy: 10^${MIN_ENERGY} eV"
+fi
+if [ -n "${RUN_SUFFIX}" ]; then
+    echo "Run suffix: ${RUN_SUFFIX}"
+fi
 echo "============================================"
 
 if [ "$DRY_RUN" = true ]; then
@@ -242,10 +280,22 @@ LINE=\$(sed -n "\$((SLURM_ARRAY_TASK_ID + 1))p" "\$TASK_LIST")
 
 IFS=\$'\\t' read -r SIM_NAME STATION_TYPE DEPTH SITE LAYER_DEPTH LAYER_DB ATTEN CONFIG MIN_FILE MAX_FILE N_CORES DISTANCE_KM SEED LAYER_DB_LIST <<< "\$LINE"
 
-# Build optional --layer-db-list flag
+# Build optional extra args
 EXTRA_ARGS=""
 if [ -n "\${LAYER_DB_LIST}" ]; then
-    EXTRA_ARGS="--layer-db-list \${LAYER_DB_LIST}"
+    EXTRA_ARGS="\${EXTRA_ARGS} --layer-db-list \${LAYER_DB_LIST}"
+fi
+MIN_ENERGY_FLAG="${MIN_ENERGY}"
+if [ -n "\${MIN_ENERGY_FLAG}" ]; then
+    EXTRA_ARGS="\${EXTRA_ARGS} --min-energy-log10 \${MIN_ENERGY_FLAG}"
+fi
+
+# Build output name with optional run suffix
+RUN_SUFFIX_VAL="${RUN_SUFFIX}"
+if [ -n "\${RUN_SUFFIX_VAL}" ]; then
+    OUTPUT_NAME="\${SIM_NAME}_part\${SEED}_\${RUN_SUFFIX_VAL}"
+else
+    OUTPUT_NAME="\${SIM_NAME}_part\${SEED}"
 fi
 
 echo "Starting batch task \${SLURM_ARRAY_TASK_ID}: \${SIM_NAME} (files \${MIN_FILE}-\${MAX_FILE}) at \$(date)"
@@ -253,7 +303,7 @@ echo "Starting batch task \${SLURM_ARRAY_TASK_ID}: \${SIM_NAME} (files \${MIN_FI
 mkdir -p ${NUMPY_DIR}
 
 python RCRSimulation/S01_RCRSim.py \\
-    \${SIM_NAME}_part\${SEED} \\
+    \${OUTPUT_NAME} \\
     --station-type \${STATION_TYPE} \\
     --station-depth \${DEPTH} \\
     --site \${SITE} \\
