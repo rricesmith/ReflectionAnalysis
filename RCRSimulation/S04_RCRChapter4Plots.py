@@ -41,6 +41,7 @@ from RCRSimulation.RCRAnalysis import (
     NOISE_PRECHECK_SIGMA,
 )
 from RCRSimulation.RCREventObject import RCREvent, REFLECTED_STATION_OFFSET
+from RCRSimulation.NeutrinoComparisonSimulation.NeutrinoEvent import NeutrinoEvent
 
 LOGGER = logging.getLogger(__name__)
 
@@ -121,6 +122,122 @@ def load_all_sims(numpy_folder: str | Path, sim_names: dict | list) -> Dict[str,
         if events is not None:
             loaded[sim_name] = events
     return loaded
+
+
+# ============================================================================
+# Neutrino Data Loading
+# ============================================================================
+
+def load_neutrino_events(neutrino_folder: str | Path) -> Dict[str, list]:
+    """Load neutrino comparison events from numpy files.
+
+    Searches for *neutrino_events.npy files in the folder.
+    Returns {site: [NeutrinoEvent, ...]} where site is 'MB' or 'SP'.
+    """
+    folder = Path(neutrino_folder)
+    if not folder.exists():
+        LOGGER.info("Neutrino folder %s does not exist, skipping", neutrino_folder)
+        return {}
+
+    result = {}
+    for site in ["MB", "SP"]:
+        pattern = f"*{site}*neutrino_events.npy"
+        files = sorted(folder.glob(pattern))
+        if not files:
+            continue
+        events = []
+        for f in files:
+            arr = np.load(f, allow_pickle=True)
+            events.extend(arr.tolist())
+        result[site] = events
+        LOGGER.info("Loaded %d neutrino events for %s (%d files)", len(events), site, len(files))
+
+    return result
+
+
+def _compute_neutrino_arrival_density(
+    nu_events: list,
+    trigger_type: str,
+    bins: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute arrival angle density for neutrino events.
+
+    Uses signal arrival zenith (from NuRadioMC ray tracing) directly.
+
+    Args:
+        nu_events: List of NeutrinoEvent objects
+        trigger_type: 'lpda' or 'pa'
+        bins: Bin edges in degrees
+    """
+    vals, ws = [], []
+    for evt in nu_events:
+        if trigger_type == "lpda" and evt.has_lpda_trigger():
+            zen = evt.lpda_arrival_zenith
+        elif trigger_type == "pa" and evt.has_pa_trigger():
+            zen = evt.pa_arrival_zenith
+        else:
+            continue
+        if zen is not None:
+            vals.append(np.rad2deg(zen))
+            ws.append(evt.weight)
+
+    return _compute_weighted_density(np.array(vals), np.array(ws), bins)
+
+
+def _compute_neutrino_polarization_density(
+    nu_events: list,
+    trigger_type: str,
+    bins: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute polarization angle density for neutrino events.
+
+    Args:
+        nu_events: List of NeutrinoEvent objects
+        trigger_type: 'lpda' or 'pa'
+        bins: Bin edges in degrees
+    """
+    vals, ws = [], []
+    for evt in nu_events:
+        if trigger_type == "lpda" and evt.has_lpda_trigger():
+            pol = evt.lpda_polarization
+        elif trigger_type == "pa" and evt.has_pa_trigger():
+            pol = evt.pa_polarization
+        else:
+            continue
+        if pol is not None:
+            vals.append(np.rad2deg(pol))
+            ws.append(evt.weight)
+
+    return _compute_weighted_density(np.array(vals), np.array(ws), bins)
+
+
+# Panel label -> neutrino trigger type mapping
+NEUTRINO_TRIGGER_MAP = {
+    "HRA": "lpda",
+    "Gen2 Shallow": "lpda",
+    "Gen2 Deep": "pa",
+}
+
+
+def _build_neutrino_densities(
+    nu_events_site: list,
+    panel_titles: List[str],
+    density_fn,
+    bins: np.ndarray,
+) -> List[Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]]:
+    """Compute neutrino density per panel based on trigger type mapping.
+
+    Returns a list with one (centers, density, error) tuple per panel,
+    or None for panels where no neutrino trigger type is mapped.
+    """
+    densities = []
+    for title in panel_titles:
+        ttype = NEUTRINO_TRIGGER_MAP.get(title)
+        if ttype is None:
+            densities.append(None)
+            continue
+        densities.append(density_fn(nu_events_site, ttype, bins))
+    return densities
 
 
 # ============================================================================
@@ -446,15 +563,21 @@ def _compute_arrival_angle_density(
     event_list: Sequence[RCREvent],
     weight_name: str,
     n_bins: int = 15,
+    max_angle_deg: float | None = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute normalized probability density of refracted arrival angle.
 
     Applies Snell's law: arrival_angle = arcsin(sin(zenith) / N_ICE).
     Returns (bin_centers_deg, density, density_error).
+
+    Args:
+        max_angle_deg: Upper edge of histogram in degrees. Defaults to
+            Snell's law limit (~34.2 deg). Set to 90 when overlaying
+            neutrino distributions.
     """
-    # Max possible arrival angle after refraction
-    max_arrival = np.arcsin(1.0 / N_ICE)  # ~34.2 deg
-    bins = np.linspace(0, np.rad2deg(max_arrival), n_bins + 1)
+    if max_angle_deg is None:
+        max_angle_deg = np.rad2deg(np.arcsin(1.0 / N_ICE))  # ~34.2 deg
+    bins = np.linspace(0, max_angle_deg, n_bins + 1)
 
     def arrival_angle_deg(evt):
         sin_refr = np.sin(evt.zenith) / N_ICE
@@ -510,6 +633,7 @@ def _plot_density_panels(
     db_labels: Dict[float, str] | None = None,
     n_bins: int = 15,
     info_texts: Optional[List[str]] = None,
+    neutrino_densities: Optional[List[Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]]] = None,
 ):
     """Generic multi-panel density plot with direct band + reflected band.
 
@@ -530,6 +654,8 @@ def _plot_density_panels(
         db_labels: Optional {db_value: display_label} for legend
         n_bins: Number of bins
         info_texts: Optional info string per panel (upper-left annotation)
+        neutrino_densities: Optional list of (centers, density, error) tuples per panel.
+            When provided, overlays the neutrino signal distribution on each panel.
     """
     n = len(event_lists)
     fig, axes = plt.subplots(1, n, figsize=(5.5 * n, 4.5), sharey=True)
@@ -590,6 +716,15 @@ def _plot_density_panels(
                     band_label = f"Reflected ({sorted_dbs[0]:.0f}\u2013{sorted_dbs[-1]:.0f} dB)"
                 ax.fill_between(centers, lo, hi, alpha=0.3, color="tab:blue", label=band_label)
 
+        # Neutrino overlay
+        if neutrino_densities and ip < len(neutrino_densities) and neutrino_densities[ip] is not None:
+            nu_centers, nu_density, nu_error = neutrino_densities[ip]
+            if nu_density.sum() > 0:
+                ax.fill_between(nu_centers, np.maximum(nu_density - nu_error, 0),
+                                nu_density + nu_error, alpha=0.25, color="tab:orange")
+                ax.plot(nu_centers, nu_density, color="tab:orange", linewidth=1.5,
+                        label="Neutrino Signal")
+
         ax.set_xlabel(xlabel)
         ax.set_title(title, fontsize=10)
 
@@ -626,21 +761,27 @@ def plot_radii_density_panels(
 def plot_arrival_angle_panels(
     event_lists, direct_triggers, reflected_db_triggers, panel_titles,
     suptitle, savename, max_distance, db_labels=None, n_bins=15, info_texts=None,
+    neutrino_densities=None,
 ):
     """Multi-panel refracted arrival angle density with direct band + reflected band."""
+    max_angle = 90.0 if neutrino_densities else None
+
     def arrival_density_fn(events_list, weight_name, nbins):
-        return _compute_arrival_angle_density(events_list, weight_name, nbins)
+        return _compute_arrival_angle_density(events_list, weight_name, nbins,
+                                              max_angle_deg=max_angle)
 
     _plot_density_panels(
         event_lists, direct_triggers, reflected_db_triggers, panel_titles,
         suptitle, savename, max_distance, arrival_density_fn,
-        xlabel="Arrival Angle (deg)", db_labels=db_labels, n_bins=n_bins, info_texts=info_texts,
+        xlabel="Arrival Angle (deg)", db_labels=db_labels, n_bins=n_bins,
+        info_texts=info_texts, neutrino_densities=neutrino_densities,
     )
 
 
 def plot_polarization_angle_panels(
     event_lists, direct_triggers, reflected_db_triggers, panel_titles,
     suptitle, savename, max_distance, db_labels=None, n_bins=15, info_texts=None,
+    neutrino_densities=None,
 ):
     """Multi-panel polarization angle density with direct band + reflected band."""
     def pol_density_fn(events_list, weight_name, nbins):
@@ -649,7 +790,8 @@ def plot_polarization_angle_panels(
     _plot_density_panels(
         event_lists, direct_triggers, reflected_db_triggers, panel_titles,
         suptitle, savename, max_distance, pol_density_fn,
-        xlabel="Polarization Angle (deg)", db_labels=db_labels, n_bins=n_bins, info_texts=info_texts,
+        xlabel="Polarization Angle (deg)", db_labels=db_labels, n_bins=n_bins,
+        info_texts=info_texts, neutrino_densities=neutrino_densities,
     )
 
 
@@ -1157,7 +1299,7 @@ def generate_mb_radii_plots(loaded, save_folder, max_distance):
     )
 
 
-def generate_mb_arrival_angle_plots(loaded, save_folder, max_distance):
+def generate_mb_arrival_angle_plots(loaded, save_folder, max_distance, nu_events=None):
     """MB arrival angle (refracted zenith) density."""
     labels = list(MB_REFLECTED_SIMS.keys())
     sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
@@ -1172,15 +1314,23 @@ def generate_mb_arrival_angle_plots(loaded, save_folder, max_distance):
     info_texts = [_build_info("MB", lab, dt, "R=0.5\u20131.0")
                   for lab, dt in zip(labels, direct_triggers)]
 
+    nu_densities = None
+    if nu_events and "MB" in nu_events:
+        n_bins = 15
+        bins = np.linspace(0, 90, n_bins + 1)
+        nu_densities = _build_neutrino_densities(
+            nu_events["MB"], labels, _compute_neutrino_arrival_density, bins)
+
     plot_arrival_angle_panels(
         event_lists, direct_triggers, reflected_db_triggers, labels,
         suptitle="MB Arrival Angle Distribution (Snell's Law, n$_{ice}$=1.78)",
         savename=os.path.join(save_folder, "mb_arrival_angle.png"),
         max_distance=max_distance, db_labels=MB_DB_LABELS, info_texts=info_texts,
+        neutrino_densities=nu_densities,
     )
 
 
-def generate_sp_arrival_angle_plots(loaded, save_folder, max_distance):
+def generate_sp_arrival_angle_plots(loaded, save_folder, max_distance, nu_events=None):
     """SP arrival angle (refracted zenith) density."""
     labels = ["Gen2 Shallow", "Gen2 Deep"]
     sim_names = [SP_REFLECTED_SIMS[("300m", "shallow")], SP_REFLECTED_SIMS[("300m", "deep")]]
@@ -1195,15 +1345,23 @@ def generate_sp_arrival_angle_plots(loaded, save_folder, max_distance):
     info_texts = [_build_info("SP", lab, dt, "300m, 40\u201355 dB")
                   for lab, dt in zip(labels, direct_triggers)]
 
+    nu_densities = None
+    if nu_events and "SP" in nu_events:
+        n_bins = 15
+        bins = np.linspace(0, 90, n_bins + 1)
+        nu_densities = _build_neutrino_densities(
+            nu_events["SP"], labels, _compute_neutrino_arrival_density, bins)
+
     plot_arrival_angle_panels(
         event_lists, direct_triggers, reflected_db_triggers, labels,
         suptitle="SP Arrival Angle Distribution (Snell's Law, n$_{ice}$=1.78)",
         savename=os.path.join(save_folder, "sp_arrival_angle.png"),
         max_distance=max_distance, info_texts=info_texts,
+        neutrino_densities=nu_densities,
     )
 
 
-def generate_mb_polarization_angle_plots(loaded, save_folder, max_distance):
+def generate_mb_polarization_angle_plots(loaded, save_folder, max_distance, nu_events=None):
     """MB polarization angle density."""
     labels = list(MB_REFLECTED_SIMS.keys())
     sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
@@ -1218,15 +1376,23 @@ def generate_mb_polarization_angle_plots(loaded, save_folder, max_distance):
     info_texts = [_build_info("MB", lab, dt, "R=0.5\u20131.0")
                   for lab, dt in zip(labels, direct_triggers)]
 
+    nu_densities = None
+    if nu_events and "MB" in nu_events:
+        n_bins = 15
+        bins = np.linspace(0, 180, n_bins + 1)
+        nu_densities = _build_neutrino_densities(
+            nu_events["MB"], labels, _compute_neutrino_polarization_density, bins)
+
     plot_polarization_angle_panels(
         event_lists, direct_triggers, reflected_db_triggers, labels,
         suptitle="MB Polarization Angle Distribution",
         savename=os.path.join(save_folder, "mb_polarization_angle.png"),
         max_distance=max_distance, db_labels=MB_DB_LABELS, info_texts=info_texts,
+        neutrino_densities=nu_densities,
     )
 
 
-def generate_sp_polarization_angle_plots(loaded, save_folder, max_distance):
+def generate_sp_polarization_angle_plots(loaded, save_folder, max_distance, nu_events=None):
     """SP polarization angle density."""
     labels = ["Gen2 Shallow", "Gen2 Deep"]
     sim_names = [SP_REFLECTED_SIMS[("300m", "shallow")], SP_REFLECTED_SIMS[("300m", "deep")]]
@@ -1241,11 +1407,19 @@ def generate_sp_polarization_angle_plots(loaded, save_folder, max_distance):
     info_texts = [_build_info("SP", lab, dt, "300m, 40\u201355 dB")
                   for lab, dt in zip(labels, direct_triggers)]
 
+    nu_densities = None
+    if nu_events and "SP" in nu_events:
+        n_bins = 15
+        bins = np.linspace(0, 180, n_bins + 1)
+        nu_densities = _build_neutrino_densities(
+            nu_events["SP"], labels, _compute_neutrino_polarization_density, bins)
+
     plot_polarization_angle_panels(
         event_lists, direct_triggers, reflected_db_triggers, labels,
         suptitle="SP Polarization Angle Distribution",
         savename=os.path.join(save_folder, "sp_polarization_angle.png"),
         max_distance=max_distance, info_texts=info_texts,
+        neutrino_densities=nu_densities,
     )
 
 
@@ -1265,6 +1439,8 @@ def main():
                         help="Override numpy folder from config")
     parser.add_argument("--save-folder", type=str, default=None,
                         help="Override save folder from config")
+    parser.add_argument("--neutrino-folder", type=str, default=None,
+                        help="Folder containing neutrino comparison numpy files")
     args = parser.parse_args()
 
     config = configparser.ConfigParser()
@@ -1299,6 +1475,16 @@ def main():
         LOGGER.error("No simulation data found. Check numpy_folder: %s", numpy_folder)
         return
 
+    # Load neutrino comparison data if available
+    nu_events = None
+    if args.neutrino_folder:
+        nu_events = load_neutrino_events(args.neutrino_folder)
+        if nu_events:
+            for site, evts in nu_events.items():
+                ic(f"Neutrino data: {site} = {len(evts)} events")
+        else:
+            ic("No neutrino data found in", args.neutrino_folder)
+
     # Generate plots — each wrapped so one failure doesn't block others
     plot_generators = [
         ("MB trigger rate plots", lambda: generate_mb_trigger_rate_plots(loaded, save_folder, max_distance)),
@@ -1307,10 +1493,10 @@ def main():
         ("SP event rate bands", lambda: generate_sp_event_rate_bands(loaded, save_folder, max_distance)),
         ("SP radii density", lambda: generate_sp_radii_plots(loaded, save_folder, max_distance)),
         ("MB radii density", lambda: generate_mb_radii_plots(loaded, save_folder, max_distance)),
-        ("MB arrival angle", lambda: generate_mb_arrival_angle_plots(loaded, save_folder, max_distance)),
-        ("SP arrival angle", lambda: generate_sp_arrival_angle_plots(loaded, save_folder, max_distance)),
-        ("MB polarization angle", lambda: generate_mb_polarization_angle_plots(loaded, save_folder, max_distance)),
-        ("SP polarization angle", lambda: generate_sp_polarization_angle_plots(loaded, save_folder, max_distance)),
+        ("MB arrival angle", lambda: generate_mb_arrival_angle_plots(loaded, save_folder, max_distance, nu_events)),
+        ("SP arrival angle", lambda: generate_sp_arrival_angle_plots(loaded, save_folder, max_distance, nu_events)),
+        ("MB polarization angle", lambda: generate_mb_polarization_angle_plots(loaded, save_folder, max_distance, nu_events)),
+        ("SP polarization angle", lambda: generate_sp_polarization_angle_plots(loaded, save_folder, max_distance, nu_events)),
         ("Rate table", lambda: generate_rate_table(
             loaded, max_distance, os.path.join(save_folder, "rate_table.txt"),
         )),
