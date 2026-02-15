@@ -20,6 +20,7 @@
 #   --run-suffix TAG    Append TAG to output names (avoids filename clashes)
 #   --numpy-dir DIR     Override numpy output directory
 #   --output-dir DIR    Override .nur output directory
+#   --save-nur          Save .nur event files (off by default to save disk)
 #
 # Examples:
 #   bash RCRSimulation/submit_rcr_batch.sh --all                    # all 14 sims
@@ -58,6 +59,7 @@ MIN_ENERGY=""
 RUN_SUFFIX=""
 CLI_NUMPY_DIR=""
 CLI_OUTPUT_DIR=""
+SAVE_NUR=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -70,6 +72,7 @@ while [[ $# -gt 0 ]]; do
         --run-suffix) RUN_SUFFIX="$2"; shift ;;
         --numpy-dir) CLI_NUMPY_DIR="$2"; shift ;;
         --output-dir) CLI_OUTPUT_DIR="$2"; shift ;;
+        --save-nur) SAVE_NUR=true ;;
         --*) echo "Unknown flag: $1"; exit 1 ;;
         *) SIMS+=("$1") ;;
     esac
@@ -288,6 +291,10 @@ fi
 MIN_ENERGY_FLAG="${MIN_ENERGY}"
 if [ -n "\${MIN_ENERGY_FLAG}" ]; then
     EXTRA_ARGS="\${EXTRA_ARGS} --min-energy-log10 \${MIN_ENERGY_FLAG}"
+fi
+SAVE_NUR_FLAG="${SAVE_NUR}"
+if [ "\${SAVE_NUR_FLAG}" = "true" ]; then
+    EXTRA_ARGS="\${EXTRA_ARGS} --save-nur"
 fi
 
 # Build output name with optional run suffix

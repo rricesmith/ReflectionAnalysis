@@ -385,6 +385,13 @@ def parse_args() -> argparse.Namespace:
              "(e.g., 18.0 to only simulate showers >= 10^18 eV). "
              "Skipped events are not recorded, reducing output size and runtime.",
     )
+    parser.add_argument(
+        "--save-nur",
+        action="store_true",
+        default=False,
+        help="Save .nur event files (disabled by default to save disk space). "
+             "The numpy event summaries are always saved regardless.",
+    )
     return parser.parse_args()
 
 
@@ -801,6 +808,7 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
     }
 
     settings["min_energy_log10"] = args.min_energy_log10
+    settings["save_nur"] = args.save_nur
 
     settings["filename_tags"] = [
         str(value).lower()
@@ -1150,8 +1158,13 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         log_level=logging.INFO,
     )
 
-    eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
-    eventWriter.begin(str(output_paths["nur"]))
+    save_nur = settings.get("save_nur", False)
+    eventWriter = None
+    if save_nur:
+        eventWriter = NuRadioReco.modules.io.eventWriter.eventWriter()
+        eventWriter.begin(str(output_paths["nur"]))
+    else:
+        LOGGER.info("Skipping .nur file output (--save-nur not set)")
 
     rcr_events: List[RCREvent] = []
 
@@ -1524,9 +1537,13 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
         n_reflected = sum(len(rcr_event.reflected_triggers(t)) for t in rcr_event.all_trigger_names())
         LOGGER.debug("Event %s: %d direct triggers, %d reflected triggers", evt.get_id(), n_direct, n_reflected)
 
-        eventWriter.run(evt)
+        if eventWriter is not None:
+            eventWriter.run(evt)
 
-    nevents = eventWriter.end()
+    if eventWriter is not None:
+        nevents = eventWriter.end()
+    else:
+        nevents = _n_events_processed
     run_time = readCoREAS.end()
     if isinstance(run_time, datetime.timedelta):
         run_time_s = run_time.total_seconds()

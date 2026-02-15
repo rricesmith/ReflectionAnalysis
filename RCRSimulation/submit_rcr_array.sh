@@ -16,6 +16,7 @@
 #   --run-suffix TAG    Append TAG to output names (avoids filename clashes)
 #   --numpy-dir DIR     Override numpy output directory
 #   --output-dir DIR    Override .nur output directory
+#   --save-nur          Save .nur event files (off by default to save disk)
 #
 # Examples:
 #   bash RCRSimulation/submit_rcr_array.sh Gen2_deep_MB_576m          # production
@@ -47,6 +48,7 @@ MIN_ENERGY=""
 RUN_SUFFIX=""
 CLI_NUMPY_DIR=""
 CLI_OUTPUT_DIR=""
+SAVE_NUR=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -57,6 +59,7 @@ while [[ $# -gt 0 ]]; do
         --run-suffix) RUN_SUFFIX="$2"; shift ;;
         --numpy-dir) CLI_NUMPY_DIR="$2"; shift ;;
         --output-dir) CLI_OUTPUT_DIR="$2"; shift ;;
+        --save-nur) SAVE_NUR=true ;;
     esac
     shift
 done
@@ -243,6 +246,9 @@ if [ -n "${LAYER_DB_LIST}" ]; then
 fi
 if [ -n "${MIN_ENERGY}" ]; then
     EXTRA_ARGS="${EXTRA_ARGS} --min-energy-log10 ${MIN_ENERGY}"
+fi
+if [ "${SAVE_NUR}" = "true" ]; then
+    EXTRA_ARGS="${EXTRA_ARGS} --save-nur"
 fi
 
 # Create directories
