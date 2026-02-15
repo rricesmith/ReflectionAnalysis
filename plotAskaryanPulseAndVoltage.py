@@ -11,10 +11,10 @@ dt = 0.5 * units.ns
 sampling_rate = 1.0 / dt  # samples per second
 
 # Shower parameters
-energy = 1e17 * units.eV
+energy = 1e18 * units.eV
 shower_type = 'had'
 n_index = 1.78
-R = 10 * units.m
+R = 1000 * units.m
 model = 'Alvarez2009'
 
 theta_55 = 55 * units.deg
