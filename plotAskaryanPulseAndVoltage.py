@@ -36,8 +36,8 @@ frequencies = np.fft.rfftfreq(n_samples, dt)
 
 inc_zen = 0 * units.deg
 inc_azi = 0 * units.deg
-orientation_theta_phi = [np.deg2rad(0), np.deg2rad(0)]
-rotation_theta_phi = [np.deg2rad(90), np.deg2rad(0)]
+orientation_theta_phi = [np.deg2rad(45), np.deg2rad(45)]
+rotation_theta_phi = [np.deg2rad(45), np.deg2rad(45)]
 
 VELs = LPDA_antenna.get_antenna_response_vectorized(frequencies, inc_zen, inc_azi,
                                             orientation_theta_phi[0], orientation_theta_phi[1],
