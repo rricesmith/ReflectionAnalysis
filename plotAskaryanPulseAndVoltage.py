@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # --- 1. Generate Askaryan Time Traces for two angles ---
-n_samples = 256
+n_samples = 1024
 dt = 0.5 * units.ns
 sampling_rate = 1.0 / dt  # samples per second
 
@@ -36,8 +36,8 @@ frequencies = np.fft.rfftfreq(n_samples, dt)
 
 inc_zen = 0 * units.deg
 inc_azi = 0 * units.deg
-orientation_theta_phi = [np.deg2rad(45), np.deg2rad(45)]
-rotation_theta_phi = [np.deg2rad(45), np.deg2rad(45)]
+orientation_theta_phi = [np.deg2rad(0), np.deg2rad(0)]
+rotation_theta_phi = [np.deg2rad(90), np.deg2rad(0)]
 
 VELs = LPDA_antenna.get_antenna_response_vectorized(frequencies, inc_zen, inc_azi,
                                             orientation_theta_phi[0], orientation_theta_phi[1],
@@ -45,11 +45,11 @@ VELs = LPDA_antenna.get_antenna_response_vectorized(frequencies, inc_zen, inc_az
 vel_theta = VELs['theta']
 
 # --- 3. E-field → Voltage via VEL (multiply in frequency domain) ---
-# trace_spec_55 = fft.time2freq(trace_55, sampling_rate)
-# trace_spec_57 = fft.time2freq(trace_57, sampling_rate)
+trace_spec_55 = fft.time2freq(trace_55, sampling_rate)
+trace_spec_57 = fft.time2freq(trace_57, sampling_rate)
 
-voltage_spec_55 = freq_trace_55 * vel_theta
-voltage_spec_57 = freq_trace_57 * vel_theta
+voltage_spec_55 = trace_spec_55 * vel_theta
+voltage_spec_57 = trace_spec_57 * vel_theta
 
 voltage_trace_55 = fft.freq2time(voltage_spec_55, sampling_rate)
 voltage_trace_57 = fft.freq2time(voltage_spec_57, sampling_rate)
