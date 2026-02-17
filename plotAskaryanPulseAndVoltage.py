@@ -25,6 +25,9 @@ trace_55 = askaryan.get_time_trace(energy, theta_55, n_samples, dt, shower_type=
 trace_57 = askaryan.get_time_trace(energy, theta_57, n_samples, dt, shower_type=shower_type, n_index=n_index, R=R, model=model)
 times = np.arange(0, n_samples * dt, dt)
 
+freq_trace_55 = askaryan.get_frequency_spectrum(energy, theta_55, n_samples, dt, shower_type=shower_type, n_index=n_index, R=R, model=model)
+freq_trace_57 = askaryan.get_frequency_spectrum(energy, theta_57, n_samples, dt, shower_type=shower_type, n_index=n_index, R=R, model=model)
+
 # --- 2. Calculate Antenna Response ---
 provider = NuRadioReco.detector.antennapattern.AntennaPatternProvider()
 LPDA_antenna = provider.load_antenna_pattern("createLPDA_100MHz_InfFirn")
@@ -42,11 +45,11 @@ VELs = LPDA_antenna.get_antenna_response_vectorized(frequencies, inc_zen, inc_az
 vel_theta = VELs['theta']
 
 # --- 3. E-field → Voltage via VEL (multiply in frequency domain) ---
-trace_spec_55 = fft.time2freq(trace_55, sampling_rate)
-trace_spec_57 = fft.time2freq(trace_57, sampling_rate)
+# trace_spec_55 = fft.time2freq(trace_55, sampling_rate)
+# trace_spec_57 = fft.time2freq(trace_57, sampling_rate)
 
-voltage_spec_55 = trace_spec_55 * vel_theta
-voltage_spec_57 = trace_spec_57 * vel_theta
+voltage_spec_55 = freq_trace_55 * vel_theta
+voltage_spec_57 = freq_trace_57 * vel_theta
 
 voltage_trace_55 = fft.freq2time(voltage_spec_55, sampling_rate)
 voltage_trace_57 = fft.freq2time(voltage_spec_57, sampling_rate)
