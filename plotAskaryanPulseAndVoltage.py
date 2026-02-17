@@ -25,14 +25,14 @@ trace_55 = askaryan.get_time_trace(energy, theta_55, n_samples, dt, shower_type=
 trace_57 = askaryan.get_time_trace(energy, theta_57, n_samples, dt, shower_type=shower_type, n_index=n_index, R=R, model=model)
 times = np.arange(0, n_samples * dt, dt)
 
-freq_trace_55 = askaryan.get_frequency_spectrum(energy, theta_55, n_samples, dt, shower_type=shower_type, n_index=n_index, R=R, model=model)
-freq_trace_57 = askaryan.get_frequency_spectrum(energy, theta_57, n_samples, dt, shower_type=shower_type, n_index=n_index, R=R, model=model)
+# freq_trace_55 = askaryan.get_frequency_spectrum(energy, theta_55, n_samples, dt, shower_type=shower_type, n_index=n_index, R=R, model=model)
+# freq_trace_57 = askaryan.get_frequency_spectrum(energy, theta_57, n_samples, dt, shower_type=shower_type, n_index=n_index, R=R, model=model)
 
 # --- 2. Calculate Antenna Response ---
 provider = NuRadioReco.detector.antennapattern.AntennaPatternProvider()
 LPDA_antenna = provider.load_antenna_pattern("createLPDA_100MHz_InfFirn")
 
-frequencies = np.fft.rfftfreq(n_samples, dt/units.s)
+frequencies = np.fft.rfftfreq(n_samples, dt)
 
 inc_zen = 0 * units.deg
 inc_azi = 0 * units.deg
