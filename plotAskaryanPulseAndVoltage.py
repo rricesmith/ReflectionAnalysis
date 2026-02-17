@@ -32,7 +32,8 @@ freq_trace_57 = askaryan.get_frequency_spectrum(energy, theta_57, n_samples, dt,
 provider = NuRadioReco.detector.antennapattern.AntennaPatternProvider()
 LPDA_antenna = provider.load_antenna_pattern("createLPDA_100MHz_InfFirn")
 
-frequencies = np.fft.rfftfreq(n_samples, dt)
+# frequencies = np.fft.rfftfreq(n_samples, dt)
+frequencies = trace_55.get_frequencies()
 
 inc_zen = 0 * units.deg
 inc_azi = 0 * units.deg
