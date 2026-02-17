@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # --- 1. Generate Askaryan Time Traces for two angles ---
-n_samples = 1024
+n_samples = 256
 dt = 0.5 * units.ns
 sampling_rate = 1.0 / dt  # samples per second
 
