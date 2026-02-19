@@ -212,7 +212,10 @@ class readCoREAS:
 #        print(f'ray type {ray_type} and ice position {ant_ice_position[2]} and refl depth {refl_layer_depth}')
         if ray_type == 'reflected' or force_dB or (np.abs(ant_ice_position[2]) > np.abs(refl_layer_depth)):
 #            print(f'db adjust triggered')
-            efield_adjust *= 10**(-reflective_dB / 20)
+            if attenuation_model == 'MB_freq':
+                efield_adjust *= R_attenuation  # amplitude reflection loss at ice bottom
+            else:
+                efield_adjust *= 10**(-reflective_dB / 20)
 #        if force_dB and np.abs(ant_ice_position[2]) > refl_layer_depth:
 #            efield_adjust *= 10**(-reflective_dB / 20)
 

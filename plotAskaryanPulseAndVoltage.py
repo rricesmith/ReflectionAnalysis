@@ -22,7 +22,6 @@ theta_57 = 57 * units.deg
 
 # Get the electric field traces for both angles
 trace_55 = askaryan.get_time_trace(energy, theta_55, n_samples, dt, shower_type=shower_type, n_index=n_index, R=R, model=model)
-print(trace_55)
 trace_57 = askaryan.get_time_trace(energy, theta_57, n_samples, dt, shower_type=shower_type, n_index=n_index, R=R, model=model)
 times = np.arange(0, n_samples * dt, dt)
 
