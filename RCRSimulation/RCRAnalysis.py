@@ -76,14 +76,14 @@ def getEnergyZenithBins() -> Tuple[np.ndarray, np.ndarray]:
     Returns:
         Tuple of (energy_bins, zenith_bins) in eV and radians respectively.
         Energy bins: log10(E/eV) from 16 to 20 in 0.5 steps
-        Zenith bins: cos(zenith) from 0 to 1 in 0.2 steps, converted to radians
+        Zenith bins: cos(zenith) from 0 to 1 in 0.25 steps, converted to radians
     """
     min_energy = 16.0
     max_energy = 20.1
     e_bins = 10**np.arange(min_energy, max_energy, 0.5) * units.eV
 
     # Zenith bins in cos(zenith) space, then convert to radians
-    z_bins = np.arange(0, 1.01, 0.2)
+    z_bins = np.arange(0, 1.01, 0.25)
     z_bins = np.arccos(z_bins)
     z_bins[np.isnan(z_bins)] = 0
     z_bins = z_bins * units.rad

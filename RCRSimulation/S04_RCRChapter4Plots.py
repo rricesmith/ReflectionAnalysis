@@ -55,16 +55,12 @@ MB_REFLECTED_SIMS = {
     "Gen2 Deep": "Gen2_deep_MB_576m",
 }
 
-SP_DEPTHS = ["300m", "500m", "830m"]
+SP_DEPTHS = ["300m"]
 
 # SP sims keyed by (depth, station_type)
 SP_REFLECTED_SIMS = {
     ("300m", "shallow"): "Gen2_shallow_SP_300m",
     ("300m", "deep"): "Gen2_deep_SP_300m",
-    ("500m", "shallow"): "Gen2_shallow_SP_500m",
-    ("500m", "deep"): "Gen2_deep_SP_500m",
-    ("830m", "shallow"): "Gen2_shallow_SP_830m",
-    ("830m", "deep"): "Gen2_deep_SP_830m",
 }
 
 # For direct rates, use the combined sims (which contain both direct and reflected stations).
@@ -1002,7 +998,7 @@ def generate_rate_table(
     """Generate human-readable text table of event rates for both MB and SP.
 
     MB table: Rows = Direct, 576m (R=0.5-1.0). Columns = HRA, Gen2 Shallow, Gen2 Deep.
-    SP table: Rows = Direct, 300m, 500m, 830m. Columns = Shallow, Deep, Combined.
+    SP table: Rows = Direct, 300m. Columns = Shallow, Deep.
     Each reflected cell shows min-max range across dB values.
     """
     e_bins, z_bins = getEnergyZenithBins()
@@ -1071,20 +1067,17 @@ def generate_rate_table(
 
     # ---- SP Table ----
     lines.append("Gen2 SP Event Rates (evts/yr)")
-    lines.append("=" * 70)
-    lines.append(f"{'':24s}{'Shallow':>15s}{'Deep':>15s}{'Combined':>15s}")
-    lines.append("-" * 70)
+    lines.append("=" * 55)
+    lines.append(f"{'':24s}{'Shallow':>15s}{'Deep':>15s}")
+    lines.append("-" * 55)
 
     # SP Direct row
     shallow_dir = loaded.get(SP_DIRECT_SIMS.get("Gen2 Shallow"))
     deep_dir = loaded.get(SP_DIRECT_SIMS.get("Gen2 Deep"))
     r_shallow = total_direct_rate(shallow_dir) if shallow_dir is not None else None
     r_deep = total_direct_rate(deep_dir) if deep_dir is not None else None
-    r_combined = None
-    if r_shallow is not None and r_deep is not None:
-        r_combined = r_shallow + r_deep
     lines.append(
-        f"{'Direct':24s}{format_single(r_shallow):>15s}{format_single(r_deep):>15s}{format_single(r_combined):>15s}"
+        f"{'Direct':24s}{format_single(r_shallow):>15s}{format_single(r_deep):>15s}"
     )
 
     # SP Reflected rows per depth
@@ -1096,22 +1089,19 @@ def generate_rate_table(
 
         shallow_rates = []
         deep_rates = []
-        combined_rates = []
 
         for db in SP_DB_VALUES:
             rs = total_reflected_rate(shallow_events, db) if shallow_events is not None else None
             rd = total_reflected_rate(deep_events, db) if deep_events is not None else None
             shallow_rates.append(rs)
             deep_rates.append(rd)
-            if rs is not None and rd is not None:
-                combined_rates.append(rs + rd)
 
         row_label = f"{depth} (40-55 dB)"
         lines.append(
-            f"{row_label:24s}{format_range(shallow_rates):>15s}{format_range(deep_rates):>15s}{format_range(combined_rates):>15s}"
+            f"{row_label:24s}{format_range(shallow_rates):>15s}{format_range(deep_rates):>15s}"
         )
 
-    lines.append("=" * 70)
+    lines.append("=" * 55)
 
     table_text = "\n".join(lines)
     print(table_text)
@@ -1266,15 +1256,6 @@ def generate_sp_trigger_rate_plots(loaded, save_folder, max_distance):
     _generate_sp_trigger_rate_for_depth(loaded, save_folder, max_distance, "300m")
 
 
-def generate_sp_trigger_rate_plots_500m(loaded, save_folder, max_distance):
-    """SP trigger rate panels for 500m (reflected at 40dB, and direct)."""
-    _generate_sp_trigger_rate_for_depth(loaded, save_folder, max_distance, "500m")
-
-
-def generate_sp_trigger_rate_plots_830m(loaded, save_folder, max_distance):
-    """SP trigger rate panels for 830m (reflected at 40dB, and direct)."""
-    _generate_sp_trigger_rate_for_depth(loaded, save_folder, max_distance, "830m")
-
 
 def generate_mb_event_rate_2d(loaded, save_folder, max_distance):
     """MB 2D event rate histograms (reflected at R=0.7, and direct)."""
@@ -1313,15 +1294,6 @@ def generate_sp_event_rate_2d(loaded, save_folder, max_distance):
     """SP 2D event rate histograms for 300m (reflected at 40dB, and direct)."""
     _generate_sp_event_rate_2d_for_depth(loaded, save_folder, max_distance, "300m")
 
-
-def generate_sp_event_rate_2d_500m(loaded, save_folder, max_distance):
-    """SP 2D event rate histograms for 500m (reflected at 40dB, and direct)."""
-    _generate_sp_event_rate_2d_for_depth(loaded, save_folder, max_distance, "500m")
-
-
-def generate_sp_event_rate_2d_830m(loaded, save_folder, max_distance):
-    """SP 2D event rate histograms for 830m (reflected at 40dB, and direct)."""
-    _generate_sp_event_rate_2d_for_depth(loaded, save_folder, max_distance, "830m")
 
 
 def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
@@ -1380,72 +1352,53 @@ def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
 
 
 def generate_sp_event_rate_bands(loaded, save_folder, max_distance):
-    """Plot 4: SP event rate bands — combined Gen2 shallow+deep per depth, with uncertainty."""
+    """Plot 4: SP event rate bands — side-by-side Gen2 shallow and deep, with uncertainty."""
     e_bins, z_bins = getEnergyZenithBins()
+    depth = SP_DEPTHS[0]  # 300m
 
     rate_arrays_per_panel = []
     error_arrays_per_panel = []
-    available_depths = []
+    panel_labels = []
     info_texts = []
 
-    for depth in SP_DEPTHS:
-        shallow_key = SP_REFLECTED_SIMS.get((depth, "shallow"))
-        deep_key = SP_REFLECTED_SIMS.get((depth, "deep"))
-        shallow_events = loaded.get(shallow_key)
-        deep_events = loaded.get(deep_key)
-
-        if shallow_events is None or deep_events is None:
-            LOGGER.info("Skipping SP depth %s (missing data)", depth)
+    for stype, slabel in [("shallow", "Gen2 Shallow"), ("deep", "Gen2 Deep")]:
+        sim_key = SP_REFLECTED_SIMS.get((depth, stype))
+        events = loaded.get(sim_key)
+        if events is None:
+            LOGGER.info("Skipping SP %s %s (missing data)", depth, stype)
             continue
 
-        shallow_db_trigs = get_all_db_triggers(shallow_events)
-        deep_db_trigs = get_all_db_triggers(deep_events)
+        db_trigs = get_all_db_triggers(events)
+        if not db_trigs:
+            continue
 
-        if shallow_db_trigs and deep_db_trigs:
-            common_dbs = sorted(set(shallow_db_trigs.keys()) & set(deep_db_trigs.keys()))
-        else:
-            common_dbs = [None]
-
+        sorted_dbs = sorted(db_trigs.keys())
         rates_for_dbs = []
         errors_for_dbs = []
         trig_name = None
-        for db in common_dbs:
-            if db is not None:
-                s_trig = shallow_db_trigs.get(db)
-                d_trig = deep_db_trigs.get(db)
-            else:
-                s_trig = find_direct_trigger(shallow_events)
-                d_trig = find_direct_trigger(deep_events)
-
-            if s_trig is None or d_trig is None:
-                continue
+        for db in sorted_dbs:
+            trig = db_trigs[db]
             if trig_name is None:
-                trig_name = s_trig
-
-            _, s_ref_rate, _ = getBinnedTriggerRate(shallow_events, s_trig)
-            _, d_ref_rate, _ = getBinnedTriggerRate(deep_events, d_trig)
-            s_event_rate = getEventRate(s_ref_rate, e_bins, z_bins, max_distance)
-            d_event_rate = getEventRate(d_ref_rate, e_bins, z_bins, max_distance)
-            s_error = getErrorEventRates(s_ref_rate, shallow_events, max_distance)
-            d_error = getErrorEventRates(d_ref_rate, deep_events, max_distance)
-            combined = np.nan_to_num(s_event_rate) + np.nan_to_num(d_event_rate)
-            combined_err = np.sqrt(np.nan_to_num(s_error)**2 + np.nan_to_num(d_error)**2)
-            rates_for_dbs.append(combined)
-            errors_for_dbs.append(combined_err)
+                trig_name = trig
+            _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+            event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+            error_rate = getErrorEventRates(ref_rate, events, max_distance)
+            rates_for_dbs.append(event_rate)
+            errors_for_dbs.append(error_rate)
 
         if rates_for_dbs:
             rate_arrays_per_panel.append(rates_for_dbs)
             error_arrays_per_panel.append(errors_for_dbs)
-            available_depths.append(depth)
-            info_texts.append(_build_info("SP", "Gen2 Combined", trig_name, f"{depth}, 40\u201355 dB"))
+            panel_labels.append(slabel)
+            info_texts.append(_build_info("SP", slabel, trig_name, f"{depth}, 40\u201355 dB"))
 
-    if not available_depths:
-        LOGGER.warning("No SP depth data available, skipping SP event rate bands")
+    if not panel_labels:
+        LOGGER.warning("No SP data available, skipping SP event rate bands")
         return
 
     plot_event_rate_bands(
-        rate_arrays_per_panel, available_depths,
-        suptitle="SP Reflected Event Rate \u2014 Combined Gen2 (dB = 40\u201355)",
+        rate_arrays_per_panel, panel_labels,
+        suptitle=f"SP Reflected Event Rate \u2014 {depth} (dB = 40\u201355)",
         savename=os.path.join(save_folder, "sp_event_rate_bands.png"),
         error_arrays_per_panel=error_arrays_per_panel,
         info_texts=info_texts,
@@ -1453,55 +1406,47 @@ def generate_sp_event_rate_bands(loaded, save_folder, max_distance):
 
 
 def generate_sp_event_rate_bands_40dB(loaded, save_folder, max_distance):
-    """SP event rate bands — combined Gen2 shallow+deep per depth, 40 dB only.
+    """SP event rate bands — side-by-side Gen2 shallow and deep, 40 dB only.
 
     Shows statistical uncertainty band with central dashed line (no uncertainty).
     """
     e_bins, z_bins = getEnergyZenithBins()
     db_value = 40.0
+    depth = SP_DEPTHS[0]  # 300m
 
     rate_arrays_per_panel = []
     error_arrays_per_panel = []
-    available_depths = []
+    panel_labels = []
     info_texts = []
 
-    for depth in SP_DEPTHS:
-        shallow_key = SP_REFLECTED_SIMS.get((depth, "shallow"))
-        deep_key = SP_REFLECTED_SIMS.get((depth, "deep"))
-        shallow_events = loaded.get(shallow_key)
-        deep_events = loaded.get(deep_key)
-
-        if shallow_events is None or deep_events is None:
-            LOGGER.info("Skipping SP depth %s (missing data) for 40dB plot", depth)
+    for stype, slabel in [("shallow", "Gen2 Shallow"), ("deep", "Gen2 Deep")]:
+        sim_key = SP_REFLECTED_SIMS.get((depth, stype))
+        events = loaded.get(sim_key)
+        if events is None:
+            LOGGER.info("Skipping SP %s %s (missing data) for 40dB plot", depth, stype)
             continue
 
-        s_trig = find_trigger_for_db(shallow_events, db_value)
-        d_trig = find_trigger_for_db(deep_events, db_value)
-        if s_trig is None or d_trig is None:
-            LOGGER.info("No 40 dB trigger found for SP %s, skipping", depth)
+        trig = find_trigger_for_db(events, db_value)
+        if trig is None:
+            LOGGER.info("No 40 dB trigger found for SP %s %s, skipping", depth, stype)
             continue
 
-        _, s_ref_rate, _ = getBinnedTriggerRate(shallow_events, s_trig)
-        _, d_ref_rate, _ = getBinnedTriggerRate(deep_events, d_trig)
-        s_event_rate = getEventRate(s_ref_rate, e_bins, z_bins, max_distance)
-        d_event_rate = getEventRate(d_ref_rate, e_bins, z_bins, max_distance)
-        s_error = getErrorEventRates(s_ref_rate, shallow_events, max_distance)
-        d_error = getErrorEventRates(d_ref_rate, deep_events, max_distance)
-        combined = np.nan_to_num(s_event_rate) + np.nan_to_num(d_event_rate)
-        combined_err = np.sqrt(np.nan_to_num(s_error)**2 + np.nan_to_num(d_error)**2)
+        _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+        event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+        error_rate = getErrorEventRates(ref_rate, events, max_distance)
 
-        rate_arrays_per_panel.append(combined)
-        error_arrays_per_panel.append(combined_err)
-        available_depths.append(depth)
-        info_texts.append(_build_info("SP", "Gen2 Combined", s_trig, f"{depth}, 40 dB"))
+        rate_arrays_per_panel.append(event_rate)
+        error_arrays_per_panel.append(error_rate)
+        panel_labels.append(slabel)
+        info_texts.append(_build_info("SP", slabel, trig, f"{depth}, 40 dB"))
 
-    if not available_depths:
-        LOGGER.warning("No SP depth data available for 40 dB, skipping")
+    if not panel_labels:
+        LOGGER.warning("No SP data available for 40 dB, skipping")
         return
 
     plot_event_rate_bands_single_db(
-        rate_arrays_per_panel, available_depths,
-        suptitle="SP Reflected Event Rate \u2014 Combined Gen2 (40 dB)",
+        rate_arrays_per_panel, panel_labels,
+        suptitle=f"SP Reflected Event Rate \u2014 {depth} (40 dB)",
         savename=os.path.join(save_folder, "sp_event_rate_bands_40dB.png"),
         error_arrays_per_panel=error_arrays_per_panel,
         info_texts=info_texts,
@@ -1509,13 +1454,13 @@ def generate_sp_event_rate_bands_40dB(loaded, save_folder, max_distance):
 
 
 def generate_sp_radii_plots(loaded, save_folder, max_distance):
-    """Plot 5a: SP radii probability density — all three depths on same panels.
+    """Plot 5a: SP radii probability density — 300m depth.
 
     Two panels: Gen2 Shallow, Gen2 Deep.
-    Each panel shows direct (black band) + one colored band per depth (300m, 500m, 830m).
+    Each panel shows direct (black band) + reflected band for 300m.
     """
     station_types = [("shallow", "Gen2 Shallow"), ("deep", "Gen2 Deep")]
-    depth_colors = {"300m": "tab:blue", "500m": "tab:orange", "830m": "tab:green"}
+    depth_colors = {"300m": "tab:blue"}
 
     e_bins, z_bins = getEnergyZenithBins()
     n_bins = 15
@@ -1536,7 +1481,7 @@ def generate_sp_radii_plots(loaded, save_folder, max_distance):
         panel_titles.append(slabel)
 
         dir_trig = find_direct_trigger(direct_events)
-        info_texts.append(_build_info("SP", slabel, dir_trig, "300/500/830m, 40\u201355 dB"))
+        info_texts.append(_build_info("SP", slabel, dir_trig, "300m, 40\u201355 dB"))
 
     if not panels_data:
         return
@@ -1617,7 +1562,7 @@ def generate_sp_radii_plots(loaded, save_folder, max_distance):
 
     axes[0].set_ylabel("Probability Density")
     axes[0].legend(fontsize=7)
-    fig.suptitle("SP Radii Distribution \u2014 All Depths", fontsize=13, y=1.02)
+    fig.suptitle("SP Radii Distribution \u2014 300m", fontsize=13, y=1.02)
     plt.tight_layout()
     savename = os.path.join(save_folder, "sp_radii_density.png")
     plt.savefig(savename, dpi=150, bbox_inches="tight")
@@ -1837,13 +1782,9 @@ def main():
     # Generate plots — each wrapped so one failure doesn't block others
     plot_generators = [
         ("MB trigger rate plots", lambda: generate_mb_trigger_rate_plots(loaded, save_folder, max_distance)),
-        ("SP trigger rate plots (300m)", lambda: generate_sp_trigger_rate_plots(loaded, save_folder, max_distance)),
-        ("SP trigger rate plots (500m)", lambda: generate_sp_trigger_rate_plots_500m(loaded, save_folder, max_distance)),
-        ("SP trigger rate plots (830m)", lambda: generate_sp_trigger_rate_plots_830m(loaded, save_folder, max_distance)),
+        ("SP trigger rate plots", lambda: generate_sp_trigger_rate_plots(loaded, save_folder, max_distance)),
         ("MB event rate 2D", lambda: generate_mb_event_rate_2d(loaded, save_folder, max_distance)),
-        ("SP event rate 2D (300m)", lambda: generate_sp_event_rate_2d(loaded, save_folder, max_distance)),
-        ("SP event rate 2D (500m)", lambda: generate_sp_event_rate_2d_500m(loaded, save_folder, max_distance)),
-        ("SP event rate 2D (830m)", lambda: generate_sp_event_rate_2d_830m(loaded, save_folder, max_distance)),
+        ("SP event rate 2D", lambda: generate_sp_event_rate_2d(loaded, save_folder, max_distance)),
         ("MB event rate bands", lambda: generate_mb_event_rate_bands(loaded, save_folder, max_distance)),
         ("SP event rate bands", lambda: generate_sp_event_rate_bands(loaded, save_folder, max_distance)),
         ("SP event rate bands (40 dB)", lambda: generate_sp_event_rate_bands_40dB(loaded, save_folder, max_distance)),
