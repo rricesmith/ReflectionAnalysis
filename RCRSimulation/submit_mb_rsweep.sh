@@ -65,7 +65,7 @@ while [[ $# -gt 0 ]]; do
         --run-suffix) RUN_SUFFIX="$2"; shift ;;
         --numpy-dir) CLI_NUMPY_DIR="$2"; shift ;;
         --output-dir) CLI_OUTPUT_DIR="$2"; shift ;;
-        --save-nur) SAVE_NUR=true ;;
+        --save-nur) SAVE_NUR=false ;;
         --r-sweep) R_SWEEP="$2"; shift ;;
         --no-ab-error) AB_ERROR=false ;;
         --*) echo "Unknown flag: $1"; exit 1 ;;
