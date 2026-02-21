@@ -17,12 +17,12 @@ from NuRadioReco.framework.parameters import electricFieldParameters as efp
 
 import matplotlib.pyplot as plt
 
-def compute_MB_freq_attenuation(freqs, dist_traveled, R=0.82, d_ice=576 * units.m):
+def compute_MB_freq_attenuation(freqs, dist_traveled, R=0.82, d_ice=576 * units.m, A=460, B=180):
     """
     Compute frequency-dependent attenuation factor for the MB_freq model.
 
     Based on the attenuation model from NuRadioMC. The base attenuation length
-    formula (460m - 180m/GHz * f) was measured assuming R=1 at the ice bottom.
+    formula (A - B/GHz * f) was measured assuming R=1 at the ice bottom.
     The correction factor adjusts for the actual reflectivity R.
 
     Parameters
@@ -35,13 +35,17 @@ def compute_MB_freq_attenuation(freqs, dist_traveled, R=0.82, d_ice=576 * units.
         Amplitude reflectivity of the ice bottom (default 0.82 for Moore's Bay)
     d_ice : float
         Depth of ice at the site (default 576m for Moore's Bay), in NuRadioReco units
+    A : float
+        Depth-averaged attenuation length constant in meters (default 460, ±20m 1σ)
+    B : float
+        Frequency slope of attenuation length in m/GHz (default 180, ±40m/GHz 1σ)
 
     Returns
     -------
     efield_adjust : ndarray
         Multiplicative factor for the electric field frequency spectrum
     """
-    att_length = 460 * units.m - 180 * units.m / units.GHz * freqs / units.GHz
+    att_length = A * units.m - B * units.m / units.GHz * freqs / units.GHz
     # Correction factor: base formula assumed R=1, adjust for actual reflectivity
     att_length *= (1 + att_length / (2 * d_ice) * np.log(R)) ** -1
     att_length[att_length <= 0] = 1
@@ -212,10 +216,7 @@ class readCoREAS:
 #        print(f'ray type {ray_type} and ice position {ant_ice_position[2]} and refl depth {refl_layer_depth}')
         if ray_type == 'reflected' or force_dB or (np.abs(ant_ice_position[2]) > np.abs(refl_layer_depth)):
 #            print(f'db adjust triggered')
-            if attenuation_model == 'MB_freq':
-                efield_adjust *= R_attenuation  # amplitude reflection loss at ice bottom
-            else:
-                efield_adjust *= 10**(-reflective_dB / 20)
+            efield_adjust *= 10**(-reflective_dB / 20)
 #        if force_dB and np.abs(ant_ice_position[2]) > refl_layer_depth:
 #            efield_adjust *= 10**(-reflective_dB / 20)
 

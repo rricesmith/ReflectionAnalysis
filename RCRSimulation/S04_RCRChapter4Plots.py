@@ -38,6 +38,10 @@ from RCRSimulation.RCRAnalysis import (
     collect_trigger_names,
     filter_real_triggers,
     parse_db_from_trigger_name,
+    parse_r_from_trigger_name,
+    get_all_r_triggers,
+    get_ab_error_triggers,
+    find_trigger_for_r,
     NOISE_PRECHECK_SIGMA,
 )
 from RCRSimulation.RCREventObject import RCREvent, REFLECTED_STATION_OFFSET
@@ -70,12 +74,12 @@ SP_DIRECT_SIMS = {
     "Gen2 Deep": "Gen2_deep_SP_300m",
 }
 
-# Expected dB sweep values
-MB_DB_VALUES = [0.0, 1.5, 3.0]
-SP_DB_VALUES = [40.0, 45.0, 50.0, 55.0]
+# MB R-based sweep values (amplitude reflectivity)
+MB_R_VALUES = [0.5, 0.75, 0.82, 0.89, 1.0]
+MB_R_LABELS = {0.5: "R=0.5", 0.75: "R=0.75", 0.82: "R=0.82", 0.89: "R=0.89", 1.0: "R=1.0"}
 
-# MB dB-to-R labels for display
-MB_DB_LABELS = {0.0: "R=1.0", 1.5: "R=0.7", 3.0: "R=0.5"}
+# SP dB sweep values (kept for SP compatibility)
+SP_DB_VALUES = [40.0, 45.0, 50.0, 55.0]
 
 # Index of refraction for Snell's law (air → ice)
 N_ICE = 1.78
@@ -876,9 +880,9 @@ def _plot_density_panels(
             sorted_dbs = sorted(db_trigs.keys())
             all_densities = []
             all_errors = []
-            for db_val in sorted_dbs:
-                ref_trig = db_trigs[db_val]
-                weight_name = f"reflected_{db_val:.1f}dB"
+            for sweep_val in sorted_dbs:
+                ref_trig = db_trigs[sweep_val]
+                weight_name = f"reflected_{sweep_val}"
                 _, reflected_rate, _ = getBinnedTriggerRate(events_list, ref_trig)
                 setEventListRateWeight(
                     events_list, reflected_rate, weight_name, ref_trig,
@@ -1003,8 +1007,16 @@ def generate_rate_table(
     """
     e_bins, z_bins = getEnergyZenithBins()
 
-    def total_reflected_rate(events, db_val):
+    def total_reflected_rate_db(events, db_val):
         trig = find_trigger_for_db(events, db_val)
+        if trig is None:
+            return None
+        _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+        event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+        return float(np.nansum(event_rate))
+
+    def total_reflected_rate_r(events, r_val):
+        trig = find_trigger_for_r(events, r_val)
         if trig is None:
             return None
         _, ref_rate, _ = getBinnedTriggerRate(events, trig)
@@ -1056,9 +1068,17 @@ def generate_rate_table(
         events = loaded.get(sim_name)
         rates = []
         if events is not None:
-            for db in MB_DB_VALUES:
-                r = total_reflected_rate(events, db)
-                rates.append(r)
+            # Try R-based triggers first
+            r_triggers = get_all_r_triggers(events)
+            if r_triggers:
+                for r_val in sorted(r_triggers.keys()):
+                    r = total_reflected_rate_r(events, r_val)
+                    rates.append(r)
+            else:
+                # Fallback to dB-based triggers
+                for db in [0.0, 1.5, 3.0]:
+                    r = total_reflected_rate_db(events, db)
+                    rates.append(r)
         mb_refl_vals.append(format_range(rates))
     lines.append(f"{'576m (R=0.5-1.0)':24s}" + "".join(f"{v:>15s}" for v in mb_refl_vals))
 
@@ -1091,8 +1111,8 @@ def generate_rate_table(
         deep_rates = []
 
         for db in SP_DB_VALUES:
-            rs = total_reflected_rate(shallow_events, db) if shallow_events is not None else None
-            rd = total_reflected_rate(deep_events, db) if deep_events is not None else None
+            rs = total_reflected_rate_db(shallow_events, db) if shallow_events is not None else None
+            rd = total_reflected_rate_db(deep_events, db) if deep_events is not None else None
             shallow_rates.append(rs)
             deep_rates.append(rd)
 
@@ -1147,27 +1167,21 @@ def generate_mb_trigger_rate_plots(loaded, save_folder, max_distance):
         LOGGER.warning("Not all MB reflected sims available, skipping MB trigger rate plots")
         return
 
-    # Reflected at R=0.7 (1.5 dB)
-    ref_triggers = [find_trigger_for_db(e, 1.5) for e in event_lists]
+    # Reflected at R=0.82 (nominal), fallback to R=0.7 (1.5 dB)
+    ref_triggers = [find_trigger_for_r(e, 0.82) for e in event_lists]
+    ref_label = "R=0.82"
+    if not all(t is not None for t in ref_triggers):
+        ref_triggers = [find_trigger_for_db(e, 1.5) for e in event_lists]
+        ref_label = "R=0.7 (1.5 dB)"
     if all(t is not None for t in ref_triggers):
-        infos = [_build_info("MB", lab, trig, "R=0.7 (1.5 dB)")
+        infos = [_build_info("MB", lab, trig, ref_label)
                  for lab, trig in zip(labels, ref_triggers)]
         plot_trigger_rate_panels(
             event_lists, ref_triggers, labels,
-            suptitle="MB Reflected Trigger Rate ($R_{power}$=0.7, 1.5 dB)",
+            suptitle=f"MB Reflected Trigger Rate ({ref_label})",
             savename=os.path.join(save_folder, "mb_trigger_rate_reflected.png"),
             rate_type="reflected", info_texts=infos,
         )
-    else:
-        ref_triggers = [find_direct_trigger(e) for e in event_lists]
-        if all(t is not None for t in ref_triggers):
-            infos = [_build_info("MB", lab, trig) for lab, trig in zip(labels, ref_triggers)]
-            plot_trigger_rate_panels(
-                event_lists, ref_triggers, labels,
-                suptitle="MB Reflected Trigger Rate",
-                savename=os.path.join(save_folder, "mb_trigger_rate_reflected.png"),
-                rate_type="reflected", info_texts=infos,
-            )
 
     # Direct
     dir_triggers = [find_direct_trigger(e) for e in event_lists]
@@ -1266,14 +1280,18 @@ def generate_mb_event_rate_2d(loaded, save_folder, max_distance):
         LOGGER.warning("Not all MB reflected sims available, skipping MB event rate 2D")
         return
 
-    # Reflected at R=0.7 (1.5 dB)
-    ref_triggers = [find_trigger_for_db(e, 1.5) for e in event_lists]
+    # Reflected at R=0.82 (nominal), fallback to 1.5 dB
+    ref_triggers = [find_trigger_for_r(e, 0.82) for e in event_lists]
+    ref_label = "R=0.82"
+    if not all(t is not None for t in ref_triggers):
+        ref_triggers = [find_trigger_for_db(e, 1.5) for e in event_lists]
+        ref_label = "R=0.7 (1.5 dB)"
     if all(t is not None for t in ref_triggers):
-        infos = [_build_info("MB", lab, trig, "R=0.7 (1.5 dB)")
+        infos = [_build_info("MB", lab, trig, ref_label)
                  for lab, trig in zip(labels, ref_triggers)]
         plot_event_rate_panels(
             event_lists, ref_triggers, labels,
-            suptitle="MB Reflected Event Rate ($R_{power}$=0.7, 1.5 dB)",
+            suptitle=f"MB Reflected Event Rate ({ref_label})",
             savename=os.path.join(save_folder, "mb_event_rate_reflected_2d.png"),
             max_distance=max_distance, rate_type="reflected", info_texts=infos,
         )
@@ -1296,8 +1314,52 @@ def generate_sp_event_rate_2d(loaded, save_folder, max_distance):
 
 
 
+def _compute_ab_combined_error(events, nominal_rate, r_value, stat_error, e_bins, z_bins, max_distance):
+    """Compute combined error from A/B variants and statistical error at a given R.
+
+    For upper bound (high R): takes max(rate(Ap), rate(Am)) - nominal for δ_A, similarly for B.
+    For lower bound (low R): takes nominal - min(rate(Ap), rate(Am)) for δ_A, similarly for B.
+    Returns combined error = sqrt(δ_A² + δ_B² + σ_stat²).
+    """
+    ab_triggers = get_ab_error_triggers(events)
+
+    def _rate_for_variant(variant_tag):
+        trig = ab_triggers.get((r_value, variant_tag))
+        if trig is None:
+            return None
+        _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+        return getEventRate(ref_rate, e_bins, z_bins, max_distance)
+
+    rate_Ap = _rate_for_variant("Ap")
+    rate_Am = _rate_for_variant("Am")
+    rate_Bp = _rate_for_variant("Bp")
+    rate_Bm = _rate_for_variant("Bm")
+
+    nom = np.nan_to_num(nominal_rate)
+
+    # δ_A: max deviation from nominal across both A directions
+    a_rates = [np.nan_to_num(r) for r in [rate_Ap, rate_Am] if r is not None]
+    if a_rates:
+        delta_A = np.max(np.abs(np.array(a_rates) - nom), axis=0)
+    else:
+        delta_A = np.zeros_like(nom)
+
+    # δ_B: max deviation from nominal across both B directions
+    b_rates = [np.nan_to_num(r) for r in [rate_Bp, rate_Bm] if r is not None]
+    if b_rates:
+        delta_B = np.max(np.abs(np.array(b_rates) - nom), axis=0)
+    else:
+        delta_B = np.zeros_like(nom)
+
+    return np.sqrt(delta_A**2 + delta_B**2 + np.nan_to_num(stat_error)**2)
+
+
 def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
-    """Plot 3: MB event rate bands across R values, with statistical uncertainty."""
+    """Plot 3: MB event rate bands across R values, with A/B + statistical uncertainty.
+
+    For each R value, computes event rate and combined error (A/B + stat in quadrature).
+    The band plot shows the envelope from R=0.5 to R=1.0 with combined errors.
+    """
     e_bins, z_bins = getEnergyZenithBins()
     labels = list(MB_REFLECTED_SIMS.keys())
     sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
@@ -1311,40 +1373,81 @@ def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
     error_arrays_per_panel = []
     info_texts = []
     for label, events in zip(labels, event_lists):
-        db_triggers = get_all_db_triggers(events)
-        db_vals = sorted(db_triggers.keys()) if db_triggers else [None]
+        # Try R-based triggers first, fall back to dB-based
+        r_triggers = get_all_r_triggers(events)
 
-        rates_for_dbs = []
-        errors_for_dbs = []
-        trig_name = None
-        for db in db_vals:
-            if db is not None:
-                trig = db_triggers[db]
+        if r_triggers:
+            # R-based sweep
+            r_vals = sorted(r_triggers.keys())
+            rates_for_rs = []
+            errors_for_rs = []
+            trig_name = None
+            r_min = min(r_vals)
+            r_max = max(r_vals)
+
+            for r_val in r_vals:
+                trig = r_triggers[r_val]
+                if trig_name is None:
+                    trig_name = trig
+                _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+                event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+                stat_error = getErrorEventRates(ref_rate, events, max_distance)
+
+                # Compute combined error at R endpoints (A/B + stat), stat-only for middle
+                if abs(r_val - r_max) < 0.005 or abs(r_val - r_min) < 0.005:
+                    combined_error = _compute_ab_combined_error(
+                        events, event_rate, r_val, stat_error, e_bins, z_bins, max_distance)
+                else:
+                    combined_error = stat_error
+
+                rates_for_rs.append(event_rate)
+                errors_for_rs.append(combined_error)
+
+            if rates_for_rs:
+                rate_arrays_per_panel.append(rates_for_rs)
+                error_arrays_per_panel.append(errors_for_rs)
             else:
-                trig = find_direct_trigger(events)
-            if trig is None:
-                continue
-            if trig_name is None:
-                trig_name = trig
-            _, ref_rate, _ = getBinnedTriggerRate(events, trig)
-            event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
-            error_rate = getErrorEventRates(ref_rate, events, max_distance)
-            rates_for_dbs.append(event_rate)
-            errors_for_dbs.append(error_rate)
+                zero = np.zeros((len(e_bins)-1, len(z_bins)-1))
+                rate_arrays_per_panel.append([getEventRate(zero, e_bins, z_bins, max_distance)])
+                error_arrays_per_panel.append([getEventRate(zero, e_bins, z_bins, max_distance)])
 
-        if rates_for_dbs:
-            rate_arrays_per_panel.append(rates_for_dbs)
-            error_arrays_per_panel.append(errors_for_dbs)
+            info_texts.append(_build_info("MB", label, trig_name, f"R={r_min}\u2013{r_max}"))
         else:
-            zero = np.zeros((len(e_bins)-1, len(z_bins)-1))
-            rate_arrays_per_panel.append([getEventRate(zero, e_bins, z_bins, max_distance)])
-            error_arrays_per_panel.append([getEventRate(zero, e_bins, z_bins, max_distance)])
+            # Fallback: dB-based triggers (backward compatibility)
+            db_triggers = get_all_db_triggers(events)
+            db_vals = sorted(db_triggers.keys()) if db_triggers else [None]
 
-        info_texts.append(_build_info("MB", label, trig_name, "R=0.5\u20131.0"))
+            rates_for_dbs = []
+            errors_for_dbs = []
+            trig_name = None
+            for db in db_vals:
+                if db is not None:
+                    trig = db_triggers[db]
+                else:
+                    trig = find_direct_trigger(events)
+                if trig is None:
+                    continue
+                if trig_name is None:
+                    trig_name = trig
+                _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+                event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+                error_rate = getErrorEventRates(ref_rate, events, max_distance)
+                rates_for_dbs.append(event_rate)
+                errors_for_dbs.append(error_rate)
+
+            if rates_for_dbs:
+                rate_arrays_per_panel.append(rates_for_dbs)
+                error_arrays_per_panel.append(errors_for_dbs)
+            else:
+                zero = np.zeros((len(e_bins)-1, len(z_bins)-1))
+                rate_arrays_per_panel.append([getEventRate(zero, e_bins, z_bins, max_distance)])
+                error_arrays_per_panel.append([getEventRate(zero, e_bins, z_bins, max_distance)])
+
+            info_texts.append(_build_info("MB", label, trig_name, "R=0.5\u20131.0"))
 
     plot_event_rate_bands(
         rate_arrays_per_panel, labels,
-        suptitle="MB Reflected Event Rate ($R_{power}$ = 0.5\u20131.0)",
+        suptitle="MB Reflected Event Rate (R = 0.5\u20131.0)",
         savename=os.path.join(save_folder, "mb_event_rate_bands.png"),
         error_arrays_per_panel=error_arrays_per_panel,
         info_texts=info_texts,
@@ -1581,15 +1684,24 @@ def generate_mb_radii_plots(loaded, save_folder, max_distance):
         return
 
     direct_triggers = [find_direct_trigger(e) for e in event_lists]
-    reflected_db_triggers = [get_all_db_triggers(e) for e in event_lists]
-    info_texts = [_build_info("MB", lab, dt, "R=0.5\u20131.0")
+    # Try R-based triggers first, fallback to dB-based
+    r_trigs = [get_all_r_triggers(e) for e in event_lists]
+    if any(rt for rt in r_trigs):
+        reflected_triggers = r_trigs
+        sweep_labels = MB_R_LABELS
+        info_label = "R=0.5\u20131.0"
+    else:
+        reflected_triggers = [get_all_db_triggers(e) for e in event_lists]
+        sweep_labels = {0.0: "R=1.0", 1.5: "R=0.7", 3.0: "R=0.5"}
+        info_label = "R=0.5\u20131.0"
+    info_texts = [_build_info("MB", lab, dt, info_label)
                   for lab, dt in zip(labels, direct_triggers)]
 
     plot_radii_density_panels(
-        event_lists, direct_triggers, reflected_db_triggers, labels,
+        event_lists, direct_triggers, reflected_triggers, labels,
         suptitle="MB Radii Distribution \u2014 Event Rate Weighted Density",
         savename=os.path.join(save_folder, "mb_radii_density.png"),
-        max_distance=max_distance, db_labels=MB_DB_LABELS, info_texts=info_texts,
+        max_distance=max_distance, db_labels=sweep_labels, info_texts=info_texts,
     )
 
 
@@ -1604,7 +1716,13 @@ def generate_mb_arrival_angle_plots(loaded, save_folder, max_distance, nu_events
         return
 
     direct_triggers = [find_direct_trigger(e) for e in event_lists]
-    reflected_db_triggers = [get_all_db_triggers(e) for e in event_lists]
+    r_trigs = [get_all_r_triggers(e) for e in event_lists]
+    if any(rt for rt in r_trigs):
+        reflected_triggers = r_trigs
+        sweep_labels = MB_R_LABELS
+    else:
+        reflected_triggers = [get_all_db_triggers(e) for e in event_lists]
+        sweep_labels = {0.0: "R=1.0", 1.5: "R=0.7", 3.0: "R=0.5"}
     info_texts = [_build_info("MB", lab, dt, "R=0.5\u20131.0")
                   for lab, dt in zip(labels, direct_triggers)]
 
@@ -1616,10 +1734,10 @@ def generate_mb_arrival_angle_plots(loaded, save_folder, max_distance, nu_events
             nu_events["MB"], labels, _compute_neutrino_arrival_density, bins)
 
     plot_arrival_angle_panels(
-        event_lists, direct_triggers, reflected_db_triggers, labels,
+        event_lists, direct_triggers, reflected_triggers, labels,
         suptitle="MB Arrival Angle Distribution (Snell's Law, n$_{ice}$=1.78)",
         savename=os.path.join(save_folder, "mb_arrival_angle.png"),
-        max_distance=max_distance, db_labels=MB_DB_LABELS, info_texts=info_texts,
+        max_distance=max_distance, db_labels=sweep_labels, info_texts=info_texts,
         neutrino_densities=nu_densities,
     )
 
@@ -1666,7 +1784,13 @@ def generate_mb_polarization_angle_plots(loaded, save_folder, max_distance, nu_e
         return
 
     direct_triggers = [find_direct_trigger(e) for e in event_lists]
-    reflected_db_triggers = [get_all_db_triggers(e) for e in event_lists]
+    r_trigs = [get_all_r_triggers(e) for e in event_lists]
+    if any(rt for rt in r_trigs):
+        reflected_triggers = r_trigs
+        sweep_labels = MB_R_LABELS
+    else:
+        reflected_triggers = [get_all_db_triggers(e) for e in event_lists]
+        sweep_labels = {0.0: "R=1.0", 1.5: "R=0.7", 3.0: "R=0.5"}
     info_texts = [_build_info("MB", lab, dt, "R=0.5\u20131.0")
                   for lab, dt in zip(labels, direct_triggers)]
 
@@ -1678,10 +1802,10 @@ def generate_mb_polarization_angle_plots(loaded, save_folder, max_distance, nu_e
             nu_events["MB"], labels, _compute_neutrino_polarization_density, bins)
 
     plot_polarization_angle_panels(
-        event_lists, direct_triggers, reflected_db_triggers, labels,
+        event_lists, direct_triggers, reflected_triggers, labels,
         suptitle="MB Polarization Angle Distribution",
         savename=os.path.join(save_folder, "mb_polarization_angle.png"),
-        max_distance=max_distance, db_labels=MB_DB_LABELS, info_texts=info_texts,
+        max_distance=max_distance, db_labels=sweep_labels, info_texts=info_texts,
         neutrino_densities=nu_densities,
     )
 

@@ -373,9 +373,26 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Comma-separated dB loss values for multi-reflectivity sweep "
-             "(e.g., '40,45,50,55' for SP, '0,1.7,3.0' for MB). "
+             "(e.g., '40,45,50,55' for SP). "
              "When provided, reflected stations are tested at each dB value "
              "with separate triggers. Overrides --layer-db for reflected stations.",
+    )
+    parser.add_argument(
+        "--r-sweep",
+        type=str,
+        default=None,
+        help="Comma-separated amplitude R values for MB reflectivity sweep "
+             "(e.g., '0.5,0.75,0.82,0.89,1.0'). "
+             "When provided, reflected stations are tested at each R value. "
+             "Overrides --layer-db-list for MB_freq attenuation model.",
+    )
+    parser.add_argument(
+        "--ab-error",
+        action="store_true",
+        default=False,
+        help="Enable A/B attenuation error variants at R_min and R_max. "
+             "Requires --r-sweep. Adds ±1σ variants of A (460±20m) and B (180±40m/GHz) "
+             "at the sweep endpoints for error propagation.",
     )
     parser.add_argument(
         "--min-energy-log10",
@@ -407,17 +424,21 @@ def format_sigma_value(sigma: float) -> str:
     return f"{sigma:g}"
 
 
-def primary_trigger_name(sigma: float, layer_db: float | None = None) -> str:
+def primary_trigger_name(sigma: float, layer_db: float | None = None, sweep_tag: str | None = None) -> str:
     name = f"primary_LPDA_2of4_{format_sigma_value(sigma)}sigma"
-    if layer_db is not None:
+    if sweep_tag is not None:
+        name += f"_{sweep_tag}"
+    elif layer_db is not None:
         name += f"_{layer_db:.1f}dB"
     return name
 
 
-def pa_trigger_name(n_channels: int, noise_rate_hz: float, layer_db: float | None = None) -> str:
+def pa_trigger_name(n_channels: int, noise_rate_hz: float, layer_db: float | None = None, sweep_tag: str | None = None) -> str:
     """Generate trigger name for phased array trigger."""
     name = f"PA_{n_channels}ch_{noise_rate_hz:g}Hz"
-    if layer_db is not None:
+    if sweep_tag is not None:
+        name += f"_{sweep_tag}"
+    elif layer_db is not None:
         name += f"_{layer_db:.1f}dB"
     return name
 
@@ -675,11 +696,44 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         layer_db = parse_layer_db_value(raw_layer_db, default=0.0)
     layer_db_text, layer_db_tag = format_layer_db_metadata(layer_db)
 
-    # Multi-dB reflectivity sweep (optional)
+    # Multi-dB reflectivity sweep (optional, for SP)
     layer_db_list: list[float] | None = None
     if args.layer_db_list is not None:
         layer_db_list = sorted(float(v.strip()) for v in args.layer_db_list.split(","))
         LOGGER.info("Multi-dB sweep enabled: %s", layer_db_list)
+
+    # R-based sweep with optional A/B error (for MB)
+    r_sweep_list: list[float] | None = None
+    ab_error_enabled: bool = False
+    # Attenuation length parameters and their 1σ errors
+    A_NOM, A_SIGMA = 460, 20
+    B_NOM, B_SIGMA = 180, 40
+    if args.r_sweep is not None:
+        r_sweep_list = sorted(float(v.strip()) for v in args.r_sweep.split(","))
+        ab_error_enabled = args.ab_error
+        LOGGER.info("R-sweep enabled: %s (ab_error=%s)", r_sweep_list, ab_error_enabled)
+
+    # Build (R, A, B, tag) sweep combos if r_sweep is active
+    r_sweep_combos: list[tuple[float, int, int, str]] | None = None
+    if r_sweep_list is not None:
+        r_sweep_combos = []
+        for R_val in r_sweep_list:
+            r_sweep_combos.append((R_val, A_NOM, B_NOM, f"R{R_val:.2f}"))
+        if ab_error_enabled and len(r_sweep_list) >= 2:
+            R_max = max(r_sweep_list)
+            R_min = min(r_sweep_list)
+            # Both ±σ at R_max (S04 takes extreme for upper bound)
+            r_sweep_combos.append((R_max, A_NOM + A_SIGMA, B_NOM, f"R{R_max:.2f}_Ap"))
+            r_sweep_combos.append((R_max, A_NOM - A_SIGMA, B_NOM, f"R{R_max:.2f}_Am"))
+            r_sweep_combos.append((R_max, A_NOM, B_NOM + B_SIGMA, f"R{R_max:.2f}_Bp"))
+            r_sweep_combos.append((R_max, A_NOM, B_NOM - B_SIGMA, f"R{R_max:.2f}_Bm"))
+            # Both ±σ at R_min (S04 takes extreme for lower bound)
+            r_sweep_combos.append((R_min, A_NOM + A_SIGMA, B_NOM, f"R{R_min:.2f}_Ap"))
+            r_sweep_combos.append((R_min, A_NOM - A_SIGMA, B_NOM, f"R{R_min:.2f}_Am"))
+            r_sweep_combos.append((R_min, A_NOM, B_NOM + B_SIGMA, f"R{R_min:.2f}_Bp"))
+            r_sweep_combos.append((R_min, A_NOM, B_NOM - B_SIGMA, f"R{R_min:.2f}_Bm"))
+        LOGGER.info("R-sweep combos (%d total): %s",
+                     len(r_sweep_combos), [(t[3]) for t in r_sweep_combos])
 
     if math.isfinite(layer_depth):
         if math.isclose(layer_depth, 0.0, abs_tol=1e-6):
@@ -788,6 +842,7 @@ def merge_settings(args: argparse.Namespace, config: configparser.ConfigParser) 
         "layer_dB_text": layer_db_text,
         "layer_dB_tag": layer_db_tag,
         "layer_dB_list": layer_db_list,
+        "r_sweep_combos": r_sweep_combos,
         "trigger_sigma": trigger_sigma,
         "trigger_sigma_key": trigger_sigma_key_used,
         "noise_sigma": NOISE_TRIGGER_SIGMA,
@@ -1176,13 +1231,15 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
     _n_events_processed = 0
 
     layer_db_list = settings.get("layer_dB_list")
-    # When multi-dB sweep is active, run readCoREAS with layer_dB=0 so the
-    # reflected E-field has base attenuation but no reflection dB loss applied.
-    # The dB loss (and attenuation R correction) are applied per-value in the loop below.
-    run_layer_dB = 0.0 if layer_db_list else settings["layer_dB"]
+    r_sweep_combos = settings.get("r_sweep_combos")
+    # When any sweep is active, run readCoREAS with layer_dB=0 so the
+    # reflected E-field has base attenuation but no reflection dB/R loss applied.
+    # The losses are applied per-value in the loop below.
+    run_layer_dB = 0.0 if (layer_db_list or r_sweep_combos) else settings["layer_dB"]
 
     # R_base used by readCoREAS for the MB_freq attenuation model (hardcoded default)
     R_BASE = 0.82
+    A_NOM, B_NOM = 460, 180
 
     for evt, event_idx, coreas_x, coreas_y in readCoREAS.run(
         detector=det,
@@ -1267,48 +1324,80 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
             if hardwareResponseIncorporator is not None:
                 hardwareResponseIncorporator.run(evt, station, det, sim_to_data=True)
 
-            # ---- Multi-dB sweep setup ----
-            # For reflected stations with layer_db_list, test multiple reflectivity
+            # ---- Sweep setup ----
+            # For reflected stations with a sweep list, test multiple reflectivity
             # values by applying spectral corrections to the post-amplifier traces.
             is_reflected_station = station_id >= REFLECTED_STATION_OFFSET
-            if is_reflected_station and layer_db_list:
-                db_sweep = sorted(layer_db_list)  # lowest dB (strongest signal) first
-                # Save clean post-amplifier frequency spectra before any dB modification
+            has_sweep = is_reflected_station and (r_sweep_combos or layer_db_list)
+            if has_sweep:
+                # Save clean post-amplifier frequency spectra before any modification
                 _clean_spectra = {}
                 for ch_id in base_channels:
                     ch = station.get_channel(ch_id)
                     _clean_spectra[ch_id] = (ch.get_frequency_spectrum().copy(), ch.get_sampling_rate())
+
+                if r_sweep_combos:
+                    # R-based sweep: (R, A, B, tag) tuples, sorted by R descending (strongest first)
+                    sweep_iter = [{"R": r, "A": a, "B": b, "tag": t, "db": None}
+                                  for r, a, b, t in sorted(r_sweep_combos, key=lambda x: -x[0])]
+                else:
+                    # dB-based sweep: sorted ascending (lowest dB = strongest signal first)
+                    sweep_iter = [{"R": None, "A": None, "B": None, "tag": None, "db": db}
+                                  for db in sorted(layer_db_list)]
             else:
-                db_sweep = [None]  # None = original single-dB behavior, no dB tag
+                sweep_iter = [{"R": None, "A": None, "B": None, "tag": None, "db": None}]
                 _clean_spectra = None
 
-            _db_precheck_failed = False  # Early exit: if weakest dB fails pre-check, skip stronger
+            _sweep_precheck_failed = False
 
-            for db_val in db_sweep:
-                # Apply dB correction to reflected station spectra
-                if _clean_spectra is not None and db_val is not None:
-                    if _db_precheck_failed:
-                        break  # Higher dB = weaker signal, won't pass either
-                    R_new = 10 ** (-db_val / 20)
+            for sv in sweep_iter:
+                R_val = sv["R"]
+                A_val = sv["A"]
+                B_val = sv["B"]
+                db_val = sv["db"]
+                sweep_tag = sv["tag"]
+
+                # Apply spectral correction for this sweep value
+                if _clean_spectra is not None and (db_val is not None or R_val is not None):
+                    if _sweep_precheck_failed:
+                        break
                     atten_model = settings["attenuation_model"]
                     dist_per_ch = readCoREAS.channel_dist_traveled.get(station_id, {})
 
-                    for ch_id in base_channels:
-                        orig_spectrum, sr = _clean_spectra[ch_id]
-                        modified = orig_spectrum.copy()
+                    if R_val is not None:
+                        # R-based sweep (MB)
+                        for ch_id in base_channels:
+                            orig_spectrum, sr = _clean_spectra[ch_id]
+                            modified = orig_spectrum.copy()
 
-                        # Frequency-dependent attenuation correction for MB_freq model
-                        if atten_model == 'MB_freq' and ch_id in dist_per_ch:
-                            trace_len = len(station.get_channel(ch_id).get_trace())
-                            freqs = np.fft.rfftfreq(trace_len, d=1.0 / sr)
-                            base_atten = compute_MB_freq_attenuation(freqs, dist_per_ch[ch_id], R=R_BASE)
-                            new_atten = compute_MB_freq_attenuation(freqs, dist_per_ch[ch_id], R=R_new)
-                            correction = new_atten / np.where(base_atten > 0, base_atten, 1.0)
-                            modified = modified * correction
+                            if atten_model == 'MB_freq' and ch_id in dist_per_ch:
+                                trace_len = len(station.get_channel(ch_id).get_trace())
+                                freqs = np.fft.rfftfreq(trace_len, d=1.0 / sr)
+                                base_atten = compute_MB_freq_attenuation(freqs, dist_per_ch[ch_id], R=R_BASE, A=A_NOM, B=B_NOM)
+                                new_atten = compute_MB_freq_attenuation(freqs, dist_per_ch[ch_id], R=R_val, A=A_val, B=B_val)
+                                correction = new_atten / np.where(base_atten > 0, base_atten, 1.0)
+                                modified = modified * correction
 
-                        # Apply reflection dB loss (amplitude factor)
-                        modified = modified * R_new
-                        station.get_channel(ch_id).set_frequency_spectrum(modified, sr)
+                            # Apply amplitude reflection loss
+                            modified = modified * R_val
+                            station.get_channel(ch_id).set_frequency_spectrum(modified, sr)
+                    else:
+                        # dB-based sweep (SP)
+                        R_new = 10 ** (-db_val / 20)
+                        for ch_id in base_channels:
+                            orig_spectrum, sr = _clean_spectra[ch_id]
+                            modified = orig_spectrum.copy()
+
+                            if atten_model == 'MB_freq' and ch_id in dist_per_ch:
+                                trace_len = len(station.get_channel(ch_id).get_trace())
+                                freqs = np.fft.rfftfreq(trace_len, d=1.0 / sr)
+                                base_atten = compute_MB_freq_attenuation(freqs, dist_per_ch[ch_id], R=R_BASE, A=A_NOM, B=B_NOM)
+                                new_atten = compute_MB_freq_attenuation(freqs, dist_per_ch[ch_id], R=R_new)
+                                correction = new_atten / np.where(base_atten > 0, base_atten, 1.0)
+                                modified = modified * correction
+
+                            modified = modified * R_new
+                            station.get_channel(ch_id).set_frequency_spectrum(modified, sr)
 
                 # ---- Trigger logic (runs once per db_val) ----
 
@@ -1333,7 +1422,7 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                     pa_step = int(PA_STEP_NS * units.ns * sampling_rate_pa * pa_upsampling)
 
                     pa_vrms = post_amp_vrms[base_channels[0]]
-                    final_trigger = pa_trigger_name(n_pa_channels, pa_noise_rate, layer_db=db_val)
+                    final_trigger = pa_trigger_name(n_pa_channels, pa_noise_rate, layer_db=db_val, sweep_tag=sweep_tag)
 
                     phasing_angles = np.arcsin(
                         np.linspace(
@@ -1453,8 +1542,8 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                             channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
                     else:
                         # Standard single trigger for HRA and Gen2 shallow reflected (4 channels)
-                        noise_trigger = primary_trigger_name(noise_sigma, layer_db=db_val)
-                        final_trigger = primary_trigger_name(trigger_sigma, layer_db=db_val)
+                        noise_trigger = primary_trigger_name(noise_sigma, layer_db=db_val, sweep_tag=sweep_tag)
+                        final_trigger = primary_trigger_name(trigger_sigma, layer_db=db_val, sweep_tag=sweep_tag)
 
                         highLowThreshold.run(
                             evt,
@@ -1492,17 +1581,17 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
                             triggerTimeAdjuster.run(evt, station, det)
                             channelStopFilter.run(evt, station, det, prepend=0 * units.ns, append=0 * units.ns)
                         else:
-                            # Noise pre-check failed at this dB — higher dB values will also fail
+                            # Noise pre-check failed — weaker sweep values will also fail
                             if _clean_spectra is not None:
-                                _db_precheck_failed = True
+                                _sweep_precheck_failed = True
 
-                # ---- End of trigger logic for this db_val ----
-                # Restore clean spectra for next dB iteration
+                # ---- End of trigger logic for this sweep value ----
+                # Restore clean spectra for next sweep iteration
                 if _clean_spectra is not None:
                     for ch_id, (spec, sr) in _clean_spectra.items():
                         station.get_channel(ch_id).set_frequency_spectrum(spec.copy(), sr)
 
-            # ---- End of dB sweep loop ----
+            # ---- End of sweep loop ----
 
             # Calculate SNR on post-noise traces for stations that triggered
             if station.has_triggered():
@@ -1517,8 +1606,8 @@ def run_simulation(settings: Dict[str, object], output_paths: Dict[str, Path]) -
 
             LOGGER.debug("Station %s triggered: %s", station_id, station.has_triggered())
         # End of station loop - now save event with all station triggers
-        # When multi-dB is active, dB info is encoded in trigger names, not a single value
-        event_layer_dB = None if layer_db_list else settings.get("layer_dB")
+        # When any sweep is active, sweep info is encoded in trigger names, not a single value
+        event_layer_dB = None if (layer_db_list or r_sweep_combos) else settings.get("layer_dB")
         rcr_event = RCREvent.from_nuradio_event(evt, layer_dB=event_layer_dB)
         for snr_sid, snr_val in evt_snr_cache.items():
             rcr_event.set_snr(snr_sid, snr_val)

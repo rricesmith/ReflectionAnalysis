@@ -39,6 +39,10 @@ from RCRSimulation.RCREventObject import RCREvent, REFLECTED_STATION_OFFSET
 # Regex to extract dB value from trigger names like "primary_LPDA_2of4_4.5sigma_40.0dB"
 _DB_TAG_PATTERN = re.compile(r'_(\d+(?:\.\d+)?)dB$')
 
+# Regex to extract R value and optional A/B variant from trigger names like
+# "primary_LPDA_2of4_4.5sigma_R0.82" or "primary_LPDA_2of4_4.5sigma_R1.00_Ap"
+_R_TAG_PATTERN = re.compile(r'_R(\d+\.\d+)(?:_(A[pm]|B[pm]))?$')
+
 
 def parse_db_from_trigger_name(trigger_name: str) -> Optional[float]:
     """Extract dB value from a dB-tagged trigger name.
@@ -49,6 +53,18 @@ def parse_db_from_trigger_name(trigger_name: str) -> Optional[float]:
     if match:
         return float(match.group(1))
     return None
+
+
+def parse_r_from_trigger_name(trigger_name: str) -> Tuple[Optional[float], Optional[str]]:
+    """Extract R value and optional A/B variant from an R-tagged trigger name.
+
+    Returns (R_value, variant) where variant is None, 'Ap', 'Am', 'Bp', or 'Bm'.
+    Returns (None, None) if trigger name has no R tag.
+    """
+    match = _R_TAG_PATTERN.search(trigger_name)
+    if match:
+        return float(match.group(1)), match.group(2)
+    return None, None
 
 
 def collect_trigger_names(event_list: Sequence[RCREvent]) -> set[str]:
@@ -64,6 +80,51 @@ def filter_real_triggers(trigger_names: set[str]) -> list[str]:
     noise_tag = f"{NOISE_PRECHECK_SIGMA:g}sigma"
     real = [t for t in trigger_names if noise_tag not in t]
     return sorted(real) if real else sorted(trigger_names)
+
+
+def get_all_r_triggers(event_list: Sequence[RCREvent]) -> dict[float, str]:
+    """Get all R-tagged real triggers (nominal only, no A/B variants).
+
+    Returns {R_value: trigger_name}.
+    """
+    all_triggers = collect_trigger_names(event_list)
+    real_triggers = filter_real_triggers(all_triggers)
+    result = {}
+    for t in real_triggers:
+        r_val, variant = parse_r_from_trigger_name(t)
+        if r_val is not None and variant is None:
+            result[r_val] = t
+    return result
+
+
+def get_ab_error_triggers(event_list: Sequence[RCREvent]) -> dict[Tuple[float, str], str]:
+    """Get all A/B error variant triggers.
+
+    Returns {(R_value, variant): trigger_name} where variant is 'Ap', 'Am', 'Bp', or 'Bm'.
+    """
+    all_triggers = collect_trigger_names(event_list)
+    real_triggers = filter_real_triggers(all_triggers)
+    result = {}
+    for t in real_triggers:
+        r_val, variant = parse_r_from_trigger_name(t)
+        if r_val is not None and variant is not None:
+            result[(r_val, variant)] = t
+    return result
+
+
+def find_trigger_for_r(event_list: Sequence[RCREvent], r_value: float, variant: Optional[str] = None) -> Optional[str]:
+    """Find the real trigger name matching a specific R value and optional variant.
+
+    r_value: amplitude reflectivity (e.g. 0.82)
+    variant: None for nominal, or 'Ap', 'Am', 'Bp', 'Bm' for A/B error variants
+    """
+    all_triggers = collect_trigger_names(event_list)
+    real_triggers = filter_real_triggers(all_triggers)
+    for t in real_triggers:
+        r_val, var = parse_r_from_trigger_name(t)
+        if r_val is not None and abs(r_val - r_value) < 0.005 and var == variant:
+            return t
+    return None
 
 
 # =============================================================================
