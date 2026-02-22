@@ -632,6 +632,8 @@ def plot_trigger_rate_panels(
         else:
             direct_rate, reflected_rate, _ = getBinnedTriggerRate(events, trig)
         rate = reflected_rate if rate_type == "reflected" else direct_rate
+        ptitle = panel_titles[ip] if ip < len(panel_titles) else ""
+        rate = _apply_energy_mask(rate, e_bins, ptitle, rate_type)
         panel_data.append(rate)
         nonzero = rate[rate > 0]
         if nonzero.size > 0:
@@ -1247,6 +1249,95 @@ def _plot_density_panels(
                     band_label = f"Reflected ({sorted_dbs[0]:.0f}\u2013{sorted_dbs[-1]:.0f} dB)"
                 ax.fill_between(centers, lo, hi, alpha=0.3, color="tab:blue",
                                 label=band_label, step="mid")
+                # Mean reflected density line
+                mean_density = np.mean(all_densities, axis=0)
+                ax.step(centers, mean_density, color="tab:blue", linewidth=1.2,
+                        linestyle="--", where="mid")
+
+        # Neutrino overlay
+        if neutrino_densities and ip < len(neutrino_densities) and neutrino_densities[ip] is not None:
+            nu_centers, nu_density, nu_error = neutrino_densities[ip]
+            if nu_density.sum() > 0:
+                ax.fill_between(nu_centers, np.maximum(nu_density - nu_error, 0),
+                                nu_density + nu_error, alpha=0.25, color="tab:orange",
+                                step="mid")
+                ax.step(nu_centers, nu_density, color="tab:orange", linewidth=1.5,
+                        label="Neutrino Signal", where="mid")
+
+        ax.set_xlabel(xlabel)
+        ax.set_title(title, fontsize=10)
+
+        if info_texts and ip < len(info_texts):
+            ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
+                    fontsize=7, verticalalignment="top", family="monospace",
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+    axes[0].set_ylabel(ylabel)
+    axes[0].legend(fontsize=7)
+
+    fig.suptitle(suptitle, fontsize=13, y=1.02)
+    plt.tight_layout()
+    plt.savefig(savename, dpi=150, bbox_inches="tight")
+    plt.close()
+    ic(f"Saved: {savename}")
+
+
+def _plot_density_panels_single(
+    event_lists: List[np.ndarray],
+    direct_triggers: List[str],
+    reflected_triggers: List[str | None],
+    panel_titles: List[str],
+    suptitle: str,
+    savename: str,
+    max_distance: float,
+    density_fn,
+    xlabel: str,
+    ylabel: str = "Probability Density",
+    reflected_label: str = "Reflected",
+    n_bins: int = 15,
+    info_texts: Optional[List[str]] = None,
+    neutrino_densities: Optional[List[Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]]] = None,
+):
+    """Multi-panel density plot with a single reflected trigger (line + shading, not band).
+
+    Like _plot_density_panels but for a single reflectivity value instead of a sweep.
+    Shows step line + ±1sigma shading for both direct and reflected.
+    """
+    n = len(event_lists)
+    fig, axes = plt.subplots(1, n, figsize=(5.5 * n, 4.5), sharey=True)
+    if n == 1:
+        axes = [axes]
+
+    for ip, (ax, events, dir_trig, ref_trig, title) in enumerate(zip(
+        axes, event_lists, direct_triggers, reflected_triggers, panel_titles
+    )):
+        events_list = list(events)
+
+        # Direct: step histogram outline with ±1sigma shading
+        if dir_trig:
+            direct_rate, _, _ = getBinnedTriggerRate(events_list, dir_trig)
+            setEventListRateWeight(
+                events_list, direct_rate, "direct", dir_trig,
+                max_distance=max_distance, use_direct=True,
+            )
+            centers, density, density_err = density_fn(events_list, "direct", n_bins)
+            ax.fill_between(centers, np.maximum(density - density_err, 0), density + density_err,
+                            alpha=0.3, color="black", step="mid")
+            ax.step(centers, density, color="black", linewidth=1.5, label="Direct", where="mid")
+
+        # Reflected: single trigger, step line + ±1sigma
+        if ref_trig:
+            weight_name = "reflected_single"
+            _, reflected_rate, _ = getBinnedTriggerRate(events_list, ref_trig)
+            setEventListRateWeight(
+                events_list, reflected_rate, weight_name, ref_trig,
+                max_distance=max_distance, use_direct=False,
+            )
+            centers, density, density_err = density_fn(events_list, weight_name, n_bins)
+            ax.fill_between(centers, np.maximum(density - density_err, 0), density + density_err,
+                            alpha=0.3, color="tab:blue", step="mid")
+            ax.step(centers, density, color="tab:blue", linewidth=1.5,
+                    label=reflected_label, where="mid")
 
         # Neutrino overlay
         if neutrino_densities and ip < len(neutrino_densities) and neutrino_densities[ip] is not None:
@@ -1996,7 +2087,10 @@ def generate_sp_event_rate_bands(loaded, save_folder, max_distance):
         if not db_trigs:
             continue
 
-        sorted_dbs = sorted(db_trigs.keys())
+        # Only include 40-45 dB range
+        sorted_dbs = sorted(db for db in db_trigs.keys() if db <= 45.0)
+        if not sorted_dbs:
+            continue
         rates_for_dbs = []
         errors_for_dbs = []
         trig_name = None
@@ -2021,7 +2115,7 @@ def generate_sp_event_rate_bands(loaded, save_folder, max_distance):
             rate_arrays_per_panel.append(rates_for_dbs)
             error_arrays_per_panel.append(errors_for_dbs)
             panel_labels.append(slabel)
-            info_texts.append(_build_info("SP", slabel, trig_name, f"{depth}, 40\u201355 dB"))
+            info_texts.append(_build_info("SP", slabel, trig_name, f"{depth}, 40\u201345 dB"))
 
     if not panel_labels:
         LOGGER.warning("No SP data available, skipping SP event rate bands")
@@ -2029,7 +2123,7 @@ def generate_sp_event_rate_bands(loaded, save_folder, max_distance):
 
     plot_event_rate_bands(
         rate_arrays_per_panel, panel_labels,
-        suptitle=f"SP Reflected Event Rate \u2014 {depth} (dB = 40\u201355)",
+        suptitle=f"SP Reflected Event Rate \u2014 {depth} (dB = 40\u201345)",
         savename=os.path.join(save_folder, "sp_event_rate_bands.png"),
         error_arrays_per_panel=error_arrays_per_panel,
         info_texts=info_texts,
@@ -2189,6 +2283,10 @@ def generate_sp_radii_plots(loaded, save_folder, max_distance):
                 color = depth_colors.get(depth, "tab:gray")
                 ax.fill_between(centers, lo, hi, alpha=0.3, color=color, label=f"{depth}",
                                 step="mid")
+                # Mean reflected density line
+                mean_density = np.mean(all_densities, axis=0)
+                ax.step(centers, mean_density, color=color, linewidth=1.2,
+                        linestyle="--", where="mid")
 
         ax.set_xlabel("Radius (m)")
         ax.set_title(slabel, fontsize=10)
@@ -2390,6 +2488,162 @@ def generate_sp_polarization_angle_plots(loaded, save_folder, max_distance, nu_e
 
 
 # ============================================================================
+# Single-Reflectivity Distribution Variants
+# ============================================================================
+
+def _generate_single_density(
+    event_lists, labels, direct_triggers, reflected_triggers,
+    save_folder, max_distance, density_fn, xlabel, suptitle_base, savename_base,
+    reflected_label, info_label, n_bins=15, nu_events_key=None, nu_events=None,
+    nu_density_fn=None, nu_max_angle=None,
+):
+    """Helper to generate single-reflectivity density plots for all three distribution types."""
+    info_texts = [_build_info(suptitle_base.split()[0], lab, dt, info_label)
+                  for lab, dt in zip(labels, direct_triggers)]
+
+    nu_densities = None
+    if nu_events and nu_events_key and nu_events_key in nu_events and nu_density_fn:
+        bins_nu = np.linspace(0, nu_max_angle or 180, n_bins + 1)
+        nu_densities = _build_neutrino_densities(
+            nu_events[nu_events_key], labels, nu_density_fn, bins_nu)
+
+    _plot_density_panels_single(
+        event_lists, direct_triggers, reflected_triggers, labels,
+        suptitle=suptitle_base, savename=os.path.join(save_folder, savename_base),
+        max_distance=max_distance, density_fn=density_fn, xlabel=xlabel,
+        reflected_label=reflected_label, n_bins=n_bins, info_texts=info_texts,
+        neutrino_densities=nu_densities,
+    )
+
+
+def generate_mb_density_single_r(loaded, save_folder, max_distance, nu_events=None):
+    """MB distribution plots at a single reflectivity R=0.82."""
+    r_val = 0.82
+    labels = list(MB_REFLECTED_SIMS.keys())
+    sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
+    event_lists = [_ensure_events_loaded(loaded, s) for s in sim_names]
+
+    if any(e is None for e in event_lists):
+        LOGGER.warning("Missing MB data, skipping MB single-R density plots")
+        return
+
+    direct_triggers = [_cached_find_direct_trigger(sn, e)
+                       for sn, e in zip(sim_names, event_lists)]
+
+    # Find R=0.82 trigger for each sim; fallback to 1.5 dB
+    reflected_triggers = []
+    for sn, e in zip(sim_names, event_lists):
+        trig = _cached_find_trigger_for_r(sn, e, r_val)
+        if trig is None:
+            trig = _cached_find_trigger_for_db(sn, e, 1.5)
+        reflected_triggers.append(trig)
+
+    ref_label = f"Reflected (R={r_val})"
+    info_label = f"R={r_val}"
+
+    # Radii
+    def radii_fn(events_list, weight_name, nbins):
+        return _compute_radii_density(events_list, weight_name, max_distance, nbins)
+
+    _generate_single_density(
+        event_lists, labels, direct_triggers, reflected_triggers,
+        save_folder, max_distance, radii_fn, "Radius (m)",
+        f"MB Radii Distribution (R={r_val})", f"mb_radii_density_R{r_val}.png",
+        ref_label, info_label,
+    )
+
+    # Arrival angle
+    max_angle = 90.0 if nu_events else None
+
+    def arrival_fn(events_list, weight_name, nbins):
+        return _compute_arrival_angle_density(events_list, weight_name, nbins,
+                                              max_angle_deg=max_angle)
+
+    _generate_single_density(
+        event_lists, labels, direct_triggers, reflected_triggers,
+        save_folder, max_distance, arrival_fn, "Arrival Angle (deg)",
+        f"MB Arrival Angle Distribution (R={r_val})", f"mb_arrival_angle_R{r_val}.png",
+        ref_label, info_label, n_bins=12,
+        nu_events_key="MB", nu_events=nu_events,
+        nu_density_fn=_compute_neutrino_arrival_density, nu_max_angle=90,
+    )
+
+    # Polarization angle
+    def pol_fn(events_list, weight_name, nbins):
+        return _compute_polarization_angle_density(events_list, weight_name, nbins)
+
+    _generate_single_density(
+        event_lists, labels, direct_triggers, reflected_triggers,
+        save_folder, max_distance, pol_fn, "Polarization Angle (deg)",
+        f"MB Polarization Angle Distribution (R={r_val})", f"mb_polarization_angle_R{r_val}.png",
+        ref_label, info_label,
+        nu_events_key="MB", nu_events=nu_events,
+        nu_density_fn=_compute_neutrino_polarization_density, nu_max_angle=180,
+    )
+
+
+def generate_sp_density_single_db(loaded, save_folder, max_distance, nu_events=None):
+    """SP distribution plots at a single reflectivity (40 dB)."""
+    db_val = 40.0
+    labels = ["Gen2 Shallow", "Gen2 Deep"]
+    sim_names = [SP_REFLECTED_SIMS[("300m", "shallow")], SP_REFLECTED_SIMS[("300m", "deep")]]
+    event_lists = [_ensure_events_loaded(loaded, s) for s in sim_names]
+
+    if any(e is None for e in event_lists):
+        LOGGER.warning("Missing SP 300m data, skipping SP single-dB density plots")
+        return
+
+    direct_triggers = [_cached_find_direct_trigger(sn, e)
+                       for sn, e in zip(sim_names, event_lists)]
+    reflected_triggers = [_cached_find_trigger_for_db(sn, e, db_val)
+                          for sn, e in zip(sim_names, event_lists)]
+
+    ref_label = f"Reflected ({db_val:.0f} dB)"
+    info_label = f"300m, {db_val:.0f} dB"
+
+    # Radii
+    def radii_fn(events_list, weight_name, nbins):
+        return _compute_radii_density(events_list, weight_name, max_distance, nbins)
+
+    _generate_single_density(
+        event_lists, labels, direct_triggers, reflected_triggers,
+        save_folder, max_distance, radii_fn, "Radius (m)",
+        f"SP Radii Distribution (300m, {db_val:.0f} dB)", f"sp_radii_density_{db_val:.0f}dB.png",
+        ref_label, info_label,
+    )
+
+    # Arrival angle
+    max_angle = 90.0 if nu_events else None
+
+    def arrival_fn(events_list, weight_name, nbins):
+        return _compute_arrival_angle_density(events_list, weight_name, nbins,
+                                              max_angle_deg=max_angle)
+
+    _generate_single_density(
+        event_lists, labels, direct_triggers, reflected_triggers,
+        save_folder, max_distance, arrival_fn, "Arrival Angle (deg)",
+        f"SP Arrival Angle Distribution (300m, {db_val:.0f} dB)", f"sp_arrival_angle_{db_val:.0f}dB.png",
+        ref_label, info_label, n_bins=12,
+        nu_events_key="SP", nu_events=nu_events,
+        nu_density_fn=_compute_neutrino_arrival_density, nu_max_angle=90,
+    )
+
+    # Polarization angle
+    def pol_fn(events_list, weight_name, nbins):
+        return _compute_polarization_angle_density(events_list, weight_name, nbins)
+
+    _generate_single_density(
+        event_lists, labels, direct_triggers, reflected_triggers,
+        save_folder, max_distance, pol_fn, "Polarization Angle (deg)",
+        f"SP Polarization Angle Distribution (300m, {db_val:.0f} dB)",
+        f"sp_polarization_angle_{db_val:.0f}dB.png",
+        ref_label, info_label,
+        nu_events_key="SP", nu_events=nu_events,
+        nu_density_fn=_compute_neutrino_polarization_density, nu_max_angle=180,
+    )
+
+
+# ============================================================================
 # Main
 # ============================================================================
 
@@ -2497,6 +2751,8 @@ def main():
         ("SP arrival angle", lambda: generate_sp_arrival_angle_plots(loaded, save_folder, max_distance, nu_events)),
         ("MB polarization angle", lambda: generate_mb_polarization_angle_plots(loaded, save_folder, max_distance, nu_events)),
         ("SP polarization angle", lambda: generate_sp_polarization_angle_plots(loaded, save_folder, max_distance, nu_events)),
+        ("MB density (R=0.82)", lambda: generate_mb_density_single_r(loaded, save_folder, max_distance, nu_events)),
+        ("SP density (40 dB)", lambda: generate_sp_density_single_db(loaded, save_folder, max_distance, nu_events)),
         ("Rate table", lambda: generate_rate_table(
             loaded, max_distance, os.path.join(save_folder, "rate_table.txt"),
         )),
