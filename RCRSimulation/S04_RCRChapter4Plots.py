@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import argparse
 import configparser
+import hashlib
 import logging
 import os
+import pickle
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -89,6 +91,283 @@ N_ICE = 1.78
 MIN_LOG_ENERGY = {"Gen2 Deep": 18.5}
 
 
+# ============================================================================
+# Plot Data Caching
+# ============================================================================
+
+# Global flag set by --recompute CLI arg; when True, ignores existing cache files
+_RECOMPUTE = False
+
+
+def _cache_dir(save_folder: str) -> str:
+    """Return the cache subdirectory inside the save folder."""
+    return os.path.join(save_folder, "cache")
+
+
+def _source_fingerprint(numpy_folder: str | Path) -> str:
+    """Compute a fingerprint of all source .npy files (based on mtimes + sizes).
+
+    Used to detect when source data has changed and cache should be invalidated.
+    """
+    folder = Path(numpy_folder)
+    entries = []
+    for f in sorted(folder.glob("*RCReventList.npy")):
+        stat = f.stat()
+        entries.append(f"{f.name}:{stat.st_mtime_ns}:{stat.st_size}")
+    return hashlib.md5("\n".join(entries).encode()).hexdigest()
+
+
+def _load_cache(save_folder: str, cache_name: str, fingerprint: str | None = None) -> dict | None:
+    """Load cached plot data if it exists and fingerprint matches.
+
+    Returns the cached dict, or None if cache is missing/stale.
+    """
+    if _RECOMPUTE:
+        return None
+    cache_file = os.path.join(_cache_dir(save_folder), f"{cache_name}.pkl")
+    if not os.path.exists(cache_file):
+        return None
+    try:
+        with open(cache_file, "rb") as f:
+            data = pickle.load(f)
+        if fingerprint is not None and data.get("_fingerprint") != fingerprint:
+            LOGGER.info("Cache fingerprint mismatch for %s, recomputing", cache_name)
+            return None
+        LOGGER.info("Loaded cached plot data: %s", cache_name)
+        return data
+    except Exception as e:
+        LOGGER.warning("Failed to load cache %s: %s", cache_name, e)
+        return None
+
+
+def _save_cache(save_folder: str, cache_name: str, data: dict, fingerprint: str | None = None):
+    """Save computed plot data to cache file."""
+    cache_path = _cache_dir(save_folder)
+    os.makedirs(cache_path, exist_ok=True)
+    if fingerprint is not None:
+        data["_fingerprint"] = fingerprint
+    cache_file = os.path.join(cache_path, f"{cache_name}.pkl")
+    with open(cache_file, "wb") as f:
+        pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+    LOGGER.info("Saved cache: %s", cache_name)
+
+
+def _install_memoized_trigger_rate():
+    """Replace getBinnedTriggerRate with a memoized version.
+
+    Uses id(first_event) + trigger_name as cache key. This works within a single
+    run since event arrays stay in memory. Avoids redundant computation when
+    multiple generate functions query the same (sim, trigger) combination.
+    """
+    import RCRSimulation.RCRAnalysis as _analysis
+    _original = _analysis.getBinnedTriggerRate
+    _memo: dict = {}
+
+    def _memoized(event_list, trigger_name, *args, **kwargs):
+        # Stable key: id of the underlying array (stays constant within a run)
+        if isinstance(event_list, np.ndarray):
+            arr_id = id(event_list)
+        elif isinstance(event_list, list) and len(event_list) > 0:
+            arr_id = id(event_list[0])  # first event as identity proxy
+        else:
+            return _original(event_list, trigger_name, *args, **kwargs)
+        key = (arr_id, trigger_name)
+        if key not in _memo:
+            _memo[key] = _original(event_list, trigger_name, *args, **kwargs)
+        return _memo[key]
+
+    # Patch both the module-level reference and the local import
+    _analysis.getBinnedTriggerRate = _memoized
+    globals()["getBinnedTriggerRate"] = _memoized
+    LOGGER.info("Installed memoized getBinnedTriggerRate")
+    return _memo
+
+
+def _precompute_all_trigger_rates(loaded: Dict[str, np.ndarray], max_distance: float) -> dict:
+    """Precompute trigger rate arrays for every (sim, trigger) combination.
+
+    This is the expensive step — iterates all events once per trigger. Results
+    are cached to disk so subsequent runs can skip event loading entirely.
+
+    Returns dict with structure:
+        {sim_name: {
+            "triggers": {trigger_name: (direct_rate, reflected_rate)},
+            "unique_pairs": (log_energies_array, zeniths_deg_array),
+            "n_throws": int,
+            "event_rates": {trigger_name: {"direct": 2d, "reflected": 2d,
+                                            "error_direct": 2d, "error_reflected": 2d}},
+        }}
+    """
+    e_bins, z_bins = getEnergyZenithBins()
+    result = {}
+
+    for sim_name, events in loaded.items():
+        events_list = list(events)
+        sim_data = {"triggers": {}, "event_rates": {}}
+
+        all_triggers = collect_trigger_names(events_list)
+        real_triggers = filter_real_triggers(all_triggers)
+        LOGGER.info("Precomputing %d triggers for %s", len(real_triggers), sim_name)
+
+        for trig in real_triggers:
+            direct_rate, reflected_rate, _ = getBinnedTriggerRate(events_list, trig)
+            sim_data["triggers"][trig] = (direct_rate, reflected_rate)
+
+            er_direct = getEventRate(direct_rate, e_bins, z_bins, max_distance)
+            er_reflected = getEventRate(reflected_rate, e_bins, z_bins, max_distance)
+            err_direct = getErrorEventRates(direct_rate, events_list, max_distance)
+            err_reflected = getErrorEventRates(reflected_rate, events_list, max_distance)
+            sim_data["event_rates"][trig] = {
+                "direct": er_direct, "reflected": er_reflected,
+                "error_direct": err_direct, "error_reflected": err_reflected,
+            }
+
+        log_e, zen_deg = getUniqueEnergyZenithPairs(events_list)
+        sim_data["unique_pairs"] = (log_e, zen_deg)
+        sim_data["n_throws"] = getnThrows(events_list)
+        result[sim_name] = sim_data
+
+    return result
+
+
+# Global precomputed data, set in main()
+_PRECOMPUTED: dict | None = None
+
+
+def _get_trigger_rates(sim_name: str, trigger_name: str) -> tuple | None:
+    """Look up precomputed (direct_rate, reflected_rate) for a sim + trigger."""
+    if _PRECOMPUTED is None:
+        return None
+    sim_data = _PRECOMPUTED.get(sim_name)
+    if sim_data is None:
+        return None
+    return sim_data["triggers"].get(trigger_name)
+
+
+def _get_event_rates(sim_name: str, trigger_name: str) -> dict | None:
+    """Look up precomputed event rates and errors for a sim + trigger.
+
+    Returns {"direct": 2d, "reflected": 2d, "error_direct": 2d, "error_reflected": 2d}
+    """
+    if _PRECOMPUTED is None:
+        return None
+    sim_data = _PRECOMPUTED.get(sim_name)
+    if sim_data is None:
+        return None
+    return sim_data["event_rates"].get(trigger_name)
+
+
+def _get_unique_pairs(sim_name: str) -> tuple | None:
+    """Look up precomputed (log_energies, zeniths_deg) for a sim."""
+    if _PRECOMPUTED is None:
+        return None
+    sim_data = _PRECOMPUTED.get(sim_name)
+    if sim_data is None:
+        return None
+    return sim_data.get("unique_pairs")
+
+
+# Stored in main() for lazy event loading when running from cache
+_NUMPY_FOLDER: str | None = None
+
+
+def _ensure_events_loaded(loaded: Dict[str, np.ndarray | None], sim_name: str) -> np.ndarray | None:
+    """Ensure events are loaded for a sim. Loads from disk if only cache is available."""
+    events = loaded.get(sim_name)
+    if events is not None:
+        return events
+    if _NUMPY_FOLDER is None:
+        LOGGER.warning("Cannot lazy-load %s: numpy_folder not set", sim_name)
+        return None
+    LOGGER.info("Lazy-loading events for %s (needed for density plots)", sim_name)
+    events = load_combined_events(_NUMPY_FOLDER, sim_name)
+    if events is not None:
+        loaded[sim_name] = events  # Cache in memory for later use
+    return events
+
+
+def _cached_find_trigger_for_r(sim_name: str, events, r_value: float) -> str | None:
+    """Find trigger for R value, checking precomputed cache first."""
+    if _PRECOMPUTED and sim_name in _PRECOMPUTED:
+        for trig in _PRECOMPUTED[sim_name]["triggers"]:
+            parsed_r, variant = parse_r_from_trigger_name(trig)
+            if parsed_r is not None and abs(parsed_r - r_value) < 0.005 and variant is None:
+                return trig
+    if events is not None:
+        return find_trigger_for_r(events, r_value)
+    return None
+
+
+def _cached_find_trigger_for_db(sim_name: str, events, db_value: float) -> str | None:
+    """Find trigger for dB value, checking precomputed cache first."""
+    if _PRECOMPUTED and sim_name in _PRECOMPUTED:
+        for trig in _PRECOMPUTED[sim_name]["triggers"]:
+            parsed_db = parse_db_from_trigger_name(trig)
+            if parsed_db is not None and abs(parsed_db - db_value) < 0.05:
+                return trig
+    if events is not None:
+        return find_trigger_for_db(events, db_value)
+    return None
+
+
+def _cached_find_direct_trigger(sim_name: str, events) -> str | None:
+    """Find untagged (direct) trigger, checking precomputed cache first."""
+    if _PRECOMPUTED and sim_name in _PRECOMPUTED:
+        for trig in _PRECOMPUTED[sim_name]["triggers"]:
+            if parse_db_from_trigger_name(trig) is None:
+                parsed_r, _ = parse_r_from_trigger_name(trig)
+                if parsed_r is None:
+                    return trig
+    if events is not None:
+        return find_direct_trigger(events)
+    return None
+
+
+def _cached_get_all_r_triggers(sim_name: str, events) -> dict:
+    """Get all R-tagged triggers, checking precomputed cache first."""
+    if _PRECOMPUTED and sim_name in _PRECOMPUTED:
+        result = {}
+        for trig in _PRECOMPUTED[sim_name]["triggers"]:
+            parsed_r, variant = parse_r_from_trigger_name(trig)
+            if parsed_r is not None and variant is None:
+                result[parsed_r] = trig
+        if result:
+            return result
+    if events is not None:
+        return get_all_r_triggers(events)
+    return {}
+
+
+def _cached_get_all_db_triggers(sim_name: str, events) -> dict:
+    """Get all dB-tagged triggers, checking precomputed cache first."""
+    if _PRECOMPUTED and sim_name in _PRECOMPUTED:
+        result = {}
+        for trig in _PRECOMPUTED[sim_name]["triggers"]:
+            db = parse_db_from_trigger_name(trig)
+            if db is not None:
+                result[db] = trig
+        if result:
+            return result
+    if events is not None:
+        return get_all_db_triggers(events)
+    return {}
+
+
+def _cached_get_ab_error_triggers(sim_name: str, events) -> dict:
+    """Get A/B error variant triggers, checking precomputed cache first."""
+    if _PRECOMPUTED and sim_name in _PRECOMPUTED:
+        result = {}
+        for trig in _PRECOMPUTED[sim_name]["triggers"]:
+            parsed_r, variant = parse_r_from_trigger_name(trig)
+            if parsed_r is not None and variant is not None:
+                result[(parsed_r, variant)] = trig
+        if result:
+            return result
+    if events is not None:
+        return get_ab_error_triggers(events)
+    return {}
+
+
 def _apply_energy_mask(rate_array: np.ndarray, e_bins: np.ndarray, panel_label: str,
                        rate_type: str = "reflected") -> np.ndarray:
     """Zero out energy bins below the minimum for panels that need masking.
@@ -104,7 +383,7 @@ def _apply_energy_mask(rate_array: np.ndarray, e_bins: np.ndarray, panel_label: 
     # Bin i spans e_log[i] to e_log[i+1]; mask if bin center < min_log_e
     e_centers = (e_log[:-1] + e_log[1:]) / 2
     masked = rate_array.copy()
-    masked[e_centers < min_log_e] = 0
+    masked[e_centers <= min_log_e] = 0
     return masked
 
 
@@ -305,13 +584,14 @@ def get_all_db_triggers(event_list: Sequence[RCREvent]) -> Dict[float, str]:
 # ============================================================================
 
 def plot_trigger_rate_panels(
-    event_lists: List[np.ndarray],
+    event_lists: List[np.ndarray | None],
     trigger_names: List[str],
     panel_titles: List[str],
     suptitle: str,
     savename: str,
     rate_type: str = "reflected",
     info_texts: Optional[List[str]] = None,
+    sim_names: Optional[List[str]] = None,
 ):
     """Multi-panel 2D trigger rate histograms with circle overlay.
 
@@ -319,116 +599,20 @@ def plot_trigger_rate_panels(
     correct visual widths.
 
     Args:
-        event_lists: One event array per panel
+        event_lists: One event array per panel (can be None if sim_names provided for cache)
         trigger_names: Trigger name to query per panel
         panel_titles: Subtitle for each panel
         suptitle: Figure super-title
         savename: Output file path
         rate_type: 'reflected' or 'direct'
         info_texts: Optional info string per panel (upper-left annotation)
+        sim_names: Optional sim name per panel (for precomputed cache lookup)
     """
     n = len(event_lists)
-    fig, axes = plt.subplots(1, n, figsize=(5.5 * n + 1, 4.5))
-    if n == 1:
-        axes = [axes]
-
-    e_bins, z_bins = getEnergyZenithBins()
-    e_log = np.log10(np.array(e_bins) / units.eV)
-    # Bins are uniform in cos(zenith) space — use that for the y-axis
-    z_cos = np.cos(np.array(z_bins))
-    z_cos_sorted = np.sort(z_cos)  # [0, 0.2, 0.4, 0.6, 0.8, 1.0]
-    extent = [e_log[0], e_log[-1], z_cos_sorted[0], z_cos_sorted[-1]]
-
-    # Collect all rates to share a colorbar
-    all_rates = []
-    panel_data = []
-    for events, trig in zip(event_lists, trigger_names):
-        direct_rate, reflected_rate, _ = getBinnedTriggerRate(events, trig)
-        rate = reflected_rate if rate_type == "reflected" else direct_rate
-        panel_data.append(rate)
-        nonzero = rate[rate > 0]
-        if nonzero.size > 0:
-            all_rates.extend(nonzero.tolist())
-
-    # Shared color normalization
-    if all_rates:
-        vmin = min(all_rates) * 0.5
-        vmax = max(all_rates) * 1.5
-    else:
-        vmin, vmax = 1e-3, 1.0
-    norm = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
-
-    im = None
-    for ip, (ax, rate, events, title) in enumerate(zip(axes, panel_data, event_lists, panel_titles)):
-        masked, cmap = set_bad_imshow(rate, 0)
-        # Flip zenith axis so row 0 (smallest zenith = largest cos) maps to top
-        im = ax.imshow(
-            masked.T[::-1], origin="lower", aspect="auto",
-            norm=norm, cmap=cmap, extent=extent,
-        )
-        # Circle overlay — convert zenith degrees to cos(zenith)
-        log_energies, zeniths_deg = getUniqueEnergyZenithPairs(events)
-        cos_zeniths = np.cos(np.deg2rad(zeniths_deg))
-        ax.scatter(
-            log_energies, cos_zeniths,
-            facecolors="none", edgecolors="black", s=20, linewidths=0.5,
-        )
-        ax.set_title(title, fontsize=10)
-        ax.set_xlabel("log$_{10}$(E/eV)")
-
-        if info_texts and ip < len(info_texts):
-            ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
-                    fontsize=6, verticalalignment="top", family="monospace", color="white",
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor="black", alpha=0.6))
-
-    axes[0].set_ylabel("cos(zenith)")
-    for ax in axes[1:]:
-        ax.set_ylabel("")
-    # Set y-axis ticks at 0.25 spacing to match zenith bins
-    for ax in axes:
-        ax.set_yticks(np.arange(0, 1.01, 0.25))
-
-    fig.suptitle(suptitle, fontsize=13, y=1.02)
-
-    if im is not None:
-        # Attach colorbar to all axes so all panels share equal width
-        fig.colorbar(im, ax=list(axes), label="Trigger Rate", shrink=0.8, pad=0.04)
-
-    plt.tight_layout()
-    plt.savefig(savename, dpi=150, bbox_inches="tight")
-    plt.close()
-    ic(f"Saved: {savename}")
-
-
-def plot_event_rate_panels(
-    event_lists: List[np.ndarray],
-    trigger_names: List[str],
-    panel_titles: List[str],
-    suptitle: str,
-    savename: str,
-    max_distance: float,
-    rate_type: str = "reflected",
-    info_texts: Optional[List[str]] = None,
-):
-    """Multi-panel 2D event rate histograms with circle overlay.
-
-    Same layout as trigger rate panels but converts trigger rates to event rates
-    (evts/yr) using the cosmic ray spectrum.
-
-    Args:
-        event_lists: One event array per panel
-        trigger_names: Trigger name to query per panel
-        panel_titles: Subtitle for each panel
-        suptitle: Figure super-title
-        savename: Output file path
-        max_distance: Max throw distance for event rate calculation
-        rate_type: 'reflected' or 'direct'
-        info_texts: Optional info string per panel (upper-left annotation)
-    """
-    n = len(event_lists)
-    fig, axes = plt.subplots(1, n, figsize=(5.5 * n + 1, 4.5))
-    if n == 1:
-        axes = [axes]
+    fig = plt.figure(figsize=(5.5 * n + 1, 4.5), constrained_layout=True)
+    gs = fig.add_gridspec(1, n + 1, width_ratios=[1] * n + [0.04])
+    axes = [fig.add_subplot(gs[0, i]) for i in range(n)]
+    cax = fig.add_subplot(gs[0, n])
 
     e_bins, z_bins = getEnergyZenithBins()
     e_log = np.log10(np.array(e_bins) / units.eV)
@@ -438,36 +622,48 @@ def plot_event_rate_panels(
 
     all_rates = []
     panel_data = []
-    for events, trig, ptitle in zip(event_lists, trigger_names, panel_titles):
-        direct_rate, reflected_rate, _ = getBinnedTriggerRate(events, trig)
-        trig_rate = reflected_rate if rate_type == "reflected" else direct_rate
-        event_rate = getEventRate(trig_rate, e_bins, z_bins, max_distance)
-        event_rate = _apply_energy_mask(event_rate, e_bins, ptitle, rate_type)
-        panel_data.append(event_rate)
-        nonzero = event_rate[event_rate > 0]
+    panel_pairs = []
+    for ip, (events, trig) in enumerate(zip(event_lists, trigger_names)):
+        sname = sim_names[ip] if sim_names else None
+        # Try precomputed cache first
+        cached = _get_trigger_rates(sname, trig) if sname else None
+        if cached is not None:
+            direct_rate, reflected_rate = cached
+        else:
+            direct_rate, reflected_rate, _ = getBinnedTriggerRate(events, trig)
+        rate = reflected_rate if rate_type == "reflected" else direct_rate
+        panel_data.append(rate)
+        nonzero = rate[rate > 0]
         if nonzero.size > 0:
             all_rates.extend(nonzero.tolist())
+        # Unique pairs
+        pairs = _get_unique_pairs(sname) if sname else None
+        if pairs is None and events is not None:
+            pairs = getUniqueEnergyZenithPairs(events)
+        panel_pairs.append(pairs)
 
     if all_rates:
         vmin = min(all_rates) * 0.5
         vmax = max(all_rates) * 1.5
     else:
-        vmin, vmax = 1e-6, 1.0
+        vmin, vmax = 1e-3, 1.0
     norm = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
 
     im = None
-    for ip, (ax, rate, events, title) in enumerate(zip(axes, panel_data, event_lists, panel_titles)):
+    for ip, (ax, rate, title) in enumerate(zip(axes, panel_data, panel_titles)):
         masked, cmap = set_bad_imshow(rate, 0)
         im = ax.imshow(
             masked.T[::-1], origin="lower", aspect="auto",
             norm=norm, cmap=cmap, extent=extent,
         )
-        log_energies, zeniths_deg = getUniqueEnergyZenithPairs(events)
-        cos_zeniths = np.cos(np.deg2rad(zeniths_deg))
-        ax.scatter(
-            log_energies, cos_zeniths,
-            facecolors="none", edgecolors="black", s=20, linewidths=0.5,
-        )
+        pairs = panel_pairs[ip]
+        if pairs is not None:
+            log_energies, zeniths_deg = pairs
+            cos_zeniths = np.cos(np.deg2rad(zeniths_deg))
+            ax.scatter(
+                log_energies, cos_zeniths,
+                facecolors="none", edgecolors="black", s=20, linewidths=0.5,
+            )
         ax.set_title(title, fontsize=10)
         ax.set_xlabel("log$_{10}$(E/eV)")
 
@@ -482,12 +678,124 @@ def plot_event_rate_panels(
     for ax in axes:
         ax.set_yticks(np.arange(0, 1.01, 0.25))
 
-    fig.suptitle(suptitle, fontsize=13, y=1.02)
+    fig.suptitle(suptitle, fontsize=13)
 
     if im is not None:
-        fig.colorbar(im, ax=list(axes), label="Event Rate (evts/yr)", shrink=0.8, pad=0.04)
+        fig.colorbar(im, cax=cax, label="Trigger Rate")
+    else:
+        cax.set_visible(False)
 
-    plt.tight_layout()
+    plt.savefig(savename, dpi=150, bbox_inches="tight")
+    plt.close()
+    ic(f"Saved: {savename}")
+
+
+def plot_event_rate_panels(
+    event_lists: List[np.ndarray | None],
+    trigger_names: List[str],
+    panel_titles: List[str],
+    suptitle: str,
+    savename: str,
+    max_distance: float,
+    rate_type: str = "reflected",
+    info_texts: Optional[List[str]] = None,
+    sim_names: Optional[List[str]] = None,
+):
+    """Multi-panel 2D event rate histograms with circle overlay.
+
+    Same layout as trigger rate panels but converts trigger rates to event rates
+    (evts/yr) using the cosmic ray spectrum.
+
+    Args:
+        event_lists: One event array per panel (can be None if sim_names provided)
+        trigger_names: Trigger name to query per panel
+        panel_titles: Subtitle for each panel
+        suptitle: Figure super-title
+        savename: Output file path
+        max_distance: Max throw distance for event rate calculation
+        rate_type: 'reflected' or 'direct'
+        info_texts: Optional info string per panel (upper-left annotation)
+        sim_names: Optional sim name per panel (for precomputed cache lookup)
+    """
+    n = len(event_lists)
+    fig = plt.figure(figsize=(5.5 * n + 1, 4.5), constrained_layout=True)
+    gs = fig.add_gridspec(1, n + 1, width_ratios=[1] * n + [0.04])
+    axes = [fig.add_subplot(gs[0, i]) for i in range(n)]
+    cax = fig.add_subplot(gs[0, n])
+
+    e_bins, z_bins = getEnergyZenithBins()
+    e_log = np.log10(np.array(e_bins) / units.eV)
+    z_cos = np.cos(np.array(z_bins))
+    z_cos_sorted = np.sort(z_cos)
+    extent = [e_log[0], e_log[-1], z_cos_sorted[0], z_cos_sorted[-1]]
+
+    all_rates = []
+    panel_data = []
+    panel_pairs = []
+    for ip, (events, trig, ptitle) in enumerate(zip(event_lists, trigger_names, panel_titles)):
+        sname = sim_names[ip] if sim_names else None
+        # Try precomputed cache first
+        cached_er = _get_event_rates(sname, trig) if sname else None
+        if cached_er is not None:
+            event_rate = cached_er[rate_type]
+        else:
+            direct_rate, reflected_rate, _ = getBinnedTriggerRate(events, trig)
+            trig_rate = reflected_rate if rate_type == "reflected" else direct_rate
+            event_rate = getEventRate(trig_rate, e_bins, z_bins, max_distance)
+        event_rate = _apply_energy_mask(event_rate, e_bins, ptitle, rate_type)
+        panel_data.append(event_rate)
+        nonzero = event_rate[event_rate > 0]
+        if nonzero.size > 0:
+            all_rates.extend(nonzero.tolist())
+        # Unique pairs
+        pairs = _get_unique_pairs(sname) if sname else None
+        if pairs is None and events is not None:
+            pairs = getUniqueEnergyZenithPairs(events)
+        panel_pairs.append(pairs)
+
+    if all_rates:
+        vmin = min(all_rates) * 0.5
+        vmax = max(all_rates) * 1.5
+    else:
+        vmin, vmax = 1e-6, 1.0
+    norm = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
+
+    im = None
+    for ip, (ax, rate, title) in enumerate(zip(axes, panel_data, panel_titles)):
+        masked, cmap = set_bad_imshow(rate, 0)
+        im = ax.imshow(
+            masked.T[::-1], origin="lower", aspect="auto",
+            norm=norm, cmap=cmap, extent=extent,
+        )
+        pairs = panel_pairs[ip]
+        if pairs is not None:
+            log_energies, zeniths_deg = pairs
+            cos_zeniths = np.cos(np.deg2rad(zeniths_deg))
+            ax.scatter(
+                log_energies, cos_zeniths,
+                facecolors="none", edgecolors="black", s=20, linewidths=0.5,
+            )
+        ax.set_title(title, fontsize=10)
+        ax.set_xlabel("log$_{10}$(E/eV)")
+
+        if info_texts and ip < len(info_texts):
+            ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
+                    fontsize=6, verticalalignment="top", family="monospace", color="white",
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="black", alpha=0.6))
+
+    axes[0].set_ylabel("cos(zenith)")
+    for ax in axes[1:]:
+        ax.set_ylabel("")
+    for ax in axes:
+        ax.set_yticks(np.arange(0, 1.01, 0.25))
+
+    fig.suptitle(suptitle, fontsize=13)
+
+    if im is not None:
+        fig.colorbar(im, cax=cax, label="Event Rate (evts/yr)")
+    else:
+        cax.set_visible(False)
+
     plt.savefig(savename, dpi=150, bbox_inches="tight")
     plt.close()
     ic(f"Saved: {savename}")
@@ -1037,30 +1345,42 @@ def generate_rate_table(
     """
     e_bins, z_bins = getEnergyZenithBins()
 
-    def total_reflected_rate_db(events, db_val, panel_label=""):
-        trig = find_trigger_for_db(events, db_val)
+    def total_reflected_rate_db(sim_name, events, db_val, panel_label=""):
+        trig = _cached_find_trigger_for_db(sim_name, events, db_val)
         if trig is None:
             return None
-        _, ref_rate, _ = getBinnedTriggerRate(events, trig)
-        event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+        cached_er = _get_event_rates(sim_name, trig)
+        if cached_er is not None:
+            event_rate = cached_er["reflected"]
+        else:
+            _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+            event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
         event_rate = _apply_energy_mask(event_rate, e_bins, panel_label, "reflected")
         return float(np.nansum(event_rate))
 
-    def total_reflected_rate_r(events, r_val, panel_label=""):
-        trig = find_trigger_for_r(events, r_val)
+    def total_reflected_rate_r(sim_name, events, r_val, panel_label=""):
+        trig = _cached_find_trigger_for_r(sim_name, events, r_val)
         if trig is None:
             return None
-        _, ref_rate, _ = getBinnedTriggerRate(events, trig)
-        event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+        cached_er = _get_event_rates(sim_name, trig)
+        if cached_er is not None:
+            event_rate = cached_er["reflected"]
+        else:
+            _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+            event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
         event_rate = _apply_energy_mask(event_rate, e_bins, panel_label, "reflected")
         return float(np.nansum(event_rate))
 
-    def total_direct_rate(events):
-        trig = find_direct_trigger(events)
+    def total_direct_rate(sim_name, events):
+        trig = _cached_find_direct_trigger(sim_name, events)
         if trig is None:
             return None
-        dir_rate, _, _ = getBinnedTriggerRate(events, trig)
-        event_rate = getEventRate(dir_rate, e_bins, z_bins, max_distance)
+        cached_er = _get_event_rates(sim_name, trig)
+        if cached_er is not None:
+            event_rate = cached_er["direct"]
+        else:
+            dir_rate, _, _ = getBinnedTriggerRate(events, trig)
+            event_rate = getEventRate(dir_rate, e_bins, z_bins, max_distance)
         return float(np.nansum(event_rate))
 
     def format_range(values):
@@ -1089,7 +1409,7 @@ def generate_rate_table(
     for label in mb_col_labels:
         sim_name = MB_REFLECTED_SIMS[label]
         events = loaded.get(sim_name)
-        r = total_direct_rate(events) if events is not None else None
+        r = total_direct_rate(sim_name, events) if events is not None else None
         mb_direct_vals.append(format_single(r))
     lines.append(f"{'Direct':24s}" + "".join(f"{v:>15s}" for v in mb_direct_vals))
 
@@ -1101,15 +1421,15 @@ def generate_rate_table(
         rates = []
         if events is not None:
             # Try R-based triggers first
-            r_triggers = get_all_r_triggers(events)
+            r_triggers = _cached_get_all_r_triggers(sim_name, events)
             if r_triggers:
                 for r_val in sorted(r_triggers.keys()):
-                    r = total_reflected_rate_r(events, r_val, panel_label=label)
+                    r = total_reflected_rate_r(sim_name, events, r_val, panel_label=label)
                     rates.append(r)
             else:
                 # Fallback to dB-based triggers
                 for db in [0.0, 1.5, 3.0]:
-                    r = total_reflected_rate_db(events, db, panel_label=label)
+                    r = total_reflected_rate_db(sim_name, events, db, panel_label=label)
                     rates.append(r)
         mb_refl_vals.append(format_range(rates))
     lines.append(f"{'576m (R=0.5-1.0)':24s}" + "".join(f"{v:>15s}" for v in mb_refl_vals))
@@ -1124,10 +1444,12 @@ def generate_rate_table(
     lines.append("-" * 55)
 
     # SP Direct row
-    shallow_dir = loaded.get(SP_DIRECT_SIMS.get("Gen2 Shallow"))
-    deep_dir = loaded.get(SP_DIRECT_SIMS.get("Gen2 Deep"))
-    r_shallow = total_direct_rate(shallow_dir) if shallow_dir is not None else None
-    r_deep = total_direct_rate(deep_dir) if deep_dir is not None else None
+    shallow_dir_sim = SP_DIRECT_SIMS.get("Gen2 Shallow")
+    deep_dir_sim = SP_DIRECT_SIMS.get("Gen2 Deep")
+    shallow_dir = loaded.get(shallow_dir_sim)
+    deep_dir = loaded.get(deep_dir_sim)
+    r_shallow = total_direct_rate(shallow_dir_sim, shallow_dir) if shallow_dir is not None else None
+    r_deep = total_direct_rate(deep_dir_sim, deep_dir) if deep_dir is not None else None
     lines.append(
         f"{'Direct':24s}{format_single(r_shallow):>15s}{format_single(r_deep):>15s}"
     )
@@ -1143,8 +1465,8 @@ def generate_rate_table(
         deep_rates = []
 
         for db in SP_DB_VALUES:
-            rs = total_reflected_rate_db(shallow_events, db, panel_label="Gen2 Shallow") if shallow_events is not None else None
-            rd = total_reflected_rate_db(deep_events, db, panel_label="Gen2 Deep") if deep_events is not None else None
+            rs = total_reflected_rate_db(shallow_key, shallow_events, db, panel_label="Gen2 Shallow") if shallow_events is not None else None
+            rd = total_reflected_rate_db(deep_key, deep_events, db, panel_label="Gen2 Deep") if deep_events is not None else None
             shallow_rates.append(rs)
             deep_rates.append(rd)
 
@@ -1191,7 +1513,7 @@ def generate_mb_error_breakdown_table(
             continue
 
         events_list = list(events)
-        r_triggers = get_all_r_triggers(events_list)
+        r_triggers = _cached_get_all_r_triggers(sim_name, events_list)
         if not r_triggers:
             lines.append(f"\n{label}: No R-based triggers found (dB-based data, no A/B breakdown)")
             continue
@@ -1204,14 +1526,19 @@ def generate_mb_error_breakdown_table(
         r_vals = sorted(r_triggers.keys())
         r_min = min(r_vals)
         r_max = max(r_vals)
-        ab_triggers = get_ab_error_triggers(events_list)
+        ab_triggers = _cached_get_ab_error_triggers(sim_name, events_list)
 
         for r_val in r_vals:
             trig = r_triggers[r_val]
-            _, ref_rate, _ = getBinnedTriggerRate(events_list, trig)
-            event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+            cached_er = _get_event_rates(sim_name, trig)
+            if cached_er is not None:
+                event_rate = cached_er["reflected"]
+                stat_error = cached_er["error_reflected"]
+            else:
+                _, ref_rate, _ = getBinnedTriggerRate(events_list, trig)
+                event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+                stat_error = getErrorEventRates(ref_rate, events_list, max_distance)
             event_rate = _apply_energy_mask(event_rate, e_bins, label, "reflected")
-            stat_error = getErrorEventRates(ref_rate, events_list, max_distance)
             stat_error = _apply_energy_mask(stat_error, e_bins, label, "reflected")
 
             total_rate = float(np.nansum(event_rate))
@@ -1226,8 +1553,12 @@ def generate_mb_error_breakdown_table(
                     trig_v = ab_triggers.get((r_val, variant_tag))
                     if trig_v is None:
                         return None
-                    _, rr, _ = getBinnedTriggerRate(events_list, trig_v)
-                    er = getEventRate(rr, e_bins, z_bins, max_distance)
+                    cached_v = _get_event_rates(sim_name, trig_v)
+                    if cached_v is not None:
+                        er = cached_v["reflected"]
+                    else:
+                        _, rr, _ = getBinnedTriggerRate(events_list, trig_v)
+                        er = getEventRate(rr, e_bins, z_bins, max_distance)
                     er = _apply_energy_mask(er, e_bins, label, "reflected")
                     return float(np.nansum(er))
 
@@ -1309,16 +1640,20 @@ def generate_mb_trigger_rate_plots(loaded, save_folder, max_distance):
     """Plot 1 + 1b: MB trigger rate panels (reflected at R=0.7, and direct)."""
     labels = list(MB_REFLECTED_SIMS.keys())
     sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
-    event_lists = [loaded[s] for s in sim_names if s in loaded]
-    if len(event_lists) != len(labels):
+    event_lists = [loaded.get(s) for s in sim_names]
+    available = all(e is not None or (s in _PRECOMPUTED if _PRECOMPUTED else False)
+                    for e, s in zip(event_lists, sim_names))
+    if not available:
         LOGGER.warning("Not all MB reflected sims available, skipping MB trigger rate plots")
         return
 
     # Reflected at R=0.82 (nominal), fallback to R=0.7 (1.5 dB)
-    ref_triggers = [find_trigger_for_r(e, 0.82) for e in event_lists]
+    ref_triggers = [_cached_find_trigger_for_r(sn, e, 0.82)
+                    for sn, e in zip(sim_names, event_lists)]
     ref_label = "R=0.82"
     if not all(t is not None for t in ref_triggers):
-        ref_triggers = [find_trigger_for_db(e, 1.5) for e in event_lists]
+        ref_triggers = [_cached_find_trigger_for_db(sn, e, 1.5)
+                        for sn, e in zip(sim_names, event_lists)]
         ref_label = "R=0.7 (1.5 dB)"
     if all(t is not None for t in ref_triggers):
         infos = [_build_info("MB", lab, trig, ref_label)
@@ -1327,18 +1662,19 @@ def generate_mb_trigger_rate_plots(loaded, save_folder, max_distance):
             event_lists, ref_triggers, labels,
             suptitle=f"MB Reflected Trigger Rate ({ref_label})",
             savename=os.path.join(save_folder, "mb_trigger_rate_reflected.png"),
-            rate_type="reflected", info_texts=infos,
+            rate_type="reflected", info_texts=infos, sim_names=sim_names,
         )
 
     # Direct
-    dir_triggers = [find_direct_trigger(e) for e in event_lists]
+    dir_triggers = [_cached_find_direct_trigger(sn, e)
+                    for sn, e in zip(sim_names, event_lists)]
     if all(t is not None for t in dir_triggers):
         infos = [_build_info("MB", lab, trig) for lab, trig in zip(labels, dir_triggers)]
         plot_trigger_rate_panels(
             event_lists, dir_triggers, labels,
             suptitle="MB Direct Trigger Rate",
             savename=os.path.join(save_folder, "mb_trigger_rate_direct.png"),
-            rate_type="direct", info_texts=infos,
+            rate_type="direct", info_texts=infos, sim_names=sim_names,
         )
 
 
@@ -1347,14 +1683,17 @@ def _generate_sp_trigger_rate_for_depth(loaded, save_folder, max_distance, depth
     labels = ["Gen2 Shallow", "Gen2 Deep"]
     sim_names = [SP_REFLECTED_SIMS.get((depth, "shallow")), SP_REFLECTED_SIMS.get((depth, "deep"))]
     event_lists = [loaded.get(s) for s in sim_names]
-    if any(e is None for e in event_lists):
+    available = all(e is not None or (s in _PRECOMPUTED if _PRECOMPUTED else False)
+                    for e, s in zip(event_lists, sim_names))
+    if not available:
         LOGGER.warning("Not all SP %s sims available, skipping SP trigger rate plots for %s", depth, depth)
         return
 
     suffix = f"_{depth}" if depth != "300m" else ""
 
     # Reflected at 40 dB
-    ref_triggers = [find_trigger_for_db(e, 40.0) for e in event_lists]
+    ref_triggers = [_cached_find_trigger_for_db(sn, e, 40.0)
+                    for sn, e in zip(sim_names, event_lists)]
     if all(t is not None for t in ref_triggers):
         infos = [_build_info("SP", lab, trig, f"{depth}, 40 dB")
                  for lab, trig in zip(labels, ref_triggers)]
@@ -1362,18 +1701,19 @@ def _generate_sp_trigger_rate_for_depth(loaded, save_folder, max_distance, depth
             event_lists, ref_triggers, labels,
             suptitle=f"SP Reflected Trigger Rate ({depth}, 40 dB)",
             savename=os.path.join(save_folder, f"sp_trigger_rate_reflected{suffix}.png"),
-            rate_type="reflected", info_texts=infos,
+            rate_type="reflected", info_texts=infos, sim_names=sim_names,
         )
 
     # Direct
-    dir_triggers = [find_direct_trigger(e) for e in event_lists]
+    dir_triggers = [_cached_find_direct_trigger(sn, e)
+                    for sn, e in zip(sim_names, event_lists)]
     if all(t is not None for t in dir_triggers):
         infos = [_build_info("SP", lab, trig) for lab, trig in zip(labels, dir_triggers)]
         plot_trigger_rate_panels(
             event_lists, dir_triggers, labels,
             suptitle=f"SP Direct Trigger Rate ({depth})",
             savename=os.path.join(save_folder, f"sp_trigger_rate_direct{suffix}.png"),
-            rate_type="direct", info_texts=infos,
+            rate_type="direct", info_texts=infos, sim_names=sim_names,
         )
 
 
@@ -1382,14 +1722,17 @@ def _generate_sp_event_rate_2d_for_depth(loaded, save_folder, max_distance, dept
     labels = ["Gen2 Shallow", "Gen2 Deep"]
     sim_names = [SP_REFLECTED_SIMS.get((depth, "shallow")), SP_REFLECTED_SIMS.get((depth, "deep"))]
     event_lists = [loaded.get(s) for s in sim_names]
-    if any(e is None for e in event_lists):
+    available = all(e is not None or (s in _PRECOMPUTED if _PRECOMPUTED else False)
+                    for e, s in zip(event_lists, sim_names))
+    if not available:
         LOGGER.warning("Not all SP %s sims available, skipping SP event rate 2D for %s", depth, depth)
         return
 
     suffix = f"_{depth}" if depth != "300m" else ""
 
     # Reflected at 40 dB
-    ref_triggers = [find_trigger_for_db(e, 40.0) for e in event_lists]
+    ref_triggers = [_cached_find_trigger_for_db(sn, e, 40.0)
+                    for sn, e in zip(sim_names, event_lists)]
     if all(t is not None for t in ref_triggers):
         infos = [_build_info("SP", lab, trig, f"{depth}, 40 dB")
                  for lab, trig in zip(labels, ref_triggers)]
@@ -1398,10 +1741,12 @@ def _generate_sp_event_rate_2d_for_depth(loaded, save_folder, max_distance, dept
             suptitle=f"SP Reflected Event Rate ({depth}, 40 dB)",
             savename=os.path.join(save_folder, f"sp_event_rate_reflected_2d{suffix}.png"),
             max_distance=max_distance, rate_type="reflected", info_texts=infos,
+            sim_names=sim_names,
         )
 
     # Direct
-    dir_triggers = [find_direct_trigger(e) for e in event_lists]
+    dir_triggers = [_cached_find_direct_trigger(sn, e)
+                    for sn, e in zip(sim_names, event_lists)]
     if all(t is not None for t in dir_triggers):
         infos = [_build_info("SP", lab, trig) for lab, trig in zip(labels, dir_triggers)]
         plot_event_rate_panels(
@@ -1409,6 +1754,7 @@ def _generate_sp_event_rate_2d_for_depth(loaded, save_folder, max_distance, dept
             suptitle=f"SP Direct Event Rate ({depth})",
             savename=os.path.join(save_folder, f"sp_event_rate_direct_2d{suffix}.png"),
             max_distance=max_distance, rate_type="direct", info_texts=infos,
+            sim_names=sim_names,
         )
 
 
@@ -1422,16 +1768,20 @@ def generate_mb_event_rate_2d(loaded, save_folder, max_distance):
     """MB 2D event rate histograms (reflected at R=0.7, and direct)."""
     labels = list(MB_REFLECTED_SIMS.keys())
     sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
-    event_lists = [loaded[s] for s in sim_names if s in loaded]
-    if len(event_lists) != len(labels):
+    event_lists = [loaded.get(s) for s in sim_names]
+    available = all(e is not None or (s in _PRECOMPUTED if _PRECOMPUTED else False)
+                    for e, s in zip(event_lists, sim_names))
+    if not available:
         LOGGER.warning("Not all MB reflected sims available, skipping MB event rate 2D")
         return
 
     # Reflected at R=0.82 (nominal), fallback to 1.5 dB
-    ref_triggers = [find_trigger_for_r(e, 0.82) for e in event_lists]
+    ref_triggers = [_cached_find_trigger_for_r(sn, e, 0.82)
+                    for sn, e in zip(sim_names, event_lists)]
     ref_label = "R=0.82"
     if not all(t is not None for t in ref_triggers):
-        ref_triggers = [find_trigger_for_db(e, 1.5) for e in event_lists]
+        ref_triggers = [_cached_find_trigger_for_db(sn, e, 1.5)
+                        for sn, e in zip(sim_names, event_lists)]
         ref_label = "R=0.7 (1.5 dB)"
     if all(t is not None for t in ref_triggers):
         infos = [_build_info("MB", lab, trig, ref_label)
@@ -1441,10 +1791,12 @@ def generate_mb_event_rate_2d(loaded, save_folder, max_distance):
             suptitle=f"MB Reflected Event Rate ({ref_label})",
             savename=os.path.join(save_folder, "mb_event_rate_reflected_2d.png"),
             max_distance=max_distance, rate_type="reflected", info_texts=infos,
+            sim_names=sim_names,
         )
 
     # Direct
-    dir_triggers = [find_direct_trigger(e) for e in event_lists]
+    dir_triggers = [_cached_find_direct_trigger(sn, e)
+                    for sn, e in zip(sim_names, event_lists)]
     if all(t is not None for t in dir_triggers):
         infos = [_build_info("MB", lab, trig) for lab, trig in zip(labels, dir_triggers)]
         plot_event_rate_panels(
@@ -1452,6 +1804,7 @@ def generate_mb_event_rate_2d(loaded, save_folder, max_distance):
             suptitle="MB Direct Event Rate",
             savename=os.path.join(save_folder, "mb_event_rate_direct_2d.png"),
             max_distance=max_distance, rate_type="direct", info_texts=infos,
+            sim_names=sim_names,
         )
 
 
@@ -1461,19 +1814,22 @@ def generate_sp_event_rate_2d(loaded, save_folder, max_distance):
 
 
 
-def _compute_ab_combined_error(events, nominal_rate, r_value, stat_error, e_bins, z_bins, max_distance):
+def _compute_ab_combined_error(sim_name, events, nominal_rate, r_value, stat_error, e_bins, z_bins, max_distance):
     """Compute combined error from A/B variants and statistical error at a given R.
 
     For upper bound (high R): takes max(rate(Ap), rate(Am)) - nominal for δ_A, similarly for B.
     For lower bound (low R): takes nominal - min(rate(Ap), rate(Am)) for δ_A, similarly for B.
     Returns combined error = sqrt(δ_A² + δ_B² + σ_stat²).
     """
-    ab_triggers = get_ab_error_triggers(events)
+    ab_triggers = _cached_get_ab_error_triggers(sim_name, events)
 
     def _rate_for_variant(variant_tag):
         trig = ab_triggers.get((r_value, variant_tag))
         if trig is None:
             return None
+        cached_er = _get_event_rates(sim_name, trig)
+        if cached_er is not None:
+            return cached_er["reflected"]
         _, ref_rate, _ = getBinnedTriggerRate(events, trig)
         return getEventRate(ref_rate, e_bins, z_bins, max_distance)
 
@@ -1512,7 +1868,9 @@ def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
     sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
     event_lists = [loaded.get(s) for s in sim_names]
 
-    if any(e is None for e in event_lists):
+    available = all(e is not None or (s in _PRECOMPUTED if _PRECOMPUTED else False)
+                    for e, s in zip(event_lists, sim_names))
+    if not available:
         LOGGER.warning("Not all MB reflected sims available, skipping MB event rate bands")
         return
 
@@ -1520,8 +1878,9 @@ def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
     error_arrays_per_panel = []
     info_texts = []
     for label, events in zip(labels, event_lists):
+        sim_name = MB_REFLECTED_SIMS[label]
         # Try R-based triggers first, fall back to dB-based
-        r_triggers = get_all_r_triggers(events)
+        r_triggers = _cached_get_all_r_triggers(sim_name, events)
 
         if r_triggers:
             # R-based sweep
@@ -1536,16 +1895,21 @@ def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
                 trig = r_triggers[r_val]
                 if trig_name is None:
                     trig_name = trig
-                _, ref_rate, _ = getBinnedTriggerRate(events, trig)
-                event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+                cached_er = _get_event_rates(sim_name, trig)
+                if cached_er is not None:
+                    event_rate = cached_er["reflected"]
+                    stat_error = cached_er["error_reflected"]
+                else:
+                    _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+                    event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+                    stat_error = getErrorEventRates(ref_rate, events, max_distance)
                 event_rate = _apply_energy_mask(event_rate, e_bins, label, "reflected")
-                stat_error = getErrorEventRates(ref_rate, events, max_distance)
                 stat_error = _apply_energy_mask(stat_error, e_bins, label, "reflected")
 
                 # Compute combined error at R endpoints (A/B + stat), stat-only for middle
                 if abs(r_val - r_max) < 0.005 or abs(r_val - r_min) < 0.005:
                     combined_error = _compute_ab_combined_error(
-                        events, event_rate, r_val, stat_error, e_bins, z_bins, max_distance)
+                        sim_name, events, event_rate, r_val, stat_error, e_bins, z_bins, max_distance)
                     combined_error = _apply_energy_mask(combined_error, e_bins, label, "reflected")
                 else:
                     combined_error = stat_error
@@ -1564,7 +1928,7 @@ def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
             info_texts.append(_build_info("MB", label, trig_name, f"R={r_min}\u2013{r_max}"))
         else:
             # Fallback: dB-based triggers (backward compatibility)
-            db_triggers = get_all_db_triggers(events)
+            db_triggers = _cached_get_all_db_triggers(sim_name, events)
             db_vals = sorted(db_triggers.keys()) if db_triggers else [None]
 
             rates_for_dbs = []
@@ -1574,15 +1938,20 @@ def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
                 if db is not None:
                     trig = db_triggers[db]
                 else:
-                    trig = find_direct_trigger(events)
+                    trig = _cached_find_direct_trigger(sim_name, events)
                 if trig is None:
                     continue
                 if trig_name is None:
                     trig_name = trig
-                _, ref_rate, _ = getBinnedTriggerRate(events, trig)
-                event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+                cached_er = _get_event_rates(sim_name, trig)
+                if cached_er is not None:
+                    event_rate = cached_er["reflected"]
+                    error_rate = cached_er["error_reflected"]
+                else:
+                    _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+                    event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+                    error_rate = getErrorEventRates(ref_rate, events, max_distance)
                 event_rate = _apply_energy_mask(event_rate, e_bins, label, "reflected")
-                error_rate = getErrorEventRates(ref_rate, events, max_distance)
                 error_rate = _apply_energy_mask(error_rate, e_bins, label, "reflected")
                 rates_for_dbs.append(event_rate)
                 errors_for_dbs.append(error_rate)
@@ -1619,11 +1988,11 @@ def generate_sp_event_rate_bands(loaded, save_folder, max_distance):
     for stype, slabel in [("shallow", "Gen2 Shallow"), ("deep", "Gen2 Deep")]:
         sim_key = SP_REFLECTED_SIMS.get((depth, stype))
         events = loaded.get(sim_key)
-        if events is None:
+        if events is None and not (_PRECOMPUTED and sim_key in _PRECOMPUTED):
             LOGGER.info("Skipping SP %s %s (missing data)", depth, stype)
             continue
 
-        db_trigs = get_all_db_triggers(events)
+        db_trigs = _cached_get_all_db_triggers(sim_key, events)
         if not db_trigs:
             continue
 
@@ -1635,10 +2004,15 @@ def generate_sp_event_rate_bands(loaded, save_folder, max_distance):
             trig = db_trigs[db]
             if trig_name is None:
                 trig_name = trig
-            _, ref_rate, _ = getBinnedTriggerRate(events, trig)
-            event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+            cached_er = _get_event_rates(sim_key, trig)
+            if cached_er is not None:
+                event_rate = cached_er["reflected"]
+                error_rate = cached_er["error_reflected"]
+            else:
+                _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+                event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+                error_rate = getErrorEventRates(ref_rate, events, max_distance)
             event_rate = _apply_energy_mask(event_rate, e_bins, slabel, "reflected")
-            error_rate = getErrorEventRates(ref_rate, events, max_distance)
             error_rate = _apply_energy_mask(error_rate, e_bins, slabel, "reflected")
             rates_for_dbs.append(event_rate)
             errors_for_dbs.append(error_rate)
@@ -1679,19 +2053,24 @@ def generate_sp_event_rate_bands_40dB(loaded, save_folder, max_distance):
     for stype, slabel in [("shallow", "Gen2 Shallow"), ("deep", "Gen2 Deep")]:
         sim_key = SP_REFLECTED_SIMS.get((depth, stype))
         events = loaded.get(sim_key)
-        if events is None:
+        if events is None and not (_PRECOMPUTED and sim_key in _PRECOMPUTED):
             LOGGER.info("Skipping SP %s %s (missing data) for 40dB plot", depth, stype)
             continue
 
-        trig = find_trigger_for_db(events, db_value)
+        trig = _cached_find_trigger_for_db(sim_key, events, db_value)
         if trig is None:
             LOGGER.info("No 40 dB trigger found for SP %s %s, skipping", depth, stype)
             continue
 
-        _, ref_rate, _ = getBinnedTriggerRate(events, trig)
-        event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+        cached_er = _get_event_rates(sim_key, trig)
+        if cached_er is not None:
+            event_rate = cached_er["reflected"]
+            error_rate = cached_er["error_reflected"]
+        else:
+            _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+            event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+            error_rate = getErrorEventRates(ref_rate, events, max_distance)
         event_rate = _apply_energy_mask(event_rate, e_bins, slabel, "reflected")
-        error_rate = getErrorEventRates(ref_rate, events, max_distance)
         error_rate = _apply_energy_mask(error_rate, e_bins, slabel, "reflected")
 
         rate_arrays_per_panel.append(event_rate)
@@ -1731,15 +2110,15 @@ def generate_sp_radii_plots(loaded, save_folder, max_distance):
     for stype, slabel in station_types:
         # Direct trigger from the 300m sim (direct is depth-independent)
         direct_sim = SP_REFLECTED_SIMS.get(("300m", stype))
-        direct_events = loaded.get(direct_sim)
+        direct_events = _ensure_events_loaded(loaded, direct_sim)
         if direct_events is None:
             LOGGER.warning("Missing SP %s 300m data, skipping SP radii panel", stype)
             continue
 
-        panels_data.append((stype, slabel, direct_events))
+        panels_data.append((stype, slabel, direct_events, direct_sim))
         panel_titles.append(slabel)
 
-        dir_trig = find_direct_trigger(direct_events)
+        dir_trig = _cached_find_direct_trigger(direct_sim, direct_events)
         info_texts.append(_build_info("SP", slabel, dir_trig, "300m, 40\u201355 dB"))
 
     if not panels_data:
@@ -1750,11 +2129,11 @@ def generate_sp_radii_plots(loaded, save_folder, max_distance):
     if n == 1:
         axes = [axes]
 
-    for ip, (ax, (stype, slabel, direct_events)) in enumerate(zip(axes, panels_data)):
+    for ip, (ax, (stype, slabel, direct_events, direct_sim)) in enumerate(zip(axes, panels_data)):
         events_list = list(direct_events)
 
         # Direct band
-        dir_trig = find_direct_trigger(direct_events)
+        dir_trig = _cached_find_direct_trigger(direct_sim, direct_events)
         if dir_trig:
             direct_rate, _, _ = getBinnedTriggerRate(events_list, dir_trig)
             setEventListRateWeight(
@@ -1771,12 +2150,12 @@ def generate_sp_radii_plots(loaded, save_folder, max_distance):
         # One band per depth
         for depth in SP_DEPTHS:
             sim_key = SP_REFLECTED_SIMS.get((depth, stype))
-            depth_events = loaded.get(sim_key)
+            depth_events = _ensure_events_loaded(loaded, sim_key)
             if depth_events is None:
                 continue
 
             depth_events_list = list(depth_events)
-            db_trigs = get_all_db_triggers(depth_events_list)
+            db_trigs = _cached_get_all_db_triggers(sim_key, depth_events_list)
             if not db_trigs:
                 continue
 
@@ -1833,21 +2212,24 @@ def generate_mb_radii_plots(loaded, save_folder, max_distance):
     """Plot 5b: MB radii probability density."""
     labels = list(MB_REFLECTED_SIMS.keys())
     sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
-    event_lists = [loaded.get(s) for s in sim_names]
+    event_lists = [_ensure_events_loaded(loaded, s) for s in sim_names]
 
     if any(e is None for e in event_lists):
         LOGGER.warning("Missing MB data, skipping MB radii plots")
         return
 
-    direct_triggers = [find_direct_trigger(e) for e in event_lists]
+    direct_triggers = [_cached_find_direct_trigger(sn, e)
+                       for sn, e in zip(sim_names, event_lists)]
     # Try R-based triggers first, fallback to dB-based
-    r_trigs = [get_all_r_triggers(e) for e in event_lists]
+    r_trigs = [_cached_get_all_r_triggers(sn, e)
+               for sn, e in zip(sim_names, event_lists)]
     if any(rt for rt in r_trigs):
         reflected_triggers = r_trigs
         sweep_labels = MB_R_LABELS
         info_label = "R=0.5\u20131.0"
     else:
-        reflected_triggers = [get_all_db_triggers(e) for e in event_lists]
+        reflected_triggers = [_cached_get_all_db_triggers(sn, e)
+                              for sn, e in zip(sim_names, event_lists)]
         sweep_labels = {0.0: "R=1.0", 1.5: "R=0.7", 3.0: "R=0.5"}
         info_label = "R=0.5\u20131.0"
     info_texts = [_build_info("MB", lab, dt, info_label)
@@ -1865,19 +2247,22 @@ def generate_mb_arrival_angle_plots(loaded, save_folder, max_distance, nu_events
     """MB arrival angle (refracted zenith) density."""
     labels = list(MB_REFLECTED_SIMS.keys())
     sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
-    event_lists = [loaded.get(s) for s in sim_names]
+    event_lists = [_ensure_events_loaded(loaded, s) for s in sim_names]
 
     if any(e is None for e in event_lists):
         LOGGER.warning("Missing MB data, skipping MB arrival angle plots")
         return
 
-    direct_triggers = [find_direct_trigger(e) for e in event_lists]
-    r_trigs = [get_all_r_triggers(e) for e in event_lists]
+    direct_triggers = [_cached_find_direct_trigger(sn, e)
+                       for sn, e in zip(sim_names, event_lists)]
+    r_trigs = [_cached_get_all_r_triggers(sn, e)
+               for sn, e in zip(sim_names, event_lists)]
     if any(rt for rt in r_trigs):
         reflected_triggers = r_trigs
         sweep_labels = MB_R_LABELS
     else:
-        reflected_triggers = [get_all_db_triggers(e) for e in event_lists]
+        reflected_triggers = [_cached_get_all_db_triggers(sn, e)
+                              for sn, e in zip(sim_names, event_lists)]
         sweep_labels = {0.0: "R=1.0", 1.5: "R=0.7", 3.0: "R=0.5"}
     info_texts = [_build_info("MB", lab, dt, "R=0.5\u20131.0")
                   for lab, dt in zip(labels, direct_triggers)]
@@ -1902,14 +2287,16 @@ def generate_sp_arrival_angle_plots(loaded, save_folder, max_distance, nu_events
     """SP arrival angle (refracted zenith) density."""
     labels = ["Gen2 Shallow", "Gen2 Deep"]
     sim_names = [SP_REFLECTED_SIMS[("300m", "shallow")], SP_REFLECTED_SIMS[("300m", "deep")]]
-    event_lists = [loaded.get(s) for s in sim_names]
+    event_lists = [_ensure_events_loaded(loaded, s) for s in sim_names]
 
     if any(e is None for e in event_lists):
         LOGGER.warning("Missing SP 300m data, skipping SP arrival angle plots")
         return
 
-    direct_triggers = [find_direct_trigger(e) for e in event_lists]
-    reflected_db_triggers = [get_all_db_triggers(e) for e in event_lists]
+    direct_triggers = [_cached_find_direct_trigger(sn, e)
+                       for sn, e in zip(sim_names, event_lists)]
+    reflected_db_triggers = [_cached_get_all_db_triggers(sn, e)
+                             for sn, e in zip(sim_names, event_lists)]
     info_texts = [_build_info("SP", lab, dt, "300m, 40\u201355 dB")
                   for lab, dt in zip(labels, direct_triggers)]
 
@@ -1933,19 +2320,22 @@ def generate_mb_polarization_angle_plots(loaded, save_folder, max_distance, nu_e
     """MB polarization angle density."""
     labels = list(MB_REFLECTED_SIMS.keys())
     sim_names = [MB_REFLECTED_SIMS[k] for k in labels]
-    event_lists = [loaded.get(s) for s in sim_names]
+    event_lists = [_ensure_events_loaded(loaded, s) for s in sim_names]
 
     if any(e is None for e in event_lists):
         LOGGER.warning("Missing MB data, skipping MB polarization angle plots")
         return
 
-    direct_triggers = [find_direct_trigger(e) for e in event_lists]
-    r_trigs = [get_all_r_triggers(e) for e in event_lists]
+    direct_triggers = [_cached_find_direct_trigger(sn, e)
+                       for sn, e in zip(sim_names, event_lists)]
+    r_trigs = [_cached_get_all_r_triggers(sn, e)
+               for sn, e in zip(sim_names, event_lists)]
     if any(rt for rt in r_trigs):
         reflected_triggers = r_trigs
         sweep_labels = MB_R_LABELS
     else:
-        reflected_triggers = [get_all_db_triggers(e) for e in event_lists]
+        reflected_triggers = [_cached_get_all_db_triggers(sn, e)
+                              for sn, e in zip(sim_names, event_lists)]
         sweep_labels = {0.0: "R=1.0", 1.5: "R=0.7", 3.0: "R=0.5"}
     info_texts = [_build_info("MB", lab, dt, "R=0.5\u20131.0")
                   for lab, dt in zip(labels, direct_triggers)]
@@ -1970,14 +2360,16 @@ def generate_sp_polarization_angle_plots(loaded, save_folder, max_distance, nu_e
     """SP polarization angle density."""
     labels = ["Gen2 Shallow", "Gen2 Deep"]
     sim_names = [SP_REFLECTED_SIMS[("300m", "shallow")], SP_REFLECTED_SIMS[("300m", "deep")]]
-    event_lists = [loaded.get(s) for s in sim_names]
+    event_lists = [_ensure_events_loaded(loaded, s) for s in sim_names]
 
     if any(e is None for e in event_lists):
         LOGGER.warning("Missing SP 300m data, skipping SP polarization angle plots")
         return
 
-    direct_triggers = [find_direct_trigger(e) for e in event_lists]
-    reflected_db_triggers = [get_all_db_triggers(e) for e in event_lists]
+    direct_triggers = [_cached_find_direct_trigger(sn, e)
+                       for sn, e in zip(sim_names, event_lists)]
+    reflected_db_triggers = [_cached_get_all_db_triggers(sn, e)
+                             for sn, e in zip(sim_names, event_lists)]
     info_texts = [_build_info("SP", lab, dt, "300m, 40\u201355 dB")
                   for lab, dt in zip(labels, direct_triggers)]
 
@@ -2015,7 +2407,12 @@ def main():
                         help="Override save folder from config")
     parser.add_argument("--neutrino-folder", type=str, default=None,
                         help="Folder containing neutrino comparison numpy files")
+    parser.add_argument("--recompute", action="store_true",
+                        help="Force recompute all plot data (ignore cache)")
     args = parser.parse_args()
+
+    global _RECOMPUTE
+    _RECOMPUTE = args.recompute
 
     config = configparser.ConfigParser()
     config.read(args.config)
@@ -2031,23 +2428,49 @@ def main():
 
     max_distance = float(config.get("SIMULATION", "distance_km", fallback="5")) / 2 * units.km
 
-    # Collect all sim names to load (direct rates come from the combined sims)
-    all_sim_names = set()
-    all_sim_names.update(MB_REFLECTED_SIMS.values())
-    all_sim_names.update(SP_REFLECTED_SIMS.values())
+    global _NUMPY_FOLDER
+    _NUMPY_FOLDER = numpy_folder
 
-    ic("Loading simulations from", numpy_folder)
-    loaded = {}
-    for sim_name in sorted(all_sim_names):
-        events = load_combined_events(numpy_folder, sim_name)
-        if events is not None:
-            loaded[sim_name] = events
+    # Compute source fingerprint for cache validation
+    fingerprint = _source_fingerprint(numpy_folder)
+    ic(f"Source fingerprint: {fingerprint}")
 
-    ic(f"Loaded {len(loaded)}/{len(all_sim_names)} simulations")
+    # Install memoized getBinnedTriggerRate (avoids redundant computation within a run)
+    _install_memoized_trigger_rate()
 
-    if not loaded:
-        LOGGER.error("No simulation data found. Check numpy_folder: %s", numpy_folder)
-        return
+    # Try to load precomputed trigger rate data (pure numpy arrays, fast to load)
+    global _PRECOMPUTED
+    precomputed = _load_cache(save_folder, "precomputed_rates", fingerprint)
+    if precomputed is not None:
+        _PRECOMPUTED = precomputed
+        # Build a minimal 'loaded' dict — events will be lazy-loaded if needed
+        loaded = {sim_name: None for sim_name in precomputed if sim_name != "_fingerprint"}
+        ic(f"Using cached precomputed data for {len(loaded)} sims (fast path)")
+        ic("Note: density plots will lazy-load raw events if needed")
+    else:
+        # Load events from disk
+        all_sim_names = set()
+        all_sim_names.update(MB_REFLECTED_SIMS.values())
+        all_sim_names.update(SP_REFLECTED_SIMS.values())
+
+        ic("Loading simulations from", numpy_folder)
+        loaded = {}
+        for sim_name in sorted(all_sim_names):
+            events = load_combined_events(numpy_folder, sim_name)
+            if events is not None:
+                loaded[sim_name] = events
+
+        ic(f"Loaded {len(loaded)}/{len(all_sim_names)} simulations")
+
+        if not loaded:
+            LOGGER.error("No simulation data found. Check numpy_folder: %s", numpy_folder)
+            return
+
+        # Precompute all trigger rates and save to cache
+        ic("Precomputing trigger rates for all sims (one-time cost)...")
+        _PRECOMPUTED = _precompute_all_trigger_rates(loaded, max_distance)
+        _save_cache(save_folder, "precomputed_rates", _PRECOMPUTED, fingerprint)
+        ic("Saved precomputed rate cache for future fast re-runs")
 
     # Load neutrino comparison data if available
     nu_events = None
