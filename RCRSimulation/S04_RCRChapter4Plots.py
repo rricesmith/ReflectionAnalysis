@@ -1153,6 +1153,18 @@ def _compute_polarization_angle_density(
     return _compute_weighted_density(vals, ws, bins)
 
 
+def _density_stats_text(centers: np.ndarray, density: np.ndarray) -> str:
+    """Compute weighted mean ± std from a density histogram and return formatted string."""
+    bin_width = centers[1] - centers[0] if len(centers) > 1 else 1.0
+    total = np.sum(density) * bin_width
+    if total <= 0:
+        return "N/A"
+    mean = np.sum(centers * density * bin_width) / total
+    var = np.sum((centers - mean)**2 * density * bin_width) / total
+    std = np.sqrt(max(var, 0))
+    return f"{mean:.2f} \u00b1 {std:.2f}"
+
+
 def _plot_density_panels(
     event_lists: List[np.ndarray],
     direct_triggers: List[str],
@@ -1168,6 +1180,7 @@ def _plot_density_panels(
     n_bins: int = 15,
     info_texts: Optional[List[str]] = None,
     neutrino_densities: Optional[List[Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]]] = None,
+    annotate_savename: Optional[str] = None,
 ):
     """Generic multi-panel density plot with direct band + reflected band.
 
@@ -1190,6 +1203,7 @@ def _plot_density_panels(
         info_texts: Optional info string per panel (upper-left annotation)
         neutrino_densities: Optional list of (centers, density, error) tuples per panel.
             When provided, overlays the neutrino signal distribution on each panel.
+        annotate_savename: If provided, save a second version with mean±std text annotations.
     """
     n = len(event_lists)
     fig, axes = plt.subplots(1, n, figsize=(5.5 * n, 4.5), sharey=True)
@@ -1198,10 +1212,14 @@ def _plot_density_panels(
 
     e_bins, z_bins = getEnergyZenithBins()
 
+    # Collect stats for optional annotation
+    panel_stats = []  # list of dicts per panel: {"direct": str, "reflected": str}
+
     for ip, (ax, events, dir_trig, db_trigs, title) in enumerate(zip(
         axes, event_lists, direct_triggers, reflected_db_triggers, panel_titles
     )):
         events_list = list(events)
+        stats = {}
 
         # Direct: step histogram outline with ±1sigma shading
         if dir_trig:
@@ -1214,6 +1232,7 @@ def _plot_density_panels(
             ax.fill_between(centers, np.maximum(density - density_err, 0), density + density_err,
                             alpha=0.3, color="black", step="mid")
             ax.step(centers, density, color="black", linewidth=1.5, label="Direct", where="mid")
+            stats["direct"] = _density_stats_text(centers, density)
 
         # Reflected: step histogram band from (min - 1sigma) to (max + 1sigma)
         if db_trigs:
@@ -1253,6 +1272,7 @@ def _plot_density_panels(
                 mean_density = np.mean(all_densities, axis=0)
                 ax.step(centers, mean_density, color="tab:blue", linewidth=1.2,
                         linestyle="--", where="mid")
+                stats["reflected"] = _density_stats_text(centers, mean_density)
 
         # Neutrino overlay
         if neutrino_densities and ip < len(neutrino_densities) and neutrino_densities[ip] is not None:
@@ -1272,14 +1292,37 @@ def _plot_density_panels(
                     fontsize=7, verticalalignment="top", family="monospace",
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
+        panel_stats.append(stats)
+
     axes[0].set_ylabel(ylabel)
-    axes[0].legend(fontsize=7)
+    axes[0].legend(fontsize=7, loc="upper right")
 
     fig.suptitle(suptitle, fontsize=13, y=1.02)
     plt.tight_layout()
     plt.savefig(savename, dpi=150, bbox_inches="tight")
-    plt.close()
     ic(f"Saved: {savename}")
+
+    # Save annotated version with mean ± std text
+    if annotate_savename:
+        stat_artists = []
+        for ip, (ax, stats) in enumerate(zip(axes, panel_stats)):
+            stat_lines = []
+            if "direct" in stats:
+                stat_lines.append(f"Direct: \u03bc = {stats['direct']}")
+            if "reflected" in stats:
+                stat_lines.append(f"Reflected: \u03bc = {stats['reflected']}")
+            if stat_lines:
+                txt = ax.text(0.97, 0.60, "\n".join(stat_lines), transform=ax.transAxes,
+                              fontsize=7, verticalalignment="top", horizontalalignment="right",
+                              family="monospace",
+                              bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.9))
+                stat_artists.append(txt)
+        plt.savefig(annotate_savename, dpi=150, bbox_inches="tight")
+        ic(f"Saved: {annotate_savename}")
+        for txt in stat_artists:
+            txt.remove()
+
+    plt.close()
 
 
 def _plot_density_panels_single(
@@ -1297,6 +1340,7 @@ def _plot_density_panels_single(
     n_bins: int = 15,
     info_texts: Optional[List[str]] = None,
     neutrino_densities: Optional[List[Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]]] = None,
+    annotate_savename: Optional[str] = None,
 ):
     """Multi-panel density plot with a single reflected trigger (line + shading, not band).
 
@@ -1308,10 +1352,13 @@ def _plot_density_panels_single(
     if n == 1:
         axes = [axes]
 
+    panel_stats = []
+
     for ip, (ax, events, dir_trig, ref_trig, title) in enumerate(zip(
         axes, event_lists, direct_triggers, reflected_triggers, panel_titles
     )):
         events_list = list(events)
+        stats = {}
 
         # Direct: step histogram outline with ±1sigma shading
         if dir_trig:
@@ -1324,6 +1371,7 @@ def _plot_density_panels_single(
             ax.fill_between(centers, np.maximum(density - density_err, 0), density + density_err,
                             alpha=0.3, color="black", step="mid")
             ax.step(centers, density, color="black", linewidth=1.5, label="Direct", where="mid")
+            stats["direct"] = _density_stats_text(centers, density)
 
         # Reflected: single trigger, step line + ±1sigma
         if ref_trig:
@@ -1338,6 +1386,7 @@ def _plot_density_panels_single(
                             alpha=0.3, color="tab:blue", step="mid")
             ax.step(centers, density, color="tab:blue", linewidth=1.5,
                     label=reflected_label, where="mid")
+            stats["reflected"] = _density_stats_text(centers, density)
 
         # Neutrino overlay
         if neutrino_densities and ip < len(neutrino_densities) and neutrino_densities[ip] is not None:
@@ -1357,14 +1406,43 @@ def _plot_density_panels_single(
                     fontsize=7, verticalalignment="top", family="monospace",
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
+        panel_stats.append(stats)
+
     axes[0].set_ylabel(ylabel)
-    axes[0].legend(fontsize=7)
+    axes[0].legend(fontsize=7, loc="upper right")
 
     fig.suptitle(suptitle, fontsize=13, y=1.02)
     plt.tight_layout()
     plt.savefig(savename, dpi=150, bbox_inches="tight")
-    plt.close()
     ic(f"Saved: {savename}")
+
+    # Save annotated version with mean ± std text
+    if annotate_savename:
+        stat_artists = []
+        for ip, (ax, stats) in enumerate(zip(axes, panel_stats)):
+            stat_lines = []
+            if "direct" in stats:
+                stat_lines.append(f"Direct: \u03bc = {stats['direct']}")
+            if "reflected" in stats:
+                stat_lines.append(f"Reflected: \u03bc = {stats['reflected']}")
+            if stat_lines:
+                txt = ax.text(0.97, 0.60, "\n".join(stat_lines), transform=ax.transAxes,
+                              fontsize=7, verticalalignment="top", horizontalalignment="right",
+                              family="monospace",
+                              bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.9))
+                stat_artists.append(txt)
+        plt.savefig(annotate_savename, dpi=150, bbox_inches="tight")
+        ic(f"Saved: {annotate_savename}")
+        for txt in stat_artists:
+            txt.remove()
+
+    plt.close()
+
+
+def _annotated_path(savename: str) -> str:
+    """Derive annotated filename by inserting '_annotated' before the extension."""
+    base, ext = os.path.splitext(savename)
+    return f"{base}_annotated{ext}"
 
 
 def plot_radii_density_panels(
@@ -1379,6 +1457,7 @@ def plot_radii_density_panels(
         event_lists, direct_triggers, reflected_db_triggers, panel_titles,
         suptitle, savename, max_distance, radii_density_fn,
         xlabel="Radius (m)", db_labels=db_labels, n_bins=n_bins, info_texts=info_texts,
+        annotate_savename=_annotated_path(savename),
     )
 
 
@@ -1399,6 +1478,7 @@ def plot_arrival_angle_panels(
         suptitle, savename, max_distance, arrival_density_fn,
         xlabel="Arrival Angle (deg)", db_labels=db_labels, n_bins=n_bins,
         info_texts=info_texts, neutrino_densities=neutrino_densities,
+        annotate_savename=_annotated_path(savename),
     )
 
 
@@ -1416,6 +1496,7 @@ def plot_polarization_angle_panels(
         suptitle, savename, max_distance, pol_density_fn,
         xlabel="Polarization Angle (deg)", db_labels=db_labels, n_bins=n_bins,
         info_texts=info_texts, neutrino_densities=neutrino_densities,
+        annotate_savename=_annotated_path(savename),
     )
 
 
@@ -1574,6 +1655,239 @@ def generate_rate_table(
         for panel, min_e in MIN_LOG_ENERGY.items():
             lines.append(f"  {panel} reflected: rates masked below 10^{min_e} eV")
 
+    # ---- Helpers for mean ± 1sigma tables ----
+    def total_direct_rate_with_error(sim_name, events):
+        """Return (rate, stat_error) for direct trigger."""
+        trig = _cached_find_direct_trigger(sim_name, events)
+        if trig is None:
+            return None, None
+        cached_er = _get_event_rates(sim_name, trig)
+        if cached_er is not None:
+            rate_2d = cached_er["direct"]
+            err_2d = cached_er["error_direct"]
+        else:
+            dir_rate, _, _ = getBinnedTriggerRate(events, trig)
+            rate_2d = getEventRate(dir_rate, e_bins, z_bins, max_distance)
+            err_2d = getErrorEventRates(dir_rate, events, max_distance)
+        total_rate = float(np.nansum(rate_2d))
+        total_err = float(np.sqrt(np.nansum(err_2d**2)))
+        return total_rate, total_err
+
+    def total_reflected_rate_with_error_r(sim_name, events, r_val, panel_label=""):
+        """Return (rate, stat_error) for a specific R trigger."""
+        trig = _cached_find_trigger_for_r(sim_name, events, r_val)
+        if trig is None:
+            return None, None
+        cached_er = _get_event_rates(sim_name, trig)
+        if cached_er is not None:
+            rate_2d = cached_er["reflected"]
+            err_2d = cached_er["error_reflected"]
+        else:
+            _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+            rate_2d = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+            err_2d = getErrorEventRates(ref_rate, events, max_distance)
+        rate_2d = _apply_energy_mask(rate_2d, e_bins, panel_label, "reflected")
+        err_2d = _apply_energy_mask(err_2d, e_bins, panel_label, "reflected")
+        return float(np.nansum(rate_2d)), float(np.sqrt(np.nansum(err_2d**2)))
+
+    def total_reflected_rate_with_error_db(sim_name, events, db_val, panel_label=""):
+        """Return (rate, stat_error) for a specific dB trigger."""
+        trig = _cached_find_trigger_for_db(sim_name, events, db_val)
+        if trig is None:
+            return None, None
+        cached_er = _get_event_rates(sim_name, trig)
+        if cached_er is not None:
+            rate_2d = cached_er["reflected"]
+            err_2d = cached_er["error_reflected"]
+        else:
+            _, ref_rate, _ = getBinnedTriggerRate(events, trig)
+            rate_2d = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+            err_2d = getErrorEventRates(ref_rate, events, max_distance)
+        rate_2d = _apply_energy_mask(rate_2d, e_bins, panel_label, "reflected")
+        err_2d = _apply_energy_mask(err_2d, e_bins, panel_label, "reflected")
+        return float(np.nansum(rate_2d)), float(np.sqrt(np.nansum(err_2d**2)))
+
+    def _variant_rate_total(sim_name, events, r_endpoint, variant_tag, label):
+        """Get total rate for an A/B variant trigger at a given R endpoint."""
+        ab_triggers = _cached_get_ab_error_triggers(sim_name, events)
+        trig_v = ab_triggers.get((r_endpoint, variant_tag))
+        if trig_v is None:
+            return None
+        cached_v = _get_event_rates(sim_name, trig_v)
+        if cached_v is not None:
+            er = _apply_energy_mask(cached_v["reflected"], e_bins, label, "reflected")
+        else:
+            _, rr, _ = getBinnedTriggerRate(events, trig_v)
+            er = _apply_energy_mask(
+                getEventRate(rr, e_bins, z_bins, max_distance), e_bins, label, "reflected")
+        return float(np.nansum(er))
+
+    def _mb_reflected_mean_error(sim_name, events, label):
+        """Compute mean ± combined 1sigma for MB reflected across R (or dB) sweep.
+
+        Combined error = sqrt(sigma_spread^2 + sigma_stat_mean^2 + delta_A^2 + delta_B^2)
+        where sigma_spread = std of rates across sweep values,
+              sigma_stat_mean = mean stat error across sweep values.
+        """
+        r_triggers = _cached_get_all_r_triggers(sim_name, events)
+        if r_triggers:
+            r_vals = sorted(r_triggers.keys())
+            rates_and_errors = [total_reflected_rate_with_error_r(sim_name, events, rv, label) for rv in r_vals]
+        else:
+            db_vals = [0.0, 1.5, 3.0]
+            rates_and_errors = [total_reflected_rate_with_error_db(sim_name, events, dv, label) for dv in db_vals]
+
+        rates = [re[0] for re in rates_and_errors if re[0] is not None]
+        stat_errors = [re[1] for re in rates_and_errors if re[1] is not None]
+        if not rates:
+            return None, None
+
+        mean_rate = np.mean(rates)
+        spread = np.std(rates) if len(rates) > 1 else 0.0
+        mean_stat = np.mean(stat_errors) if stat_errors else 0.0
+
+        # A/B errors at endpoints (if R-based)
+        delta_A = 0.0
+        delta_B = 0.0
+        if r_triggers:
+            r_min, r_max = min(r_triggers.keys()), max(r_triggers.keys())
+            # Build lookup: r_val -> nominal_rate
+            r_to_rate = {}
+            for rv, re in zip(sorted(r_triggers.keys()), rates_and_errors):
+                if re[0] is not None:
+                    r_to_rate[rv] = re[0]
+
+            for r_endpoint in [r_min, r_max]:
+                nom_rate = r_to_rate.get(r_endpoint)
+                if nom_rate is None:
+                    continue
+                a_devs = []
+                b_devs = []
+                for vt in ["Ap", "Am"]:
+                    vr = _variant_rate_total(sim_name, events, r_endpoint, vt, label)
+                    if vr is not None:
+                        a_devs.append(abs(vr - nom_rate))
+                for vt in ["Bp", "Bm"]:
+                    vr = _variant_rate_total(sim_name, events, r_endpoint, vt, label)
+                    if vr is not None:
+                        b_devs.append(abs(vr - nom_rate))
+                if a_devs:
+                    delta_A = max(delta_A, max(a_devs))
+                if b_devs:
+                    delta_B = max(delta_B, max(b_devs))
+
+        combined = np.sqrt(spread**2 + mean_stat**2 + delta_A**2 + delta_B**2)
+        return float(mean_rate), float(combined)
+
+    def _sp_reflected_mean_error(sim_name, events, panel_label):
+        """Compute mean ± combined 1sigma for SP reflected across dB sweep.
+
+        Combined error = sqrt(sigma_spread^2 + sigma_stat_mean^2)
+        """
+        rates_and_errors = [total_reflected_rate_with_error_db(sim_name, events, db, panel_label)
+                            for db in SP_DB_VALUES]
+        rates = [re[0] for re in rates_and_errors if re[0] is not None]
+        stat_errors = [re[1] for re in rates_and_errors if re[1] is not None]
+        if not rates:
+            return None, None
+
+        mean_rate = np.mean(rates)
+        spread = np.std(rates) if len(rates) > 1 else 0.0
+        mean_stat = np.mean(stat_errors) if stat_errors else 0.0
+        combined = np.sqrt(spread**2 + mean_stat**2)
+        return float(mean_rate), float(combined)
+
+    def format_mean_err(rate, error):
+        if rate is None:
+            return "N/A"
+        return f"{rate:.3f} +/- {error:.3f}"
+
+    # ---- MB Table (mean ± 1sigma) ----
+    lines.append("")
+    lines.append("")
+    lines.append("MB Event Rates — mean +/- 1sigma (evts/yr)")
+    lines.append("=" * 85)
+    header = f"{'':24s}" + "".join(f"{c:>20s}" for c in mb_col_labels)
+    lines.append(header)
+    lines.append("-" * 85)
+
+    # MB Direct row (mean ± stat)
+    mb_direct_me = []
+    for label in mb_col_labels:
+        sim_name = MB_REFLECTED_SIMS[label]
+        events = loaded.get(sim_name)
+        if events is not None or (_PRECOMPUTED and sim_name in _PRECOMPUTED):
+            r, e = total_direct_rate_with_error(sim_name, events)
+        else:
+            r, e = None, None
+        mb_direct_me.append(format_mean_err(r, e))
+    lines.append(f"{'Direct':24s}" + "".join(f"{v:>20s}" for v in mb_direct_me))
+
+    # MB Reflected row (mean ± combined)
+    mb_refl_me = []
+    for label in mb_col_labels:
+        sim_name = MB_REFLECTED_SIMS[label]
+        events = loaded.get(sim_name)
+        if events is not None or (_PRECOMPUTED and sim_name in _PRECOMPUTED):
+            r, e = _mb_reflected_mean_error(sim_name, events, label)
+        else:
+            r, e = None, None
+        mb_refl_me.append(format_mean_err(r, e))
+    lines.append(f"{'576m (R=0.5-1.0)':24s}" + "".join(f"{v:>20s}" for v in mb_refl_me))
+
+    lines.append("=" * 85)
+    lines.append("")
+
+    # ---- SP Table (mean ± 1sigma) ----
+    lines.append("Gen2 SP Event Rates — mean +/- 1sigma (evts/yr)")
+    lines.append("=" * 65)
+    lines.append(f"{'':24s}{'Shallow':>20s}{'Deep':>20s}")
+    lines.append("-" * 65)
+
+    # SP Direct row (mean ± stat)
+    if shallow_dir is not None or (_PRECOMPUTED and shallow_dir_sim in _PRECOMPUTED):
+        rs, es = total_direct_rate_with_error(shallow_dir_sim, shallow_dir)
+    else:
+        rs, es = None, None
+    if deep_dir is not None or (_PRECOMPUTED and deep_dir_sim in _PRECOMPUTED):
+        rd, ed = total_direct_rate_with_error(deep_dir_sim, deep_dir)
+    else:
+        rd, ed = None, None
+    lines.append(
+        f"{'Direct':24s}{format_mean_err(rs, es):>20s}{format_mean_err(rd, ed):>20s}"
+    )
+
+    # SP Reflected rows per depth (mean ± combined)
+    for depth in SP_DEPTHS:
+        shallow_key = SP_REFLECTED_SIMS.get((depth, "shallow"))
+        deep_key = SP_REFLECTED_SIMS.get((depth, "deep"))
+        shallow_ev = loaded.get(shallow_key)
+        deep_ev = loaded.get(deep_key)
+
+        if shallow_ev is not None or (_PRECOMPUTED and shallow_key in _PRECOMPUTED):
+            rs_m, es_m = _sp_reflected_mean_error(shallow_key, shallow_ev, "Gen2 Shallow")
+        else:
+            rs_m, es_m = None, None
+        if deep_ev is not None or (_PRECOMPUTED and deep_key in _PRECOMPUTED):
+            rd_m, ed_m = _sp_reflected_mean_error(deep_key, deep_ev, "Gen2 Deep")
+        else:
+            rd_m, ed_m = None, None
+
+        row_label = f"{depth} (40-55 dB)"
+        lines.append(
+            f"{row_label:24s}{format_mean_err(rs_m, es_m):>20s}{format_mean_err(rd_m, ed_m):>20s}"
+        )
+
+    lines.append("=" * 65)
+
+    if MIN_LOG_ENERGY:
+        lines.append("")
+        lines.append("Notes:")
+        lines.append("  mean +/- 1sigma tables: error combines spread across sweep values,")
+        lines.append("  mean statistical error, and A/B attenuation uncertainty (MB only)")
+        for panel, min_e in MIN_LOG_ENERGY.items():
+            lines.append(f"  {panel} reflected: rates masked below 10^{min_e} eV")
+
     table_text = "\n".join(lines)
     print(table_text)
 
@@ -1704,9 +2018,12 @@ def generate_mb_error_breakdown_table(
 # Info Text Builder
 # ============================================================================
 
-# Display name overrides for trigger names in plot annotations
+# Display name overrides for trigger names in plot annotations.
+# Keyed by station label — always use these instead of raw trigger names.
 TRIGGER_DISPLAY_NAMES = {
+    "HRA": "LPDA_2of4_4.5sigma",
     "Gen2 Shallow": "LPDA_2of4_100Hz",
+    "Gen2 Deep": "PA_8ch_100Hz",
 }
 
 
@@ -2223,8 +2540,11 @@ def generate_sp_radii_plots(loaded, save_folder, max_distance):
     if n == 1:
         axes = [axes]
 
+    panel_stats = []
+
     for ip, (ax, (stype, slabel, direct_events, direct_sim)) in enumerate(zip(axes, panels_data)):
         events_list = list(direct_events)
+        stats = {}
 
         # Direct band
         dir_trig = _cached_find_direct_trigger(direct_sim, direct_events)
@@ -2240,6 +2560,7 @@ def generate_sp_radii_plots(loaded, save_folder, max_distance):
             ax.fill_between(centers, np.maximum(density - derr, 0), density + derr,
                             alpha=0.3, color="black", step="mid")
             ax.step(centers, density, color="black", linewidth=1.5, label="Direct", where="mid")
+            stats["direct"] = _density_stats_text(centers, density)
 
         # One band per depth
         for depth in SP_DEPTHS:
@@ -2287,6 +2608,7 @@ def generate_sp_radii_plots(loaded, save_folder, max_distance):
                 mean_density = np.mean(all_densities, axis=0)
                 ax.step(centers, mean_density, color=color, linewidth=1.2,
                         linestyle="--", where="mid")
+                stats["reflected"] = _density_stats_text(centers, mean_density)
 
         ax.set_xlabel("Radius (m)")
         ax.set_title(slabel, fontsize=10)
@@ -2296,14 +2618,37 @@ def generate_sp_radii_plots(loaded, save_folder, max_distance):
                     fontsize=7, verticalalignment="top", family="monospace",
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
+        panel_stats.append(stats)
+
     axes[0].set_ylabel("Probability Density")
-    axes[0].legend(fontsize=7)
+    axes[0].legend(fontsize=7, loc="upper right")
     fig.suptitle("SP Radii Distribution \u2014 300m", fontsize=13, y=1.02)
     plt.tight_layout()
     savename = os.path.join(save_folder, "sp_radii_density.png")
     plt.savefig(savename, dpi=150, bbox_inches="tight")
-    plt.close()
     ic(f"Saved: {savename}")
+
+    # Annotated version
+    stat_artists = []
+    for ip, (ax, stats) in enumerate(zip(axes, panel_stats)):
+        stat_lines = []
+        if "direct" in stats:
+            stat_lines.append(f"Direct: \u03bc = {stats['direct']}")
+        if "reflected" in stats:
+            stat_lines.append(f"Reflected: \u03bc = {stats['reflected']}")
+        if stat_lines:
+            txt = ax.text(0.97, 0.60, "\n".join(stat_lines), transform=ax.transAxes,
+                          fontsize=7, verticalalignment="top", horizontalalignment="right",
+                          family="monospace",
+                          bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.9))
+            stat_artists.append(txt)
+    ann_savename = _annotated_path(savename)
+    plt.savefig(ann_savename, dpi=150, bbox_inches="tight")
+    ic(f"Saved: {ann_savename}")
+    for txt in stat_artists:
+        txt.remove()
+
+    plt.close()
 
 
 def generate_mb_radii_plots(loaded, save_folder, max_distance):
@@ -2507,12 +2852,14 @@ def _generate_single_density(
         nu_densities = _build_neutrino_densities(
             nu_events[nu_events_key], labels, nu_density_fn, bins_nu)
 
+    full_savename = os.path.join(save_folder, savename_base)
     _plot_density_panels_single(
         event_lists, direct_triggers, reflected_triggers, labels,
-        suptitle=suptitle_base, savename=os.path.join(save_folder, savename_base),
+        suptitle=suptitle_base, savename=full_savename,
         max_distance=max_distance, density_fn=density_fn, xlabel=xlabel,
         reflected_label=reflected_label, n_bins=n_bins, info_texts=info_texts,
         neutrino_densities=nu_densities,
+        annotate_savename=_annotated_path(full_savename),
     )
 
 
