@@ -84,6 +84,29 @@ SP_DB_VALUES = [40.0, 45.0, 50.0, 55.0]
 # Index of refraction for Snell's law (air → ice)
 N_ICE = 1.78
 
+# Energy mask: minimum log10(E/eV) for specific panels (reduces noise in low-stats regions)
+# Applied to Gen2 Deep reflected at MB and SP
+MIN_LOG_ENERGY = {"Gen2 Deep": 18.5}
+
+
+def _apply_energy_mask(rate_array: np.ndarray, e_bins: np.ndarray, panel_label: str,
+                       rate_type: str = "reflected") -> np.ndarray:
+    """Zero out energy bins below the minimum for panels that need masking.
+
+    Only applies to reflected rate_type and panels listed in MIN_LOG_ENERGY.
+    Returns a copy with low-energy bins zeroed.
+    """
+    if rate_type != "reflected" or panel_label not in MIN_LOG_ENERGY:
+        return rate_array
+    min_log_e = MIN_LOG_ENERGY[panel_label]
+    e_log = np.log10(np.array(e_bins) / units.eV)
+    # e_log has len(e_bins) edges; rate_array has len(e_bins)-1 rows
+    # Bin i spans e_log[i] to e_log[i+1]; mask if bin center < min_log_e
+    e_centers = (e_log[:-1] + e_log[1:]) / 2
+    masked = rate_array.copy()
+    masked[e_centers < min_log_e] = 0
+    return masked
+
 
 # ============================================================================
 # Data Loading Utilities
@@ -361,11 +384,15 @@ def plot_trigger_rate_panels(
     axes[0].set_ylabel("cos(zenith)")
     for ax in axes[1:]:
         ax.set_ylabel("")
+    # Set y-axis ticks at 0.25 spacing to match zenith bins
+    for ax in axes:
+        ax.set_yticks(np.arange(0, 1.01, 0.25))
 
     fig.suptitle(suptitle, fontsize=13, y=1.02)
 
     if im is not None:
-        fig.colorbar(im, ax=axes[-1], label="Trigger Rate", shrink=0.8, pad=0.08)
+        # Attach colorbar to all axes so all panels share equal width
+        fig.colorbar(im, ax=list(axes), label="Trigger Rate", shrink=0.8, pad=0.04)
 
     plt.tight_layout()
     plt.savefig(savename, dpi=150, bbox_inches="tight")
@@ -411,10 +438,11 @@ def plot_event_rate_panels(
 
     all_rates = []
     panel_data = []
-    for events, trig in zip(event_lists, trigger_names):
+    for events, trig, ptitle in zip(event_lists, trigger_names, panel_titles):
         direct_rate, reflected_rate, _ = getBinnedTriggerRate(events, trig)
         trig_rate = reflected_rate if rate_type == "reflected" else direct_rate
         event_rate = getEventRate(trig_rate, e_bins, z_bins, max_distance)
+        event_rate = _apply_energy_mask(event_rate, e_bins, ptitle, rate_type)
         panel_data.append(event_rate)
         nonzero = event_rate[event_rate > 0]
         if nonzero.size > 0:
@@ -451,11 +479,13 @@ def plot_event_rate_panels(
     axes[0].set_ylabel("cos(zenith)")
     for ax in axes[1:]:
         ax.set_ylabel("")
+    for ax in axes:
+        ax.set_yticks(np.arange(0, 1.01, 0.25))
 
     fig.suptitle(suptitle, fontsize=13, y=1.02)
 
     if im is not None:
-        fig.colorbar(im, ax=axes[-1], label="Event Rate (evts/yr)", shrink=0.8, pad=0.08)
+        fig.colorbar(im, ax=list(axes), label="Event Rate (evts/yr)", shrink=0.8, pad=0.04)
 
     plt.tight_layout()
     plt.savefig(savename, dpi=150, bbox_inches="tight")
@@ -1007,20 +1037,22 @@ def generate_rate_table(
     """
     e_bins, z_bins = getEnergyZenithBins()
 
-    def total_reflected_rate_db(events, db_val):
+    def total_reflected_rate_db(events, db_val, panel_label=""):
         trig = find_trigger_for_db(events, db_val)
         if trig is None:
             return None
         _, ref_rate, _ = getBinnedTriggerRate(events, trig)
         event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+        event_rate = _apply_energy_mask(event_rate, e_bins, panel_label, "reflected")
         return float(np.nansum(event_rate))
 
-    def total_reflected_rate_r(events, r_val):
+    def total_reflected_rate_r(events, r_val, panel_label=""):
         trig = find_trigger_for_r(events, r_val)
         if trig is None:
             return None
         _, ref_rate, _ = getBinnedTriggerRate(events, trig)
         event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+        event_rate = _apply_energy_mask(event_rate, e_bins, panel_label, "reflected")
         return float(np.nansum(event_rate))
 
     def total_direct_rate(events):
@@ -1072,12 +1104,12 @@ def generate_rate_table(
             r_triggers = get_all_r_triggers(events)
             if r_triggers:
                 for r_val in sorted(r_triggers.keys()):
-                    r = total_reflected_rate_r(events, r_val)
+                    r = total_reflected_rate_r(events, r_val, panel_label=label)
                     rates.append(r)
             else:
                 # Fallback to dB-based triggers
                 for db in [0.0, 1.5, 3.0]:
-                    r = total_reflected_rate_db(events, db)
+                    r = total_reflected_rate_db(events, db, panel_label=label)
                     rates.append(r)
         mb_refl_vals.append(format_range(rates))
     lines.append(f"{'576m (R=0.5-1.0)':24s}" + "".join(f"{v:>15s}" for v in mb_refl_vals))
@@ -1111,8 +1143,8 @@ def generate_rate_table(
         deep_rates = []
 
         for db in SP_DB_VALUES:
-            rs = total_reflected_rate_db(shallow_events, db) if shallow_events is not None else None
-            rd = total_reflected_rate_db(deep_events, db) if deep_events is not None else None
+            rs = total_reflected_rate_db(shallow_events, db, panel_label="Gen2 Shallow") if shallow_events is not None else None
+            rd = total_reflected_rate_db(deep_events, db, panel_label="Gen2 Deep") if deep_events is not None else None
             shallow_rates.append(rs)
             deep_rates.append(rd)
 
@@ -1122,6 +1154,121 @@ def generate_rate_table(
         )
 
     lines.append("=" * 55)
+
+    if MIN_LOG_ENERGY:
+        lines.append("")
+        lines.append("Notes:")
+        for panel, min_e in MIN_LOG_ENERGY.items():
+            lines.append(f"  {panel} reflected: rates masked below 10^{min_e} eV")
+
+    table_text = "\n".join(lines)
+    print(table_text)
+
+    with open(savename, "w") as f:
+        f.write(table_text + "\n")
+    ic(f"Saved: {savename}")
+
+
+def generate_mb_error_breakdown_table(
+    loaded: Dict[str, np.ndarray],
+    max_distance: float,
+    savename: str,
+):
+    """Generate detailed MB error breakdown table showing each error component.
+
+    For each MB sim and R value, shows: rate, stat error, δ_A, δ_B, combined error.
+    At the end, shows the final reported rate as "rate ± combined_error" at each R endpoint.
+    """
+    e_bins, z_bins = getEnergyZenithBins()
+    lines = []
+    lines.append("MB Error Breakdown (evts/yr)")
+    lines.append("=" * 100)
+
+    for label in MB_REFLECTED_SIMS:
+        sim_name = MB_REFLECTED_SIMS[label]
+        events = loaded.get(sim_name)
+        if events is None:
+            continue
+
+        events_list = list(events)
+        r_triggers = get_all_r_triggers(events_list)
+        if not r_triggers:
+            lines.append(f"\n{label}: No R-based triggers found (dB-based data, no A/B breakdown)")
+            continue
+
+        lines.append(f"\n{label}")
+        lines.append("-" * 100)
+        lines.append(f"{'R':>6s}  {'Rate':>10s}  {'σ_stat':>10s}  {'δ_A':>10s}  {'δ_B':>10s}  {'σ_comb':>10s}  {'Rate ± σ':>22s}")
+        lines.append("-" * 100)
+
+        r_vals = sorted(r_triggers.keys())
+        r_min = min(r_vals)
+        r_max = max(r_vals)
+        ab_triggers = get_ab_error_triggers(events_list)
+
+        for r_val in r_vals:
+            trig = r_triggers[r_val]
+            _, ref_rate, _ = getBinnedTriggerRate(events_list, trig)
+            event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+            event_rate = _apply_energy_mask(event_rate, e_bins, label, "reflected")
+            stat_error = getErrorEventRates(ref_rate, events_list, max_distance)
+            stat_error = _apply_energy_mask(stat_error, e_bins, label, "reflected")
+
+            total_rate = float(np.nansum(event_rate))
+            total_stat = float(np.sqrt(np.nansum(stat_error**2)))
+
+            # A/B breakdown only at endpoints
+            delta_A_total = 0.0
+            delta_B_total = 0.0
+            if abs(r_val - r_max) < 0.005 or abs(r_val - r_min) < 0.005:
+                # Compute per-variant rates
+                def _variant_total(variant_tag):
+                    trig_v = ab_triggers.get((r_val, variant_tag))
+                    if trig_v is None:
+                        return None
+                    _, rr, _ = getBinnedTriggerRate(events_list, trig_v)
+                    er = getEventRate(rr, e_bins, z_bins, max_distance)
+                    er = _apply_energy_mask(er, e_bins, label, "reflected")
+                    return float(np.nansum(er))
+
+                rate_Ap = _variant_total("Ap")
+                rate_Am = _variant_total("Am")
+                rate_Bp = _variant_total("Bp")
+                rate_Bm = _variant_total("Bm")
+
+                a_devs = [abs(r - total_rate) for r in [rate_Ap, rate_Am] if r is not None]
+                b_devs = [abs(r - total_rate) for r in [rate_Bp, rate_Bm] if r is not None]
+                delta_A_total = max(a_devs) if a_devs else 0.0
+                delta_B_total = max(b_devs) if b_devs else 0.0
+
+            combined = np.sqrt(total_stat**2 + delta_A_total**2 + delta_B_total**2)
+
+            # Format the row
+            if delta_A_total > 0 or delta_B_total > 0:
+                lines.append(
+                    f"{r_val:6.2f}  {total_rate:10.4f}  {total_stat:10.4f}  "
+                    f"{delta_A_total:10.4f}  {delta_B_total:10.4f}  {combined:10.4f}  "
+                    f"{total_rate:8.4f} ± {combined:.4f}"
+                )
+            else:
+                lines.append(
+                    f"{r_val:6.2f}  {total_rate:10.4f}  {total_stat:10.4f}  "
+                    f"{'--':>10s}  {'--':>10s}  {total_stat:10.4f}  "
+                    f"{total_rate:8.4f} ± {total_stat:.4f}"
+                )
+
+        lines.append("")
+
+    lines.append("=" * 100)
+    lines.append("Notes:")
+    lines.append("  σ_stat  = Poisson statistical error (sqrt of weighted counts)")
+    lines.append("  δ_A     = max |rate(A±σ) - rate(nom)| at R endpoints; A = 460 ± 20 m")
+    lines.append("  δ_B     = max |rate(B±σ) - rate(nom)| at R endpoints; B = 180 ± 40 m/GHz")
+    lines.append("  σ_comb  = sqrt(σ_stat² + δ_A² + δ_B²)")
+    lines.append("  '--' indicates middle R values where only stat error is computed")
+    if MIN_LOG_ENERGY:
+        for panel, min_e in MIN_LOG_ENERGY.items():
+            lines.append(f"  {panel}: rates masked below 10^{min_e} eV")
 
     table_text = "\n".join(lines)
     print(table_text)
@@ -1391,12 +1538,15 @@ def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
                     trig_name = trig
                 _, ref_rate, _ = getBinnedTriggerRate(events, trig)
                 event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+                event_rate = _apply_energy_mask(event_rate, e_bins, label, "reflected")
                 stat_error = getErrorEventRates(ref_rate, events, max_distance)
+                stat_error = _apply_energy_mask(stat_error, e_bins, label, "reflected")
 
                 # Compute combined error at R endpoints (A/B + stat), stat-only for middle
                 if abs(r_val - r_max) < 0.005 or abs(r_val - r_min) < 0.005:
                     combined_error = _compute_ab_combined_error(
                         events, event_rate, r_val, stat_error, e_bins, z_bins, max_distance)
+                    combined_error = _apply_energy_mask(combined_error, e_bins, label, "reflected")
                 else:
                     combined_error = stat_error
 
@@ -1431,7 +1581,9 @@ def generate_mb_event_rate_bands(loaded, save_folder, max_distance):
                     trig_name = trig
                 _, ref_rate, _ = getBinnedTriggerRate(events, trig)
                 event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+                event_rate = _apply_energy_mask(event_rate, e_bins, label, "reflected")
                 error_rate = getErrorEventRates(ref_rate, events, max_distance)
+                error_rate = _apply_energy_mask(error_rate, e_bins, label, "reflected")
                 rates_for_dbs.append(event_rate)
                 errors_for_dbs.append(error_rate)
 
@@ -1485,7 +1637,9 @@ def generate_sp_event_rate_bands(loaded, save_folder, max_distance):
                 trig_name = trig
             _, ref_rate, _ = getBinnedTriggerRate(events, trig)
             event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+            event_rate = _apply_energy_mask(event_rate, e_bins, slabel, "reflected")
             error_rate = getErrorEventRates(ref_rate, events, max_distance)
+            error_rate = _apply_energy_mask(error_rate, e_bins, slabel, "reflected")
             rates_for_dbs.append(event_rate)
             errors_for_dbs.append(error_rate)
 
@@ -1536,7 +1690,9 @@ def generate_sp_event_rate_bands_40dB(loaded, save_folder, max_distance):
 
         _, ref_rate, _ = getBinnedTriggerRate(events, trig)
         event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+        event_rate = _apply_energy_mask(event_rate, e_bins, slabel, "reflected")
         error_rate = getErrorEventRates(ref_rate, events, max_distance)
+        error_rate = _apply_energy_mask(error_rate, e_bins, slabel, "reflected")
 
         rate_arrays_per_panel.append(event_rate)
         error_arrays_per_panel.append(error_rate)
@@ -1920,6 +2076,9 @@ def main():
         ("SP polarization angle", lambda: generate_sp_polarization_angle_plots(loaded, save_folder, max_distance, nu_events)),
         ("Rate table", lambda: generate_rate_table(
             loaded, max_distance, os.path.join(save_folder, "rate_table.txt"),
+        )),
+        ("MB error breakdown", lambda: generate_mb_error_breakdown_table(
+            loaded, max_distance, os.path.join(save_folder, "mb_error_breakdown.txt"),
         )),
     ]
 
