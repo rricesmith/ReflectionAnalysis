@@ -667,7 +667,7 @@ def plot_trigger_rate_panels(
                 facecolors="none", edgecolors="black", s=20, linewidths=0.5,
             )
         ax.set_title(title, fontsize=10)
-        ax.set_xlabel("log$_{10}$(E/eV)")
+        ax.set_xlabel(r"log$_{10}$(E$_{\mathrm{CR}}$/eV)")
 
         if info_texts and ip < len(info_texts):
             ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
@@ -778,7 +778,7 @@ def plot_event_rate_panels(
                 facecolors="none", edgecolors="black", s=20, linewidths=0.5,
             )
         ax.set_title(title, fontsize=10)
-        ax.set_xlabel("log$_{10}$(E/eV)")
+        ax.set_xlabel(r"log$_{10}$(E$_{\mathrm{CR}}$/eV)")
 
         if info_texts and ip < len(info_texts):
             ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
@@ -794,7 +794,7 @@ def plot_event_rate_panels(
     fig.suptitle(suptitle, fontsize=13)
 
     if im is not None:
-        fig.colorbar(im, cax=cax, label="Event Rate (evts/yr)")
+        fig.colorbar(im, cax=cax, label="Event Rate (evts/station/yr)")
     else:
         cax.set_visible(False)
 
@@ -834,8 +834,8 @@ def plot_event_rate_bands(
         axes = [axes]
 
     e_bins, z_bins = getEnergyZenithBins()
-    energy_centers = (np.array(e_bins[:-1]) + np.array(e_bins[1:])) / 2
-    x_vals = np.log10(energy_centers / units.eV)
+    log_e_edges = np.log10(np.array(e_bins) / units.eV)
+    x_vals = (log_e_edges[:-1] + log_e_edges[1:]) / 2
     n_zenith = len(z_bins) - 1
     colors = plt.cm.rainbow(np.linspace(0, 1, n_zenith))
 
@@ -882,7 +882,7 @@ def plot_event_rate_bands(
         data_x_mask |= (hi_total > 0)
 
         ax.set_yscale("log")
-        ax.set_xlabel("log$_{10}$(E/eV)")
+        ax.set_xlabel(r"log$_{10}$(E$_{\mathrm{CR}}$/eV)")
         ax.set_title(title, fontsize=10)
 
         # Info text annotation
@@ -904,7 +904,7 @@ def plot_event_rate_bands(
         ax.set_ylim(bottom=1e-3, top=y_top)
         ax.set_xlim(x_lo, x_hi)
 
-    axes[0].set_ylabel("Event Rate (evts/yr)")
+    axes[0].set_ylabel("Event Rate (evts/station/yr)")
     axes[0].legend(fontsize=7, loc="lower left")
 
     fig.suptitle(suptitle, fontsize=13, y=1.02)
@@ -941,8 +941,8 @@ def plot_event_rate_bands_single_db(
         axes = [axes]
 
     e_bins, z_bins = getEnergyZenithBins()
-    energy_centers = (np.array(e_bins[:-1]) + np.array(e_bins[1:])) / 2
-    x_vals = np.log10(energy_centers / units.eV)
+    log_e_edges = np.log10(np.array(e_bins) / units.eV)
+    x_vals = (log_e_edges[:-1] + log_e_edges[1:]) / 2
     n_zenith = len(z_bins) - 1
     colors = plt.cm.rainbow(np.linspace(0, 1, n_zenith))
 
@@ -988,7 +988,7 @@ def plot_event_rate_bands_single_db(
         data_x_mask |= (hi_total > 0)
 
         ax.set_yscale("log")
-        ax.set_xlabel("log$_{10}$(E/eV)")
+        ax.set_xlabel(r"log$_{10}$(E$_{\mathrm{CR}}$/eV)")
         ax.set_title(title, fontsize=10)
 
         if info_texts and ip < len(info_texts):
@@ -1008,7 +1008,7 @@ def plot_event_rate_bands_single_db(
         ax.set_ylim(bottom=1e-3, top=y_top)
         ax.set_xlim(x_lo, x_hi)
 
-    axes[0].set_ylabel("Event Rate (evts/yr)")
+    axes[0].set_ylabel("Event Rate (evts/station/yr)")
     axes[0].legend(fontsize=7, loc="lower left")
 
     fig.suptitle(suptitle, fontsize=13, y=1.02)
@@ -1569,7 +1569,7 @@ def generate_rate_table(
     lines = []
 
     # ---- MB Table ----
-    lines.append("MB Event Rates (evts/yr)")
+    lines.append("MB Event Rates (evts/station/yr)")
     lines.append("=" * 70)
     mb_col_labels = list(MB_REFLECTED_SIMS.keys())  # HRA, Gen2 Shallow, Gen2 Deep
     header = f"{'':24s}" + "".join(f"{c:>15s}" for c in mb_col_labels)
@@ -1610,7 +1610,7 @@ def generate_rate_table(
     lines.append("")
 
     # ---- SP Table ----
-    lines.append("Gen2 SP Event Rates (evts/yr)")
+    lines.append("Gen2 SP Event Rates (evts/station/yr)")
     lines.append("=" * 55)
     lines.append(f"{'':24s}{'Shallow':>15s}{'Deep':>15s}")
     lines.append("-" * 55)
@@ -1805,7 +1805,7 @@ def generate_rate_table(
     # ---- MB Table (mean ± 1sigma) ----
     lines.append("")
     lines.append("")
-    lines.append("MB Event Rates — mean +/- 1sigma (evts/yr)")
+    lines.append("MB Event Rates — mean +/- 1sigma (evts/station/yr)")
     lines.append("=" * 85)
     header = f"{'':24s}" + "".join(f"{c:>20s}" for c in mb_col_labels)
     lines.append(header)
@@ -1839,7 +1839,7 @@ def generate_rate_table(
     lines.append("")
 
     # ---- SP Table (mean ± 1sigma) ----
-    lines.append("Gen2 SP Event Rates — mean +/- 1sigma (evts/yr)")
+    lines.append("Gen2 SP Event Rates — mean +/- 1sigma (evts/station/yr)")
     lines.append("=" * 65)
     lines.append(f"{'':24s}{'Shallow':>20s}{'Deep':>20s}")
     lines.append("-" * 65)
@@ -1908,7 +1908,7 @@ def generate_mb_error_breakdown_table(
     """
     e_bins, z_bins = getEnergyZenithBins()
     lines = []
-    lines.append("MB Error Breakdown (evts/yr)")
+    lines.append("MB Error Breakdown (evts/station/yr)")
     lines.append("=" * 100)
 
     for label in MB_REFLECTED_SIMS:

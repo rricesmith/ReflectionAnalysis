@@ -14,18 +14,19 @@ computes:
 
 Uses the 0.15 chi-diff pre-filter on BL sim (matching S01).
 
-Simulation weights are rescaled so that total sum matches the known livetime-scaled
-expected event counts from HRAAnalysis (RCR: 22.058, BL: 560.107). Each event's weight
-is proportional to its original internal weight, preserving the relative distribution.
+Simulation weights are assigned on a bin-by-bin basis using event rates from the
+RCRSimulation (S04) for MB HRA. Each energy-zenith bin's expected events (rate x livetime)
+are evenly distributed across the sim events in that bin. The reflected rate uses the
+R-value sweep (R=0.5-1.0) to produce high/low bands for cumulative distribution plots.
 
 Output:
-  - Distribution plots: for each cut parameter, apply all OTHER cuts, then histogram
-    by the parameter. Sim as weighted step histograms, data as line+points at bin
-    centers. Allows direct visual comparison of expected vs observed events per bin.
-  - Additional log-scale variant for chi_rcr_flat
+  - Distribution plots: histogram per cut parameter (all other cuts applied)
+  - Cumulative distribution plots: events passing as function of cut threshold,
+    with shaded bands from R-value sweep
   - Extended-range chi_diff distributions
-  - Full-range debug distribution (no cuts, verifies bin sums = known totals)
+  - Full-range debug distribution (no cuts, verifies bin sums)
   - Summary table with expected event counts at nominal cuts
+  - Events passing table: detailed scan of each cut parameter
   - All saved to ErrorAnalysis/plots/
 """
 
@@ -33,6 +34,7 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
+import copy
 import numpy as np
 import matplotlib.pyplot as plt
 import configparser
@@ -43,35 +45,109 @@ import pickle
 from datetime import datetime
 from icecream import ic
 
+from NuRadioReco.utilities import units
 from HRAStationDataAnalysis.C_utils import getTimeEventMasks
 from HRASimulation.HRAEventObject import HRAevent
+from RCRSimulation.RCRAnalysis import (
+    getEnergyZenithBins, getEventRate, getErrorEventRates,
+    getBinnedTriggerRate, get_all_r_triggers,
+)
+from RCRSimulation.S04_RCRChapter4Plots import load_combined_events, MB_REFLECTED_SIMS
 
 
 # ============================================================================
-# Known Expected Event Totals (livetime-scaled, from HRAAnalysis)
+# Livetime and S04 Event Rate Loading
 # ============================================================================
-# These are the trusted total expected events across all stations and livetimes.
-# Sim weights are rescaled so that sum(weights) matches these values exactly,
-# preserving the relative weight distribution across events.
-KNOWN_RCR_TOTAL = 22.05815658
-KNOWN_RCR_ERROR = 2.320078714
-KNOWN_BL_TOTAL = 560.1066252
-KNOWN_BL_ERROR = 35.21137122
+LIVETIME_YEARS = 11.7  # Total livetime in years for MB HRA stations
 
 
-def rescale_weights(sim_data, known_total):
+def load_s04_event_rates(numpy_folder, max_distance):
     """
-    Rescale event weights so their sum equals the known total expected events.
-    new_w_i = (w_i / sum(w)) * known_total
-    Preserves relative weight distribution across events.
+    Load the HRA MB reflected simulation (same as S04) and compute
+    event rate 2D arrays (shape n_e x n_z) for each R value.
+
+    Returns
+    -------
+    reflected_rates : dict
+        {r_value: event_rate_2d} for reflected pathway (evts/station/yr)
+    direct_rate : np.ndarray
+        Direct event rate 2D array (evts/station/yr), R-independent
+    e_bins, z_bins : np.ndarray
+        Energy and zenith bin edges (NuRadioReco units)
     """
-    raw_sum = np.sum(sim_data['weights'])
-    if raw_sum > 0:
-        scale = known_total / raw_sum
-        sim_data['weights'] = sim_data['weights'] * scale
-        ic(f"Rescaled weights: raw_sum={raw_sum:.4f} -> new_sum={np.sum(sim_data['weights']):.4f} (scale={scale:.4f})")
-    else:
-        ic("Warning: raw weight sum is 0, cannot rescale.")
+    sim_name = MB_REFLECTED_SIMS["HRA"]  # "HRA_MB_576m"
+    events = load_combined_events(numpy_folder, sim_name)
+    if events is None:
+        raise FileNotFoundError(f"Could not load RCR simulation: {sim_name} from {numpy_folder}")
+
+    e_bins, z_bins = getEnergyZenithBins()
+    events_list = list(events)
+
+    # Find R-based triggers
+    r_triggers = get_all_r_triggers(events_list)
+    if not r_triggers:
+        raise RuntimeError(f"No R-based triggers found in {sim_name}")
+
+    ic(f"Found R triggers: {sorted(r_triggers.keys())}")
+
+    reflected_rates = {}
+    direct_rate = None
+    for r_val, trig_name in sorted(r_triggers.items()):
+        dir_rate, ref_rate, _ = getBinnedTriggerRate(events_list, trig_name)
+        reflected_event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
+        reflected_rates[r_val] = reflected_event_rate
+
+        # Direct rate is R-independent; compute once
+        if direct_rate is None:
+            direct_rate = getEventRate(dir_rate, e_bins, z_bins, max_distance)
+
+    ic(f"Loaded event rates for {len(reflected_rates)} R values")
+    return reflected_rates, direct_rate, e_bins, z_bins
+
+
+def assign_binned_weights(sim_data, events_per_bin, e_bins, z_bins, label=""):
+    """
+    Assign weights to sim events based on their energy-zenith bin.
+    For each bin: weight = events_per_bin[i,j] / n_sim_events_in_bin[i,j]
+
+    Parameters
+    ----------
+    sim_data : dict with 'energy', 'zenith', 'weights' arrays
+    events_per_bin : np.ndarray shape (n_e, n_z), expected events per bin
+    e_bins, z_bins : bin edges from getEnergyZenithBins()
+    label : str for logging
+    """
+    energies = sim_data['energy']
+    zeniths = sim_data['zenith']
+    n_events = len(energies)
+
+    n_e = len(e_bins) - 1
+    n_z = len(z_bins) - 1
+
+    # Assign each event to an energy-zenith bin
+    e_indices = np.digitize(energies, e_bins) - 1
+    z_indices = np.digitize(zeniths, z_bins) - 1
+
+    # Count sim events per bin
+    counts_per_bin = np.zeros((n_e, n_z), dtype=int)
+    for k in range(n_events):
+        ei, zi = int(e_indices[k]), int(z_indices[k])
+        if 0 <= ei < n_e and 0 <= zi < n_z:
+            counts_per_bin[ei, zi] += 1
+
+    # Assign weights: evenly distribute expected events across sim events in each bin
+    new_weights = np.zeros(n_events)
+    for k in range(n_events):
+        ei, zi = int(e_indices[k]), int(z_indices[k])
+        if 0 <= ei < n_e and 0 <= zi < n_z and counts_per_bin[ei, zi] > 0:
+            new_weights[k] = events_per_bin[ei, zi] / counts_per_bin[ei, zi]
+
+    sim_data['weights'] = new_weights
+
+    # Log diagnostics
+    n_empty = np.sum((events_per_bin > 0) & (counts_per_bin == 0))
+    ic(f"{label}: Total weighted events = {np.sum(new_weights):.4f}, "
+       f"bins with expected>0 but 0 sim events: {n_empty}")
 
 
 # ============================================================================
@@ -133,8 +209,8 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name,
         If True, removes BL sim events where (ChiRCR - Chi2016) > 0.15 (matching S01).
         If False, keeps all events for worst-case background estimate.
     """
-    direct_data = {'snr': [], 'Chi2016': [], 'ChiRCR': [], 'weights': []}
-    reflected_data = {'snr': [], 'Chi2016': [], 'ChiRCR': [], 'weights': []}
+    direct_data = {'snr': [], 'Chi2016': [], 'ChiRCR': [], 'weights': [], 'energy': [], 'zenith': []}
+    reflected_data = {'snr': [], 'Chi2016': [], 'ChiRCR': [], 'weights': [], 'energy': [], 'zenith': []}
 
     for event in HRAeventList:
         direct_weight = event.getWeight(direct_weight_name, primary=True, sigma=sigma)
@@ -149,6 +225,8 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name,
                         direct_data['Chi2016'].append(chi_dict.get('Chi2016', np.nan))
                         direct_data['ChiRCR'].append(chi_dict.get('ChiRCR', np.nan))
                         direct_data['weights'].append(split_weight)
+                        direct_data['energy'].append(event.energy)
+                        direct_data['zenith'].append(event.zenith)
 
         reflected_weight = event.getWeight(reflected_weight_name, primary=True, sigma=sigma)
         if not np.isnan(reflected_weight) and reflected_weight > 0:
@@ -162,6 +240,8 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name,
                         reflected_data['Chi2016'].append(chi_dict.get('Chi2016', np.nan))
                         reflected_data['ChiRCR'].append(chi_dict.get('ChiRCR', np.nan))
                         reflected_data['weights'].append(split_weight)
+                        reflected_data['energy'].append(event.energy)
+                        reflected_data['zenith'].append(event.zenith)
 
     for data_dict in [direct_data, reflected_data]:
         for key in data_dict:
@@ -464,9 +544,9 @@ def print_summary_table(nominal_cuts, sim_direct, sim_reflected,
         f"  Summary Table: {label}",
         f"{'='*85}",
         f"",
-        f"  Known Totals (from HRAAnalysis):",
-        f"    RCR: {KNOWN_RCR_TOTAL:.4f} +/- {KNOWN_RCR_ERROR:.4f}",
-        f"    BL:  {KNOWN_BL_TOTAL:.4f} +/- {KNOWN_BL_ERROR:.4f}",
+        f"  Weighting: bin-by-bin from S04 MB HRA event rates x {LIVETIME_YEARS} yr livetime",
+        f"    RCR total weighted: {np.sum(sim_reflected['weights']):.4f}",
+        f"    BL total weighted:  {np.sum(sim_direct['weights']):.4f}",
         f"",
         f"  Nominal Cuts:",
         f"    ChiRCR > {nominal_cuts['chi_rcr_line_chi'][0]:.2f} (flat)",
@@ -504,6 +584,206 @@ def print_summary_table(nominal_cuts, sim_direct, sim_reflected,
         'bl_2016_count': bl_2016_count,
         'data_count': data_count, 'data_count_no_daycut': data_count_no_daycut,
     }
+
+
+def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
+                                  sim_direct, sim_reflected,
+                                  sim_direct_high, sim_reflected_high,
+                                  sim_direct_low, sim_reflected_low,
+                                  data_dict, data_station_ids, bl_2016_data,
+                                  excluded_events_mask, output_path):
+    """
+    Cumulative distribution plot: number of events passing if cut applied at each level.
+
+    Shows the central estimate as solid lines and shaded bands from the high/low
+    R-value weight assignments.
+
+    Cut direction per parameter:
+      chi_rcr_flat:      events with ChiRCR > x
+      snr_max:           events with SNR < x
+      chi_diff_threshold: events with chi_diff > x
+      chi_diff_max:      events with chi_diff < x
+    """
+    # Apply all cuts EXCEPT the one being scanned
+    rcr_mask = apply_cuts(sim_reflected, nominal_cuts, cut_type='rcr', exclude_param=param_name)
+    bl_mask = apply_cuts(sim_direct, nominal_cuts, cut_type='rcr', exclude_param=param_name)
+    data_mask = apply_cuts(data_dict, nominal_cuts, cut_type='rcr', exclude_param=param_name)
+    data_mask &= ~excluded_events_mask
+
+    # Day-uniqueness for data
+    passing_indices = np.where(data_mask)[0]
+    if len(passing_indices) > 0:
+        times_pass = data_dict['Time'][passing_indices]
+        sids_pass = data_station_ids[passing_indices]
+        unique_mask = filter_unique_events_by_day(times_pass, sids_pass)
+        data_final_indices = passing_indices[unique_mask]
+    else:
+        data_final_indices = np.array([], dtype=int)
+
+    # 2016 BL
+    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
+        bl16_mask = apply_cuts(bl_2016_data, nominal_cuts, cut_type='rcr', exclude_param=param_name)
+    else:
+        bl16_mask = np.array([], dtype=bool)
+
+    # Extract parameter values for passing events (mask is the same for all weight variants)
+    rcr_vals = get_param_values(param_name, sim_reflected)[rcr_mask]
+    bl_vals = get_param_values(param_name, sim_direct)[bl_mask]
+    data_vals = get_param_values(param_name, data_dict)[data_final_indices]
+    bl16_vals = (get_param_values(param_name, bl_2016_data)[bl16_mask]
+                 if bl_2016_data is not None and len(bl16_mask) > 0 else np.array([]))
+
+    # Weights for central, high, low
+    rcr_w = sim_reflected['weights'][rcr_mask]
+    rcr_w_hi = sim_reflected_high['weights'][rcr_mask]
+    rcr_w_lo = sim_reflected_low['weights'][rcr_mask]
+    bl_w = sim_direct['weights'][bl_mask]
+    bl_w_hi = sim_direct_high['weights'][bl_mask]
+    bl_w_lo = sim_direct_low['weights'][bl_mask]
+
+    # Determine scan range from the parameter's defined range in scan_params
+    all_vals = np.concatenate([v for v in [rcr_vals, bl_vals, data_vals] if len(v) > 0])
+    if len(all_vals) == 0:
+        ic(f"Cumulative {param_name}: no events passing other cuts, skipping")
+        return
+    x_scan = np.linspace(np.nanmin(all_vals), np.nanmax(all_vals), 200)
+
+    # Define passing condition per parameter
+    if param_name in ('chi_rcr_flat', 'chi_diff_threshold'):
+        pass_fn = lambda vals, x: vals > x
+    elif param_name in ('snr_max', 'chi_diff_max'):
+        pass_fn = lambda vals, x: vals < x
+    else:
+        raise ValueError(f"Unknown param_name: {param_name}")
+
+    # Compute cumulative curves
+    def cumulative(vals, weights, x_arr):
+        return np.array([np.sum(weights[pass_fn(vals, x)]) for x in x_arr])
+
+    rcr_cum = cumulative(rcr_vals, rcr_w, x_scan)
+    rcr_cum_hi = cumulative(rcr_vals, rcr_w_hi, x_scan)
+    rcr_cum_lo = cumulative(rcr_vals, rcr_w_lo, x_scan)
+    bl_cum = cumulative(bl_vals, bl_w, x_scan)
+    bl_cum_hi = cumulative(bl_vals, bl_w_hi, x_scan)
+    bl_cum_lo = cumulative(bl_vals, bl_w_lo, x_scan)
+    both_cum = rcr_cum + bl_cum
+    both_cum_hi = rcr_cum_hi + bl_cum_hi
+    both_cum_lo = rcr_cum_lo + bl_cum_lo
+    data_cum = np.array([np.sum(pass_fn(data_vals, x)) for x in x_scan])
+    bl16_cum = (np.array([np.sum(pass_fn(bl16_vals, x)) for x in x_scan])
+                if len(bl16_vals) > 0 else np.zeros_like(x_scan))
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(10, 7))
+
+    # Shaded bands
+    ax.fill_between(x_scan, rcr_cum_lo, rcr_cum_hi, color='green', alpha=0.15, label='RCR band')
+    ax.fill_between(x_scan, bl_cum_lo, bl_cum_hi, color='orange', alpha=0.15, label='BL band')
+    ax.fill_between(x_scan, both_cum_lo, both_cum_hi, color='purple', alpha=0.1, label='Both band')
+
+    # Central lines
+    ax.plot(x_scan, rcr_cum, 'g-', linewidth=2, label='RCR Sim')
+    ax.plot(x_scan, bl_cum, color='orange', linewidth=2, label='BL Sim')
+    ax.plot(x_scan, both_cum, 'purple', linewidth=2, linestyle='--', label='Both Sim')
+    ax.plot(x_scan, data_cum, 'k-', linewidth=1.5, label='Data Events')
+    if len(bl16_vals) > 0:
+        ax.plot(x_scan, bl16_cum, 'c-', linewidth=1.5, label='2016 BL Events')
+
+    ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
+               label=f'Nominal cut at {nominal_value}', alpha=0.7)
+
+    xlabel = PARAM_LABELS.get(param_name, param_name)
+    ax.set_xlabel(xlabel, fontsize=12)
+    ax.set_ylabel('Events Passing Cut', fontsize=12)
+    ax.set_title(f'Cumulative: {PARAM_TITLES.get(param_name, param_name)}', fontsize=14)
+    ax.legend(loc='best', fontsize=9)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close(fig)
+    ic(f"Saved cumulative plot: {output_path}")
+
+
+def print_events_passing_table(scan_params, nominal_cuts,
+                                sim_direct, sim_reflected,
+                                data_dict, data_station_ids,
+                                excluded_events_mask, output_path):
+    """
+    Print a detailed table: for each cut parameter at a series of threshold values,
+    show the number of events passing for BL sim, RCR sim, and data,
+    plus mean and sigma of the passing parameter distribution.
+    """
+    lines = []
+    lines.append(f"S03 Events Passing Table — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    for param_name, param_info in scan_params.items():
+        p_range = param_info['range']
+        scan_values = np.linspace(p_range[0], p_range[1], 20)
+
+        lines.append(f"\n{'='*100}")
+        lines.append(f"  Events Passing: {PARAM_TITLES.get(param_name, param_name)}")
+        lines.append(f"{'='*100}")
+        lines.append(f"  {'Value':>8}  {'RCR count':>10}  {'RCR err':>10}  "
+                      f"{'BL count':>10}  {'BL err':>10}  {'Data':>8}  "
+                      f"{'RCR mean':>10}  {'RCR sigma':>10}  {'BL mean':>10}  {'BL sigma':>10}")
+        lines.append(f"  {'-'*98}")
+
+        for cut_val in scan_values:
+            # Make a modified copy of nominal cuts with this parameter varied
+            test_cuts = dict(nominal_cuts)
+            if param_name == 'chi_rcr_flat':
+                test_cuts['chi_rcr_line_chi'] = np.full_like(nominal_cuts['chi_rcr_line_chi'], cut_val)
+            elif param_name == 'chi_diff_threshold':
+                test_cuts['chi_diff_threshold'] = cut_val
+            elif param_name == 'chi_diff_max':
+                test_cuts['chi_diff_max'] = cut_val
+            elif param_name == 'snr_max':
+                test_cuts['snr_max'] = cut_val
+
+            rcr_mask = apply_cuts(sim_reflected, test_cuts, cut_type='rcr')
+            bl_mask = apply_cuts(sim_direct, test_cuts, cut_type='rcr')
+            data_mask = apply_cuts(data_dict, test_cuts, cut_type='rcr')
+            data_mask &= ~excluded_events_mask
+
+            rcr_count, rcr_err = compute_weighted_count_and_error(sim_reflected['weights'], rcr_mask)
+            bl_count, bl_err = compute_weighted_count_and_error(sim_direct['weights'], bl_mask)
+
+            # Day-unique data count
+            passing_idx = np.where(data_mask)[0]
+            if len(passing_idx) > 0:
+                unique = filter_unique_events_by_day(
+                    data_dict['Time'][passing_idx], data_station_ids[passing_idx])
+                data_count = int(np.sum(unique))
+            else:
+                data_count = 0
+
+            # Mean/sigma of the parameter distribution for passing events
+            rcr_vals = get_param_values(param_name, sim_reflected)[rcr_mask]
+            bl_vals = get_param_values(param_name, sim_direct)[bl_mask]
+            rcr_w = sim_reflected['weights'][rcr_mask]
+            bl_w = sim_direct['weights'][bl_mask]
+            # Weighted mean and sigma
+            if len(rcr_vals) > 0 and np.sum(rcr_w) > 0:
+                rcr_mean = np.average(rcr_vals, weights=rcr_w)
+                rcr_std = np.sqrt(np.average((rcr_vals - rcr_mean)**2, weights=rcr_w))
+            else:
+                rcr_mean, rcr_std = 0.0, 0.0
+            if len(bl_vals) > 0 and np.sum(bl_w) > 0:
+                bl_mean = np.average(bl_vals, weights=bl_w)
+                bl_std = np.sqrt(np.average((bl_vals - bl_mean)**2, weights=bl_w))
+            else:
+                bl_mean, bl_std = 0.0, 0.0
+
+            lines.append(f"  {cut_val:>8.3f}  {rcr_count:>10.3f}  {rcr_err:>10.3f}  "
+                          f"{bl_count:>10.3f}  {bl_err:>10.3f}  {data_count:>8d}  "
+                          f"{rcr_mean:>10.4f}  {rcr_std:>10.4f}  "
+                          f"{bl_mean:>10.4f}  {bl_std:>10.4f}")
+
+    output_text = '\n'.join(lines)
+    print(output_text)
+    with open(output_path, 'w') as f:
+        f.write(output_text + '\n')
+    ic(f"Saved events passing table: {output_path}")
 
 
 # ============================================================================
@@ -715,9 +995,49 @@ if __name__ == "__main__":
     ic(f"Sim direct: {len(sim_direct['snr'])} entries, raw weight sum = {np.sum(sim_direct['weights']):.4f}")
     ic(f"Sim reflected: {len(sim_reflected['snr'])} entries, raw weight sum = {np.sum(sim_reflected['weights']):.4f}")
 
-    # Rescale weights to match known expected event totals from HRAAnalysis
-    rescale_weights(sim_reflected, KNOWN_RCR_TOTAL)
-    rescale_weights(sim_direct, KNOWN_BL_TOTAL)
+    # --- Load S04 event rates for bin-by-bin weighting ---
+    rcr_config = configparser.ConfigParser()
+    rcr_config.read('RCRSimulation/config.ini')
+    numpy_folder = rcr_config.get("FOLDERS", "numpy_folder",
+                                   fallback="RCRSimulation/output/numpy")
+    max_distance_rcr = float(rcr_config.get("SIMULATION", "distance_km",
+                                             fallback="5")) / 2 * units.km
+
+    reflected_rates, direct_rate, e_bins, z_bins = load_s04_event_rates(
+        numpy_folder, max_distance_rcr)
+
+    # Compute high/low/central event counts per bin across R values
+    r_vals = sorted(reflected_rates.keys())
+    stacked_ref = np.array([reflected_rates[r] for r in r_vals])  # (n_R, 9, 4)
+    high_ref_rate = np.nanmax(stacked_ref, axis=0)
+    low_ref_rate = np.nanmin(stacked_ref, axis=0)
+    central_ref_rate = (high_ref_rate + low_ref_rate) / 2
+
+    # Convert from evts/station/yr to total events over livetime
+    high_ref_events = high_ref_rate * LIVETIME_YEARS
+    low_ref_events = low_ref_rate * LIVETIME_YEARS
+    central_ref_events = central_ref_rate * LIVETIME_YEARS
+    direct_events = direct_rate * LIVETIME_YEARS
+
+    ic(f"S04 reflected event rate total (central): {np.sum(central_ref_events):.4f} events")
+    ic(f"S04 reflected event rate total (high): {np.sum(high_ref_events):.4f} events")
+    ic(f"S04 reflected event rate total (low): {np.sum(low_ref_events):.4f} events")
+    ic(f"S04 direct event rate total: {np.sum(direct_events):.4f} events")
+
+    # Assign bin-by-bin weights (central estimate for main plots)
+    assign_binned_weights(sim_reflected, central_ref_events, e_bins, z_bins, label="RCR reflected")
+    assign_binned_weights(sim_direct, direct_events, e_bins, z_bins, label="BL direct")
+
+    # Create high/low weight variants for cumulative band plots
+    sim_reflected_high = copy.deepcopy(sim_reflected)
+    sim_reflected_low = copy.deepcopy(sim_reflected)
+    sim_direct_high = copy.deepcopy(sim_direct)
+    sim_direct_low = copy.deepcopy(sim_direct)
+    assign_binned_weights(sim_reflected_high, high_ref_events, e_bins, z_bins, label="RCR high")
+    assign_binned_weights(sim_reflected_low, low_ref_events, e_bins, z_bins, label="RCR low")
+    # Direct rates are R-independent, so high/low are same as central
+    assign_binned_weights(sim_direct_high, direct_events, e_bins, z_bins, label="BL high")
+    assign_binned_weights(sim_direct_low, direct_events, e_bins, z_bins, label="BL low")
 
     # Summary table at nominal
     print_summary_table(
@@ -782,6 +1102,30 @@ if __name__ == "__main__":
         data_dict, data_station_ids, bl_2016_data, excluded_mask,
         os.path.join(plot_folder, 'debug_dist_chi_rcr_flat_fullrange.png'),
         n_bins=50, param_range=(0.0, 1.0), yscale='log'
+    )
+
+    # --- Cumulative distribution plots ---
+    ic("Generating cumulative distribution plots...")
+    for param_name, param_info in scan_params.items():
+        ic(f"Plotting cumulative for {param_name}...")
+        output_path = os.path.join(plot_folder, f'cumulative_{param_name}.png')
+        plot_cumulative_distribution(
+            param_name, nominal_cuts, param_info['nominal'],
+            sim_direct, sim_reflected,
+            sim_direct_high, sim_reflected_high,
+            sim_direct_low, sim_reflected_low,
+            data_dict, data_station_ids, bl_2016_data, excluded_mask,
+            output_path
+        )
+
+    # --- Events passing table ---
+    ic("Generating events passing table...")
+    events_table_path = os.path.join(plot_folder, 'events_passing_table.txt')
+    print_events_passing_table(
+        scan_params, nominal_cuts,
+        sim_direct, sim_reflected,
+        data_dict, data_station_ids,
+        excluded_mask, events_table_path
     )
 
     ic("\nDone. All outputs saved to: " + plot_folder)
