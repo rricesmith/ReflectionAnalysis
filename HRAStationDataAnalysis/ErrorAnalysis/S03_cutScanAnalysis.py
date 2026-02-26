@@ -363,7 +363,7 @@ def plot_cut_scan(param_name, scan_values, nominal_value,
 
     xlabel = PARAM_LABELS.get(param_name, param_name)
     ax1.set_xlabel(xlabel, fontsize=12)
-    ax1.set_ylabel('Simulated Events for HRA', fontsize=12)
+    ax1.set_ylabel('Events Passing All Cuts', fontsize=12)
     ax1.tick_params(axis='y')
     ax1.grid(True, alpha=0.3)
 
@@ -382,6 +382,101 @@ def plot_cut_scan(param_name, scan_values, nominal_value,
     plt.savefig(output_path, dpi=150)
     plt.close(fig)
     ic(f"Saved scan plot: {output_path}")
+
+
+def plot_parameter_distribution(param_name, sim_direct, sim_reflected,
+                                data_dict, output_path, n_bins=50,
+                                param_range=None, yscale='log'):
+    """
+    Debug/verification plot: weighted histogram of a parameter's distribution.
+
+    Shows where sim events fall in parameter space (no analysis cuts applied).
+    Sum of bin heights = total expected events (known totals after rescaling).
+    Bin centers marked with points for visual counting.
+    """
+    # Extract parameter values
+    if param_name == 'chi_rcr_flat':
+        rcr_vals = sim_reflected['ChiRCR']
+        bl_vals = sim_direct['ChiRCR']
+        data_vals = data_dict['ChiRCR']
+    elif param_name in ('chi_diff_threshold', 'chi_diff_max'):
+        rcr_vals = sim_reflected['ChiRCR'] - sim_reflected['Chi2016']
+        bl_vals = sim_direct['ChiRCR'] - sim_direct['Chi2016']
+        data_vals = data_dict['ChiRCR'] - data_dict['Chi2016']
+    elif param_name == 'snr_max':
+        rcr_vals = sim_reflected['snr']
+        bl_vals = sim_direct['snr']
+        data_vals = data_dict['snr']
+    else:
+        ic(f"Unknown param_name for distribution: {param_name}")
+        return
+
+    # Determine bin range
+    if param_range is None:
+        all_vals = np.concatenate([rcr_vals, bl_vals, data_vals])
+        param_range = (np.nanmin(all_vals), np.nanmax(all_vals))
+
+    bin_edges = np.linspace(param_range[0], param_range[1], n_bins + 1)
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+    # Weighted histograms for sim
+    rcr_hist, _ = np.histogram(rcr_vals, bins=bin_edges, weights=sim_reflected['weights'])
+    bl_hist, _ = np.histogram(bl_vals, bins=bin_edges, weights=sim_direct['weights'])
+    both_hist = rcr_hist + bl_hist
+
+    # Unweighted histogram for data
+    data_hist, _ = np.histogram(data_vals, bins=bin_edges)
+
+    # Print verification sums
+    ic(f"Distribution verification for {param_name}:")
+    ic(f"  RCR bin sum = {np.sum(rcr_hist):.4f} (known total = {KNOWN_RCR_TOTAL:.4f})")
+    ic(f"  BL bin sum  = {np.sum(bl_hist):.4f} (known total = {KNOWN_BL_TOTAL:.4f})")
+    ic(f"  Data total  = {np.sum(data_hist)}")
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+
+    bin_width = bin_edges[1] - bin_edges[0]
+
+    # Step histograms with markers at bin centers
+    ax.step(bin_edges[:-1], rcr_hist, where='mid', color='green', linewidth=2, label='RCR Sim')
+    ax.plot(bin_centers, rcr_hist, 'go', markersize=4)
+
+    ax.step(bin_edges[:-1], bl_hist, where='mid', color='orange', linewidth=2, label='BL Sim')
+    ax.plot(bin_centers, bl_hist, 'o', color='orange', markersize=4)
+
+    ax.step(bin_edges[:-1], both_hist, where='mid', color='purple', linewidth=2,
+            linestyle='--', label='Both Sim')
+    ax.plot(bin_centers, both_hist, 'o', color='purple', markersize=3)
+
+    ax.step(bin_edges[:-1], data_hist, where='mid', color='black', linewidth=1.5,
+            label='Data Events')
+    ax.plot(bin_centers, data_hist, 'ko', markersize=4)
+
+    xlabel = PARAM_LABELS.get(param_name, param_name)
+    ax.set_xlabel(xlabel, fontsize=12)
+    ax.set_ylabel('Events per Bin', fontsize=12)
+    ax.grid(True, alpha=0.3)
+
+    if yscale == 'log':
+        ax.set_yscale('log')
+
+    # Annotate with totals
+    ax.text(0.02, 0.95,
+            f'RCR sum: {np.sum(rcr_hist):.2f}\n'
+            f'BL sum: {np.sum(bl_hist):.2f}\n'
+            f'Both sum: {np.sum(both_hist):.2f}\n'
+            f'Data: {int(np.sum(data_hist))}',
+            transform=ax.transAxes, fontsize=10, verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+    ax.legend(loc='upper right', fontsize=9)
+
+    title_label = PARAM_TITLES.get(param_name, param_name)
+    plt.title(f'Distribution: {title_label} (bin width={bin_width:.3f})', fontsize=14)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close(fig)
+    ic(f"Saved distribution plot: {output_path}")
 
 
 def print_summary_table(nominal_cuts, sim_direct, sim_reflected,
@@ -732,5 +827,29 @@ if __name__ == "__main__":
             rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c,
             output_path
         )
+
+    # --- Debug distribution plots (verification that rescaled weights sum correctly) ---
+    ic("Generating debug distribution plots...")
+
+    # Chi_RCR full range (log scale) — for visual counting
+    plot_parameter_distribution(
+        'chi_rcr_flat', sim_direct, sim_reflected, data_dict,
+        os.path.join(plot_folder, 'debug_dist_chi_rcr_flat.png'),
+        n_bins=50, param_range=(0.0, 1.0), yscale='log'
+    )
+
+    # Chi_diff full range
+    plot_parameter_distribution(
+        'chi_diff_threshold', sim_direct, sim_reflected, data_dict,
+        os.path.join(plot_folder, 'debug_dist_chi_diff.png'),
+        n_bins=50, param_range=(-0.5, 0.5), yscale='log'
+    )
+
+    # SNR full range
+    plot_parameter_distribution(
+        'snr_max', sim_direct, sim_reflected, data_dict,
+        os.path.join(plot_folder, 'debug_dist_snr.png'),
+        n_bins=50, param_range=(0, 100), yscale='log'
+    )
 
     ic("\nDone. All outputs saved to: " + plot_folder)
