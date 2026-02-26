@@ -14,16 +14,15 @@ computes:
 
 Uses the 0.15 chi-diff pre-filter on BL sim (matching S01).
 
-Simulation weights are in events/year for one average station (from cosmic ray flux model).
-To compare against data, weights are scaled by total livetime (sum of per-station livetimes)
-to get expected event counts directly comparable to observed data counts.
+Simulation weights are rescaled so that total sum matches the known livetime-scaled
+expected event counts from HRAAnalysis (RCR: 22.058, BL: 560.107). Each event's weight
+is proportional to its original internal weight, preserving the relative distribution.
 
 Output:
-  - Livetime-scaled scan plots (primary, single y-axis: expected vs observed events)
-  - Rate-only scan plots (dual y-axis: evts/yr vs event counts, for reference)
-  - Additional plot variants for chi_rcr_flat (log-scale, matched y-range)
+  - Scan plots (single y-axis: expected vs observed events)
+  - Additional plot variants for chi_rcr_flat (log-scale)
   - Additional extended-range scans for chi_diff_threshold
-  - Summary table with both rates and expected event counts
+  - Summary table with expected event counts
   - All saved to ErrorAnalysis/plots/
 """
 
@@ -33,7 +32,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import configparser
 import json
 import glob
@@ -44,6 +42,33 @@ from icecream import ic
 
 from HRAStationDataAnalysis.C_utils import getTimeEventMasks
 from HRASimulation.HRAEventObject import HRAevent
+
+
+# ============================================================================
+# Known Expected Event Totals (livetime-scaled, from HRAAnalysis)
+# ============================================================================
+# These are the trusted total expected events across all stations and livetimes.
+# Sim weights are rescaled so that sum(weights) matches these values exactly,
+# preserving the relative weight distribution across events.
+KNOWN_RCR_TOTAL = 22.05815658
+KNOWN_RCR_ERROR = 2.320078714
+KNOWN_BL_TOTAL = 560.1066252
+KNOWN_BL_ERROR = 35.21137122
+
+
+def rescale_weights(sim_data, known_total):
+    """
+    Rescale event weights so their sum equals the known total expected events.
+    new_w_i = (w_i / sum(w)) * known_total
+    Preserves relative weight distribution across events.
+    """
+    raw_sum = np.sum(sim_data['weights'])
+    if raw_sum > 0:
+        scale = known_total / raw_sum
+        sim_data['weights'] = sim_data['weights'] * scale
+        ic(f"Rescaled weights: raw_sum={raw_sum:.4f} -> new_sum={np.sum(sim_data['weights']):.4f} (scale={scale:.4f})")
+    else:
+        ic("Warning: raw weight sum is 0, cannot rescale.")
 
 
 # ============================================================================
@@ -299,20 +324,15 @@ PARAM_TITLES = {
 def plot_cut_scan(param_name, scan_values, nominal_value,
                   rcr_counts, rcr_errors, bl_counts, bl_errors,
                   bl_2016_counts, data_counts,
-                  output_path, livetime=None, data_yscale='linear', match_yrange=False):
+                  output_path, data_yscale='linear'):
     """
     Create a scan plot for one cut parameter.
+    Weights are already rescaled to expected events, so plots directly.
 
     Parameters
     ----------
-    livetime : float or None
-        If provided, multiply sim counts by livetime to get expected events.
-        Uses a single y-axis for direct sim-vs-data comparison.
-        If None, uses dual y-axes (evts/yr left, event counts right).
     data_yscale : str
-        Scale for the data y-axis ('linear' or 'log').
-    match_yrange : bool
-        If True (dual-axis only), force right y-axis range to match left.
+        Scale for the y-axis ('linear' or 'log').
     """
     fig, ax1 = plt.subplots(figsize=(10, 7))
 
@@ -320,86 +340,41 @@ def plot_cut_scan(param_name, scan_values, nominal_value,
     both_counts = rcr_counts + bl_counts
     both_errors = np.sqrt(rcr_errors**2 + bl_errors**2)
 
-    if livetime is not None:
-        # Scale sim to expected events — single axis plot
-        rcr_plot = rcr_counts * livetime
-        rcr_err_plot = rcr_errors * livetime
-        bl_plot = bl_counts * livetime
-        bl_err_plot = bl_errors * livetime
-        both_plot = both_counts * livetime
-        both_err_plot = both_errors * livetime
-        sim_suffix = '(expected)'
-        ylabel = 'Expected / Observed Events'
-    else:
-        # Raw rates — will use dual axes
-        rcr_plot = rcr_counts
-        rcr_err_plot = rcr_errors
-        bl_plot = bl_counts
-        bl_err_plot = bl_errors
-        both_plot = both_counts
-        both_err_plot = both_errors
-        sim_suffix = '(evts/yr)'
-        ylabel = 'Simulated Events / Year'
-
     # Simulation lines
-    ax1.plot(scan_values, rcr_plot, 'g-', linewidth=2, label=f'RCR Sim {sim_suffix}')
-    ax1.fill_between(scan_values, rcr_plot - rcr_err_plot, rcr_plot + rcr_err_plot,
+    ax1.plot(scan_values, rcr_counts, 'g-', linewidth=2, label='RCR Sim')
+    ax1.fill_between(scan_values, rcr_counts - rcr_errors, rcr_counts + rcr_errors,
                      color='green', alpha=0.2)
 
-    ax1.plot(scan_values, bl_plot, color='orange', linestyle='-', linewidth=2,
-             label=f'BL Sim {sim_suffix}')
-    ax1.fill_between(scan_values, bl_plot - bl_err_plot, bl_plot + bl_err_plot,
+    ax1.plot(scan_values, bl_counts, color='orange', linestyle='-', linewidth=2,
+             label='BL Sim')
+    ax1.fill_between(scan_values, bl_counts - bl_errors, bl_counts + bl_errors,
                      color='orange', alpha=0.2)
 
-    ax1.plot(scan_values, both_plot, color='purple', linestyle='--', linewidth=2,
-             label=f'Both Sim {sim_suffix}')
-    ax1.fill_between(scan_values, both_plot - both_err_plot, both_plot + both_err_plot,
+    ax1.plot(scan_values, both_counts, color='purple', linestyle='--', linewidth=2,
+             label='Both Sim')
+    ax1.fill_between(scan_values, both_counts - both_errors, both_counts + both_errors,
                      color='purple', alpha=0.15)
+
+    # Data lines on same axis
+    ax1.plot(scan_values, data_counts, 'k-o', markersize=4, linewidth=1.5,
+             label='Data Events')
+    ax1.plot(scan_values, bl_2016_counts, 'c-s', markersize=4, linewidth=1.5,
+             label='2016 BL Events')
 
     xlabel = PARAM_LABELS.get(param_name, param_name)
     ax1.set_xlabel(xlabel, fontsize=12)
-    ax1.set_ylabel(ylabel, fontsize=12, color='black')
+    ax1.set_ylabel('Simulated Events for HRA', fontsize=12)
     ax1.tick_params(axis='y')
     ax1.grid(True, alpha=0.3)
 
-    if livetime is not None:
-        # Single axis: data on same axis as sim
-        ax1.plot(scan_values, data_counts, 'k-o', markersize=4, linewidth=1.5,
-                 label='Data Events')
-        ax1.plot(scan_values, bl_2016_counts, 'c-s', markersize=4, linewidth=1.5,
-                 label='2016 BL Events')
-        if data_yscale == 'log':
-            ax1.set_yscale('log')
-        ax1.legend(loc='best', fontsize=9)
-    else:
-        # Dual axes: data on right axis
-        ax2 = ax1.twinx()
-        ax2.plot(scan_values, data_counts, 'k-o', markersize=4, linewidth=1.5,
-                 label='Data Events')
-        ax2.plot(scan_values, bl_2016_counts, 'c-s', markersize=4, linewidth=1.5,
-                 label='2016 BL Events')
-        ax2.set_ylabel('Event Count (Data / 2016 BL)', fontsize=12)
-        if data_yscale == 'log':
-            ax2.set_yscale('log')
-        else:
-            ax2.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
-        if match_yrange:
-            ax2.set_ylim(ax1.get_ylim())
-        # Combined legend for dual axes
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        lines1, labels1 = ax1.get_legend_handles_labels()
-        ax1.legend(lines1 + lines2, labels1 + labels2, loc='best', fontsize=9)
+    if data_yscale == 'log':
+        ax1.set_yscale('log')
 
     # Cut value line
     ax1.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
                 label=f'Cut at {nominal_value}', alpha=0.7)
-    # Re-draw legend to include cut line
-    if livetime is not None:
-        ax1.legend(loc='best', fontsize=9)
-    else:
-        lines1, labels1 = ax1.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax1.legend(lines1 + lines2, labels1 + labels2, loc='best', fontsize=9)
+
+    ax1.legend(loc='best', fontsize=9)
 
     title_label = PARAM_TITLES.get(param_name, param_name)
     plt.title(f'Cut Scan: {title_label}', fontsize=14)
@@ -411,12 +386,12 @@ def plot_cut_scan(param_name, scan_values, nominal_value,
 
 def print_summary_table(nominal_cuts, sim_direct, sim_reflected,
                         data_dict, data_station_ids, bl_2016_data,
-                        excluded_events_mask, label, livetime=None, output_path=None):
+                        excluded_events_mask, label, output_path=None):
     """
     Print and optionally save a summary table at nominal cut values.
-    If livetime is provided, also shows expected event counts.
+    Weights are already rescaled to expected events.
     """
-    # Compute nominal counts
+    # Compute nominal counts (weights are already in expected events)
     rcr_mask = apply_cuts(sim_reflected, nominal_cuts, cut_type='rcr')
     rcr_count, rcr_err = compute_weighted_count_and_error(sim_reflected['weights'], rcr_mask)
 
@@ -445,7 +420,7 @@ def print_summary_table(nominal_cuts, sim_direct, sim_reflected,
         data_count = 0
         data_count_no_daycut = 0
 
-    # Significance (using rates)
+    # Significance
     if bl_count > 0:
         sig_s_over_sqrt_b = rcr_count / np.sqrt(bl_count)
         sig_s_over_sqrt_sb = rcr_count / np.sqrt(rcr_count + bl_count)
@@ -459,39 +434,30 @@ def print_summary_table(nominal_cuts, sim_direct, sim_reflected,
         f"  Summary Table: {label}",
         f"{'='*85}",
         f"",
+        f"  Known Totals (from HRAAnalysis):",
+        f"    RCR: {KNOWN_RCR_TOTAL:.4f} +/- {KNOWN_RCR_ERROR:.4f}",
+        f"    BL:  {KNOWN_BL_TOTAL:.4f} +/- {KNOWN_BL_ERROR:.4f}",
+        f"",
         f"  Nominal Cuts:",
         f"    ChiRCR > {nominal_cuts['chi_rcr_line_chi'][0]:.2f} (flat)",
         f"    {nominal_cuts['chi_diff_threshold']:.2f} < (ChiRCR - Chi2016) < {nominal_cuts['chi_diff_max']:.2f}",
         f"    SNR < {nominal_cuts['snr_max']}",
         f"",
-    ]
-
-    if livetime is not None:
-        lines.append(f"  Total livetime: {livetime:.4f} station-years")
-        lines.append(f"")
-        lines.append(f"  {'Category':<25} {'Rate (evts/yr)':>14} {'Rate Err':>12} {'Expected Evts':>14} {'Exp. Err':>12}")
-        lines.append(f"  {'-'*77}")
-        lines.append(f"  {'RCR Sim':<25} {rcr_count:>14.4f} {rcr_err:>12.4f} {rcr_count*livetime:>14.2f} {rcr_err*livetime:>12.2f}")
-        lines.append(f"  {'BL Sim':<25} {bl_count:>14.4f} {bl_err:>12.4f} {bl_count*livetime:>14.2f} {bl_err*livetime:>12.2f}")
-        lines.append(f"  {'Both Sim (RCR+BL)':<25} {both_count:>14.4f} {both_err:>12.4f} {both_count*livetime:>14.2f} {both_err*livetime:>12.2f}")
-    else:
-        lines.append(f"  {'Category':<25} {'Count':>12} {'Error':>12}")
-        lines.append(f"  {'-'*49}")
-        lines.append(f"  {'RCR Sim (evts/yr)':<25} {rcr_count:>12.4f} {rcr_err:>12.4f}")
-        lines.append(f"  {'BL Sim (evts/yr)':<25} {bl_count:>12.4f} {bl_err:>12.4f}")
-        lines.append(f"  {'Both Sim (evts/yr)':<25} {both_count:>12.4f} {both_err:>12.4f}")
-
-    lines.extend([
+        f"  {'Category':<25} {'Expected Evts':>14} {'Error':>12}",
+        f"  {'-'*53}",
+        f"  {'RCR Sim':<25} {rcr_count:>14.4f} {rcr_err:>12.4f}",
+        f"  {'BL Sim':<25} {bl_count:>14.4f} {bl_err:>12.4f}",
+        f"  {'Both Sim (RCR+BL)':<25} {both_count:>14.4f} {both_err:>12.4f}",
         f"  {'2016 BL Events':<25} {bl_2016_count:>12d}     sqrt(N)={np.sqrt(bl_2016_count):.2f}",
         f"  {'Data Events (w/ day cut)':<25} {data_count:>12d}     sqrt(N)={np.sqrt(data_count):.2f}",
         f"  {'Data Events (no day cut)':<25} {data_count_no_daycut:>12d}",
         f"",
-        f"  Significance Estimates (rate-based):",
+        f"  Significance Estimates:",
         f"    S / sqrt(B)     = {sig_s_over_sqrt_b:.3f}",
         f"    S / sqrt(S + B) = {sig_s_over_sqrt_sb:.3f}",
         f"{'='*85}",
         f"",
-    ])
+    ]
 
     output = '\n'.join(lines)
     print(output)
@@ -538,21 +504,6 @@ if __name__ == "__main__":
     station_ids = [13, 14, 15, 17, 18, 19, 30]
     direct_stations = [13, 14, 15, 17, 18, 19, 30]
     reflected_stations = [113, 114, 115, 117, 118, 119, 130]
-
-    # --- Per-station livetime in years ---
-    # Sim weights are evts/yr for one average station.
-    # Multiply by total_livetime to get expected events across all stations.
-    station_livetimes = {
-        13: 0.9993108583,
-        14: 1.601456111,
-        15: 1.764061137,
-        17: 1.727220222,
-        18: 1.690714593,
-        19: 1.619018232,
-        30: 1.788627639,
-    }
-    total_livetime_years = sum(station_livetimes.values())
-    ic(f"Total livetime: {total_livetime_years:.4f} station-years")
 
     # --- Define Nominal Cuts (must match S01 exactly) ---
     nominal_cuts = {
@@ -724,15 +675,18 @@ if __name__ == "__main__":
         apply_chi_diff_prefilter=True
     )
 
-    ic(f"Sim direct: {len(sim_direct['snr'])} entries, total weight = {np.sum(sim_direct['weights']):.4f}")
-    ic(f"Sim reflected: {len(sim_reflected['snr'])} entries, total weight = {np.sum(sim_reflected['weights']):.4f}")
+    ic(f"Sim direct: {len(sim_direct['snr'])} entries, raw weight sum = {np.sum(sim_direct['weights']):.4f}")
+    ic(f"Sim reflected: {len(sim_reflected['snr'])} entries, raw weight sum = {np.sum(sim_reflected['weights']):.4f}")
+
+    # Rescale weights to match known expected event totals from HRAAnalysis
+    rescale_weights(sim_reflected, KNOWN_RCR_TOTAL)
+    rescale_weights(sim_direct, KNOWN_BL_TOTAL)
 
     # Summary table at nominal
     print_summary_table(
         nominal_cuts, sim_direct, sim_reflected,
         data_dict, data_station_ids, bl_2016_data,
         excluded_mask, "Nominal Cuts",
-        livetime=total_livetime_years,
         output_path=summary_file
     )
 
@@ -746,30 +700,20 @@ if __name__ == "__main__":
             excluded_mask
         )
 
-        # Primary plot: livetime-scaled, single axis (expected vs observed events)
         output_path = os.path.join(plot_folder, f'scan_{param_name}.png')
         plot_cut_scan(
             param_name, param_info['values'], param_info['nominal'],
             rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c,
-            output_path, livetime=total_livetime_years
-        )
-
-        # Reference plot: raw evts/yr, dual axis
-        output_rate = os.path.join(plot_folder, f'scan_{param_name}_rate.png')
-        plot_cut_scan(
-            param_name, param_info['values'], param_info['nominal'],
-            rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c,
-            output_rate, livetime=None
+            output_path
         )
 
         # Extra variants for chi_rcr_flat
         if param_name == 'chi_rcr_flat':
-            # Log-scale version (livetime-scaled)
             output_log = os.path.join(plot_folder, f'scan_{param_name}_logscale.png')
             plot_cut_scan(
                 param_name, param_info['values'], param_info['nominal'],
                 rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c,
-                output_log, livetime=total_livetime_years, data_yscale='log'
+                output_log, data_yscale='log'
             )
 
     # --- Run extended chi_diff_threshold scans ---
@@ -782,12 +726,11 @@ if __name__ == "__main__":
             excluded_mask
         )
 
-        # Primary: livetime-scaled
         output_path = os.path.join(plot_folder, f'scan_{ext_name}.png')
         plot_cut_scan(
             'chi_diff_threshold', ext_info['values'], ext_info['nominal'],
             rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c,
-            output_path, livetime=total_livetime_years
+            output_path
         )
 
     ic("\nDone. All outputs saved to: " + plot_folder)
