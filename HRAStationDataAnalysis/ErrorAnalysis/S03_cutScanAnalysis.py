@@ -19,10 +19,13 @@ expected event counts from HRAAnalysis (RCR: 22.058, BL: 560.107). Each event's 
 is proportional to its original internal weight, preserving the relative distribution.
 
 Output:
-  - Scan plots (single y-axis: expected vs observed events)
-  - Additional plot variants for chi_rcr_flat (log-scale)
-  - Additional extended-range scans for chi_diff_threshold
-  - Summary table with expected event counts
+  - Distribution plots: for each cut parameter, apply all OTHER cuts, then histogram
+    by the parameter. Sim as weighted step histograms, data as line+points at bin
+    centers. Allows direct visual comparison of expected vs observed events per bin.
+  - Additional log-scale variant for chi_rcr_flat
+  - Extended-range chi_diff distributions
+  - Full-range debug distribution (no cuts, verifies bin sums = known totals)
+  - Summary table with expected event counts at nominal cuts
   - All saved to ErrorAnalysis/plots/
 """
 
@@ -190,30 +193,46 @@ def filter_unique_events_by_day(times, station_ids):
 # Cut Analysis Functions
 # ============================================================================
 
-def apply_cuts(data_dict, cuts, cut_type='rcr'):
+def apply_cuts(data_dict, cuts, cut_type='rcr', exclude_param=None):
     """
-    Apply all cuts and return a boolean mask of events passing.
+    Apply cuts and return a boolean mask of events passing.
     Mirrors get_all_cut_masks from S01.
+
+    Parameters
+    ----------
+    exclude_param : str or None
+        If provided, skip this cut parameter. Used for distribution plots
+        where we apply all OTHER cuts and then bin by the excluded parameter.
     """
     snr = data_dict['snr']
     chircr = data_dict['ChiRCR']
     chi2016 = data_dict['Chi2016']
 
-    chi_rcr_snr_cut_values = np.interp(snr, cuts['chi_rcr_line_snr'], cuts['chi_rcr_line_chi'])
     chi_diff = chircr - chi2016
+    mask = np.ones(len(snr), dtype=bool)
 
-    snr_cut = snr < cuts['snr_max']
-    snr_line_cut = chircr > chi_rcr_snr_cut_values
+    # SNR upper bound
+    if exclude_param != 'snr_max':
+        mask &= snr < cuts['snr_max']
 
+    # ChiRCR line cut (chi_rcr_flat when the line is flat)
+    if exclude_param != 'chi_rcr_flat':
+        chi_rcr_snr_cut_values = np.interp(snr, cuts['chi_rcr_line_snr'], cuts['chi_rcr_line_chi'])
+        mask &= chircr > chi_rcr_snr_cut_values
+
+    # Chi-diff cuts
     if cut_type == 'rcr':
-        chi_diff_cut = (chi_diff > cuts['chi_diff_threshold']) & (chi_diff < cuts.get('chi_diff_max', 999))
+        if exclude_param != 'chi_diff_threshold':
+            mask &= chi_diff > cuts['chi_diff_threshold']
+        if exclude_param != 'chi_diff_max':
+            mask &= chi_diff < cuts.get('chi_diff_max', 999)
     elif cut_type == 'backlobe':
-        chi_diff_cut = (chi_diff < -cuts['chi_diff_threshold']) & (chi_diff > -cuts.get('chi_diff_max', 999))
-    else:
-        chi_diff_cut = np.ones_like(snr, dtype=bool)
+        if exclude_param != 'chi_diff_threshold':
+            mask &= chi_diff < -cuts['chi_diff_threshold']
+        if exclude_param != 'chi_diff_max':
+            mask &= chi_diff > -cuts.get('chi_diff_max', 999)
 
-    all_cuts = snr_cut & snr_line_cut & chi_diff_cut
-    return all_cuts
+    return mask
 
 
 def compute_weighted_count_and_error(weights, mask):
@@ -231,73 +250,16 @@ def compute_weighted_count_and_error(weights, mask):
     return n_expected, sigma
 
 
-def scan_cut_parameter(param_name, scan_values, nominal_cuts, sim_direct, sim_reflected,
-                       data_dict, data_station_ids, bl_2016_data, excluded_events_mask):
-    """
-    Scan one cut parameter over a range of values, holding others at nominal.
-
-    Returns arrays of (rcr_counts, rcr_errors, bl_counts, bl_errors,
-                        bl_2016_counts, data_counts) for each scan value.
-    """
-    n = len(scan_values)
-    rcr_counts = np.zeros(n)
-    rcr_errors = np.zeros(n)
-    bl_counts = np.zeros(n)
-    bl_errors = np.zeros(n)
-    bl_2016_counts = np.zeros(n)
-    data_counts = np.zeros(n)
-
-    for i, val in enumerate(scan_values):
-        # Build modified cuts dictionary
-        cuts = dict(nominal_cuts)
-        # Need to deep copy arrays
-        cuts['chi_rcr_line_snr'] = nominal_cuts['chi_rcr_line_snr'].copy()
-        cuts['chi_rcr_line_chi'] = nominal_cuts['chi_rcr_line_chi'].copy()
-        cuts['chi_2016_line_snr'] = nominal_cuts['chi_2016_line_snr'].copy()
-        cuts['chi_2016_line_chi'] = nominal_cuts['chi_2016_line_chi'].copy()
-
-        if param_name == 'chi_rcr_flat':
-            cuts['chi_rcr_line_chi'] = np.full_like(cuts['chi_rcr_line_chi'], val)
-            cuts['chi_2016_line_chi'] = np.full_like(cuts['chi_2016_line_chi'], val)
-        elif param_name == 'chi_diff_threshold':
-            cuts['chi_diff_threshold'] = val
-        elif param_name == 'chi_diff_max':
-            cuts['chi_diff_max'] = val
-        elif param_name == 'snr_max':
-            cuts['snr_max'] = val
-
-        # RCR sim
-        rcr_mask = apply_cuts(sim_reflected, cuts, cut_type='rcr')
-        rcr_counts[i], rcr_errors[i] = compute_weighted_count_and_error(
-            sim_reflected['weights'], rcr_mask)
-
-        # BL sim
-        bl_mask = apply_cuts(sim_direct, cuts, cut_type='rcr')
-        bl_counts[i], bl_errors[i] = compute_weighted_count_and_error(
-            sim_direct['weights'], bl_mask)
-
-        # 2016 BL events
-        if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
-            bl_2016_mask = apply_cuts(bl_2016_data, cuts, cut_type='rcr')
-            bl_2016_counts[i] = np.sum(bl_2016_mask)
-        else:
-            bl_2016_counts[i] = 0
-
-        # Real data (with day-uniqueness and exclusion)
-        data_mask = apply_cuts(data_dict, cuts, cut_type='rcr')
-        # Apply exclusion mask
-        data_mask &= ~excluded_events_mask
-        # Apply day-uniqueness
-        passing_indices = np.where(data_mask)[0]
-        if len(passing_indices) > 0:
-            times_pass = data_dict['Time'][passing_indices]
-            sids_pass = data_station_ids[passing_indices]
-            unique_mask = filter_unique_events_by_day(times_pass, sids_pass)
-            data_counts[i] = np.sum(unique_mask)
-        else:
-            data_counts[i] = 0
-
-    return rcr_counts, rcr_errors, bl_counts, bl_errors, bl_2016_counts, data_counts
+def get_param_values(param_name, data_dict):
+    """Extract the parameter values from a data dictionary based on param_name."""
+    if param_name == 'chi_rcr_flat':
+        return data_dict['ChiRCR']
+    elif param_name in ('chi_diff_threshold', 'chi_diff_max'):
+        return data_dict['ChiRCR'] - data_dict['Chi2016']
+    elif param_name == 'snr_max':
+        return data_dict['snr']
+    else:
+        raise ValueError(f"Unknown param_name: {param_name}")
 
 
 # ============================================================================
@@ -306,10 +268,10 @@ def scan_cut_parameter(param_name, scan_values, nominal_cuts, sim_direct, sim_re
 
 # Mapping from internal parameter names to professional axis labels
 PARAM_LABELS = {
-    'chi_rcr_flat': r'$\chi_{\mathrm{RCR}}$ Flat Cut',
-    'chi_diff_threshold': r'$\Delta\chi$ Threshold ($\chi_{\mathrm{RCR}} - \chi_{2016}$)',
-    'chi_diff_max': r'$\Delta\chi$ Maximum ($\chi_{\mathrm{RCR}} - \chi_{2016}$)',
-    'snr_max': 'SNR Maximum',
+    'chi_rcr_flat': r'$\chi_{\mathrm{RCR}}$',
+    'chi_diff_threshold': r'$\Delta\chi$ ($\chi_{\mathrm{RCR}} - \chi_{2016}$)',
+    'chi_diff_max': r'$\Delta\chi$ ($\chi_{\mathrm{RCR}} - \chi_{2016}$)',
+    'snr_max': 'SNR',
 }
 
 # Mapping from internal parameter names to professional title labels
@@ -321,136 +283,108 @@ PARAM_TITLES = {
 }
 
 
-def plot_cut_scan(param_name, scan_values, nominal_value,
-                  rcr_counts, rcr_errors, bl_counts, bl_errors,
-                  bl_2016_counts, data_counts,
-                  output_path, data_yscale='linear'):
+def plot_distribution(param_name, nominal_cuts, nominal_value,
+                      sim_direct, sim_reflected,
+                      data_dict, data_station_ids, bl_2016_data,
+                      excluded_events_mask,
+                      output_path, n_bins=30, param_range=None, yscale='linear'):
     """
-    Create a scan plot for one cut parameter.
-    Weights are already rescaled to expected events, so plots directly.
+    Distribution plot for one cut parameter.
 
-    Parameters
-    ----------
-    data_yscale : str
-        Scale for the y-axis ('linear' or 'log').
+    Applies all cuts EXCEPT the one being plotted, then histograms the
+    remaining events by that parameter's value. This directly compares
+    sim expected events vs observed data in each bin.
+
+    - Sim (RCR, BL, Both): step histograms (weighted)
+    - Data, 2016 BL: line with points at bin centers (unweighted counts)
+    - Vertical line at the nominal cut value
+    - Text annotation with sum of all bins for verification
     """
-    fig, ax1 = plt.subplots(figsize=(10, 7))
+    # Apply all cuts EXCEPT the one being plotted
+    rcr_mask = apply_cuts(sim_reflected, nominal_cuts, cut_type='rcr', exclude_param=param_name)
+    bl_mask = apply_cuts(sim_direct, nominal_cuts, cut_type='rcr', exclude_param=param_name)
+    data_mask = apply_cuts(data_dict, nominal_cuts, cut_type='rcr', exclude_param=param_name)
+    data_mask &= ~excluded_events_mask
 
-    # Combined sim (RCR + BL) with propagated error
-    both_counts = rcr_counts + bl_counts
-    both_errors = np.sqrt(rcr_errors**2 + bl_errors**2)
-
-    # Simulation lines
-    ax1.plot(scan_values, rcr_counts, 'g-', linewidth=2, label='RCR Sim')
-    ax1.fill_between(scan_values, rcr_counts - rcr_errors, rcr_counts + rcr_errors,
-                     color='green', alpha=0.2)
-
-    ax1.plot(scan_values, bl_counts, color='orange', linestyle='-', linewidth=2,
-             label='BL Sim')
-    ax1.fill_between(scan_values, bl_counts - bl_errors, bl_counts + bl_errors,
-                     color='orange', alpha=0.2)
-
-    ax1.plot(scan_values, both_counts, color='purple', linestyle='--', linewidth=2,
-             label='Both Sim')
-    ax1.fill_between(scan_values, both_counts - both_errors, both_counts + both_errors,
-                     color='purple', alpha=0.15)
-
-    # Data lines on same axis
-    ax1.plot(scan_values, data_counts, 'k-o', markersize=4, linewidth=1.5,
-             label='Data Events')
-    ax1.plot(scan_values, bl_2016_counts, 'c-s', markersize=4, linewidth=1.5,
-             label='2016 BL Events')
-
-    xlabel = PARAM_LABELS.get(param_name, param_name)
-    ax1.set_xlabel(xlabel, fontsize=12)
-    ax1.set_ylabel('Events Passing All Cuts', fontsize=12)
-    ax1.tick_params(axis='y')
-    ax1.grid(True, alpha=0.3)
-
-    if data_yscale == 'log':
-        ax1.set_yscale('log')
-
-    # Cut value line
-    ax1.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
-                label=f'Cut at {nominal_value}', alpha=0.7)
-
-    ax1.legend(loc='best', fontsize=9)
-
-    title_label = PARAM_TITLES.get(param_name, param_name)
-    plt.title(f'Cut Scan: {title_label}', fontsize=14)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
-    plt.close(fig)
-    ic(f"Saved scan plot: {output_path}")
-
-
-def plot_parameter_distribution(param_name, sim_direct, sim_reflected,
-                                data_dict, output_path, n_bins=50,
-                                param_range=None, yscale='log'):
-    """
-    Debug/verification plot: weighted histogram of a parameter's distribution.
-
-    Shows where sim events fall in parameter space (no analysis cuts applied).
-    Sum of bin heights = total expected events (known totals after rescaling).
-    Bin centers marked with points for visual counting.
-    """
-    # Extract parameter values
-    if param_name == 'chi_rcr_flat':
-        rcr_vals = sim_reflected['ChiRCR']
-        bl_vals = sim_direct['ChiRCR']
-        data_vals = data_dict['ChiRCR']
-    elif param_name in ('chi_diff_threshold', 'chi_diff_max'):
-        rcr_vals = sim_reflected['ChiRCR'] - sim_reflected['Chi2016']
-        bl_vals = sim_direct['ChiRCR'] - sim_direct['Chi2016']
-        data_vals = data_dict['ChiRCR'] - data_dict['Chi2016']
-    elif param_name == 'snr_max':
-        rcr_vals = sim_reflected['snr']
-        bl_vals = sim_direct['snr']
-        data_vals = data_dict['snr']
+    # Day-uniqueness filter for data
+    passing_indices = np.where(data_mask)[0]
+    if len(passing_indices) > 0:
+        times_pass = data_dict['Time'][passing_indices]
+        sids_pass = data_station_ids[passing_indices]
+        unique_mask = filter_unique_events_by_day(times_pass, sids_pass)
+        data_final_indices = passing_indices[unique_mask]
     else:
-        ic(f"Unknown param_name for distribution: {param_name}")
-        return
+        data_final_indices = np.array([], dtype=int)
+
+    # 2016 BL
+    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
+        bl16_mask = apply_cuts(bl_2016_data, nominal_cuts, cut_type='rcr', exclude_param=param_name)
+    else:
+        bl16_mask = np.array([], dtype=bool)
+
+    # Extract parameter values for passing events
+    rcr_vals = get_param_values(param_name, sim_reflected)[rcr_mask]
+    rcr_weights = sim_reflected['weights'][rcr_mask]
+    bl_vals = get_param_values(param_name, sim_direct)[bl_mask]
+    bl_weights = sim_direct['weights'][bl_mask]
+    data_vals = get_param_values(param_name, data_dict)[data_final_indices]
+
+    if bl_2016_data is not None and len(bl16_mask) > 0:
+        bl16_vals = get_param_values(param_name, bl_2016_data)[bl16_mask]
+    else:
+        bl16_vals = np.array([])
 
     # Determine bin range
     if param_range is None:
         all_vals = np.concatenate([rcr_vals, bl_vals, data_vals])
-        param_range = (np.nanmin(all_vals), np.nanmax(all_vals))
+        if len(all_vals) > 0:
+            param_range = (np.nanmin(all_vals), np.nanmax(all_vals))
+        else:
+            param_range = (0, 1)
 
     bin_edges = np.linspace(param_range[0], param_range[1], n_bins + 1)
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-
-    # Weighted histograms for sim
-    rcr_hist, _ = np.histogram(rcr_vals, bins=bin_edges, weights=sim_reflected['weights'])
-    bl_hist, _ = np.histogram(bl_vals, bins=bin_edges, weights=sim_direct['weights'])
-    both_hist = rcr_hist + bl_hist
-
-    # Unweighted histogram for data
-    data_hist, _ = np.histogram(data_vals, bins=bin_edges)
-
-    # Print verification sums
-    ic(f"Distribution verification for {param_name}:")
-    ic(f"  RCR bin sum = {np.sum(rcr_hist):.4f} (known total = {KNOWN_RCR_TOTAL:.4f})")
-    ic(f"  BL bin sum  = {np.sum(bl_hist):.4f} (known total = {KNOWN_BL_TOTAL:.4f})")
-    ic(f"  Data total  = {np.sum(data_hist)}")
-
-    fig, ax = plt.subplots(figsize=(12, 7))
-
     bin_width = bin_edges[1] - bin_edges[0]
 
-    # Step histograms with markers at bin centers
-    ax.step(bin_edges[:-1], rcr_hist, where='mid', color='green', linewidth=2, label='RCR Sim')
-    ax.plot(bin_centers, rcr_hist, 'go', markersize=4)
+    # Weighted histograms for sim
+    rcr_hist, _ = np.histogram(rcr_vals, bins=bin_edges, weights=rcr_weights)
+    bl_hist, _ = np.histogram(bl_vals, bins=bin_edges, weights=bl_weights)
+    both_hist = rcr_hist + bl_hist
 
-    ax.step(bin_edges[:-1], bl_hist, where='mid', color='orange', linewidth=2, label='BL Sim')
-    ax.plot(bin_centers, bl_hist, 'o', color='orange', markersize=4)
+    # Unweighted histograms for data
+    data_hist, _ = np.histogram(data_vals, bins=bin_edges)
+    bl16_hist, _ = np.histogram(bl16_vals, bins=bin_edges) if len(bl16_vals) > 0 else (np.zeros(n_bins), None)
 
-    ax.step(bin_edges[:-1], both_hist, where='mid', color='purple', linewidth=2,
+    # Print verification
+    ic(f"Distribution {param_name}: RCR sum={np.sum(rcr_hist):.2f}, BL sum={np.sum(bl_hist):.2f}, "
+       f"Both sum={np.sum(both_hist):.2f}, Data={int(np.sum(data_hist))}, 2016 BL={int(np.sum(bl16_hist))}")
+
+    # --- Plot ---
+    fig, ax = plt.subplots(figsize=(10, 7))
+
+    # Sim as step histograms
+    ax.step(bin_edges[:-1], rcr_hist, where='post', color='green', linewidth=2, label='RCR Sim')
+    ax.fill_between(bin_edges[:-1], 0, rcr_hist, step='post', color='green', alpha=0.15)
+    ax.plot(bin_centers, rcr_hist, 'go', markersize=4, zorder=5)
+
+    ax.step(bin_edges[:-1], bl_hist, where='post', color='orange', linewidth=2, label='BL Sim')
+    ax.fill_between(bin_edges[:-1], 0, bl_hist, step='post', color='orange', alpha=0.15)
+    ax.plot(bin_centers, bl_hist, 'o', color='orange', markersize=4, zorder=5)
+
+    ax.step(bin_edges[:-1], both_hist, where='post', color='purple', linewidth=2,
             linestyle='--', label='Both Sim')
-    ax.plot(bin_centers, both_hist, 'o', color='purple', markersize=3)
+    ax.plot(bin_centers, both_hist, 'o', color='purple', markersize=3, zorder=5)
 
-    ax.step(bin_edges[:-1], data_hist, where='mid', color='black', linewidth=1.5,
-            label='Data Events')
-    ax.plot(bin_centers, data_hist, 'ko', markersize=4)
+    # Data as line with points at bin centers
+    ax.plot(bin_centers, data_hist, 'k-o', markersize=5, linewidth=1.5,
+            label='Data Events', zorder=6)
+    if len(bl16_vals) > 0:
+        ax.plot(bin_centers, bl16_hist, 'c-s', markersize=5, linewidth=1.5,
+                label='2016 BL Events', zorder=6)
+
+    # Cut value line
+    ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
+               label=f'Cut at {nominal_value}', alpha=0.7)
 
     xlabel = PARAM_LABELS.get(param_name, param_name)
     ax.set_xlabel(xlabel, fontsize=12)
@@ -460,19 +394,20 @@ def plot_parameter_distribution(param_name, sim_direct, sim_reflected,
     if yscale == 'log':
         ax.set_yscale('log')
 
-    # Annotate with totals
+    # Annotate with totals for verification
     ax.text(0.02, 0.95,
             f'RCR sum: {np.sum(rcr_hist):.2f}\n'
             f'BL sum: {np.sum(bl_hist):.2f}\n'
             f'Both sum: {np.sum(both_hist):.2f}\n'
-            f'Data: {int(np.sum(data_hist))}',
-            transform=ax.transAxes, fontsize=10, verticalalignment='top',
+            f'Data: {int(np.sum(data_hist))}\n'
+            f'Bin width: {bin_width:.3f}',
+            transform=ax.transAxes, fontsize=9, verticalalignment='top',
             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
-    ax.legend(loc='upper right', fontsize=9)
+    ax.legend(loc='best', fontsize=9)
 
     title_label = PARAM_TITLES.get(param_name, param_name)
-    plt.title(f'Distribution: {title_label} (bin width={bin_width:.3f})', fontsize=14)
+    plt.title(f'Distribution: {title_label}', fontsize=14)
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
     plt.close(fig)
@@ -611,35 +546,42 @@ if __name__ == "__main__":
         'chi_2016_line_chi': np.array([0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75]),
     }
 
-    # --- Define Scan Ranges ---
+    # --- Define Distribution Parameters ---
+    # 'range' sets the histogram bin range, 'n_bins' sets bin count
     scan_params = {
         'chi_rcr_flat': {
-            'values': np.linspace(0.5, 0.95, 20),
             'nominal': 0.75,
+            'range': (0.5, 1.0),
+            'n_bins': 25,
         },
         'chi_diff_threshold': {
-            'values': np.linspace(-0.1, 0.1, 20),
             'nominal': 0.0,
+            'range': (-0.15, 0.15),
+            'n_bins': 30,
         },
         'chi_diff_max': {
-            'values': np.linspace(0.05, 0.4, 20),
             'nominal': 0.2,
+            'range': (-0.05, 0.4),
+            'n_bins': 25,
         },
         'snr_max': {
-            'values': np.linspace(10, 100, 20),
             'nominal': 50,
+            'range': (5, 100),
+            'n_bins': 30,
         },
     }
 
-    # Extended chi_diff_threshold scans (lower bounds of -0.3 and -0.2)
+    # Extended chi_diff distributions (wider range)
     chi_diff_extended_scans = {
         'chi_diff_threshold_ext03': {
-            'values': np.linspace(-0.3, 0.1, 30),
             'nominal': 0.0,
+            'range': (-0.3, 0.15),
+            'n_bins': 30,
         },
         'chi_diff_threshold_ext02': {
-            'values': np.linspace(-0.2, 0.1, 25),
             'nominal': 0.0,
+            'range': (-0.2, 0.15),
+            'n_bins': 25,
         },
     }
 
@@ -785,71 +727,61 @@ if __name__ == "__main__":
         output_path=summary_file
     )
 
-    # --- Run standard scans ---
+    # --- Distribution plots for each cut parameter ---
+    # Each plot applies all cuts EXCEPT the one being shown, then histograms
+    # by that parameter. Sim as weighted step histograms, data as line+points.
     for param_name, param_info in scan_params.items():
-        ic(f"Scanning {param_name}...")
-        rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c = scan_cut_parameter(
-            param_name, param_info['values'], nominal_cuts,
+        ic(f"Plotting distribution for {param_name}...")
+
+        output_path = os.path.join(plot_folder, f'dist_{param_name}.png')
+        plot_distribution(
+            param_name, nominal_cuts, param_info['nominal'],
             sim_direct, sim_reflected,
-            data_dict, data_station_ids, bl_2016_data,
-            excluded_mask
+            data_dict, data_station_ids, bl_2016_data, excluded_mask,
+            output_path, n_bins=param_info.get('n_bins', 30),
+            param_range=param_info.get('range', None)
         )
 
-        output_path = os.path.join(plot_folder, f'scan_{param_name}.png')
-        plot_cut_scan(
-            param_name, param_info['values'], param_info['nominal'],
-            rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c,
-            output_path
-        )
-
-        # Extra variants for chi_rcr_flat
+        # Log-scale version for chi_rcr_flat
         if param_name == 'chi_rcr_flat':
-            output_log = os.path.join(plot_folder, f'scan_{param_name}_logscale.png')
-            plot_cut_scan(
-                param_name, param_info['values'], param_info['nominal'],
-                rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c,
-                output_log, data_yscale='log'
+            output_log = os.path.join(plot_folder, f'dist_{param_name}_logscale.png')
+            plot_distribution(
+                param_name, nominal_cuts, param_info['nominal'],
+                sim_direct, sim_reflected,
+                data_dict, data_station_ids, bl_2016_data, excluded_mask,
+                output_log, n_bins=param_info.get('n_bins', 30),
+                param_range=param_info.get('range', None), yscale='log'
             )
 
-    # --- Run extended chi_diff_threshold scans ---
+    # --- Extended-range chi_diff_threshold distributions ---
     for ext_name, ext_info in chi_diff_extended_scans.items():
-        ic(f"Scanning {ext_name}...")
-        rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c = scan_cut_parameter(
-            'chi_diff_threshold', ext_info['values'], nominal_cuts,
+        ic(f"Plotting distribution for {ext_name}...")
+
+        output_path = os.path.join(plot_folder, f'dist_{ext_name}.png')
+        plot_distribution(
+            'chi_diff_threshold', nominal_cuts, ext_info['nominal'],
             sim_direct, sim_reflected,
-            data_dict, data_station_ids, bl_2016_data,
-            excluded_mask
+            data_dict, data_station_ids, bl_2016_data, excluded_mask,
+            output_path, n_bins=ext_info.get('n_bins', 30),
+            param_range=ext_info.get('range', None)
         )
 
-        output_path = os.path.join(plot_folder, f'scan_{ext_name}.png')
-        plot_cut_scan(
-            'chi_diff_threshold', ext_info['values'], ext_info['nominal'],
-            rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c,
-            output_path
-        )
-
-    # --- Debug distribution plots (verification that rescaled weights sum correctly) ---
-    ic("Generating debug distribution plots...")
-
-    # Chi_RCR full range (log scale) — for visual counting
-    plot_parameter_distribution(
-        'chi_rcr_flat', sim_direct, sim_reflected, data_dict,
-        os.path.join(plot_folder, 'debug_dist_chi_rcr_flat.png'),
+    # --- Full-range debug distribution (no cuts at all, just raw weighted histograms) ---
+    # For chi_rcr_flat: verify that sum of bins = known totals
+    ic("Generating full-range debug distribution for chi_rcr_flat...")
+    # Use a temporary "no cuts" dict to effectively skip all cuts
+    no_cuts = dict(nominal_cuts)
+    no_cuts['snr_max'] = 9999
+    no_cuts['chi_rcr_line_chi'] = np.zeros_like(nominal_cuts['chi_rcr_line_chi'])
+    no_cuts['chi_diff_threshold'] = -999
+    no_cuts['chi_diff_max'] = 999
+    # Create a dummy excluded mask of all False for sim
+    plot_distribution(
+        'chi_rcr_flat', no_cuts, nominal_cuts['chi_rcr_line_chi'][0],
+        sim_direct, sim_reflected,
+        data_dict, data_station_ids, bl_2016_data, excluded_mask,
+        os.path.join(plot_folder, 'debug_dist_chi_rcr_flat_fullrange.png'),
         n_bins=50, param_range=(0.0, 1.0), yscale='log'
-    )
-
-    # Chi_diff full range
-    plot_parameter_distribution(
-        'chi_diff_threshold', sim_direct, sim_reflected, data_dict,
-        os.path.join(plot_folder, 'debug_dist_chi_diff.png'),
-        n_bins=50, param_range=(-0.5, 0.5), yscale='log'
-    )
-
-    # SNR full range
-    plot_parameter_distribution(
-        'snr_max', sim_direct, sim_reflected, data_dict,
-        os.path.join(plot_folder, 'debug_dist_snr.png'),
-        n_bins=50, param_range=(0, 100), yscale='log'
     )
 
     ic("\nDone. All outputs saved to: " + plot_folder)
