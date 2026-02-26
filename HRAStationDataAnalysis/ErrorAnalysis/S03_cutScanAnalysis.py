@@ -52,7 +52,9 @@ from RCRSimulation.RCRAnalysis import (
     getEnergyZenithBins, getEventRate, getErrorEventRates,
     getBinnedTriggerRate, get_all_r_triggers,
 )
-from RCRSimulation.S04_RCRChapter4Plots import load_combined_events, MB_REFLECTED_SIMS
+from RCRSimulation.S04_RCRChapter4Plots import (
+    load_combined_events, MB_REFLECTED_SIMS, find_direct_trigger,
+)
 
 
 # ============================================================================
@@ -90,16 +92,23 @@ def load_s04_event_rates(numpy_folder, max_distance):
 
     ic(f"Found R triggers: {sorted(r_triggers.keys())}")
 
+    # Direct rate uses the untagged trigger (no R or dB suffix).
+    # R-tagged triggers only fire on reflected stations (id >= 100), so passing
+    # an R-tagged trigger to getBinnedTriggerRate returns zero direct rate.
+    direct_trigger = find_direct_trigger(events_list)
+    if direct_trigger is None:
+        raise RuntimeError(f"No untagged (direct) trigger found in {sim_name}")
+    ic(f"Direct trigger: {direct_trigger}")
+    dir_trig_rate, _, _ = getBinnedTriggerRate(events_list, direct_trigger)
+    direct_rate = getEventRate(dir_trig_rate, e_bins, z_bins, max_distance)
+    ic(f"Direct event rate total: {np.nansum(direct_rate):.3f} evts/station/yr")
+
+    # Reflected rates: one per R value
     reflected_rates = {}
-    direct_rate = None
     for r_val, trig_name in sorted(r_triggers.items()):
-        dir_rate, ref_rate, _ = getBinnedTriggerRate(events_list, trig_name)
+        _, ref_rate, _ = getBinnedTriggerRate(events_list, trig_name)
         reflected_event_rate = getEventRate(ref_rate, e_bins, z_bins, max_distance)
         reflected_rates[r_val] = reflected_event_rate
-
-        # Direct rate is R-independent; compute once
-        if direct_rate is None:
-            direct_rate = getEventRate(dir_rate, e_bins, z_bins, max_distance)
 
     ic(f"Loaded event rates for {len(reflected_rates)} R values")
     return reflected_rates, direct_rate, e_bins, z_bins
