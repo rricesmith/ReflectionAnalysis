@@ -8,13 +8,18 @@ scans over a range of values while holding the others fixed at nominal. At each 
 computes:
   1. RCR sim weighted count in the RCR region (+ statistical error)
   2. BL sim weighted count in the RCR region (+ statistical error)
-  3. Number of 2016 Backlobe events passing cuts
-  4. Number of real data events passing cuts (after day-uniqueness + exclusion filters)
+  3. Combined (RCR + BL) sim weighted count (predicted total data)
+  4. Number of 2016 Backlobe events passing cuts
+  5. Number of real data events passing cuts (after day-uniqueness + exclusion filters)
 
-Runs twice: once with the 0.15 chi-diff pre-filter on BL sim (matching S01), and once without.
+Uses the 0.15 chi-diff pre-filter on BL sim (matching S01).
+
+Note: Simulation weights are in events/year (livetime folded in via cosmic ray flux model).
 
 Output:
-  - 4 scan plots (one per cut parameter), each with signal/background/data vs cut value
+  - Scan plots (one per cut parameter), each with signal/background/data vs cut value
+  - Additional plot variants for chi_rcr_flat (log-scale, matched y-range)
+  - Additional extended-range scans for chi_diff_threshold
   - Summary table at nominal cut values with counts +/- errors
   - All saved to ErrorAnalysis/plots/
 """
@@ -271,17 +276,45 @@ def scan_cut_parameter(param_name, scan_values, nominal_cuts, sim_direct, sim_re
 # Plotting Functions
 # ============================================================================
 
+# Mapping from internal parameter names to professional axis labels
+PARAM_LABELS = {
+    'chi_rcr_flat': r'$\chi_{\mathrm{RCR}}$ Flat Cut',
+    'chi_diff_threshold': r'$\Delta\chi$ Threshold ($\chi_{\mathrm{RCR}} - \chi_{2016}$)',
+    'chi_diff_max': r'$\Delta\chi$ Maximum ($\chi_{\mathrm{RCR}} - \chi_{2016}$)',
+    'snr_max': 'SNR Maximum',
+}
+
+# Mapping from internal parameter names to professional title labels
+PARAM_TITLES = {
+    'chi_rcr_flat': r'$\chi_{\mathrm{RCR}}$ Flat',
+    'chi_diff_threshold': r'$\Delta\chi$ Threshold',
+    'chi_diff_max': r'$\Delta\chi$ Maximum',
+    'snr_max': 'SNR Maximum',
+}
+
+
 def plot_cut_scan(param_name, scan_values, nominal_value,
                   rcr_counts, rcr_errors, bl_counts, bl_errors,
                   bl_2016_counts, data_counts,
-                  title_suffix, output_path):
+                  output_path, data_yscale='linear', match_yrange=False):
     """
     Create a scan plot for one cut parameter.
 
     Left y-axis: simulation weighted counts (events/yr) with error bands
     Right y-axis: integer event counts (data + 2016 BL)
+
+    Parameters
+    ----------
+    data_yscale : str
+        Scale for the right y-axis ('linear' or 'log').
+    match_yrange : bool
+        If True, force the right y-axis range to match the left y-axis range.
     """
     fig, ax1 = plt.subplots(figsize=(10, 7))
+
+    # Combined sim (RCR + BL) with propagated error
+    both_counts = rcr_counts + bl_counts
+    both_errors = np.sqrt(rcr_errors**2 + bl_errors**2)
 
     # Left axis: simulation
     ax1.plot(scan_values, rcr_counts, 'g-', linewidth=2, label='RCR Sim (evts/yr)')
@@ -293,7 +326,13 @@ def plot_cut_scan(param_name, scan_values, nominal_value,
     ax1.fill_between(scan_values, bl_counts - bl_errors, bl_counts + bl_errors,
                      color='orange', alpha=0.2)
 
-    ax1.set_xlabel(param_name, fontsize=12)
+    ax1.plot(scan_values, both_counts, color='purple', linestyle='--', linewidth=2,
+             label='Both Sim (evts/yr)')
+    ax1.fill_between(scan_values, both_counts - both_errors, both_counts + both_errors,
+                     color='purple', alpha=0.15)
+
+    xlabel = PARAM_LABELS.get(param_name, param_name)
+    ax1.set_xlabel(xlabel, fontsize=12)
     ax1.set_ylabel('Simulated Events / Year', fontsize=12, color='black')
     ax1.tick_params(axis='y')
     ax1.grid(True, alpha=0.3)
@@ -305,18 +344,26 @@ def plot_cut_scan(param_name, scan_values, nominal_value,
     ax2.plot(scan_values, bl_2016_counts, 'c-s', markersize=4, linewidth=1.5,
              label='2016 BL Events')
     ax2.set_ylabel('Event Count (Data / 2016 BL)', fontsize=12)
-    ax2.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
 
-    # Nominal value line
+    if data_yscale == 'log':
+        ax2.set_yscale('log')
+    else:
+        ax2.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+
+    if match_yrange:
+        ax2.set_ylim(ax1.get_ylim())
+
+    # Cut value line
     ax1.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
-                label=f'Nominal = {nominal_value}', alpha=0.7)
+                label=f'Cut at {nominal_value}', alpha=0.7)
 
     # Combined legend
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, loc='best', fontsize=9)
 
-    plt.title(f'Cut Scan: {param_name}{title_suffix}', fontsize=14)
+    title_label = PARAM_TITLES.get(param_name, param_name)
+    plt.title(f'Cut Scan: {title_label}', fontsize=14)
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
     plt.close(fig)
@@ -465,6 +512,18 @@ if __name__ == "__main__":
         },
     }
 
+    # Extended chi_diff_threshold scans (lower bounds of -0.3 and -0.2)
+    chi_diff_extended_scans = {
+        'chi_diff_threshold_ext03': {
+            'values': np.linspace(-0.3, 0.1, 30),
+            'nominal': 0.0,
+        },
+        'chi_diff_threshold_ext02': {
+            'values': np.linspace(-0.2, 0.1, 25),
+            'nominal': 0.0,
+        },
+    }
+
     # --- Excluded events (double-counted with 2016 BL dataset) ---
     excluded_events_list = [
         (18, 82), (18, 520), (18, 681),
@@ -580,53 +639,78 @@ if __name__ == "__main__":
         bl_2016_data = None
         ic("No 2016 BL events found.")
 
-    # --- Run Analysis for Both Pre-filter Modes ---
+    # --- Run Analysis (with pre-filter, matching S01) ---
     summary_file = os.path.join(plot_folder, 'summary_table.txt')
-    # Clear previous summary
     with open(summary_file, 'w') as f:
         f.write(f"S03 Cut Scan Error Analysis — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-    for prefilter_mode in [True, False]:
-        mode_label = "with_prefilter" if prefilter_mode else "no_prefilter"
-        mode_title = " (with 0.15 pre-filter)" if prefilter_mode else " (NO pre-filter)"
+    # Load sim data with pre-filter (matching S01 behavior)
+    sim_direct, sim_reflected = get_sim_data(
+        HRAeventList, direct_weight_name, reflected_weight_name,
+        direct_stations, reflected_stations, sigma=sim_sigma,
+        apply_chi_diff_prefilter=True
+    )
 
-        ic(f"\n{'='*60}")
-        ic(f"Running scan {mode_label}...")
-        ic(f"{'='*60}")
+    ic(f"Sim direct: {len(sim_direct['snr'])} entries, total weight = {np.sum(sim_direct['weights']):.4f}")
+    ic(f"Sim reflected: {len(sim_reflected['snr'])} entries, total weight = {np.sum(sim_reflected['weights']):.4f}")
 
-        # Load sim data with appropriate pre-filter setting
-        sim_direct, sim_reflected = get_sim_data(
-            HRAeventList, direct_weight_name, reflected_weight_name,
-            direct_stations, reflected_stations, sigma=sim_sigma,
-            apply_chi_diff_prefilter=prefilter_mode
-        )
+    # Summary table at nominal
+    print_summary_table(
+        nominal_cuts, sim_direct, sim_reflected,
+        data_dict, data_station_ids, bl_2016_data,
+        excluded_mask, "Nominal Cuts",
+        output_path=summary_file
+    )
 
-        ic(f"Sim direct: {len(sim_direct['snr'])} entries, total weight = {np.sum(sim_direct['weights']):.4f}")
-        ic(f"Sim reflected: {len(sim_reflected['snr'])} entries, total weight = {np.sum(sim_reflected['weights']):.4f}")
-
-        # Summary table at nominal
-        print_summary_table(
-            nominal_cuts, sim_direct, sim_reflected,
+    # --- Run standard scans ---
+    for param_name, param_info in scan_params.items():
+        ic(f"Scanning {param_name}...")
+        rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c = scan_cut_parameter(
+            param_name, param_info['values'], nominal_cuts,
+            sim_direct, sim_reflected,
             data_dict, data_station_ids, bl_2016_data,
-            excluded_mask, f"Nominal Cuts {mode_title}",
-            output_path=summary_file
+            excluded_mask
         )
 
-        # Run scans
-        for param_name, param_info in scan_params.items():
-            ic(f"Scanning {param_name}...")
-            rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c = scan_cut_parameter(
-                param_name, param_info['values'], nominal_cuts,
-                sim_direct, sim_reflected,
-                data_dict, data_station_ids, bl_2016_data,
-                excluded_mask
-            )
+        output_path = os.path.join(plot_folder, f'scan_{param_name}.png')
+        plot_cut_scan(
+            param_name, param_info['values'], param_info['nominal'],
+            rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c,
+            output_path
+        )
 
-            output_path = os.path.join(plot_folder, f'scan_{param_name}_{mode_label}.png')
+        # Extra variants for chi_rcr_flat: log-scale and matched y-range
+        if param_name == 'chi_rcr_flat':
+            # Log-scale version for data events axis
+            output_log = os.path.join(plot_folder, f'scan_{param_name}_logscale.png')
             plot_cut_scan(
                 param_name, param_info['values'], param_info['nominal'],
                 rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c,
-                mode_title, output_path
+                output_log, data_yscale='log'
             )
+            # Matched y-range version (data axis matches sim axis range)
+            output_match = os.path.join(plot_folder, f'scan_{param_name}_matchedrange.png')
+            plot_cut_scan(
+                param_name, param_info['values'], param_info['nominal'],
+                rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c,
+                output_match, match_yrange=True
+            )
+
+    # --- Run extended chi_diff_threshold scans ---
+    for ext_name, ext_info in chi_diff_extended_scans.items():
+        ic(f"Scanning {ext_name}...")
+        rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c = scan_cut_parameter(
+            'chi_diff_threshold', ext_info['values'], nominal_cuts,
+            sim_direct, sim_reflected,
+            data_dict, data_station_ids, bl_2016_data,
+            excluded_mask
+        )
+
+        output_path = os.path.join(plot_folder, f'scan_{ext_name}.png')
+        plot_cut_scan(
+            'chi_diff_threshold', ext_info['values'], ext_info['nominal'],
+            rcr_c, rcr_e, bl_c, bl_e, bl16_c, data_c,
+            output_path
+        )
 
     ic("\nDone. All outputs saved to: " + plot_folder)
