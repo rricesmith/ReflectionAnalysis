@@ -44,6 +44,7 @@ import glob
 import h5py
 import pickle
 from datetime import datetime
+from scipy.optimize import curve_fit
 from icecream import ic
 
 from NuRadioReco.utilities import units
@@ -482,10 +483,10 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
                      markersize=7, markeredgecolor='white', markeredgewidth=1.5,
                      capsize=3, elinewidth=1.2, label='Data Events', zorder=6)
         if len(bl16_vals) > 0:
-            bl16_err_bars = np.sqrt(np.maximum(bl16_hist, 0))
-            ax.errorbar(bin_centers, bl16_hist, yerr=bl16_err_bars, fmt='cs',
-                         markersize=8, markeredgecolor='white', markeredgewidth=1.5,
-                         capsize=3, elinewidth=1.2, label='2016 BL Events', zorder=6)
+            # No error bars for 2016 BL — small curated set, sqrt(N) not meaningful
+            ax.plot(bin_centers, bl16_hist, 'cs', markersize=8,
+                    markeredgecolor='white', markeredgewidth=1.5,
+                    label='2016 BL Events', zorder=6)
     else:
         # Simple points (default)
         ax.plot(bin_centers, data_hist, 'ko', markersize=5, label='Data Events', zorder=6)
@@ -943,6 +944,211 @@ def plot_cumulative_cut_interaction(param_name, nominal_cuts, nominal_value,
     ic(f"Saved cut-interaction cumulative plot: {output_path}")
 
 
+def _triple_gaussian(x, a1, mu1, sig1, a2, mu2, sig2, a3, mu3, sig3):
+    """Sum of three Gaussians. Each amplitude a_i is the area (integral) of that component."""
+    g1 = a1 / (sig1 * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu1) / sig1)**2)
+    g2 = a2 / (sig2 * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu2) / sig2)**2)
+    g3 = a3 / (sig3 * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu3) / sig3)**2)
+    return g1 + g2 + g3
+
+
+def _single_gaussian(x, a, mu, sig):
+    """Single Gaussian with area a."""
+    return a / (sig * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sig)**2)
+
+
+def plot_triple_gaussian_fit(sim_direct, sim_reflected,
+                              data_dict, data_station_ids, bl_2016_data,
+                              excluded_events_mask, no_cuts,
+                              plot_folder, n_bins=50, param_range=(0.2, 0.9)):
+    """
+    Fit 3 Gaussians to the chi_rcr_flat data distribution (no cuts applied).
+
+    The three components are hypothesized to be:
+      1. Noise (thermal) peak, centered ~0.35
+      2. Backlobe (BL) peak, centered near the weighted BL sim mean
+      3. RCR (cosmic ray) peak, centered near the weighted RCR sim mean
+
+    Produces two plot versions:
+      - data-only: just data histogram + fitted Gaussians
+      - with-sim: data + sim histograms + fitted Gaussians + 2016 BL
+    Saves Gaussian fit parameters to a text file (always generated, not skipped by flags).
+    """
+    nominal_value = 0.75  # nominal chi_rcr cut, shown as vertical line
+
+    # Get all data events (no cuts) with day-uniqueness
+    data_mask = apply_cuts(data_dict, no_cuts, cut_type='rcr', exclude_param='chi_rcr_flat')
+    data_mask &= ~excluded_events_mask
+    passing_idx = np.where(data_mask)[0]
+    if len(passing_idx) > 0:
+        umask = filter_unique_events_by_day(
+            data_dict['Time'][passing_idx], data_station_ids[passing_idx])
+        data_vals = data_dict['ChiRCR'][passing_idx[umask]]
+    else:
+        data_vals = np.array([])
+
+    if len(data_vals) < 10:
+        ic("Triple Gaussian fit: too few data events, skipping")
+        return
+
+    # Histogram the data
+    bin_edges = np.linspace(param_range[0], param_range[1], n_bins + 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    bin_width = bin_edges[1] - bin_edges[0]
+    data_hist, _ = np.histogram(data_vals, bins=bin_edges)
+
+    # Convert histogram to density (events per unit chi_rcr) for fitting
+    # so that Gaussian amplitude = number of events in that component
+    data_density = data_hist / bin_width
+
+    # Estimate initial Gaussian centers from sim weighted means
+    bl_chircr = sim_direct['ChiRCR']
+    bl_w = sim_direct['weights']
+    rcr_chircr = sim_reflected['ChiRCR']
+    rcr_w = sim_reflected['weights']
+
+    bl_mean_init = np.average(bl_chircr, weights=bl_w) if len(bl_chircr) > 0 else 0.55
+    rcr_mean_init = np.average(rcr_chircr, weights=rcr_w) if len(rcr_chircr) > 0 else 0.78
+
+    # Initial guesses: (area, mean, sigma) for each Gaussian
+    # Area ~ number of events in that component
+    total_events = len(data_vals)
+    p0 = [
+        total_events * 0.7, 0.35, 0.05,       # noise: bulk of events, narrow
+        total_events * 0.2, bl_mean_init, 0.05, # BL: moderate fraction
+        total_events * 0.1, rcr_mean_init, 0.03, # RCR: small fraction
+    ]
+
+    # Bounds: amplitudes > 0, means within range, sigmas reasonable
+    lower = [0, 0.2, 0.005, 0, 0.3, 0.005, 0, 0.5, 0.005]
+    upper = [total_events * 5, 0.55, 0.3, total_events * 5, 0.8, 0.3, total_events * 5, 1.0, 0.3]
+
+    # Fit, ignoring bins with 0 events (avoid divide-by-zero in chi2)
+    nonzero = data_density > 0
+    x_fit = bin_centers[nonzero]
+    y_fit = data_density[nonzero]
+    # Poisson-like weights: sigma ~ sqrt(N)/bin_width for density
+    sigma_fit = np.sqrt(np.maximum(data_hist[nonzero], 1)) / bin_width
+
+    try:
+        popt, pcov = curve_fit(_triple_gaussian, x_fit, y_fit, p0=p0,
+                               sigma=sigma_fit, absolute_sigma=True,
+                               bounds=(lower, upper), maxfev=20000)
+        perr = np.sqrt(np.diag(pcov))
+        fit_success = True
+    except (RuntimeError, ValueError) as e:
+        ic(f"Triple Gaussian fit failed: {e}")
+        fit_success = False
+        popt = p0
+        perr = np.zeros(9)
+
+    # Extract parameters
+    names = ['Noise', 'Backlobe', 'RCR']
+    fit_info = []
+    for i, name in enumerate(names):
+        area = popt[3*i]
+        mean = popt[3*i + 1]
+        sigma = popt[3*i + 2]
+        area_err = perr[3*i]
+        mean_err = perr[3*i + 1]
+        sigma_err = perr[3*i + 2]
+        fit_info.append({
+            'name': name, 'area': area, 'mean': mean, 'sigma': sigma,
+            'area_err': area_err, 'mean_err': mean_err, 'sigma_err': sigma_err,
+        })
+
+    # Save fit parameters to text file (always, not gated by --skip-table)
+    txt_path = os.path.join(plot_folder, 'gaussian_fit_chi_rcr.txt')
+    with open(txt_path, 'w') as f:
+        f.write(f"Triple Gaussian Fit to Chi_RCR Data Distribution\n")
+        f.write(f"{'='*70}\n")
+        f.write(f"Fit converged: {fit_success}\n")
+        f.write(f"Range: {param_range[0]:.2f} – {param_range[1]:.2f}, bins: {n_bins}\n")
+        f.write(f"Total data events in range: {len(data_vals)}\n\n")
+        f.write(f"  {'Component':<12} {'Area (events)':>16} {'Mean':>14} {'Sigma':>14}\n")
+        f.write(f"  {'-'*58}\n")
+        for info in fit_info:
+            f.write(f"  {info['name']:<12} "
+                    f"{info['area']:>8.2f} +/- {info['area_err']:>5.2f}  "
+                    f"{info['mean']:>6.4f} +/- {info['mean_err']:>6.4f}  "
+                    f"{info['sigma']:>6.4f} +/- {info['sigma_err']:>6.4f}\n")
+        f.write(f"\n  Sum of areas: {sum(i['area'] for i in fit_info):.2f} "
+                f"(data total: {len(data_vals)})\n")
+    ic(f"Saved Gaussian fit info: {txt_path}")
+
+    # Fine x grid for smooth Gaussian curves
+    x_smooth = np.linspace(param_range[0], param_range[1], 500)
+
+    # Compute individual Gaussians and sum (as density, then convert to events/bin)
+    g_components = []
+    for i in range(3):
+        g = _single_gaussian(x_smooth, popt[3*i], popt[3*i+1], popt[3*i+2])
+        g_components.append(g)
+    g_sum = sum(g_components)
+
+    # Convert density to events per bin for overlay on histogram
+    g_components_binned = [g * bin_width for g in g_components]
+    g_sum_binned = g_sum * bin_width
+
+    # Sim histograms (for the with-sim version)
+    rcr_hist, _ = np.histogram(rcr_chircr, bins=bin_edges, weights=rcr_w)
+    bl_hist, _ = np.histogram(bl_chircr, bins=bin_edges, weights=bl_w)
+
+    # 2016 BL
+    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
+        bl16_hist, _ = np.histogram(bl_2016_data['ChiRCR'], bins=bin_edges)
+    else:
+        bl16_hist = np.zeros(n_bins)
+
+    component_colors = ['blue', 'orange', 'green']
+
+    # --- Version 1: Data only + Gaussians ---
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.bar(bin_centers, data_hist, width=bin_width, color='gray', alpha=0.4,
+           edgecolor='black', linewidth=0.5, label='Data')
+    for i, (name, color) in enumerate(zip(names, component_colors)):
+        ax.plot(x_smooth, g_components_binned[i], color=color, linewidth=1.5,
+                linestyle='--', label=f'{name} Gaussian')
+    ax.plot(x_smooth, g_sum_binned, 'r-', linewidth=2.5, label='Sum of 3 Gaussians')
+    ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
+    ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
+    ax.set_ylabel('Events per Bin', fontsize=12)
+    ax.set_title(r'Triple Gaussian Fit: $\chi_{\mathrm{RCR}}$ (Data Only)', fontsize=14)
+    ax.legend(loc='upper left', fontsize=9)
+    ax.grid(True, alpha=0.3)
+    ax.set_yscale('log')
+    ax.set_ylim(bottom=0.1)
+    plt.tight_layout()
+    plt.savefig(os.path.join(plot_folder, 'gaussian_fit_chi_rcr_data_only.png'), dpi=150)
+    plt.close(fig)
+
+    # --- Version 2: Data + Sim + 2016 BL + Gaussians ---
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.bar(bin_centers, data_hist, width=bin_width, color='gray', alpha=0.3,
+           edgecolor='black', linewidth=0.5, label='Data')
+    ax.step(bin_edges[:-1], rcr_hist, where='post', color='green', linewidth=2, label='RCR Sim')
+    ax.step(bin_edges[:-1], bl_hist, where='post', color='orange', linewidth=2, label='BL Sim')
+    if np.any(bl16_hist > 0):
+        ax.plot(bin_centers, bl16_hist, 'cs', markersize=5, label='2016 BL Events', zorder=6)
+    for i, (name, color) in enumerate(zip(names, component_colors)):
+        ax.plot(x_smooth, g_components_binned[i], color=color, linewidth=1.5,
+                linestyle='--', label=f'{name} Gaussian', alpha=0.8)
+    ax.plot(x_smooth, g_sum_binned, 'r-', linewidth=2.5, label='Sum of 3 Gaussians')
+    ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
+    ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
+    ax.set_ylabel('Events per Bin', fontsize=12)
+    ax.set_title(r'Triple Gaussian Fit: $\chi_{\mathrm{RCR}}$ (with Sim)', fontsize=14)
+    ax.legend(loc='upper left', fontsize=8)
+    ax.grid(True, alpha=0.3)
+    ax.set_yscale('log')
+    ax.set_ylim(bottom=0.1)
+    plt.tight_layout()
+    plt.savefig(os.path.join(plot_folder, 'gaussian_fit_chi_rcr_with_sim.png'), dpi=150)
+    plt.close(fig)
+
+    ic(f"Triple Gaussian fit plots saved to {plot_folder}")
+
+
 def print_events_passing_table(scan_params, nominal_cuts,
                                 sim_direct, sim_reflected,
                                 data_dict, data_station_ids,
@@ -1031,8 +1237,8 @@ def print_events_passing_table(scan_params, nominal_cuts,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="S03 Cut Scan Error Analysis")
-    parser.add_argument('--skip-interaction', action='store_true',
-                        help='Skip generating cut-interaction sub-folder plots')
+    parser.add_argument('--skip-table', action='store_true',
+                        help='Skip generating events passing table (slow)')
     args = parser.parse_args()
 
     # --- Configuration ---
@@ -1317,29 +1523,31 @@ if __name__ == "__main__":
                 param_range=param_info.get('range', None), yscale='log'
             )
 
-    # --- Alternative-style distribution plots (errorbar data style) ---
+    # --- No-cuts config (used by debug and alt-style plots) ---
+    no_cuts = dict(nominal_cuts)
+    no_cuts['snr_max'] = 9999
+    no_cuts['chi_rcr_line_chi'] = np.zeros_like(nominal_cuts['chi_rcr_line_chi'])
+    no_cuts['chi_diff_threshold'] = -999
+    no_cuts['chi_diff_max'] = 999
+
+    # --- Alternative-style distribution plots (debug: no cuts, full range, log, errorbar data) ---
     alt_folder = os.path.join(plot_folder, 'dist_errorbar')
     os.makedirs(alt_folder, exist_ok=True)
-    for param_name, param_info in scan_params.items():
-        ic(f"Plotting errorbar distribution for {param_name}...")
-        output_path = os.path.join(alt_folder, f'dist_{param_name}.png')
+    alt_debug_params = [
+        ('chi_rcr_flat', nominal_cuts['chi_rcr_line_chi'][0], (0.2, 0.9), 50),
+        ('chi_diff_threshold', nominal_cuts['chi_diff_threshold'], (-0.3, 0.3), 50),
+        ('snr_max', nominal_cuts['snr_max'], (3, 100), 50),
+    ]
+    for dbg_param, dbg_nominal, dbg_range, dbg_bins in alt_debug_params:
+        ic(f"Plotting errorbar debug distribution for {dbg_param}...")
+        output_path = os.path.join(alt_folder, f'debug_dist_{dbg_param}.png')
         plot_distribution(
-            param_name, nominal_cuts, param_info['nominal'],
+            dbg_param, no_cuts, dbg_nominal,
             sim_direct, sim_reflected,
             data_dict, data_station_ids, bl_2016_data, excluded_mask,
-            output_path, n_bins=param_info.get('n_bins', 30),
-            param_range=param_info.get('range', None), data_style='errorbar'
+            output_path, n_bins=dbg_bins, param_range=dbg_range,
+            yscale='log', data_style='errorbar'
         )
-        if param_name == 'chi_rcr_flat':
-            output_log = os.path.join(alt_folder, f'dist_{param_name}_logscale.png')
-            plot_distribution(
-                param_name, nominal_cuts, param_info['nominal'],
-                sim_direct, sim_reflected,
-                data_dict, data_station_ids, bl_2016_data, excluded_mask,
-                output_log, n_bins=param_info.get('n_bins', 30),
-                param_range=param_info.get('range', None), yscale='log',
-                data_style='errorbar'
-            )
 
     # --- Extended-range chi_diff_threshold distributions ---
     for ext_name, ext_info in chi_diff_extended_scans.items():
@@ -1356,12 +1564,6 @@ if __name__ == "__main__":
 
     # --- Full-range debug distributions (no cuts at all, just raw weighted histograms) ---
     ic("Generating full-range debug distributions...")
-    no_cuts = dict(nominal_cuts)
-    no_cuts['snr_max'] = 9999
-    no_cuts['chi_rcr_line_chi'] = np.zeros_like(nominal_cuts['chi_rcr_line_chi'])
-    no_cuts['chi_diff_threshold'] = -999
-    no_cuts['chi_diff_max'] = 999
-
     debug_fullrange_params = [
         ('chi_rcr_flat', nominal_cuts['chi_rcr_line_chi'][0], (0.2, 0.9), 50),
         ('chi_diff_threshold', nominal_cuts['chi_diff_threshold'], (-0.3, 0.3), 50),
@@ -1375,6 +1577,14 @@ if __name__ == "__main__":
             os.path.join(plot_folder, f'debug_dist_{dbg_param}_fullrange.png'),
             n_bins=dbg_bins, param_range=dbg_range, yscale='log'
         )
+
+    # --- Triple Gaussian fit to chi_rcr_flat ---
+    ic("Fitting triple Gaussian to chi_rcr_flat data...")
+    plot_triple_gaussian_fit(
+        sim_direct, sim_reflected,
+        data_dict, data_station_ids, bl_2016_data,
+        excluded_mask, no_cuts, plot_folder
+    )
 
     # --- Cumulative distribution plots ---
     ic("Generating cumulative distribution plots...")
@@ -1424,56 +1634,55 @@ if __name__ == "__main__":
     # --- Cut-interaction cumulative plots (sub-folder) ---
     # These show how varying one cut affects the cumulative distribution of another.
     # Band = range of the cross-cut parameter, not R-value sweep.
-    # Skip with --skip-interaction flag if already generated.
-    if args.skip_interaction:
-        ic("Skipping cut-interaction plots (--skip-interaction flag)")
-    else:
-        ic("Generating cut-interaction cumulative plots...")
-        cut_interaction_folder = os.path.join(plot_folder, 'cut_interaction')
-        os.makedirs(cut_interaction_folder, exist_ok=True)
+    ic("Generating cut-interaction cumulative plots...")
+    cut_interaction_folder = os.path.join(plot_folder, 'cut_interaction')
+    os.makedirs(cut_interaction_folder, exist_ok=True)
 
-        # Define cross-cut configurations:
-        # (scanned_param, cross_cut_param, cross_cut_range, variants)
-        # variants: list of (suffix, x_range, yscale)
-        cut_interaction_configs = [
-            # chi_rcr_flat scanned, band from delta_chi = -0.05 to 0.05
-            ('chi_rcr_flat', 'chi_diff_threshold', (-0.05, 0.05), [
-                ('', None, 'linear'),
-                ('_log', None, 'log'),
-                ('_zoom', (0.7, 0.8), 'linear'),
-                ('_zoom_log', (0.7, 0.8), 'log'),
-            ]),
-            # delta_chi scanned, band from chi_rcr = 0.74 to 0.76
-            ('chi_diff_threshold', 'chi_rcr_flat', (0.74, 0.76), [
-                ('', None, 'linear'),
-                ('_pm005', (-0.05, 0.05), 'linear'),
-                ('_pm010', (-0.10, 0.10), 'linear'),
-            ]),
-        ]
+    # Define cross-cut configurations:
+    # (scanned_param, cross_cut_param, cross_cut_range, variants)
+    # variants: list of (suffix, x_range, yscale)
+    cut_interaction_configs = [
+        # chi_rcr_flat scanned, band from delta_chi = -0.05 to 0.05
+        ('chi_rcr_flat', 'chi_diff_threshold', (-0.05, 0.05), [
+            ('', None, 'linear'),
+            ('_log', None, 'log'),
+            ('_zoom', (0.7, 0.8), 'linear'),
+            ('_zoom_log', (0.7, 0.8), 'log'),
+        ]),
+        # delta_chi scanned, band from chi_rcr = 0.74 to 0.76
+        ('chi_diff_threshold', 'chi_rcr_flat', (0.74, 0.76), [
+            ('', None, 'linear'),
+            ('_pm005', (-0.05, 0.05), 'linear'),
+            ('_pm010', (-0.10, 0.10), 'linear'),
+        ]),
+    ]
 
-        for scan_param, cross_param, cross_range, variants in cut_interaction_configs:
-            param_info = scan_params[scan_param]
-            for suffix, x_range, yscale in variants:
-                ic(f"Cut-interaction: {scan_param}{suffix} (band: {cross_param} {cross_range})...")
-                output_path = os.path.join(
-                    cut_interaction_folder,
-                    f'cumulative_{scan_param}_x_{cross_param}{suffix}.png')
-                plot_cumulative_cut_interaction(
-                    scan_param, nominal_cuts, param_info['nominal'],
-                    cross_param, cross_range,
-                    sim_direct, sim_reflected,
-                    data_dict, data_station_ids, bl_2016_data, excluded_mask,
-                    output_path, x_range=x_range, yscale=yscale
-                )
+    for scan_param, cross_param, cross_range, variants in cut_interaction_configs:
+        param_info = scan_params[scan_param]
+        for suffix, x_range, yscale in variants:
+            ic(f"Cut-interaction: {scan_param}{suffix} (band: {cross_param} {cross_range})...")
+            output_path = os.path.join(
+                cut_interaction_folder,
+                f'cumulative_{scan_param}_x_{cross_param}{suffix}.png')
+            plot_cumulative_cut_interaction(
+                scan_param, nominal_cuts, param_info['nominal'],
+                cross_param, cross_range,
+                sim_direct, sim_reflected,
+                data_dict, data_station_ids, bl_2016_data, excluded_mask,
+                output_path, x_range=x_range, yscale=yscale
+            )
 
     # --- Events passing table ---
-    ic("Generating events passing table...")
-    events_table_path = os.path.join(plot_folder, 'events_passing_table.txt')
-    print_events_passing_table(
-        scan_params, nominal_cuts,
-        sim_direct, sim_reflected,
-        data_dict, data_station_ids,
-        excluded_mask, events_table_path
-    )
+    if args.skip_table:
+        ic("Skipping events passing table (--skip-table flag)")
+    else:
+        ic("Generating events passing table...")
+        events_table_path = os.path.join(plot_folder, 'events_passing_table.txt')
+        print_events_passing_table(
+            scan_params, nominal_cuts,
+            sim_direct, sim_reflected,
+            data_dict, data_station_ids,
+            excluded_mask, events_table_path
+        )
 
     ic("\nDone. All outputs saved to: " + plot_folder)
