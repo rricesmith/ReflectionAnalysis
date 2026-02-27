@@ -592,7 +592,7 @@ def print_summary_table(nominal_cuts, sim_direct, sim_reflected,
     }
 
 
-def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
+def plot_cumulative_distribution(param_name, nominal_value,
                                   sim_direct, sim_reflected,
                                   sim_direct_high, sim_reflected_high,
                                   sim_direct_low, sim_reflected_low,
@@ -603,8 +603,9 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
     """
     Cumulative distribution plot: number of events passing if cut applied at each level.
 
-    Shows the central estimate as solid lines and shaded bands from the high/low
-    R-value weight assignments.
+    No other cuts are applied — the cumulative at the most-permissive end of
+    the x-range equals the total weighted events. Shaded bands come from
+    high/low R-value weight assignments.
 
     Cut direction per parameter:
       chi_rcr_flat:      events with ChiRCR > x
@@ -612,21 +613,18 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
       chi_diff_threshold: events with chi_diff > x
       chi_diff_max:      events with chi_diff < x
     """
-    # Apply all cuts EXCEPT the one being scanned (for sim — weights don't need uniqueness)
-    rcr_mask = apply_cuts(sim_reflected, nominal_cuts, cut_type='rcr', exclude_param=param_name)
-    bl_mask = apply_cuts(sim_direct, nominal_cuts, cut_type='rcr', exclude_param=param_name)
+    # No pre-filtering by other cuts: use ALL sim events so that the cumulative
+    # at the most-permissive end of the x-range equals the total weighted events.
+    rcr_vals = get_param_values(param_name, sim_reflected)
+    bl_vals = get_param_values(param_name, sim_direct)
 
-    # Extract parameter values for passing sim events (mask is the same for all weight variants)
-    rcr_vals = get_param_values(param_name, sim_reflected)[rcr_mask]
-    bl_vals = get_param_values(param_name, sim_direct)[bl_mask]
-
-    # Weights for central, high, low
-    rcr_w = sim_reflected['weights'][rcr_mask]
-    rcr_w_hi = sim_reflected_high['weights'][rcr_mask]
-    rcr_w_lo = sim_reflected_low['weights'][rcr_mask]
-    bl_w = sim_direct['weights'][bl_mask]
-    bl_w_hi = sim_direct_high['weights'][bl_mask]
-    bl_w_lo = sim_direct_low['weights'][bl_mask]
+    # Weights for central, high, low (all events)
+    rcr_w = sim_reflected['weights']
+    rcr_w_hi = sim_reflected_high['weights']
+    rcr_w_lo = sim_reflected_low['weights']
+    bl_w = sim_direct['weights']
+    bl_w_hi = sim_direct_high['weights']
+    bl_w_lo = sim_direct_low['weights']
 
     # Determine scan range
     all_sim_vals = np.concatenate([v for v in [rcr_vals, bl_vals] if len(v) > 0])
@@ -668,27 +666,15 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
     bl_stat_err = cumulative_stat_err(bl_vals, bl_w, x_scan)
     both_stat_err = np.sqrt(rcr_stat_err**2 + bl_stat_err**2)
 
-    # Data and 2016 BL: apply full cuts at each scan point, then day-uniqueness.
-    # This avoids the bug where day-uniqueness applied once (with the scanned cut
-    # excluded) can discard events that would survive at the actual cut value.
-    def _make_test_cuts(cut_val):
-        """Return a copy of nominal_cuts with param_name set to cut_val."""
-        tc = dict(nominal_cuts)
-        if param_name == 'chi_rcr_flat':
-            tc['chi_rcr_line_chi'] = np.full_like(nominal_cuts['chi_rcr_line_chi'], cut_val)
-        elif param_name == 'chi_diff_threshold':
-            tc['chi_diff_threshold'] = cut_val
-        elif param_name == 'chi_diff_max':
-            tc['chi_diff_max'] = cut_val
-        elif param_name == 'snr_max':
-            tc['snr_max'] = cut_val
-        return tc
+    # Data: apply ONLY the scanned parameter's cut at each x value (no other cuts),
+    # then day-uniqueness. This ensures the cumulative at the most-permissive end
+    # equals the total number of data events.
+    data_vals = get_param_values(param_name, data_dict)
+    data_not_excluded = ~excluded_events_mask
 
     data_cum = np.zeros(len(x_scan), dtype=int)
     for ix, x in enumerate(x_scan):
-        tc = _make_test_cuts(x)
-        dm = apply_cuts(data_dict, tc, cut_type='rcr')
-        dm &= ~excluded_events_mask
+        dm = pass_fn(data_vals, x) & data_not_excluded
         pidx = np.where(dm)[0]
         if len(pidx) > 0:
             umask = filter_unique_events_by_day(
@@ -697,8 +683,7 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
 
     # 2016 BL (no day-uniqueness needed — pre-curated set)
     if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
-        bl16_mask_base = apply_cuts(bl_2016_data, nominal_cuts, cut_type='rcr', exclude_param=param_name)
-        bl16_vals = get_param_values(param_name, bl_2016_data)[bl16_mask_base]
+        bl16_vals = get_param_values(param_name, bl_2016_data)
         bl16_cum = np.array([np.sum(pass_fn(bl16_vals, x)) for x in x_scan])
     else:
         bl16_vals = np.array([])
@@ -759,6 +744,188 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
     plt.savefig(output_path, dpi=150)
     plt.close(fig)
     ic(f"Saved cumulative plot: {output_path}")
+
+
+def plot_cumulative_cut_interaction(param_name, nominal_cuts, nominal_value,
+                                     cross_cut_param, cross_cut_range,
+                                     sim_direct, sim_reflected,
+                                     data_dict, data_station_ids, bl_2016_data,
+                                     excluded_events_mask, output_path,
+                                     x_range=None, yscale='linear'):
+    """
+    Cumulative distribution plot showing the effect of a *different* cut parameter.
+
+    The central line applies the nominal value of the cross-cut parameter.
+    The shaded band spans cumulative curves at the low and high ends of
+    cross_cut_range, showing how the other cut affects this parameter's distribution.
+
+    SNR cut is always applied at nominal (50).
+
+    Parameters
+    ----------
+    param_name : str
+        The parameter being scanned on the x-axis.
+    cross_cut_param : str
+        The OTHER cut parameter whose range produces the band.
+    cross_cut_range : tuple (low, high)
+        Values of cross_cut_param to use for band edges.
+    """
+    # Build three cut configs: nominal, cross-low, cross-high
+    # Each applies SNR + the cross-cut parameter (not the scanned param)
+    def _make_cross_cuts(cross_val):
+        """Return cuts that apply SNR + cross_cut_param at cross_val, nothing else."""
+        cc = dict(nominal_cuts)
+        # Remove the scanned parameter's cut (set to maximally permissive)
+        if param_name == 'chi_rcr_flat':
+            cc['chi_rcr_line_chi'] = np.zeros_like(nominal_cuts['chi_rcr_line_chi'])
+        elif param_name == 'chi_diff_threshold':
+            cc['chi_diff_threshold'] = -999
+        elif param_name == 'chi_diff_max':
+            cc['chi_diff_max'] = 999
+        elif param_name == 'snr_max':
+            cc['snr_max'] = 9999
+        # Set the cross-cut parameter to the given value
+        if cross_cut_param == 'chi_rcr_flat':
+            cc['chi_rcr_line_chi'] = np.full_like(nominal_cuts['chi_rcr_line_chi'], cross_val)
+        elif cross_cut_param == 'chi_diff_threshold':
+            cc['chi_diff_threshold'] = cross_val
+        elif cross_cut_param == 'chi_diff_max':
+            cc['chi_diff_max'] = cross_val
+        return cc
+
+    cross_lo, cross_hi = cross_cut_range
+    # Nominal value of the cross-cut parameter
+    if cross_cut_param == 'chi_rcr_flat':
+        cross_nominal = nominal_cuts['chi_rcr_line_chi'][0]
+    elif cross_cut_param == 'chi_diff_threshold':
+        cross_nominal = nominal_cuts['chi_diff_threshold']
+    elif cross_cut_param == 'chi_diff_max':
+        cross_nominal = nominal_cuts['chi_diff_max']
+    else:
+        cross_nominal = (cross_lo + cross_hi) / 2
+
+    cuts_nom = _make_cross_cuts(cross_nominal)
+    cuts_lo = _make_cross_cuts(cross_lo)
+    cuts_hi = _make_cross_cuts(cross_hi)
+
+    # Apply cross-cut masks for sim
+    rcr_mask_nom = apply_cuts(sim_reflected, cuts_nom, cut_type='rcr')
+    rcr_mask_lo = apply_cuts(sim_reflected, cuts_lo, cut_type='rcr')
+    rcr_mask_hi = apply_cuts(sim_reflected, cuts_hi, cut_type='rcr')
+    bl_mask_nom = apply_cuts(sim_direct, cuts_nom, cut_type='rcr')
+    bl_mask_lo = apply_cuts(sim_direct, cuts_lo, cut_type='rcr')
+    bl_mask_hi = apply_cuts(sim_direct, cuts_hi, cut_type='rcr')
+
+    # Extract parameter values for each mask variant
+    rcr_all_vals = get_param_values(param_name, sim_reflected)
+    bl_all_vals = get_param_values(param_name, sim_direct)
+
+    # Determine scan range
+    all_vals = np.concatenate([rcr_all_vals[rcr_mask_nom], bl_all_vals[bl_mask_nom]])
+    if len(all_vals) == 0:
+        ic(f"Cut-interaction {param_name}: no events after cross-cut, skipping")
+        return
+    if x_range is not None:
+        x_scan = np.linspace(x_range[0], x_range[1], 200)
+    else:
+        x_scan = np.linspace(np.nanmin(all_vals), np.nanmax(all_vals), 200)
+
+    # Define passing condition
+    if param_name in ('chi_rcr_flat', 'chi_diff_threshold'):
+        pass_fn = lambda vals, x: vals > x
+    elif param_name in ('snr_max', 'chi_diff_max'):
+        pass_fn = lambda vals, x: vals < x
+    else:
+        raise ValueError(f"Unknown param_name: {param_name}")
+
+    def cumulative(vals, weights, mask, x_arr):
+        v = vals[mask]
+        w = weights[mask]
+        return np.array([np.sum(w[pass_fn(v, x)]) for x in x_arr])
+
+    rcr_w = sim_reflected['weights']
+    bl_w = sim_direct['weights']
+
+    rcr_cum_nom = cumulative(rcr_all_vals, rcr_w, rcr_mask_nom, x_scan)
+    rcr_cum_lo = cumulative(rcr_all_vals, rcr_w, rcr_mask_lo, x_scan)
+    rcr_cum_hi = cumulative(rcr_all_vals, rcr_w, rcr_mask_hi, x_scan)
+    bl_cum_nom = cumulative(bl_all_vals, bl_w, bl_mask_nom, x_scan)
+    bl_cum_lo = cumulative(bl_all_vals, bl_w, bl_mask_lo, x_scan)
+    bl_cum_hi = cumulative(bl_all_vals, bl_w, bl_mask_hi, x_scan)
+    both_cum_nom = rcr_cum_nom + bl_cum_nom
+    both_cum_lo = rcr_cum_lo + bl_cum_lo
+    both_cum_hi = rcr_cum_hi + bl_cum_hi
+
+    # Ensure lo <= hi for fill_between
+    rcr_band_lo = np.minimum(rcr_cum_lo, rcr_cum_hi)
+    rcr_band_hi = np.maximum(rcr_cum_lo, rcr_cum_hi)
+    bl_band_lo = np.minimum(bl_cum_lo, bl_cum_hi)
+    bl_band_hi = np.maximum(bl_cum_lo, bl_cum_hi)
+    both_band_lo = np.minimum(both_cum_lo, both_cum_hi)
+    both_band_hi = np.maximum(both_cum_lo, both_cum_hi)
+
+    # Data: apply cross-cut at nominal + scanned cut at each x
+    data_vals = get_param_values(param_name, data_dict)
+    data_cross_mask = apply_cuts(data_dict, cuts_nom, cut_type='rcr') & ~excluded_events_mask
+    data_cum = np.zeros(len(x_scan), dtype=int)
+    for ix, x in enumerate(x_scan):
+        dm = data_cross_mask & pass_fn(data_vals, x)
+        pidx = np.where(dm)[0]
+        if len(pidx) > 0:
+            umask = filter_unique_events_by_day(
+                data_dict['Time'][pidx], data_station_ids[pidx])
+            data_cum[ix] = int(np.sum(umask))
+
+    # 2016 BL
+    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
+        bl16_cross_mask = apply_cuts(bl_2016_data, cuts_nom, cut_type='rcr')
+        bl16_vals = get_param_values(param_name, bl_2016_data)[bl16_cross_mask]
+        bl16_cum = np.array([np.sum(pass_fn(bl16_vals, x)) for x in x_scan])
+    else:
+        bl16_vals = np.array([])
+        bl16_cum = np.zeros_like(x_scan)
+
+    # Plot
+    cross_label = PARAM_TITLES.get(cross_cut_param, cross_cut_param)
+    band_label_suffix = f" ({cross_label}: {cross_lo}–{cross_hi})"
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+
+    ax.fill_between(x_scan, rcr_band_lo, rcr_band_hi, color='green', alpha=0.15,
+                     label=f'RCR Sim{band_label_suffix}')
+    ax.plot(x_scan, rcr_cum_nom, 'g-', linewidth=2)
+    ax.fill_between(x_scan, bl_band_lo, bl_band_hi, color='orange', alpha=0.15,
+                     label=f'BL Sim{band_label_suffix}')
+    ax.plot(x_scan, bl_cum_nom, color='orange', linewidth=2)
+    ax.fill_between(x_scan, both_band_lo, both_band_hi, color='purple', alpha=0.1,
+                     label=f'Both Sim{band_label_suffix}')
+    ax.plot(x_scan, both_cum_nom, 'purple', linewidth=2, linestyle='--')
+
+    ax.plot(x_scan, data_cum, 'k-', linewidth=1.5, label='Data Events')
+    if len(bl16_vals) > 0:
+        ax.plot(x_scan, bl16_cum, 'c-', linewidth=1.5, label='2016 BL Events')
+
+    ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
+               label=f'Cut at {nominal_value}', alpha=0.7)
+
+    xlabel = PARAM_LABELS.get(param_name, param_name)
+    ax.set_xlabel(xlabel, fontsize=12)
+    ax.set_ylabel('Events Passing Cut', fontsize=12)
+    ax.set_title(f'Cumulative: {PARAM_TITLES.get(param_name, param_name)} '
+                 f'(band: {cross_label})', fontsize=13)
+    ax.legend(loc='best', fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    if yscale == 'log':
+        ax.set_yscale('log')
+        ax.set_ylim(bottom=0.1)
+    if x_range is not None:
+        ax.set_xlim(x_range)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close(fig)
+    ic(f"Saved cut-interaction cumulative plot: {output_path}")
 
 
 def print_events_passing_table(scan_params, nominal_cuts,
@@ -1197,13 +1364,54 @@ if __name__ == "__main__":
             ic(f"Plotting cumulative for {param_name}{suffix}...")
             output_path = os.path.join(plot_folder, f'cumulative_{param_name}{suffix}.png')
             plot_cumulative_distribution(
-                param_name, nominal_cuts, param_info['nominal'],
+                param_name, param_info['nominal'],
                 sim_direct, sim_reflected,
                 sim_direct_high, sim_reflected_high,
                 sim_direct_low, sim_reflected_low,
                 data_dict, data_station_ids, bl_2016_data, excluded_mask,
                 output_path, x_range=x_range, yscale=yscale,
                 show_stat_error=stat_err
+            )
+
+    # --- Cut-interaction cumulative plots (sub-folder) ---
+    # These show how varying one cut affects the cumulative distribution of another.
+    # Band = range of the cross-cut parameter, not R-value sweep.
+    ic("Generating cut-interaction cumulative plots...")
+    cut_interaction_folder = os.path.join(plot_folder, 'cut_interaction')
+    os.makedirs(cut_interaction_folder, exist_ok=True)
+
+    # Define cross-cut configurations:
+    # (scanned_param, cross_cut_param, cross_cut_range, variants)
+    # variants: list of (suffix, x_range, yscale)
+    cut_interaction_configs = [
+        # chi_rcr_flat scanned, band from delta_chi = -0.05 to 0.05
+        ('chi_rcr_flat', 'chi_diff_threshold', (-0.05, 0.05), [
+            ('', None, 'linear'),
+            ('_log', None, 'log'),
+            ('_zoom', (0.7, 0.8), 'linear'),
+            ('_zoom_log', (0.7, 0.8), 'log'),
+        ]),
+        # delta_chi scanned, band from chi_rcr = 0.74 to 0.76
+        ('chi_diff_threshold', 'chi_rcr_flat', (0.74, 0.76), [
+            ('', None, 'linear'),
+            ('_pm005', (-0.05, 0.05), 'linear'),
+            ('_pm010', (-0.10, 0.10), 'linear'),
+        ]),
+    ]
+
+    for scan_param, cross_param, cross_range, variants in cut_interaction_configs:
+        param_info = scan_params[scan_param]
+        for suffix, x_range, yscale in variants:
+            ic(f"Cut-interaction: {scan_param}{suffix} (band: {cross_param} {cross_range})...")
+            output_path = os.path.join(
+                cut_interaction_folder,
+                f'cumulative_{scan_param}_x_{cross_param}{suffix}.png')
+            plot_cumulative_cut_interaction(
+                scan_param, nominal_cuts, param_info['nominal'],
+                cross_param, cross_range,
+                sim_direct, sim_reflected,
+                data_dict, data_station_ids, bl_2016_data, excluded_mask,
+                output_path, x_range=x_range, yscale=yscale
             )
 
     # --- Events passing table ---
