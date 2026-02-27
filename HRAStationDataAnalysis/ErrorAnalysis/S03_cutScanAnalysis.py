@@ -34,6 +34,7 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
+import argparse
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
@@ -376,7 +377,8 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
                       sim_direct, sim_reflected,
                       data_dict, data_station_ids, bl_2016_data,
                       excluded_events_mask,
-                      output_path, n_bins=30, param_range=None, yscale='linear'):
+                      output_path, n_bins=30, param_range=None, yscale='linear',
+                      data_style='points'):
     """
     Distribution plot for one cut parameter.
 
@@ -472,10 +474,23 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
     ax.bar(bin_centers, 2 * both_err, bottom=both_hist - both_err, width=bin_width,
            color='purple', alpha=0.12, edgecolor='none')
 
-    # Data and 2016 BL as points (raw counts, no error bars)
-    ax.plot(bin_centers, data_hist, 'ko', markersize=5, label='Data Events', zorder=6)
-    if len(bl16_vals) > 0:
-        ax.plot(bin_centers, bl16_hist, 'cs', markersize=5, label='2016 BL Events', zorder=6)
+    # Data and 2016 BL visualization
+    if data_style == 'errorbar':
+        # Larger markers with white halo + sqrt(N) error bars for visibility
+        data_err_bars = np.sqrt(np.maximum(data_hist, 0))
+        ax.errorbar(bin_centers, data_hist, yerr=data_err_bars, fmt='ko',
+                     markersize=7, markeredgecolor='white', markeredgewidth=1.5,
+                     capsize=3, elinewidth=1.2, label='Data Events', zorder=6)
+        if len(bl16_vals) > 0:
+            bl16_err_bars = np.sqrt(np.maximum(bl16_hist, 0))
+            ax.errorbar(bin_centers, bl16_hist, yerr=bl16_err_bars, fmt='cs',
+                         markersize=8, markeredgecolor='white', markeredgewidth=1.5,
+                         capsize=3, elinewidth=1.2, label='2016 BL Events', zorder=6)
+    else:
+        # Simple points (default)
+        ax.plot(bin_centers, data_hist, 'ko', markersize=5, label='Data Events', zorder=6)
+        if len(bl16_vals) > 0:
+            ax.plot(bin_centers, bl16_hist, 'cs', markersize=5, label='2016 BL Events', zorder=6)
 
     # Cut value line
     ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
@@ -1015,6 +1030,11 @@ def print_events_passing_table(scan_params, nominal_cuts,
 # ============================================================================
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="S03 Cut Scan Error Analysis")
+    parser.add_argument('--skip-interaction', action='store_true',
+                        help='Skip generating cut-interaction sub-folder plots')
+    args = parser.parse_args()
+
     # --- Configuration ---
     config = configparser.ConfigParser()
     config.read('HRAStationDataAnalysis/config.ini')
@@ -1297,6 +1317,30 @@ if __name__ == "__main__":
                 param_range=param_info.get('range', None), yscale='log'
             )
 
+    # --- Alternative-style distribution plots (errorbar data style) ---
+    alt_folder = os.path.join(plot_folder, 'dist_errorbar')
+    os.makedirs(alt_folder, exist_ok=True)
+    for param_name, param_info in scan_params.items():
+        ic(f"Plotting errorbar distribution for {param_name}...")
+        output_path = os.path.join(alt_folder, f'dist_{param_name}.png')
+        plot_distribution(
+            param_name, nominal_cuts, param_info['nominal'],
+            sim_direct, sim_reflected,
+            data_dict, data_station_ids, bl_2016_data, excluded_mask,
+            output_path, n_bins=param_info.get('n_bins', 30),
+            param_range=param_info.get('range', None), data_style='errorbar'
+        )
+        if param_name == 'chi_rcr_flat':
+            output_log = os.path.join(alt_folder, f'dist_{param_name}_logscale.png')
+            plot_distribution(
+                param_name, nominal_cuts, param_info['nominal'],
+                sim_direct, sim_reflected,
+                data_dict, data_station_ids, bl_2016_data, excluded_mask,
+                output_log, n_bins=param_info.get('n_bins', 30),
+                param_range=param_info.get('range', None), yscale='log',
+                data_style='errorbar'
+            )
+
     # --- Extended-range chi_diff_threshold distributions ---
     for ext_name, ext_info in chi_diff_extended_scans.items():
         ic(f"Plotting distribution for {ext_name}...")
@@ -1310,23 +1354,27 @@ if __name__ == "__main__":
             param_range=ext_info.get('range', None)
         )
 
-    # --- Full-range debug distribution (no cuts at all, just raw weighted histograms) ---
-    # For chi_rcr_flat: verify that sum of bins = known totals
-    ic("Generating full-range debug distribution for chi_rcr_flat...")
-    # Use a temporary "no cuts" dict to effectively skip all cuts
+    # --- Full-range debug distributions (no cuts at all, just raw weighted histograms) ---
+    ic("Generating full-range debug distributions...")
     no_cuts = dict(nominal_cuts)
     no_cuts['snr_max'] = 9999
     no_cuts['chi_rcr_line_chi'] = np.zeros_like(nominal_cuts['chi_rcr_line_chi'])
     no_cuts['chi_diff_threshold'] = -999
     no_cuts['chi_diff_max'] = 999
-    # Create a dummy excluded mask of all False for sim
-    plot_distribution(
-        'chi_rcr_flat', no_cuts, nominal_cuts['chi_rcr_line_chi'][0],
-        sim_direct, sim_reflected,
-        data_dict, data_station_ids, bl_2016_data, excluded_mask,
-        os.path.join(plot_folder, 'debug_dist_chi_rcr_flat_fullrange.png'),
-        n_bins=50, param_range=(0.2, 0.9), yscale='log'
-    )
+
+    debug_fullrange_params = [
+        ('chi_rcr_flat', nominal_cuts['chi_rcr_line_chi'][0], (0.2, 0.9), 50),
+        ('chi_diff_threshold', nominal_cuts['chi_diff_threshold'], (-0.3, 0.3), 50),
+        ('snr_max', nominal_cuts['snr_max'], (3, 100), 50),
+    ]
+    for dbg_param, dbg_nominal, dbg_range, dbg_bins in debug_fullrange_params:
+        plot_distribution(
+            dbg_param, no_cuts, dbg_nominal,
+            sim_direct, sim_reflected,
+            data_dict, data_station_ids, bl_2016_data, excluded_mask,
+            os.path.join(plot_folder, f'debug_dist_{dbg_param}_fullrange.png'),
+            n_bins=dbg_bins, param_range=dbg_range, yscale='log'
+        )
 
     # --- Cumulative distribution plots ---
     ic("Generating cumulative distribution plots...")
@@ -1376,43 +1424,47 @@ if __name__ == "__main__":
     # --- Cut-interaction cumulative plots (sub-folder) ---
     # These show how varying one cut affects the cumulative distribution of another.
     # Band = range of the cross-cut parameter, not R-value sweep.
-    ic("Generating cut-interaction cumulative plots...")
-    cut_interaction_folder = os.path.join(plot_folder, 'cut_interaction')
-    os.makedirs(cut_interaction_folder, exist_ok=True)
+    # Skip with --skip-interaction flag if already generated.
+    if args.skip_interaction:
+        ic("Skipping cut-interaction plots (--skip-interaction flag)")
+    else:
+        ic("Generating cut-interaction cumulative plots...")
+        cut_interaction_folder = os.path.join(plot_folder, 'cut_interaction')
+        os.makedirs(cut_interaction_folder, exist_ok=True)
 
-    # Define cross-cut configurations:
-    # (scanned_param, cross_cut_param, cross_cut_range, variants)
-    # variants: list of (suffix, x_range, yscale)
-    cut_interaction_configs = [
-        # chi_rcr_flat scanned, band from delta_chi = -0.05 to 0.05
-        ('chi_rcr_flat', 'chi_diff_threshold', (-0.05, 0.05), [
-            ('', None, 'linear'),
-            ('_log', None, 'log'),
-            ('_zoom', (0.7, 0.8), 'linear'),
-            ('_zoom_log', (0.7, 0.8), 'log'),
-        ]),
-        # delta_chi scanned, band from chi_rcr = 0.74 to 0.76
-        ('chi_diff_threshold', 'chi_rcr_flat', (0.74, 0.76), [
-            ('', None, 'linear'),
-            ('_pm005', (-0.05, 0.05), 'linear'),
-            ('_pm010', (-0.10, 0.10), 'linear'),
-        ]),
-    ]
+        # Define cross-cut configurations:
+        # (scanned_param, cross_cut_param, cross_cut_range, variants)
+        # variants: list of (suffix, x_range, yscale)
+        cut_interaction_configs = [
+            # chi_rcr_flat scanned, band from delta_chi = -0.05 to 0.05
+            ('chi_rcr_flat', 'chi_diff_threshold', (-0.05, 0.05), [
+                ('', None, 'linear'),
+                ('_log', None, 'log'),
+                ('_zoom', (0.7, 0.8), 'linear'),
+                ('_zoom_log', (0.7, 0.8), 'log'),
+            ]),
+            # delta_chi scanned, band from chi_rcr = 0.74 to 0.76
+            ('chi_diff_threshold', 'chi_rcr_flat', (0.74, 0.76), [
+                ('', None, 'linear'),
+                ('_pm005', (-0.05, 0.05), 'linear'),
+                ('_pm010', (-0.10, 0.10), 'linear'),
+            ]),
+        ]
 
-    for scan_param, cross_param, cross_range, variants in cut_interaction_configs:
-        param_info = scan_params[scan_param]
-        for suffix, x_range, yscale in variants:
-            ic(f"Cut-interaction: {scan_param}{suffix} (band: {cross_param} {cross_range})...")
-            output_path = os.path.join(
-                cut_interaction_folder,
-                f'cumulative_{scan_param}_x_{cross_param}{suffix}.png')
-            plot_cumulative_cut_interaction(
-                scan_param, nominal_cuts, param_info['nominal'],
-                cross_param, cross_range,
-                sim_direct, sim_reflected,
-                data_dict, data_station_ids, bl_2016_data, excluded_mask,
-                output_path, x_range=x_range, yscale=yscale
-            )
+        for scan_param, cross_param, cross_range, variants in cut_interaction_configs:
+            param_info = scan_params[scan_param]
+            for suffix, x_range, yscale in variants:
+                ic(f"Cut-interaction: {scan_param}{suffix} (band: {cross_param} {cross_range})...")
+                output_path = os.path.join(
+                    cut_interaction_folder,
+                    f'cumulative_{scan_param}_x_{cross_param}{suffix}.png')
+                plot_cumulative_cut_interaction(
+                    scan_param, nominal_cuts, param_info['nominal'],
+                    cross_param, cross_range,
+                    sim_direct, sim_reflected,
+                    data_dict, data_station_ids, bl_2016_data, excluded_mask,
+                    output_path, x_range=x_range, yscale=yscale
+                )
 
     # --- Events passing table ---
     ic("Generating events passing table...")
