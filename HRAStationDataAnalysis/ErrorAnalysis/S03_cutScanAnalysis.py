@@ -454,7 +454,6 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
     bl_err, _ = np.histogram(bl_vals, bins=bin_edges, weights=bl_weights**2)
     bl_err = np.sqrt(bl_err)
     both_err = np.sqrt(rcr_err**2 + bl_err**2)
-    data_err = np.sqrt(np.maximum(data_hist, 1))  # Poisson error, min 1 to avoid zero bars
 
     # --- Plot ---
     fig, ax = plt.subplots(figsize=(10, 7))
@@ -473,13 +472,10 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
     ax.bar(bin_centers, 2 * both_err, bottom=both_hist - both_err, width=bin_width,
            color='purple', alpha=0.12, edgecolor='none')
 
-    # Data as line with points and error bars at bin centers
-    ax.errorbar(bin_centers, data_hist, yerr=data_err, fmt='ko', markersize=5,
-                linewidth=1.5, capsize=3, label='Data Events', zorder=6)
+    # Data and 2016 BL as points (raw counts, no error bars)
+    ax.plot(bin_centers, data_hist, 'ko', markersize=5, label='Data Events', zorder=6)
     if len(bl16_vals) > 0:
-        bl16_err = np.sqrt(np.maximum(bl16_hist, 1))
-        ax.errorbar(bin_centers, bl16_hist, yerr=bl16_err, fmt='cs', markersize=5,
-                    linewidth=1.5, capsize=3, label='2016 BL Events', zorder=6)
+        ax.plot(bin_centers, bl16_hist, 'cs', markersize=5, label='2016 BL Events', zorder=6)
 
     # Cut value line
     ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
@@ -602,7 +598,8 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
                                   sim_direct_low, sim_reflected_low,
                                   data_dict, data_station_ids, bl_2016_data,
                                   excluded_events_mask, output_path,
-                                  x_range=None, yscale='linear'):
+                                  x_range=None, yscale='linear',
+                                  show_stat_error=False):
     """
     Cumulative distribution plot: number of events passing if cut applied at each level.
 
@@ -615,34 +612,13 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
       chi_diff_threshold: events with chi_diff > x
       chi_diff_max:      events with chi_diff < x
     """
-    # Apply all cuts EXCEPT the one being scanned
+    # Apply all cuts EXCEPT the one being scanned (for sim — weights don't need uniqueness)
     rcr_mask = apply_cuts(sim_reflected, nominal_cuts, cut_type='rcr', exclude_param=param_name)
     bl_mask = apply_cuts(sim_direct, nominal_cuts, cut_type='rcr', exclude_param=param_name)
-    data_mask = apply_cuts(data_dict, nominal_cuts, cut_type='rcr', exclude_param=param_name)
-    data_mask &= ~excluded_events_mask
 
-    # Day-uniqueness for data
-    passing_indices = np.where(data_mask)[0]
-    if len(passing_indices) > 0:
-        times_pass = data_dict['Time'][passing_indices]
-        sids_pass = data_station_ids[passing_indices]
-        unique_mask = filter_unique_events_by_day(times_pass, sids_pass)
-        data_final_indices = passing_indices[unique_mask]
-    else:
-        data_final_indices = np.array([], dtype=int)
-
-    # 2016 BL
-    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
-        bl16_mask = apply_cuts(bl_2016_data, nominal_cuts, cut_type='rcr', exclude_param=param_name)
-    else:
-        bl16_mask = np.array([], dtype=bool)
-
-    # Extract parameter values for passing events (mask is the same for all weight variants)
+    # Extract parameter values for passing sim events (mask is the same for all weight variants)
     rcr_vals = get_param_values(param_name, sim_reflected)[rcr_mask]
     bl_vals = get_param_values(param_name, sim_direct)[bl_mask]
-    data_vals = get_param_values(param_name, data_dict)[data_final_indices]
-    bl16_vals = (get_param_values(param_name, bl_2016_data)[bl16_mask]
-                 if bl_2016_data is not None and len(bl16_mask) > 0 else np.array([]))
 
     # Weights for central, high, low
     rcr_w = sim_reflected['weights'][rcr_mask]
@@ -652,15 +628,15 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
     bl_w_hi = sim_direct_high['weights'][bl_mask]
     bl_w_lo = sim_direct_low['weights'][bl_mask]
 
-    # Determine scan range from x_range override or from data
-    all_vals = np.concatenate([v for v in [rcr_vals, bl_vals, data_vals] if len(v) > 0])
-    if len(all_vals) == 0:
-        ic(f"Cumulative {param_name}: no events passing other cuts, skipping")
+    # Determine scan range
+    all_sim_vals = np.concatenate([v for v in [rcr_vals, bl_vals] if len(v) > 0])
+    if len(all_sim_vals) == 0:
+        ic(f"Cumulative {param_name}: no sim events passing other cuts, skipping")
         return
     if x_range is not None:
         x_scan = np.linspace(x_range[0], x_range[1], 200)
     else:
-        x_scan = np.linspace(np.nanmin(all_vals), np.nanmax(all_vals), 200)
+        x_scan = np.linspace(np.nanmin(all_sim_vals), np.nanmax(all_sim_vals), 200)
 
     # Define passing condition per parameter
     if param_name in ('chi_rcr_flat', 'chi_diff_threshold'):
@@ -670,7 +646,7 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
     else:
         raise ValueError(f"Unknown param_name: {param_name}")
 
-    # Compute cumulative curves
+    # Compute cumulative curves for sim (no uniqueness needed)
     def cumulative(vals, weights, x_arr):
         return np.array([np.sum(weights[pass_fn(vals, x)]) for x in x_arr])
 
@@ -683,20 +659,82 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
     both_cum = rcr_cum + bl_cum
     both_cum_hi = rcr_cum_hi + bl_cum_hi
     both_cum_lo = rcr_cum_lo + bl_cum_lo
-    data_cum = np.array([np.sum(pass_fn(data_vals, x)) for x in x_scan])
-    bl16_cum = (np.array([np.sum(pass_fn(bl16_vals, x)) for x in x_scan])
-                if len(bl16_vals) > 0 else np.zeros_like(x_scan))
+
+    # Statistical error: sqrt(sum(w_i^2)) for passing events at each scan point
+    def cumulative_stat_err(vals, weights, x_arr):
+        return np.array([np.sqrt(np.sum(weights[pass_fn(vals, x)]**2)) for x in x_arr])
+
+    rcr_stat_err = cumulative_stat_err(rcr_vals, rcr_w, x_scan)
+    bl_stat_err = cumulative_stat_err(bl_vals, bl_w, x_scan)
+    both_stat_err = np.sqrt(rcr_stat_err**2 + bl_stat_err**2)
+
+    # Data and 2016 BL: apply full cuts at each scan point, then day-uniqueness.
+    # This avoids the bug where day-uniqueness applied once (with the scanned cut
+    # excluded) can discard events that would survive at the actual cut value.
+    def _make_test_cuts(cut_val):
+        """Return a copy of nominal_cuts with param_name set to cut_val."""
+        tc = dict(nominal_cuts)
+        if param_name == 'chi_rcr_flat':
+            tc['chi_rcr_line_chi'] = np.full_like(nominal_cuts['chi_rcr_line_chi'], cut_val)
+        elif param_name == 'chi_diff_threshold':
+            tc['chi_diff_threshold'] = cut_val
+        elif param_name == 'chi_diff_max':
+            tc['chi_diff_max'] = cut_val
+        elif param_name == 'snr_max':
+            tc['snr_max'] = cut_val
+        return tc
+
+    data_cum = np.zeros(len(x_scan), dtype=int)
+    for ix, x in enumerate(x_scan):
+        tc = _make_test_cuts(x)
+        dm = apply_cuts(data_dict, tc, cut_type='rcr')
+        dm &= ~excluded_events_mask
+        pidx = np.where(dm)[0]
+        if len(pidx) > 0:
+            umask = filter_unique_events_by_day(
+                data_dict['Time'][pidx], data_station_ids[pidx])
+            data_cum[ix] = int(np.sum(umask))
+
+    # 2016 BL (no day-uniqueness needed — pre-curated set)
+    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
+        bl16_mask_base = apply_cuts(bl_2016_data, nominal_cuts, cut_type='rcr', exclude_param=param_name)
+        bl16_vals = get_param_values(param_name, bl_2016_data)[bl16_mask_base]
+        bl16_cum = np.array([np.sum(pass_fn(bl16_vals, x)) for x in x_scan])
+    else:
+        bl16_vals = np.array([])
+        bl16_cum = np.zeros_like(x_scan)
 
     # Plot
     fig, ax = plt.subplots(figsize=(10, 7))
 
-    # Shaded bands (labeled) with central lines (unlabeled)
-    ax.fill_between(x_scan, rcr_cum_lo, rcr_cum_hi, color='green', alpha=0.15, label='RCR Sim')
-    ax.plot(x_scan, rcr_cum, 'g-', linewidth=2)
-    ax.fill_between(x_scan, bl_cum_lo, bl_cum_hi, color='orange', alpha=0.15, label='BL Sim')
-    ax.plot(x_scan, bl_cum, color='orange', linewidth=2)
-    ax.fill_between(x_scan, both_cum_lo, both_cum_hi, color='purple', alpha=0.1, label='Both Sim')
-    ax.plot(x_scan, both_cum, 'purple', linewidth=2, linestyle='--')
+    if show_stat_error:
+        # Combined band: R-sweep range + statistical error added in quadrature
+        # The R-sweep gives systematic spread; statistical error adds on top
+        rcr_band_lo = np.minimum(rcr_cum_lo, rcr_cum) - rcr_stat_err
+        rcr_band_hi = np.maximum(rcr_cum_hi, rcr_cum) + rcr_stat_err
+        bl_band_lo = np.minimum(bl_cum_lo, bl_cum) - bl_stat_err
+        bl_band_hi = np.maximum(bl_cum_hi, bl_cum) + bl_stat_err
+        both_band_lo = np.minimum(both_cum_lo, both_cum) - both_stat_err
+        both_band_hi = np.maximum(both_cum_hi, both_cum) + both_stat_err
+
+        ax.fill_between(x_scan, rcr_band_lo, rcr_band_hi, color='green', alpha=0.15,
+                         label='RCR Sim (R-sweep + stat)')
+        ax.plot(x_scan, rcr_cum, 'g-', linewidth=2)
+        ax.fill_between(x_scan, bl_band_lo, bl_band_hi, color='orange', alpha=0.15,
+                         label='BL Sim (R-sweep + stat)')
+        ax.plot(x_scan, bl_cum, color='orange', linewidth=2)
+        ax.fill_between(x_scan, both_band_lo, both_band_hi, color='purple', alpha=0.1,
+                         label='Both Sim (R-sweep + stat)')
+        ax.plot(x_scan, both_cum, 'purple', linewidth=2, linestyle='--')
+    else:
+        # R-sweep bands only
+        ax.fill_between(x_scan, rcr_cum_lo, rcr_cum_hi, color='green', alpha=0.15, label='RCR Sim')
+        ax.plot(x_scan, rcr_cum, 'g-', linewidth=2)
+        ax.fill_between(x_scan, bl_cum_lo, bl_cum_hi, color='orange', alpha=0.15, label='BL Sim')
+        ax.plot(x_scan, bl_cum, color='orange', linewidth=2)
+        ax.fill_between(x_scan, both_cum_lo, both_cum_hi, color='purple', alpha=0.1, label='Both Sim')
+        ax.plot(x_scan, both_cum, 'purple', linewidth=2, linestyle='--')
+
     ax.plot(x_scan, data_cum, 'k-', linewidth=1.5, label='Data Events')
     if len(bl16_vals) > 0:
         ax.plot(x_scan, bl16_cum, 'c-', linewidth=1.5, label='2016 BL Events')
@@ -1120,7 +1158,7 @@ if __name__ == "__main__":
         sim_direct, sim_reflected,
         data_dict, data_station_ids, bl_2016_data, excluded_mask,
         os.path.join(plot_folder, 'debug_dist_chi_rcr_flat_fullrange.png'),
-        n_bins=50, param_range=(0.0, 1.0), yscale='log'
+        n_bins=50, param_range=(0.2, 0.9), yscale='log'
     )
 
     # --- Cumulative distribution plots ---
@@ -1128,30 +1166,34 @@ if __name__ == "__main__":
 
     # Define zoom/variant configurations per parameter
     # Each entry: (suffix, x_range or None, yscale)
+    # Each entry: (suffix, x_range or None, yscale, show_stat_error)
     cumulative_variants = {
         'chi_rcr_flat': [
-            ('', None, 'linear'),
-            ('_log', None, 'log'),
-            ('_zoom', (0.7, 0.8), 'linear'),
-            ('_zoom_log', (0.7, 0.8), 'log'),
+            ('', None, 'linear', False),
+            ('_log', None, 'log', False),
+            ('_zoom', (0.7, 0.8), 'linear', False),
+            ('_zoom_log', (0.7, 0.8), 'log', False),
+            ('_zoom_staterr', (0.7, 0.8), 'linear', True),
+            ('_zoom_log_staterr', (0.7, 0.8), 'log', True),
         ],
         'chi_diff_threshold': [
-            ('', None, 'linear'),
-            ('_pm005', (-0.05, 0.05), 'linear'),
-            ('_pm010', (-0.10, 0.10), 'linear'),
-            ('_pm015', (-0.15, 0.15), 'linear'),
+            ('', None, 'linear', False),
+            ('_pm005', (-0.05, 0.05), 'linear', False),
+            ('_pm010', (-0.10, 0.10), 'linear', False),
+            ('_pm015', (-0.15, 0.15), 'linear', False),
+            ('_pm005_staterr', (-0.05, 0.05), 'linear', True),
         ],
         'chi_diff_max': [
-            ('', None, 'linear'),
+            ('', None, 'linear', False),
         ],
         'snr_max': [
-            ('', None, 'linear'),
+            ('', None, 'linear', False),
         ],
     }
 
     for param_name, param_info in scan_params.items():
-        variants = cumulative_variants.get(param_name, [('', None, 'linear')])
-        for suffix, x_range, yscale in variants:
+        variants = cumulative_variants.get(param_name, [('', None, 'linear', False)])
+        for suffix, x_range, yscale, stat_err in variants:
             ic(f"Plotting cumulative for {param_name}{suffix}...")
             output_path = os.path.join(plot_folder, f'cumulative_{param_name}{suffix}.png')
             plot_cumulative_distribution(
@@ -1160,7 +1202,8 @@ if __name__ == "__main__":
                 sim_direct_high, sim_reflected_high,
                 sim_direct_low, sim_reflected_low,
                 data_dict, data_station_ids, bl_2016_data, excluded_mask,
-                output_path, x_range=x_range, yscale=yscale
+                output_path, x_range=x_range, yscale=yscale,
+                show_stat_error=stat_err
             )
 
     # --- Events passing table ---
