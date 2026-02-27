@@ -448,28 +448,38 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
     ic(f"Distribution {param_name}: RCR sum={np.sum(rcr_hist):.2f}, BL sum={np.sum(bl_hist):.2f}, "
        f"Both sum={np.sum(both_hist):.2f}, Data={int(np.sum(data_hist))}, 2016 BL={int(np.sum(bl16_hist))}")
 
+    # Compute per-bin errors: sqrt(sum(w_i^2)) for sim, sqrt(N) for data
+    rcr_err, _ = np.histogram(rcr_vals, bins=bin_edges, weights=rcr_weights**2)
+    rcr_err = np.sqrt(rcr_err)
+    bl_err, _ = np.histogram(bl_vals, bins=bin_edges, weights=bl_weights**2)
+    bl_err = np.sqrt(bl_err)
+    both_err = np.sqrt(rcr_err**2 + bl_err**2)
+    data_err = np.sqrt(np.maximum(data_hist, 1))  # Poisson error, min 1 to avoid zero bars
+
     # --- Plot ---
     fig, ax = plt.subplots(figsize=(10, 7))
 
-    # Sim as step histograms
+    # Sim as step histograms with error bands (no area shading)
     ax.step(bin_edges[:-1], rcr_hist, where='post', color='green', linewidth=2, label='RCR Sim')
-    ax.fill_between(bin_edges[:-1], 0, rcr_hist, step='post', color='green', alpha=0.15)
-    ax.plot(bin_centers, rcr_hist, 'go', markersize=4, zorder=5)
+    ax.bar(bin_centers, 2 * rcr_err, bottom=rcr_hist - rcr_err, width=bin_width,
+           color='green', alpha=0.2, edgecolor='none')
 
     ax.step(bin_edges[:-1], bl_hist, where='post', color='orange', linewidth=2, label='BL Sim')
-    ax.fill_between(bin_edges[:-1], 0, bl_hist, step='post', color='orange', alpha=0.15)
-    ax.plot(bin_centers, bl_hist, 'o', color='orange', markersize=4, zorder=5)
+    ax.bar(bin_centers, 2 * bl_err, bottom=bl_hist - bl_err, width=bin_width,
+           color='orange', alpha=0.2, edgecolor='none')
 
     ax.step(bin_edges[:-1], both_hist, where='post', color='purple', linewidth=2,
             linestyle='--', label='Both Sim')
-    ax.plot(bin_centers, both_hist, 'o', color='purple', markersize=3, zorder=5)
+    ax.bar(bin_centers, 2 * both_err, bottom=both_hist - both_err, width=bin_width,
+           color='purple', alpha=0.12, edgecolor='none')
 
-    # Data as line with points at bin centers
-    ax.plot(bin_centers, data_hist, 'k-o', markersize=5, linewidth=1.5,
-            label='Data Events', zorder=6)
+    # Data as line with points and error bars at bin centers
+    ax.errorbar(bin_centers, data_hist, yerr=data_err, fmt='ko', markersize=5,
+                linewidth=1.5, capsize=3, label='Data Events', zorder=6)
     if len(bl16_vals) > 0:
-        ax.plot(bin_centers, bl16_hist, 'c-s', markersize=5, linewidth=1.5,
-                label='2016 BL Events', zorder=6)
+        bl16_err = np.sqrt(np.maximum(bl16_hist, 1))
+        ax.errorbar(bin_centers, bl16_hist, yerr=bl16_err, fmt='cs', markersize=5,
+                    linewidth=1.5, capsize=3, label='2016 BL Events', zorder=6)
 
     # Cut value line
     ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
@@ -482,16 +492,7 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
 
     if yscale == 'log':
         ax.set_yscale('log')
-
-    # Annotate with totals for verification
-    ax.text(0.02, 0.95,
-            f'RCR sum: {np.sum(rcr_hist):.2f}\n'
-            f'BL sum: {np.sum(bl_hist):.2f}\n'
-            f'Both sum: {np.sum(both_hist):.2f}\n'
-            f'Data: {int(np.sum(data_hist))}\n'
-            f'Bin width: {bin_width:.3f}',
-            transform=ax.transAxes, fontsize=9, verticalalignment='top',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+        ax.set_ylim(bottom=0.1)
 
     ax.legend(loc='best', fontsize=9)
 
@@ -600,7 +601,8 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
                                   sim_direct_high, sim_reflected_high,
                                   sim_direct_low, sim_reflected_low,
                                   data_dict, data_station_ids, bl_2016_data,
-                                  excluded_events_mask, output_path):
+                                  excluded_events_mask, output_path,
+                                  x_range=None, yscale='linear'):
     """
     Cumulative distribution plot: number of events passing if cut applied at each level.
 
@@ -650,12 +652,15 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
     bl_w_hi = sim_direct_high['weights'][bl_mask]
     bl_w_lo = sim_direct_low['weights'][bl_mask]
 
-    # Determine scan range from the parameter's defined range in scan_params
+    # Determine scan range from x_range override or from data
     all_vals = np.concatenate([v for v in [rcr_vals, bl_vals, data_vals] if len(v) > 0])
     if len(all_vals) == 0:
         ic(f"Cumulative {param_name}: no events passing other cuts, skipping")
         return
-    x_scan = np.linspace(np.nanmin(all_vals), np.nanmax(all_vals), 200)
+    if x_range is not None:
+        x_scan = np.linspace(x_range[0], x_range[1], 200)
+    else:
+        x_scan = np.linspace(np.nanmin(all_vals), np.nanmax(all_vals), 200)
 
     # Define passing condition per parameter
     if param_name in ('chi_rcr_flat', 'chi_diff_threshold'):
@@ -685,21 +690,19 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
     # Plot
     fig, ax = plt.subplots(figsize=(10, 7))
 
-    # Shaded bands
-    ax.fill_between(x_scan, rcr_cum_lo, rcr_cum_hi, color='green', alpha=0.15, label='RCR band')
-    ax.fill_between(x_scan, bl_cum_lo, bl_cum_hi, color='orange', alpha=0.15, label='BL band')
-    ax.fill_between(x_scan, both_cum_lo, both_cum_hi, color='purple', alpha=0.1, label='Both band')
-
-    # Central lines
-    ax.plot(x_scan, rcr_cum, 'g-', linewidth=2, label='RCR Sim')
-    ax.plot(x_scan, bl_cum, color='orange', linewidth=2, label='BL Sim')
-    ax.plot(x_scan, both_cum, 'purple', linewidth=2, linestyle='--', label='Both Sim')
+    # Shaded bands (labeled) with central lines (unlabeled)
+    ax.fill_between(x_scan, rcr_cum_lo, rcr_cum_hi, color='green', alpha=0.15, label='RCR Sim')
+    ax.plot(x_scan, rcr_cum, 'g-', linewidth=2)
+    ax.fill_between(x_scan, bl_cum_lo, bl_cum_hi, color='orange', alpha=0.15, label='BL Sim')
+    ax.plot(x_scan, bl_cum, color='orange', linewidth=2)
+    ax.fill_between(x_scan, both_cum_lo, both_cum_hi, color='purple', alpha=0.1, label='Both Sim')
+    ax.plot(x_scan, both_cum, 'purple', linewidth=2, linestyle='--')
     ax.plot(x_scan, data_cum, 'k-', linewidth=1.5, label='Data Events')
     if len(bl16_vals) > 0:
         ax.plot(x_scan, bl16_cum, 'c-', linewidth=1.5, label='2016 BL Events')
 
     ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
-               label=f'Nominal cut at {nominal_value}', alpha=0.7)
+               label=f'Cut at {nominal_value}', alpha=0.7)
 
     xlabel = PARAM_LABELS.get(param_name, param_name)
     ax.set_xlabel(xlabel, fontsize=12)
@@ -707,6 +710,13 @@ def plot_cumulative_distribution(param_name, nominal_cuts, nominal_value,
     ax.set_title(f'Cumulative: {PARAM_TITLES.get(param_name, param_name)}', fontsize=14)
     ax.legend(loc='best', fontsize=9)
     ax.grid(True, alpha=0.3)
+
+    if yscale == 'log':
+        ax.set_yscale('log')
+        ax.set_ylim(bottom=0.1)
+    if x_range is not None:
+        ax.set_xlim(x_range)
+
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
     plt.close(fig)
@@ -1115,17 +1125,43 @@ if __name__ == "__main__":
 
     # --- Cumulative distribution plots ---
     ic("Generating cumulative distribution plots...")
+
+    # Define zoom/variant configurations per parameter
+    # Each entry: (suffix, x_range or None, yscale)
+    cumulative_variants = {
+        'chi_rcr_flat': [
+            ('', None, 'linear'),
+            ('_log', None, 'log'),
+            ('_zoom', (0.7, 0.8), 'linear'),
+            ('_zoom_log', (0.7, 0.8), 'log'),
+        ],
+        'chi_diff_threshold': [
+            ('', None, 'linear'),
+            ('_pm005', (-0.05, 0.05), 'linear'),
+            ('_pm010', (-0.10, 0.10), 'linear'),
+            ('_pm015', (-0.15, 0.15), 'linear'),
+        ],
+        'chi_diff_max': [
+            ('', None, 'linear'),
+        ],
+        'snr_max': [
+            ('', None, 'linear'),
+        ],
+    }
+
     for param_name, param_info in scan_params.items():
-        ic(f"Plotting cumulative for {param_name}...")
-        output_path = os.path.join(plot_folder, f'cumulative_{param_name}.png')
-        plot_cumulative_distribution(
-            param_name, nominal_cuts, param_info['nominal'],
-            sim_direct, sim_reflected,
-            sim_direct_high, sim_reflected_high,
-            sim_direct_low, sim_reflected_low,
-            data_dict, data_station_ids, bl_2016_data, excluded_mask,
-            output_path
-        )
+        variants = cumulative_variants.get(param_name, [('', None, 'linear')])
+        for suffix, x_range, yscale in variants:
+            ic(f"Plotting cumulative for {param_name}{suffix}...")
+            output_path = os.path.join(plot_folder, f'cumulative_{param_name}{suffix}.png')
+            plot_cumulative_distribution(
+                param_name, nominal_cuts, param_info['nominal'],
+                sim_direct, sim_reflected,
+                sim_direct_high, sim_reflected_high,
+                sim_direct_low, sim_reflected_low,
+                data_dict, data_station_ids, bl_2016_data, excluded_mask,
+                output_path, x_range=x_range, yscale=yscale
+            )
 
     # --- Events passing table ---
     ic("Generating events passing table...")
