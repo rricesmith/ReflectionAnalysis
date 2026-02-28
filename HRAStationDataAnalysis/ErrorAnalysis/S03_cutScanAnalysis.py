@@ -944,39 +944,26 @@ def plot_cumulative_cut_interaction(param_name, nominal_cuts, nominal_value,
     ic(f"Saved cut-interaction cumulative plot: {output_path}")
 
 
-def _triple_gaussian(x, a1, mu1, sig1, a2, mu2, sig2, a3, mu3, sig3):
-    """Sum of three Gaussians. Each amplitude a_i is the area (integral) of that component."""
-    g1 = a1 / (sig1 * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu1) / sig1)**2)
-    g2 = a2 / (sig2 * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu2) / sig2)**2)
-    g3 = a3 / (sig3 * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu3) / sig3)**2)
-    return g1 + g2 + g3
-
-
 def _single_gaussian(x, a, mu, sig):
-    """Single Gaussian with area a."""
+    """Single Gaussian with area a (integral over all x)."""
     return a / (sig * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sig)**2)
 
 
-def plot_triple_gaussian_fit(sim_direct, sim_reflected,
-                              data_dict, data_station_ids, bl_2016_data,
-                              excluded_events_mask, no_cuts,
-                              plot_folder, n_bins=50, param_range=(0.2, 0.9)):
-    """
-    Fit 3 Gaussians to the chi_rcr_flat data distribution (no cuts applied).
+def _double_gaussian(x, a1, mu1, sig1, a2, mu2, sig2):
+    """Sum of two Gaussians."""
+    return _single_gaussian(x, a1, mu1, sig1) + _single_gaussian(x, a2, mu2, sig2)
 
-    The three components are hypothesized to be:
-      1. Noise (thermal) peak, centered ~0.35
-      2. Backlobe (BL) peak, centered near the weighted BL sim mean
-      3. RCR (cosmic ray) peak, centered near the weighted RCR sim mean
 
-    Produces two plot versions:
-      - data-only: just data histogram + fitted Gaussians
-      - with-sim: data + sim histograms + fitted Gaussians + 2016 BL
-    Saves Gaussian fit parameters to a text file (always generated, not skipped by flags).
-    """
-    nominal_value = 0.75  # nominal chi_rcr cut, shown as vertical line
+def _triple_gaussian(x, a1, mu1, sig1, a2, mu2, sig2, a3, mu3, sig3):
+    """Sum of three Gaussians."""
+    return (_single_gaussian(x, a1, mu1, sig1) +
+            _single_gaussian(x, a2, mu2, sig2) +
+            _single_gaussian(x, a3, mu3, sig3))
 
-    # Get all data events (no cuts) with day-uniqueness
+
+def _prepare_gaussian_fit_data(data_dict, data_station_ids, excluded_events_mask,
+                                no_cuts, n_bins, param_range):
+    """Shared data preparation for Gaussian fits: histogram the uncut chi_rcr data."""
     data_mask = apply_cuts(data_dict, no_cuts, cut_type='rcr', exclude_param='chi_rcr_flat')
     data_mask &= ~excluded_events_mask
     passing_idx = np.where(data_mask)[0]
@@ -987,84 +974,53 @@ def plot_triple_gaussian_fit(sim_direct, sim_reflected,
     else:
         data_vals = np.array([])
 
-    if len(data_vals) < 10:
-        ic("Triple Gaussian fit: too few data events, skipping")
-        return
-
-    # Histogram the data
     bin_edges = np.linspace(param_range[0], param_range[1], n_bins + 1)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
     bin_width = bin_edges[1] - bin_edges[0]
     data_hist, _ = np.histogram(data_vals, bins=bin_edges)
-
-    # Convert histogram to density (events per unit chi_rcr) for fitting
-    # so that Gaussian amplitude = number of events in that component
     data_density = data_hist / bin_width
 
-    # Estimate initial Gaussian centers from sim weighted means
-    bl_chircr = sim_direct['ChiRCR']
-    bl_w = sim_direct['weights']
-    rcr_chircr = sim_reflected['ChiRCR']
-    rcr_w = sim_reflected['weights']
-
-    bl_mean_init = np.average(bl_chircr, weights=bl_w) if len(bl_chircr) > 0 else 0.55
-    rcr_mean_init = np.average(rcr_chircr, weights=rcr_w) if len(rcr_chircr) > 0 else 0.78
-
-    # Initial guesses: (area, mean, sigma) for each Gaussian
-    # Area ~ number of events in that component
-    total_events = len(data_vals)
-    p0 = [
-        total_events * 0.7, 0.35, 0.05,       # noise: bulk of events, narrow
-        total_events * 0.2, bl_mean_init, 0.05, # BL: moderate fraction
-        total_events * 0.1, rcr_mean_init, 0.03, # RCR: small fraction
-    ]
-
-    # Bounds: amplitudes > 0, means within range, sigmas reasonable
-    lower = [0, 0.2, 0.005, 0, 0.3, 0.005, 0, 0.5, 0.005]
-    upper = [total_events * 5, 0.55, 0.3, total_events * 5, 0.8, 0.3, total_events * 5, 1.0, 0.3]
-
-    # Fit, ignoring bins with 0 events (avoid divide-by-zero in chi2)
+    # Fit only non-zero bins; Poisson-like uncertainty
     nonzero = data_density > 0
     x_fit = bin_centers[nonzero]
     y_fit = data_density[nonzero]
-    # Poisson-like weights: sigma ~ sqrt(N)/bin_width for density
     sigma_fit = np.sqrt(np.maximum(data_hist[nonzero], 1)) / bin_width
 
+    return data_vals, bin_edges, bin_centers, bin_width, data_hist, data_density, x_fit, y_fit, sigma_fit
+
+
+def _do_gaussian_fit(fit_fn, p0, lower, upper, x_fit, y_fit, sigma_fit, n_params, label):
+    """Run curve_fit and return (popt, perr, success)."""
     try:
-        popt, pcov = curve_fit(_triple_gaussian, x_fit, y_fit, p0=p0,
+        popt, pcov = curve_fit(fit_fn, x_fit, y_fit, p0=p0,
                                sigma=sigma_fit, absolute_sigma=True,
                                bounds=(lower, upper), maxfev=20000)
         perr = np.sqrt(np.diag(pcov))
-        fit_success = True
+        ic(f"{label} fit converged")
+        return popt, perr, True
     except (RuntimeError, ValueError) as e:
-        ic(f"Triple Gaussian fit failed: {e}")
-        fit_success = False
-        popt = p0
-        perr = np.zeros(9)
+        ic(f"{label} fit failed: {e}")
+        return np.array(p0), np.zeros(n_params), False
 
-    # Extract parameters
-    names = ['Noise', 'Backlobe', 'RCR']
+
+def _write_fit_results(txt_path, title, names, popt, perr, fit_success,
+                        param_range, n_bins, total_events):
+    """Write Gaussian fit parameters to a text file."""
+    n_gauss = len(names)
     fit_info = []
     for i, name in enumerate(names):
-        area = popt[3*i]
-        mean = popt[3*i + 1]
-        sigma = popt[3*i + 2]
-        area_err = perr[3*i]
-        mean_err = perr[3*i + 1]
-        sigma_err = perr[3*i + 2]
         fit_info.append({
-            'name': name, 'area': area, 'mean': mean, 'sigma': sigma,
-            'area_err': area_err, 'mean_err': mean_err, 'sigma_err': sigma_err,
+            'name': name,
+            'area': popt[3*i], 'mean': popt[3*i+1], 'sigma': popt[3*i+2],
+            'area_err': perr[3*i], 'mean_err': perr[3*i+1], 'sigma_err': perr[3*i+2],
         })
 
-    # Save fit parameters to text file (always, not gated by --skip-table)
-    txt_path = os.path.join(plot_folder, 'gaussian_fit_chi_rcr.txt')
-    with open(txt_path, 'w') as f:
-        f.write(f"Triple Gaussian Fit to Chi_RCR Data Distribution\n")
+    with open(txt_path, 'a') as f:
+        f.write(f"\n{title}\n")
         f.write(f"{'='*70}\n")
         f.write(f"Fit converged: {fit_success}\n")
         f.write(f"Range: {param_range[0]:.2f} – {param_range[1]:.2f}, bins: {n_bins}\n")
-        f.write(f"Total data events in range: {len(data_vals)}\n\n")
+        f.write(f"Total data events in range: {total_events}\n\n")
         f.write(f"  {'Component':<12} {'Area (events)':>16} {'Mean':>14} {'Sigma':>14}\n")
         f.write(f"  {'-'*58}\n")
         for info in fit_info:
@@ -1073,80 +1029,177 @@ def plot_triple_gaussian_fit(sim_direct, sim_reflected,
                     f"{info['mean']:>6.4f} +/- {info['mean_err']:>6.4f}  "
                     f"{info['sigma']:>6.4f} +/- {info['sigma_err']:>6.4f}\n")
         f.write(f"\n  Sum of areas: {sum(i['area'] for i in fit_info):.2f} "
-                f"(data total: {len(data_vals)})\n")
-    ic(f"Saved Gaussian fit info: {txt_path}")
+                f"(data total: {total_events})\n")
+    return fit_info
 
-    # Fine x grid for smooth Gaussian curves
+
+def _plot_gaussian_fit(ax, x_smooth, bin_width, names, colors, popt, n_label):
+    """Overlay individual Gaussian components and their sum on an axes."""
+    n_gauss = len(names)
+    g_components_binned = []
+    for i in range(n_gauss):
+        g = _single_gaussian(x_smooth, popt[3*i], popt[3*i+1], popt[3*i+2]) * bin_width
+        g_components_binned.append(g)
+        ax.plot(x_smooth, g, color=colors[i], linewidth=1.5, linestyle='--',
+                label=f'{names[i]} Gaussian')
+    g_sum_binned = sum(g_components_binned)
+    ax.plot(x_smooth, g_sum_binned, 'r-', linewidth=2.5,
+            label=f'Sum of {n_label} Gaussians')
+
+
+def plot_gaussian_fits(sim_direct, sim_reflected,
+                        data_dict, data_station_ids, bl_2016_data,
+                        excluded_events_mask, no_cuts,
+                        plot_folder, n_bins=50, param_range=(0.2, 0.9)):
+    """
+    Fit 2 and 3 Gaussians to the chi_rcr_flat data distribution (no cuts).
+
+    Mean bounds are tightly constrained:
+      - Noise:    0.35 – 0.40
+      - Backlobe: 0.55 – 0.60
+      - RCR:      0.70 – 0.80
+
+    Produces plots:
+      - gaussian_fit_2g_data_only.png / gaussian_fit_2g_with_sim.png  (double)
+      - gaussian_fit_3g_data_only.png / gaussian_fit_3g_with_sim.png  (triple)
+    Saves fit parameters to gaussian_fit_chi_rcr.txt (always, not gated by --skip-table).
+    """
+    nominal_value = 0.75
+
+    # --- Prepare data ---
+    result = _prepare_gaussian_fit_data(
+        data_dict, data_station_ids, excluded_events_mask, no_cuts, n_bins, param_range)
+    data_vals, bin_edges, bin_centers, bin_width, data_hist, data_density, x_fit, y_fit, sigma_fit = result
+
+    if len(data_vals) < 10:
+        ic("Gaussian fit: too few data events, skipping")
+        return
+
+    total_events = len(data_vals)
     x_smooth = np.linspace(param_range[0], param_range[1], 500)
 
-    # Compute individual Gaussians and sum (as density, then convert to events/bin)
-    g_components = []
-    for i in range(3):
-        g = _single_gaussian(x_smooth, popt[3*i], popt[3*i+1], popt[3*i+2])
-        g_components.append(g)
-    g_sum = sum(g_components)
-
-    # Convert density to events per bin for overlay on histogram
-    g_components_binned = [g * bin_width for g in g_components]
-    g_sum_binned = g_sum * bin_width
-
-    # Sim histograms (for the with-sim version)
+    # Sim histograms for with-sim versions
+    bl_chircr, bl_w = sim_direct['ChiRCR'], sim_direct['weights']
+    rcr_chircr, rcr_w = sim_reflected['ChiRCR'], sim_reflected['weights']
     rcr_hist, _ = np.histogram(rcr_chircr, bins=bin_edges, weights=rcr_w)
     bl_hist, _ = np.histogram(bl_chircr, bins=bin_edges, weights=bl_w)
-
-    # 2016 BL
     if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
         bl16_hist, _ = np.histogram(bl_2016_data['ChiRCR'], bins=bin_edges)
     else:
         bl16_hist = np.zeros(n_bins)
 
-    component_colors = ['blue', 'orange', 'green']
+    # Initialize output text file (overwrite)
+    txt_path = os.path.join(plot_folder, 'gaussian_fit_chi_rcr.txt')
+    with open(txt_path, 'w') as f:
+        f.write(f"Gaussian Fits to Chi_RCR Data Distribution\n")
+        f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-    # --- Version 1: Data only + Gaussians ---
-    fig, ax = plt.subplots(figsize=(10, 7))
-    ax.bar(bin_centers, data_hist, width=bin_width, color='gray', alpha=0.4,
-           edgecolor='black', linewidth=0.5, label='Data')
-    for i, (name, color) in enumerate(zip(names, component_colors)):
-        ax.plot(x_smooth, g_components_binned[i], color=color, linewidth=1.5,
-                linestyle='--', label=f'{name} Gaussian')
-    ax.plot(x_smooth, g_sum_binned, 'r-', linewidth=2.5, label='Sum of 3 Gaussians')
-    ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
-    ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
-    ax.set_ylabel('Events per Bin', fontsize=12)
-    ax.set_title(r'Triple Gaussian Fit: $\chi_{\mathrm{RCR}}$ (Data Only)', fontsize=14)
-    ax.legend(loc='upper left', fontsize=9)
-    ax.grid(True, alpha=0.3)
-    ax.set_yscale('log')
-    ax.set_ylim(bottom=0.1)
-    plt.tight_layout()
-    plt.savefig(os.path.join(plot_folder, 'gaussian_fit_chi_rcr_data_only.png'), dpi=150)
-    plt.close(fig)
+    # =====================================================================
+    # Double Gaussian fit (Noise + Backlobe only)
+    # =====================================================================
+    p0_2g = [
+        total_events * 0.7, 0.375, 0.04,   # noise
+        total_events * 0.3, 0.575, 0.05,    # BL
+    ]
+    lower_2g = [0, 0.35, 0.005,  0, 0.55, 0.005]
+    upper_2g = [total_events * 5, 0.40, 0.15,  total_events * 5, 0.60, 0.15]
 
-    # --- Version 2: Data + Sim + 2016 BL + Gaussians ---
-    fig, ax = plt.subplots(figsize=(10, 7))
-    ax.bar(bin_centers, data_hist, width=bin_width, color='gray', alpha=0.3,
-           edgecolor='black', linewidth=0.5, label='Data')
-    ax.step(bin_edges[:-1], rcr_hist, where='post', color='green', linewidth=2, label='RCR Sim')
-    ax.step(bin_edges[:-1], bl_hist, where='post', color='orange', linewidth=2, label='BL Sim')
-    if np.any(bl16_hist > 0):
-        ax.plot(bin_centers, bl16_hist, 'cs', markersize=5, label='2016 BL Events', zorder=6)
-    for i, (name, color) in enumerate(zip(names, component_colors)):
-        ax.plot(x_smooth, g_components_binned[i], color=color, linewidth=1.5,
-                linestyle='--', label=f'{name} Gaussian', alpha=0.8)
-    ax.plot(x_smooth, g_sum_binned, 'r-', linewidth=2.5, label='Sum of 3 Gaussians')
-    ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
-    ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
-    ax.set_ylabel('Events per Bin', fontsize=12)
-    ax.set_title(r'Triple Gaussian Fit: $\chi_{\mathrm{RCR}}$ (with Sim)', fontsize=14)
-    ax.legend(loc='upper left', fontsize=8)
-    ax.grid(True, alpha=0.3)
-    ax.set_yscale('log')
-    ax.set_ylim(bottom=0.1)
-    plt.tight_layout()
-    plt.savefig(os.path.join(plot_folder, 'gaussian_fit_chi_rcr_with_sim.png'), dpi=150)
-    plt.close(fig)
+    popt_2g, perr_2g, ok_2g = _do_gaussian_fit(
+        _double_gaussian, p0_2g, lower_2g, upper_2g,
+        x_fit, y_fit, sigma_fit, 6, "Double Gaussian")
 
-    ic(f"Triple Gaussian fit plots saved to {plot_folder}")
+    names_2g = ['Noise', 'Backlobe']
+    colors_2g = ['blue', 'orange']
+    _write_fit_results(txt_path, "Double Gaussian Fit (Noise + Backlobe)",
+                       names_2g, popt_2g, perr_2g, ok_2g,
+                       param_range, n_bins, total_events)
+
+    # --- 2G plots ---
+    for suffix, title_extra, show_sim in [
+        ('data_only', 'Data Only', False),
+        ('with_sim', 'with Sim', True),
+    ]:
+        fig, ax = plt.subplots(figsize=(10, 7))
+        ax.bar(bin_centers, data_hist, width=bin_width, color='gray',
+               alpha=(0.3 if show_sim else 0.4),
+               edgecolor='black', linewidth=0.5, label='Data')
+        if show_sim:
+            ax.step(bin_edges[:-1], rcr_hist, where='post', color='green',
+                    linewidth=2, label='RCR Sim')
+            ax.step(bin_edges[:-1], bl_hist, where='post', color='orange',
+                    linewidth=2, label='BL Sim')
+            if np.any(bl16_hist > 0):
+                ax.plot(bin_centers, bl16_hist, 'cs', markersize=5,
+                        label='2016 BL Events', zorder=6)
+        _plot_gaussian_fit(ax, x_smooth, bin_width, names_2g, colors_2g, popt_2g, '2')
+        ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
+        ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
+        ax.set_ylabel('Events per Bin', fontsize=12)
+        ax.set_title(rf'Double Gaussian Fit: $\chi_{{\mathrm{{RCR}}}}$ ({title_extra})',
+                      fontsize=14)
+        ax.legend(loc='upper left', fontsize=9 if not show_sim else 8)
+        ax.grid(True, alpha=0.3)
+        ax.set_yscale('log')
+        ax.set_ylim(bottom=0.1)
+        plt.tight_layout()
+        plt.savefig(os.path.join(plot_folder, f'gaussian_fit_2g_{suffix}.png'), dpi=150)
+        plt.close(fig)
+
+    # =====================================================================
+    # Triple Gaussian fit (Noise + Backlobe + RCR)
+    # =====================================================================
+    p0_3g = [
+        total_events * 0.7, 0.375, 0.04,   # noise: mean 0.35-0.40
+        total_events * 0.2, 0.575, 0.05,   # BL:    mean 0.55-0.60
+        total_events * 0.1, 0.75, 0.03,    # RCR:   mean 0.70-0.80
+    ]
+    lower_3g = [0, 0.35, 0.005,  0, 0.55, 0.005,  0, 0.70, 0.005]
+    upper_3g = [total_events * 5, 0.40, 0.15,
+                total_events * 5, 0.60, 0.15,
+                total_events * 5, 0.80, 0.15]
+
+    popt_3g, perr_3g, ok_3g = _do_gaussian_fit(
+        _triple_gaussian, p0_3g, lower_3g, upper_3g,
+        x_fit, y_fit, sigma_fit, 9, "Triple Gaussian")
+
+    names_3g = ['Noise', 'Backlobe', 'RCR']
+    colors_3g = ['blue', 'orange', 'green']
+    _write_fit_results(txt_path, "Triple Gaussian Fit (Noise + Backlobe + RCR)",
+                       names_3g, popt_3g, perr_3g, ok_3g,
+                       param_range, n_bins, total_events)
+
+    # --- 3G plots ---
+    for suffix, title_extra, show_sim in [
+        ('data_only', 'Data Only', False),
+        ('with_sim', 'with Sim', True),
+    ]:
+        fig, ax = plt.subplots(figsize=(10, 7))
+        ax.bar(bin_centers, data_hist, width=bin_width, color='gray',
+               alpha=(0.3 if show_sim else 0.4),
+               edgecolor='black', linewidth=0.5, label='Data')
+        if show_sim:
+            ax.step(bin_edges[:-1], rcr_hist, where='post', color='green',
+                    linewidth=2, label='RCR Sim')
+            ax.step(bin_edges[:-1], bl_hist, where='post', color='orange',
+                    linewidth=2, label='BL Sim')
+            if np.any(bl16_hist > 0):
+                ax.plot(bin_centers, bl16_hist, 'cs', markersize=5,
+                        label='2016 BL Events', zorder=6)
+        _plot_gaussian_fit(ax, x_smooth, bin_width, names_3g, colors_3g, popt_3g, '3')
+        ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
+        ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
+        ax.set_ylabel('Events per Bin', fontsize=12)
+        ax.set_title(rf'Triple Gaussian Fit: $\chi_{{\mathrm{{RCR}}}}$ ({title_extra})',
+                      fontsize=14)
+        ax.legend(loc='upper left', fontsize=9 if not show_sim else 8)
+        ax.grid(True, alpha=0.3)
+        ax.set_yscale('log')
+        ax.set_ylim(bottom=0.1)
+        plt.tight_layout()
+        plt.savefig(os.path.join(plot_folder, f'gaussian_fit_3g_{suffix}.png'), dpi=150)
+        plt.close(fig)
+
+    ic(f"Gaussian fit plots and parameters saved to {plot_folder}")
 
 
 def print_events_passing_table(scan_params, nominal_cuts,
@@ -1578,9 +1631,9 @@ if __name__ == "__main__":
             n_bins=dbg_bins, param_range=dbg_range, yscale='log'
         )
 
-    # --- Triple Gaussian fit to chi_rcr_flat ---
-    ic("Fitting triple Gaussian to chi_rcr_flat data...")
-    plot_triple_gaussian_fit(
+    # --- Gaussian fits to chi_rcr_flat (double and triple) ---
+    ic("Fitting Gaussians to chi_rcr_flat data...")
+    plot_gaussian_fits(
         sim_direct, sim_reflected,
         data_dict, data_station_ids, bl_2016_data,
         excluded_mask, no_cuts, plot_folder
