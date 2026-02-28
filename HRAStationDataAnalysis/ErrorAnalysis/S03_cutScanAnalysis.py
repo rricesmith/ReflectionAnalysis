@@ -398,15 +398,12 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
     data_mask = apply_cuts(data_dict, nominal_cuts, cut_type='rcr', exclude_param=param_name)
     data_mask &= ~excluded_events_mask
 
-    # Day-uniqueness filter for data
-    passing_indices = np.where(data_mask)[0]
-    if len(passing_indices) > 0:
-        times_pass = data_dict['Time'][passing_indices]
-        sids_pass = data_station_ids[passing_indices]
-        unique_mask = filter_unique_events_by_day(times_pass, sids_pass)
-        data_final_indices = passing_indices[unique_mask]
-    else:
-        data_final_indices = np.array([], dtype=int)
+    # No day-uniqueness here: the histogram shows where events live in parameter
+    # space for direct comparison with sim. Day-unique counting is handled by
+    # the cumulative plots and summary table. Applying day-uniqueness before
+    # histogramming biases the distribution — it always keeps the earliest event
+    # per (station, day), systematically dropping events at extreme values.
+    data_final_indices = np.where(data_mask)[0]
 
     # 2016 BL
     if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
@@ -615,7 +612,8 @@ def plot_cumulative_distribution(param_name, nominal_value,
                                   data_dict, data_station_ids, bl_2016_data,
                                   excluded_events_mask, output_path,
                                   x_range=None, yscale='linear',
-                                  show_stat_error=False):
+                                  show_stat_error=False,
+                                  show_day_cut=False):
     """
     Cumulative distribution plot: number of events passing if cut applied at each level.
 
@@ -682,20 +680,22 @@ def plot_cumulative_distribution(param_name, nominal_value,
     bl_stat_err = cumulative_stat_err(bl_vals, bl_w, x_scan)
     both_stat_err = np.sqrt(rcr_stat_err**2 + bl_stat_err**2)
 
-    # Data: apply ONLY the scanned parameter's cut at each x value (no other cuts),
-    # then day-uniqueness. This ensures the cumulative at the most-permissive end
-    # equals the total number of data events.
+    # Data: raw count (no day-uniqueness) at each threshold.
+    # Optionally also compute day-unique count for comparison.
     data_vals = get_param_values(param_name, data_dict)
     data_not_excluded = ~excluded_events_mask
 
     data_cum = np.zeros(len(x_scan), dtype=int)
+    data_cum_daycut = np.zeros(len(x_scan), dtype=int) if show_day_cut else None
     for ix, x in enumerate(x_scan):
         dm = pass_fn(data_vals, x) & data_not_excluded
-        pidx = np.where(dm)[0]
-        if len(pidx) > 0:
-            umask = filter_unique_events_by_day(
-                data_dict['Time'][pidx], data_station_ids[pidx])
-            data_cum[ix] = int(np.sum(umask))
+        data_cum[ix] = int(np.sum(dm))
+        if show_day_cut:
+            pidx = np.where(dm)[0]
+            if len(pidx) > 0:
+                umask = filter_unique_events_by_day(
+                    data_dict['Time'][pidx], data_station_ids[pidx])
+                data_cum_daycut[ix] = int(np.sum(umask))
 
     # 2016 BL (no day-uniqueness needed — pre-curated set)
     if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
@@ -737,6 +737,9 @@ def plot_cumulative_distribution(param_name, nominal_value,
         ax.plot(x_scan, both_cum, 'purple', linewidth=2, linestyle='--')
 
     ax.plot(x_scan, data_cum, 'k-', linewidth=1.5, label='Data Events')
+    if show_day_cut and data_cum_daycut is not None:
+        ax.plot(x_scan, data_cum_daycut, 'k--', linewidth=1.5,
+                label='Data Post-Day Cut', alpha=0.7)
     if len(bl16_vals) > 0:
         ax.plot(x_scan, bl16_cum, 'c-', linewidth=1.5, label='2016 BL Events')
 
@@ -961,18 +964,13 @@ def _triple_gaussian(x, a1, mu1, sig1, a2, mu2, sig2, a3, mu3, sig3):
             _single_gaussian(x, a3, mu3, sig3))
 
 
-def _prepare_gaussian_fit_data(data_dict, data_station_ids, excluded_events_mask,
+def _prepare_gaussian_fit_data(data_dict, excluded_events_mask,
                                 no_cuts, n_bins, param_range):
-    """Shared data preparation for Gaussian fits: histogram the uncut chi_rcr data."""
+    """Shared data preparation for Gaussian fits: histogram the uncut chi_rcr data.
+    No day-uniqueness applied — fitting the full distribution of all events."""
     data_mask = apply_cuts(data_dict, no_cuts, cut_type='rcr', exclude_param='chi_rcr_flat')
     data_mask &= ~excluded_events_mask
-    passing_idx = np.where(data_mask)[0]
-    if len(passing_idx) > 0:
-        umask = filter_unique_events_by_day(
-            data_dict['Time'][passing_idx], data_station_ids[passing_idx])
-        data_vals = data_dict['ChiRCR'][passing_idx[umask]]
-    else:
-        data_vals = np.array([])
+    data_vals = data_dict['ChiRCR'][data_mask]
 
     bin_edges = np.linspace(param_range[0], param_range[1], n_bins + 1)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
@@ -1048,7 +1046,7 @@ def _plot_gaussian_fit(ax, x_smooth, bin_width, names, colors, popt, n_label):
 
 
 def plot_gaussian_fits(sim_direct, sim_reflected,
-                        data_dict, data_station_ids, bl_2016_data,
+                        data_dict, bl_2016_data,
                         excluded_events_mask, no_cuts,
                         plot_folder, n_bins=50, param_range=(0.2, 0.9)):
     """
@@ -1068,7 +1066,7 @@ def plot_gaussian_fits(sim_direct, sim_reflected,
 
     # --- Prepare data ---
     result = _prepare_gaussian_fit_data(
-        data_dict, data_station_ids, excluded_events_mask, no_cuts, n_bins, param_range)
+        data_dict, excluded_events_mask, no_cuts, n_bins, param_range)
     data_vals, bin_edges, bin_centers, bin_width, data_hist, data_density, x_fit, y_fit, sigma_fit = result
 
     if len(data_vals) < 10:
@@ -1635,7 +1633,7 @@ if __name__ == "__main__":
     ic("Fitting Gaussians to chi_rcr_flat data...")
     plot_gaussian_fits(
         sim_direct, sim_reflected,
-        data_dict, data_station_ids, bl_2016_data,
+        data_dict, bl_2016_data,
         excluded_mask, no_cuts, plot_folder
     )
 
@@ -1643,35 +1641,34 @@ if __name__ == "__main__":
     ic("Generating cumulative distribution plots...")
 
     # Define zoom/variant configurations per parameter
-    # Each entry: (suffix, x_range or None, yscale)
-    # Each entry: (suffix, x_range or None, yscale, show_stat_error)
+    # Each entry: (suffix, x_range, yscale, show_stat_error, show_day_cut)
     cumulative_variants = {
         'chi_rcr_flat': [
-            ('', None, 'linear', False),
-            ('_log', None, 'log', False),
-            ('_zoom', (0.7, 0.8), 'linear', False),
-            ('_zoom_log', (0.7, 0.8), 'log', False),
-            ('_zoom_staterr', (0.7, 0.8), 'linear', True),
-            ('_zoom_log_staterr', (0.7, 0.8), 'log', True),
+            ('', None, 'linear', False, False),
+            ('_log', None, 'log', False, False),
+            ('_zoom', (0.7, 0.8), 'linear', False, True),
+            ('_zoom_log', (0.7, 0.8), 'log', False, True),
+            ('_zoom_staterr', (0.7, 0.8), 'linear', True, True),
+            ('_zoom_log_staterr', (0.7, 0.8), 'log', True, True),
         ],
         'chi_diff_threshold': [
-            ('', None, 'linear', False),
-            ('_pm005', (-0.05, 0.05), 'linear', False),
-            ('_pm010', (-0.10, 0.10), 'linear', False),
-            ('_pm015', (-0.15, 0.15), 'linear', False),
-            ('_pm005_staterr', (-0.05, 0.05), 'linear', True),
+            ('', None, 'linear', False, True),
+            ('_pm005', (-0.05, 0.05), 'linear', False, True),
+            ('_pm010', (-0.10, 0.10), 'linear', False, True),
+            ('_pm015', (-0.15, 0.15), 'linear', False, True),
+            ('_pm005_staterr', (-0.05, 0.05), 'linear', True, True),
         ],
         'chi_diff_max': [
-            ('', None, 'linear', False),
+            ('', None, 'linear', False, False),
         ],
         'snr_max': [
-            ('', None, 'linear', False),
+            ('', None, 'linear', False, False),
         ],
     }
 
     for param_name, param_info in scan_params.items():
-        variants = cumulative_variants.get(param_name, [('', None, 'linear', False)])
-        for suffix, x_range, yscale, stat_err in variants:
+        variants = cumulative_variants.get(param_name, [('', None, 'linear', False, False)])
+        for suffix, x_range, yscale, stat_err, day_cut in variants:
             ic(f"Plotting cumulative for {param_name}{suffix}...")
             output_path = os.path.join(plot_folder, f'cumulative_{param_name}{suffix}.png')
             plot_cumulative_distribution(
@@ -1681,7 +1678,7 @@ if __name__ == "__main__":
                 sim_direct_low, sim_reflected_low,
                 data_dict, data_station_ids, bl_2016_data, excluded_mask,
                 output_path, x_range=x_range, yscale=yscale,
-                show_stat_error=stat_err
+                show_stat_error=stat_err, show_day_cut=day_cut
             )
 
     # --- Cut-interaction cumulative plots (sub-folder) ---
