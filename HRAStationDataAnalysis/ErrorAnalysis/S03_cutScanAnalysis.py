@@ -380,10 +380,11 @@ PARAM_TITLES = {
 
 def plot_distribution(param_name, nominal_cuts, nominal_value,
                       sim_direct, sim_reflected,
-                      data_dict, data_station_ids, bl_2016_data,
+                      data_dict, data_station_ids,
+                      identified_bl_data, identified_rcr_data,
                       excluded_events_mask,
                       output_path, n_bins=30, param_range=None, yscale='linear',
-                      data_style='points'):
+                      data_style='points', show_cut_line=True):
     """
     Distribution plot for one cut parameter.
 
@@ -391,10 +392,9 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
     remaining events by that parameter's value. This directly compares
     sim expected events vs observed data in each bin.
 
-    - Sim (RCR, BL, Both): step histograms (weighted)
-    - Data, 2016 BL: line with points at bin centers (unweighted counts)
-    - Vertical line at the nominal cut value
-    - Text annotation with sum of all bins for verification
+    - Sim (RCR, BL, Both): step histograms (weighted)  — sim legend
+    - Data, Identified BL, Identified RCR: points       — data legend
+    - Optional vertical line at the nominal cut value
     """
     # Apply all cuts EXCEPT the one being plotted
     rcr_mask = apply_cuts(sim_reflected, nominal_cuts, cut_type='rcr', exclude_param=param_name)
@@ -403,17 +403,18 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
     data_mask &= ~excluded_events_mask
 
     # No day-uniqueness here: the histogram shows where events live in parameter
-    # space for direct comparison with sim. Day-unique counting is handled by
-    # the cumulative plots and summary table. Applying day-uniqueness before
-    # histogramming biases the distribution — it always keeps the earliest event
-    # per (station, day), systematically dropping events at extreme values.
+    # space for direct comparison with sim.
     data_final_indices = np.where(data_mask)[0]
 
-    # 2016 BL
-    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
-        bl16_mask = apply_cuts(bl_2016_data, nominal_cuts, cut_type='rcr', exclude_param=param_name)
+    # Identified BL and RCR
+    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+        ibl_mask = apply_cuts(identified_bl_data, nominal_cuts, cut_type='rcr', exclude_param=param_name)
     else:
-        bl16_mask = np.array([], dtype=bool)
+        ibl_mask = np.array([], dtype=bool)
+    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+        ircr_mask = apply_cuts(identified_rcr_data, nominal_cuts, cut_type='rcr', exclude_param=param_name)
+    else:
+        ircr_mask = np.array([], dtype=bool)
 
     # Extract parameter values for passing events
     rcr_vals = get_param_values(param_name, sim_reflected)[rcr_mask]
@@ -422,10 +423,8 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
     bl_weights = sim_direct['weights'][bl_mask]
     data_vals = get_param_values(param_name, data_dict)[data_final_indices]
 
-    if bl_2016_data is not None and len(bl16_mask) > 0:
-        bl16_vals = get_param_values(param_name, bl_2016_data)[bl16_mask]
-    else:
-        bl16_vals = np.array([])
+    ibl_vals = get_param_values(param_name, identified_bl_data)[ibl_mask] if len(ibl_mask) > 0 else np.array([])
+    ircr_vals = get_param_values(param_name, identified_rcr_data)[ircr_mask] if len(ircr_mask) > 0 else np.array([])
 
     # Determine bin range
     if param_range is None:
@@ -446,13 +445,15 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
 
     # Unweighted histograms for data
     data_hist, _ = np.histogram(data_vals, bins=bin_edges)
-    bl16_hist, _ = np.histogram(bl16_vals, bins=bin_edges) if len(bl16_vals) > 0 else (np.zeros(n_bins), None)
+    ibl_hist, _ = np.histogram(ibl_vals, bins=bin_edges) if len(ibl_vals) > 0 else (np.zeros(n_bins), None)
+    ircr_hist, _ = np.histogram(ircr_vals, bins=bin_edges) if len(ircr_vals) > 0 else (np.zeros(n_bins), None)
 
     # Print verification
     ic(f"Distribution {param_name}: RCR sum={np.sum(rcr_hist):.2f}, BL sum={np.sum(bl_hist):.2f}, "
-       f"Both sum={np.sum(both_hist):.2f}, Data={int(np.sum(data_hist))}, 2016 BL={int(np.sum(bl16_hist))}")
+       f"Both sum={np.sum(both_hist):.2f}, Data={int(np.sum(data_hist))}, "
+       f"Identified BL={int(np.sum(ibl_hist))}, Identified RCR={int(np.sum(ircr_hist))}")
 
-    # Compute per-bin errors: sqrt(sum(w_i^2)) for sim, sqrt(N) for data
+    # Compute per-bin errors: sqrt(sum(w_i^2)) for sim
     rcr_err, _ = np.histogram(rcr_vals, bins=bin_edges, weights=rcr_weights**2)
     rcr_err = np.sqrt(rcr_err)
     bl_err, _ = np.histogram(bl_vals, bins=bin_edges, weights=bl_weights**2)
@@ -462,41 +463,52 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
     # --- Plot ---
     fig, ax = plt.subplots(figsize=(10, 7))
 
-    # Sim as step histograms with error bands (no area shading)
-    ax.step(bin_edges[:-1], rcr_hist, where='post', color='green', linewidth=2, label='RCR Sim')
+    # Sim as step histograms with error bands
+    sim_handles = []
+    h = ax.step(bin_edges[:-1], rcr_hist, where='post', color='green', linewidth=2, label='RCR Sim')
+    sim_handles.append(h[0])
     ax.bar(bin_centers, 2 * rcr_err, bottom=rcr_hist - rcr_err, width=bin_width,
            color='green', alpha=0.2, edgecolor='none')
 
-    ax.step(bin_edges[:-1], bl_hist, where='post', color='orange', linewidth=2, label='BL Sim')
+    h = ax.step(bin_edges[:-1], bl_hist, where='post', color='orange', linewidth=2, label='BL Sim')
+    sim_handles.append(h[0])
     ax.bar(bin_centers, 2 * bl_err, bottom=bl_hist - bl_err, width=bin_width,
            color='orange', alpha=0.2, edgecolor='none')
 
-    ax.step(bin_edges[:-1], both_hist, where='post', color='purple', linewidth=2,
-            linestyle='--', label='Both Sim')
+    h = ax.step(bin_edges[:-1], both_hist, where='post', color='purple', linewidth=2,
+                linestyle='--', label='Both Sim')
+    sim_handles.append(h[0])
     ax.bar(bin_centers, 2 * both_err, bottom=both_hist - both_err, width=bin_width,
            color='purple', alpha=0.12, edgecolor='none')
 
-    # Data and 2016 BL visualization
-    if data_style == 'errorbar':
-        # Larger markers with white halo + sqrt(N) error bars for visibility
-        data_err_bars = np.sqrt(np.maximum(data_hist, 0))
-        ax.errorbar(bin_centers, data_hist, yerr=data_err_bars, fmt='ko',
-                     markersize=7, markeredgecolor='white', markeredgewidth=1.5,
-                     capsize=3, elinewidth=1.2, label='Data Events', zorder=6)
-        if len(bl16_vals) > 0:
-            # No error bars for 2016 BL — small curated set, sqrt(N) not meaningful
-            ax.plot(bin_centers, bl16_hist, 'cs', markersize=8,
-                    markeredgecolor='white', markeredgewidth=1.5,
-                    label='2016 BL Events', zorder=6)
-    else:
-        # Simple points (default)
-        ax.plot(bin_centers, data_hist, 'ko', markersize=5, label='Data Events', zorder=6)
-        if len(bl16_vals) > 0:
-            ax.plot(bin_centers, bl16_hist, 'cs', markersize=5, label='2016 BL Events', zorder=6)
+    # Cut value line (part of sim legend)
+    if show_cut_line:
+        cut_line = ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
+                               label=f'Cut at {nominal_value}', alpha=0.7)
+        sim_handles.append(cut_line)
 
-    # Cut value line
-    ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
-               label=f'Cut at {nominal_value}', alpha=0.7)
+    # Data handles
+    data_handles = []
+    if data_style == 'errorbar':
+        data_err_bars = np.sqrt(np.maximum(data_hist, 0))
+        h = ax.errorbar(bin_centers, data_hist, yerr=data_err_bars, fmt='ko',
+                         markersize=7, markeredgecolor='white', markeredgewidth=1.5,
+                         capsize=3, elinewidth=1.2, label='Data Events', zorder=6)
+        data_handles.append(h)
+    else:
+        h, = ax.plot(bin_centers, data_hist, 'ko', markersize=5, label='Data Events', zorder=6)
+        data_handles.append(h)
+
+    if len(ibl_vals) > 0:
+        h, = ax.plot(bin_centers, ibl_hist, 'cs', markersize=6,
+                     markeredgecolor='white', markeredgewidth=1.0,
+                     label='Identified BL', zorder=6)
+        data_handles.append(h)
+    if len(ircr_vals) > 0:
+        h, = ax.plot(bin_centers, ircr_hist, 'r^', markersize=7,
+                     markeredgecolor='white', markeredgewidth=1.0,
+                     label='Identified RCR', zorder=6)
+        data_handles.append(h)
 
     xlabel = PARAM_LABELS.get(param_name, param_name)
     ax.set_xlabel(xlabel, fontsize=12)
@@ -507,7 +519,14 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
         ax.set_yscale('log')
         ax.set_ylim(bottom=0.1)
 
-    ax.legend(loc='best', fontsize=9)
+    # Split legend: data (upper left) and sim (upper right)
+    data_legend = ax.legend(handles=data_handles,
+                            labels=[h.get_label() for h in data_handles],
+                            loc='upper left', fontsize=8, title='Data', title_fontsize=9)
+    ax.add_artist(data_legend)
+    ax.legend(handles=sim_handles,
+              labels=[h.get_label() for h in sim_handles],
+              loc='upper right', fontsize=8, title='Simulation', title_fontsize=9)
 
     title_label = PARAM_TITLES.get(param_name, param_name)
     plt.title(f'Distribution: {title_label}', fontsize=14)
@@ -518,7 +537,8 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
 
 
 def print_summary_table(nominal_cuts, sim_direct, sim_reflected,
-                        data_dict, data_station_ids, bl_2016_data,
+                        data_dict, data_station_ids,
+                        identified_bl_data, identified_rcr_data,
                         excluded_events_mask, label, output_path=None):
     """
     Print and optionally save a summary table at nominal cut values.
@@ -534,11 +554,17 @@ def print_summary_table(nominal_cuts, sim_direct, sim_reflected,
     both_count = rcr_count + bl_count
     both_err = np.sqrt(rcr_err**2 + bl_err**2)
 
-    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
-        bl_2016_mask = apply_cuts(bl_2016_data, nominal_cuts, cut_type='rcr')
-        bl_2016_count = int(np.sum(bl_2016_mask))
+    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+        ibl_mask = apply_cuts(identified_bl_data, nominal_cuts, cut_type='rcr')
+        ibl_count = int(np.sum(ibl_mask))
     else:
-        bl_2016_count = 0
+        ibl_count = 0
+
+    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+        ircr_mask = apply_cuts(identified_rcr_data, nominal_cuts, cut_type='rcr')
+        ircr_count = int(np.sum(ircr_mask))
+    else:
+        ircr_count = 0
 
     data_mask = apply_cuts(data_dict, nominal_cuts, cut_type='rcr')
     data_mask &= ~excluded_events_mask
@@ -581,7 +607,8 @@ def print_summary_table(nominal_cuts, sim_direct, sim_reflected,
         f"  {'RCR Sim':<25} {rcr_count:>14.4f} {rcr_err:>12.4f}",
         f"  {'BL Sim':<25} {bl_count:>14.4f} {bl_err:>12.4f}",
         f"  {'Both Sim (RCR+BL)':<25} {both_count:>14.4f} {both_err:>12.4f}",
-        f"  {'2016 BL Events':<25} {bl_2016_count:>12d}     sqrt(N)={np.sqrt(bl_2016_count):.2f}",
+        f"  {'Identified BL':<25} {ibl_count:>12d}     sqrt(N)={np.sqrt(ibl_count):.2f}",
+        f"  {'Identified RCR':<25} {ircr_count:>12d}     sqrt(N)={np.sqrt(ircr_count):.2f}",
         f"  {'Data Events (w/ day cut)':<25} {data_count:>12d}     sqrt(N)={np.sqrt(data_count):.2f}",
         f"  {'Data Events (no day cut)':<25} {data_count_no_daycut:>12d}",
         f"",
@@ -604,7 +631,7 @@ def print_summary_table(nominal_cuts, sim_direct, sim_reflected,
         'rcr_count': rcr_count, 'rcr_err': rcr_err,
         'bl_count': bl_count, 'bl_err': bl_err,
         'both_count': both_count, 'both_err': both_err,
-        'bl_2016_count': bl_2016_count,
+        'ibl_count': ibl_count, 'ircr_count': ircr_count,
         'data_count': data_count, 'data_count_no_daycut': data_count_no_daycut,
     }
 
@@ -613,7 +640,8 @@ def plot_cumulative_distribution(param_name, nominal_value,
                                   sim_direct, sim_reflected,
                                   sim_direct_high, sim_reflected_high,
                                   sim_direct_low, sim_reflected_low,
-                                  data_dict, data_station_ids, bl_2016_data,
+                                  data_dict, data_station_ids,
+                                  identified_bl_data, identified_rcr_data,
                                   excluded_events_mask, output_path,
                                   x_range=None, yscale='linear',
                                   show_stat_error=False,
@@ -631,12 +659,9 @@ def plot_cumulative_distribution(param_name, nominal_value,
       chi_diff_threshold: events with chi_diff > x
       chi_diff_max:      events with chi_diff < x
     """
-    # No pre-filtering by other cuts: use ALL sim events so that the cumulative
-    # at the most-permissive end of the x-range equals the total weighted events.
     rcr_vals = get_param_values(param_name, sim_reflected)
     bl_vals = get_param_values(param_name, sim_direct)
 
-    # Weights for central, high, low (all events)
     rcr_w = sim_reflected['weights']
     rcr_w_hi = sim_reflected_high['weights']
     rcr_w_lo = sim_reflected_low['weights']
@@ -644,17 +669,15 @@ def plot_cumulative_distribution(param_name, nominal_value,
     bl_w_hi = sim_direct_high['weights']
     bl_w_lo = sim_direct_low['weights']
 
-    # Determine scan range
     all_sim_vals = np.concatenate([v for v in [rcr_vals, bl_vals] if len(v) > 0])
     if len(all_sim_vals) == 0:
-        ic(f"Cumulative {param_name}: no sim events passing other cuts, skipping")
+        ic(f"Cumulative {param_name}: no sim events, skipping")
         return
     if x_range is not None:
         x_scan = np.linspace(x_range[0], x_range[1], 200)
     else:
         x_scan = np.linspace(np.nanmin(all_sim_vals), np.nanmax(all_sim_vals), 200)
 
-    # Define passing condition per parameter
     if param_name in ('chi_rcr_flat', 'chi_diff_threshold'):
         pass_fn = lambda vals, x: vals > x
     elif param_name in ('snr_max', 'chi_diff_max'):
@@ -662,7 +685,6 @@ def plot_cumulative_distribution(param_name, nominal_value,
     else:
         raise ValueError(f"Unknown param_name: {param_name}")
 
-    # Compute cumulative curves for sim (no uniqueness needed)
     def cumulative(vals, weights, x_arr):
         return np.array([np.sum(weights[pass_fn(vals, x)]) for x in x_arr])
 
@@ -676,7 +698,6 @@ def plot_cumulative_distribution(param_name, nominal_value,
     both_cum_hi = rcr_cum_hi + bl_cum_hi
     both_cum_lo = rcr_cum_lo + bl_cum_lo
 
-    # Statistical error: sqrt(sum(w_i^2)) for passing events at each scan point
     def cumulative_stat_err(vals, weights, x_arr):
         return np.array([np.sqrt(np.sum(weights[pass_fn(vals, x)]**2)) for x in x_arr])
 
@@ -684,8 +705,7 @@ def plot_cumulative_distribution(param_name, nominal_value,
     bl_stat_err = cumulative_stat_err(bl_vals, bl_w, x_scan)
     both_stat_err = np.sqrt(rcr_stat_err**2 + bl_stat_err**2)
 
-    # Data: raw count (no day-uniqueness) at each threshold.
-    # Optionally also compute day-unique count for comparison.
+    # Data cumulative (raw count, no day-uniqueness)
     data_vals = get_param_values(param_name, data_dict)
     data_not_excluded = ~excluded_events_mask
 
@@ -701,60 +721,79 @@ def plot_cumulative_distribution(param_name, nominal_value,
                     data_dict['Time'][pidx], data_station_ids[pidx])
                 data_cum_daycut[ix] = int(np.sum(umask))
 
-    # 2016 BL (no day-uniqueness needed — pre-curated set)
-    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
-        bl16_vals = get_param_values(param_name, bl_2016_data)
-        bl16_cum = np.array([np.sum(pass_fn(bl16_vals, x)) for x in x_scan])
+    # Identified BL cumulative
+    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+        ibl_vals = get_param_values(param_name, identified_bl_data)
+        ibl_cum = np.array([int(np.sum(pass_fn(ibl_vals, x))) for x in x_scan])
     else:
-        bl16_vals = np.array([])
-        bl16_cum = np.zeros_like(x_scan)
+        ibl_cum = np.zeros_like(x_scan, dtype=int)
+
+    # Identified RCR cumulative
+    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+        ircr_vals = get_param_values(param_name, identified_rcr_data)
+        ircr_cum = np.array([int(np.sum(pass_fn(ircr_vals, x))) for x in x_scan])
+    else:
+        ircr_cum = np.zeros_like(x_scan, dtype=int)
 
     # Plot
     fig, ax = plt.subplots(figsize=(10, 7))
 
+    # Sim bands and lines
+    sim_handles = []
     if show_stat_error:
-        # Combined band: R-sweep range + statistical error added in quadrature
-        # The R-sweep gives systematic spread; statistical error adds on top
         rcr_band_lo = np.minimum(rcr_cum_lo, rcr_cum) - rcr_stat_err
         rcr_band_hi = np.maximum(rcr_cum_hi, rcr_cum) + rcr_stat_err
         bl_band_lo = np.minimum(bl_cum_lo, bl_cum) - bl_stat_err
         bl_band_hi = np.maximum(bl_cum_hi, bl_cum) + bl_stat_err
         both_band_lo = np.minimum(both_cum_lo, both_cum) - both_stat_err
         both_band_hi = np.maximum(both_cum_hi, both_cum) + both_stat_err
-
-        ax.fill_between(x_scan, rcr_band_lo, rcr_band_hi, color='green', alpha=0.15,
-                         label='RCR Sim (R-sweep + stat)')
-        ax.plot(x_scan, rcr_cum, 'g-', linewidth=2)
-        ax.fill_between(x_scan, bl_band_lo, bl_band_hi, color='orange', alpha=0.15,
-                         label='BL Sim (R-sweep + stat)')
-        ax.plot(x_scan, bl_cum, color='orange', linewidth=2)
-        ax.fill_between(x_scan, both_band_lo, both_band_hi, color='purple', alpha=0.1,
-                         label='Both Sim (R-sweep + stat)')
-        ax.plot(x_scan, both_cum, 'purple', linewidth=2, linestyle='--')
+        band_label_suffix = ' (R-sweep + stat)'
     else:
-        # R-sweep bands only
-        ax.fill_between(x_scan, rcr_cum_lo, rcr_cum_hi, color='green', alpha=0.15, label='RCR Sim')
-        ax.plot(x_scan, rcr_cum, 'g-', linewidth=2)
-        ax.fill_between(x_scan, bl_cum_lo, bl_cum_hi, color='orange', alpha=0.15, label='BL Sim')
-        ax.plot(x_scan, bl_cum, color='orange', linewidth=2)
-        ax.fill_between(x_scan, both_cum_lo, both_cum_hi, color='purple', alpha=0.1, label='Both Sim')
-        ax.plot(x_scan, both_cum, 'purple', linewidth=2, linestyle='--')
+        rcr_band_lo, rcr_band_hi = rcr_cum_lo, rcr_cum_hi
+        bl_band_lo, bl_band_hi = bl_cum_lo, bl_cum_hi
+        both_band_lo, both_band_hi = both_cum_lo, both_cum_hi
+        band_label_suffix = ''
 
-    ax.plot(x_scan, data_cum, 'k-', linewidth=1.5, label='Data Events')
+    ax.fill_between(x_scan, rcr_band_lo, rcr_band_hi, color='green', alpha=0.15)
+    h, = ax.plot(x_scan, rcr_cum, 'g-', linewidth=2, label=f'RCR Sim{band_label_suffix}')
+    sim_handles.append(h)
+    ax.fill_between(x_scan, bl_band_lo, bl_band_hi, color='orange', alpha=0.15)
+    h, = ax.plot(x_scan, bl_cum, color='orange', linewidth=2, label=f'BL Sim{band_label_suffix}')
+    sim_handles.append(h)
+    ax.fill_between(x_scan, both_band_lo, both_band_hi, color='purple', alpha=0.1)
+    h, = ax.plot(x_scan, both_cum, 'purple', linewidth=2, linestyle='--', label=f'Both Sim{band_label_suffix}')
+    sim_handles.append(h)
+    cut_line = ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
+                           label=f'Cut at {nominal_value}', alpha=0.7)
+    sim_handles.append(cut_line)
+
+    # Data as points with error bars (same error as sim bands: sqrt(N))
+    data_handles = []
+    # Subsample x_scan for data points (every 5th point) to avoid clutter
+    step = max(1, len(x_scan) // 40)
+    idx_pts = np.arange(0, len(x_scan), step)
+    data_err = np.sqrt(np.maximum(data_cum[idx_pts].astype(float), 0))
+    h = ax.errorbar(x_scan[idx_pts], data_cum[idx_pts], yerr=data_err, fmt='ko',
+                     markersize=5, capsize=2, elinewidth=1, label='Data Events', zorder=6)
+    data_handles.append(h)
     if show_day_cut and data_cum_daycut is not None:
-        ax.plot(x_scan, data_cum_daycut, 'k--', linewidth=1.5,
-                label='Data Post-Day Cut', alpha=0.7)
-    if len(bl16_vals) > 0:
-        ax.plot(x_scan, bl16_cum, 'c-', linewidth=1.5, label='2016 BL Events')
+        h = ax.errorbar(x_scan[idx_pts], data_cum_daycut[idx_pts],
+                         yerr=np.sqrt(np.maximum(data_cum_daycut[idx_pts].astype(float), 0)),
+                         fmt='ks', markersize=4, capsize=2, elinewidth=1,
+                         label='Data Post-Day Cut', alpha=0.7, zorder=6)
+        data_handles.append(h)
 
-    ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
-               label=f'Cut at {nominal_value}', alpha=0.7)
+    if np.any(ibl_cum > 0):
+        h, = ax.plot(x_scan, ibl_cum, 'c-', linewidth=1.5, label='Identified BL')
+        data_handles.append(h)
+    if np.any(ircr_cum > 0):
+        h, = ax.plot(x_scan, ircr_cum, 'r-', linewidth=1.5, label='Identified RCR')
+        data_handles.append(h)
 
     xlabel = PARAM_LABELS.get(param_name, param_name)
     ax.set_xlabel(xlabel, fontsize=12)
     ax.set_ylabel('Events Passing Cut', fontsize=12)
     ax.set_title(f'Cumulative: {PARAM_TITLES.get(param_name, param_name)}', fontsize=14)
-    ax.legend(loc='best', fontsize=9)
     ax.grid(True, alpha=0.3)
 
     if yscale == 'log':
@@ -762,6 +801,15 @@ def plot_cumulative_distribution(param_name, nominal_value,
         ax.set_ylim(bottom=0.1)
     if x_range is not None:
         ax.set_xlim(x_range)
+
+    # Split legend
+    data_legend = ax.legend(handles=data_handles,
+                            labels=[h.get_label() for h in data_handles],
+                            loc='upper left', fontsize=8, title='Data', title_fontsize=9)
+    ax.add_artist(data_legend)
+    ax.legend(handles=sim_handles,
+              labels=[h.get_label() for h in sim_handles],
+              loc='upper right', fontsize=8, title='Simulation', title_fontsize=9)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
@@ -772,7 +820,8 @@ def plot_cumulative_distribution(param_name, nominal_value,
 def plot_cumulative_cut_interaction(param_name, nominal_cuts, nominal_value,
                                      cross_cut_param, cross_cut_range,
                                      sim_direct, sim_reflected,
-                                     data_dict, data_station_ids, bl_2016_data,
+                                     data_dict, data_station_ids,
+                                     identified_bl_data, identified_rcr_data,
                                      excluded_events_mask, output_path,
                                      x_range=None, yscale='linear'):
     """
@@ -899,14 +948,21 @@ def plot_cumulative_cut_interaction(param_name, nominal_cuts, nominal_value,
                 data_dict['Time'][pidx], data_station_ids[pidx])
             data_cum[ix] = int(np.sum(umask))
 
-    # 2016 BL
-    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
-        bl16_cross_mask = apply_cuts(bl_2016_data, cuts_nom, cut_type='rcr')
-        bl16_vals = get_param_values(param_name, bl_2016_data)[bl16_cross_mask]
-        bl16_cum = np.array([np.sum(pass_fn(bl16_vals, x)) for x in x_scan])
+    # Identified BL cumulative
+    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+        ibl_cross_mask = apply_cuts(identified_bl_data, cuts_nom, cut_type='rcr')
+        ibl_vals = get_param_values(param_name, identified_bl_data)[ibl_cross_mask]
+        ibl_cum = np.array([int(np.sum(pass_fn(ibl_vals, x))) for x in x_scan])
     else:
-        bl16_vals = np.array([])
-        bl16_cum = np.zeros_like(x_scan)
+        ibl_cum = np.zeros_like(x_scan, dtype=int)
+
+    # Identified RCR cumulative
+    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+        ircr_cross_mask = apply_cuts(identified_rcr_data, cuts_nom, cut_type='rcr')
+        ircr_vals_ci = get_param_values(param_name, identified_rcr_data)[ircr_cross_mask]
+        ircr_cum = np.array([int(np.sum(pass_fn(ircr_vals_ci, x))) for x in x_scan])
+    else:
+        ircr_cum = np.zeros_like(x_scan, dtype=int)
 
     # Plot
     cross_label = PARAM_TITLES.get(cross_cut_param, cross_cut_param)
@@ -914,29 +970,50 @@ def plot_cumulative_cut_interaction(param_name, nominal_cuts, nominal_value,
 
     fig, ax = plt.subplots(figsize=(10, 7))
 
-    ax.fill_between(x_scan, rcr_band_lo, rcr_band_hi, color='green', alpha=0.15,
-                     label=f'RCR Sim{band_label_suffix}')
-    ax.plot(x_scan, rcr_cum_nom, 'g-', linewidth=2)
-    ax.fill_between(x_scan, bl_band_lo, bl_band_hi, color='orange', alpha=0.15,
-                     label=f'BL Sim{band_label_suffix}')
-    ax.plot(x_scan, bl_cum_nom, color='orange', linewidth=2)
-    ax.fill_between(x_scan, both_band_lo, both_band_hi, color='purple', alpha=0.1,
-                     label=f'Both Sim{band_label_suffix}')
-    ax.plot(x_scan, both_cum_nom, 'purple', linewidth=2, linestyle='--')
+    sim_handles = []
+    ax.fill_between(x_scan, rcr_band_lo, rcr_band_hi, color='green', alpha=0.15)
+    h, = ax.plot(x_scan, rcr_cum_nom, 'g-', linewidth=2, label=f'RCR Sim{band_label_suffix}')
+    sim_handles.append(h)
+    ax.fill_between(x_scan, bl_band_lo, bl_band_hi, color='orange', alpha=0.15)
+    h, = ax.plot(x_scan, bl_cum_nom, color='orange', linewidth=2, label=f'BL Sim{band_label_suffix}')
+    sim_handles.append(h)
+    ax.fill_between(x_scan, both_band_lo, both_band_hi, color='purple', alpha=0.1)
+    h, = ax.plot(x_scan, both_cum_nom, 'purple', linewidth=2, linestyle='--', label=f'Both Sim{band_label_suffix}')
+    sim_handles.append(h)
+    cut_line = ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
+                           label=f'Cut at {nominal_value}', alpha=0.7)
+    sim_handles.append(cut_line)
 
-    ax.plot(x_scan, data_cum, 'k-', linewidth=1.5, label='Data Events')
-    if len(bl16_vals) > 0:
-        ax.plot(x_scan, bl16_cum, 'c-', linewidth=1.5, label='2016 BL Events')
+    # Data as points with error bars
+    data_handles = []
+    step = max(1, len(x_scan) // 40)
+    idx_pts = np.arange(0, len(x_scan), step)
+    data_err = np.sqrt(np.maximum(data_cum[idx_pts].astype(float), 0))
+    h = ax.errorbar(x_scan[idx_pts], data_cum[idx_pts], yerr=data_err, fmt='ko',
+                     markersize=5, capsize=2, elinewidth=1, label='Data Events', zorder=6)
+    data_handles.append(h)
 
-    ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
-               label=f'Cut at {nominal_value}', alpha=0.7)
+    if np.any(ibl_cum > 0):
+        h, = ax.plot(x_scan, ibl_cum, 'c-', linewidth=1.5, label='Identified BL')
+        data_handles.append(h)
+    if np.any(ircr_cum > 0):
+        h, = ax.plot(x_scan, ircr_cum, 'r-', linewidth=1.5, label='Identified RCR')
+        data_handles.append(h)
 
     xlabel = PARAM_LABELS.get(param_name, param_name)
     ax.set_xlabel(xlabel, fontsize=12)
     ax.set_ylabel('Events Passing Cut', fontsize=12)
     ax.set_title(f'Cumulative: {PARAM_TITLES.get(param_name, param_name)} '
                  f'(band: {cross_label})', fontsize=13)
-    ax.legend(loc='best', fontsize=8)
+
+    # Split legend
+    data_legend = ax.legend(handles=data_handles,
+                            labels=[h.get_label() for h in data_handles],
+                            loc='upper left', fontsize=7, title='Data', title_fontsize=8)
+    ax.add_artist(data_legend)
+    ax.legend(handles=sim_handles,
+              labels=[h.get_label() for h in sim_handles],
+              loc='upper right', fontsize=7, title='Simulation', title_fontsize=8)
     ax.grid(True, alpha=0.3)
 
     if yscale == 'log':
@@ -1052,7 +1129,8 @@ def _plot_gaussian_fit(ax, x_smooth, bin_width, names, colors, popt, n_label):
 
 
 def plot_gaussian_fits(sim_direct, sim_reflected,
-                        data_dict, bl_2016_data,
+                        data_dict,
+                        identified_bl_data, identified_rcr_data,
                         excluded_events_mask, no_cuts,
                         plot_folder, n_bins=50, param_range=(0.2, 0.9)):
     """
@@ -1082,15 +1160,19 @@ def plot_gaussian_fits(sim_direct, sim_reflected,
     total_events = len(data_vals)
     x_smooth = np.linspace(param_range[0], param_range[1], 500)
 
-    # Sim histograms for with-sim versions
+    # Sim and identified event histograms for with-sim versions
     bl_chircr, bl_w = sim_direct['ChiRCR'], sim_direct['weights']
     rcr_chircr, rcr_w = sim_reflected['ChiRCR'], sim_reflected['weights']
     rcr_hist, _ = np.histogram(rcr_chircr, bins=bin_edges, weights=rcr_w)
     bl_hist, _ = np.histogram(bl_chircr, bins=bin_edges, weights=bl_w)
-    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
-        bl16_hist, _ = np.histogram(bl_2016_data['ChiRCR'], bins=bin_edges)
+    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+        ibl_hist, _ = np.histogram(identified_bl_data['ChiRCR'], bins=bin_edges)
     else:
-        bl16_hist = np.zeros(n_bins)
+        ibl_hist = np.zeros(n_bins)
+    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+        ircr_hist, _ = np.histogram(identified_rcr_data['ChiRCR'], bins=bin_edges)
+    else:
+        ircr_hist = np.zeros(n_bins)
 
     # Initialize output text file (overwrite)
     txt_path = os.path.join(plot_folder, 'gaussian_fit_chi_rcr.txt')
@@ -1148,9 +1230,12 @@ def plot_gaussian_fits(sim_direct, sim_reflected,
                         linewidth=2, label='RCR Sim')
                 ax.step(bin_edges[:-1], bl_hist, where='post', color='orange',
                         linewidth=2, label='BL Sim')
-                if np.any(bl16_hist > 0):
-                    ax.plot(bin_centers, bl16_hist, 'cs', markersize=5,
-                            label='2016 BL Events', zorder=6)
+                if np.any(ibl_hist > 0):
+                    ax.plot(bin_centers, ibl_hist, 'cs', markersize=5,
+                            label='Identified BL', zorder=6)
+                if np.any(ircr_hist > 0):
+                    ax.plot(bin_centers, ircr_hist, 'r^', markersize=6,
+                            label='Identified RCR', zorder=6)
             _plot_gaussian_fit(ax, x_smooth, bin_width, names_2g, colors_2g, popt_2g, '2')
             ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
             ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
@@ -1202,9 +1287,12 @@ def plot_gaussian_fits(sim_direct, sim_reflected,
                         linewidth=2, label='RCR Sim')
                 ax.step(bin_edges[:-1], bl_hist, where='post', color='orange',
                         linewidth=2, label='BL Sim')
-                if np.any(bl16_hist > 0):
-                    ax.plot(bin_centers, bl16_hist, 'cs', markersize=5,
-                            label='2016 BL Events', zorder=6)
+                if np.any(ibl_hist > 0):
+                    ax.plot(bin_centers, ibl_hist, 'cs', markersize=5,
+                            label='Identified BL', zorder=6)
+                if np.any(ircr_hist > 0):
+                    ax.plot(bin_centers, ircr_hist, 'r^', markersize=6,
+                            label='Identified RCR', zorder=6)
             _plot_gaussian_fit(ax, x_smooth, bin_width, names_3g, colors_3g, popt_3g, '3')
             ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
             ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
@@ -1224,7 +1312,8 @@ def plot_gaussian_fits(sim_direct, sim_reflected,
 
 
 def plot_gaussian_fits_chibl(sim_direct, sim_reflected,
-                              data_dict, bl_2016_data,
+                              data_dict,
+                              identified_bl_data, identified_rcr_data,
                               excluded_events_mask, no_cuts,
                               plot_folder, n_bins=50, param_range=(0.0, 1.0)):
     """
@@ -1253,10 +1342,14 @@ def plot_gaussian_fits_chibl(sim_direct, sim_reflected,
     rcr_w = sim_reflected['weights']
     rcr_hist, _ = np.histogram(rcr_chibl, bins=bin_edges, weights=rcr_w)
     bl_hist, _ = np.histogram(bl_chibl, bins=bin_edges, weights=bl_w)
-    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
-        bl16_hist, _ = np.histogram(bl_2016_data['Chi2016'], bins=bin_edges)
+    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+        ibl_hist, _ = np.histogram(identified_bl_data['Chi2016'], bins=bin_edges)
     else:
-        bl16_hist = np.zeros(n_bins)
+        ibl_hist = np.zeros(n_bins)
+    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+        ircr_hist, _ = np.histogram(identified_rcr_data['Chi2016'], bins=bin_edges)
+    else:
+        ircr_hist = np.zeros(n_bins)
 
     # Initialize output text file (overwrite)
     txt_path = os.path.join(plot_folder, 'gaussian_fit_chi_bl.txt')
@@ -1316,9 +1409,12 @@ def plot_gaussian_fits_chibl(sim_direct, sim_reflected,
                         linewidth=2, label='RCR Sim')
                 ax.step(bin_edges[:-1], bl_hist, where='post', color='orange',
                         linewidth=2, label='BL Sim')
-                if np.any(bl16_hist > 0):
-                    ax.plot(bin_centers, bl16_hist, 'cs', markersize=5,
-                            label='2016 BL Events', zorder=6)
+                if np.any(ibl_hist > 0):
+                    ax.plot(bin_centers, ibl_hist, 'cs', markersize=5,
+                            label='Identified BL', zorder=6)
+                if np.any(ircr_hist > 0):
+                    ax.plot(bin_centers, ircr_hist, 'r^', markersize=6,
+                            label='Identified RCR', zorder=6)
             _plot_gaussian_fit(ax, x_smooth, bin_width, names_2g, colors_2g, popt_2g, '2')
             ax.set_xlabel(param_label, fontsize=12)
             ax.set_ylabel('Events per Bin', fontsize=12)
@@ -1369,9 +1465,12 @@ def plot_gaussian_fits_chibl(sim_direct, sim_reflected,
                         linewidth=2, label='RCR Sim')
                 ax.step(bin_edges[:-1], bl_hist, where='post', color='orange',
                         linewidth=2, label='BL Sim')
-                if np.any(bl16_hist > 0):
-                    ax.plot(bin_centers, bl16_hist, 'cs', markersize=5,
-                            label='2016 BL Events', zorder=6)
+                if np.any(ibl_hist > 0):
+                    ax.plot(bin_centers, ibl_hist, 'cs', markersize=5,
+                            label='Identified BL', zorder=6)
+                if np.any(ircr_hist > 0):
+                    ax.plot(bin_centers, ircr_hist, 'r^', markersize=6,
+                            label='Identified RCR', zorder=6)
             _plot_gaussian_fit(ax, x_smooth, bin_width, names_3g, colors_3g, popt_3g, '3')
             ax.set_xlabel(param_label, fontsize=12)
             ax.set_ylabel('Events per Bin', fontsize=12)
@@ -1392,10 +1491,11 @@ def plot_gaussian_fits_chibl(sim_direct, sim_reflected,
 def print_events_passing_table(scan_params, nominal_cuts,
                                 sim_direct, sim_reflected,
                                 data_dict, data_station_ids,
+                                identified_bl_data, identified_rcr_data,
                                 excluded_events_mask, output_path):
     """
     Print a detailed table: for each cut parameter at a series of threshold values,
-    show the number of events passing for BL sim, RCR sim, and data,
+    show the number of events passing for BL sim, RCR sim, data, identified BL/RCR,
     plus mean and sigma of the passing parameter distribution.
     """
     lines = []
@@ -1405,13 +1505,14 @@ def print_events_passing_table(scan_params, nominal_cuts,
         p_range = param_info['range']
         scan_values = np.linspace(p_range[0], p_range[1], 20)
 
-        lines.append(f"\n{'='*100}")
+        lines.append(f"\n{'='*120}")
         lines.append(f"  Events Passing: {PARAM_TITLES.get(param_name, param_name)}")
-        lines.append(f"{'='*100}")
+        lines.append(f"{'='*120}")
         lines.append(f"  {'Value':>8}  {'RCR count':>10}  {'RCR err':>10}  "
                       f"{'BL count':>10}  {'BL err':>10}  {'Data':>8}  "
+                      f"{'Id BL':>6}  {'Id RCR':>6}  "
                       f"{'RCR mean':>10}  {'RCR sigma':>10}  {'BL mean':>10}  {'BL sigma':>10}")
-        lines.append(f"  {'-'*98}")
+        lines.append(f"  {'-'*118}")
 
         for cut_val in scan_values:
             # Make a modified copy of nominal cuts with this parameter varied
@@ -1442,6 +1543,18 @@ def print_events_passing_table(scan_params, nominal_cuts,
             else:
                 data_count = 0
 
+            # Identified BL and RCR counts
+            if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+                ibl_mask = apply_cuts(identified_bl_data, test_cuts, cut_type='rcr')
+                ibl_count = int(np.sum(ibl_mask))
+            else:
+                ibl_count = 0
+            if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+                ircr_mask = apply_cuts(identified_rcr_data, test_cuts, cut_type='rcr')
+                ircr_count = int(np.sum(ircr_mask))
+            else:
+                ircr_count = 0
+
             # Mean/sigma of the parameter distribution for passing events
             rcr_vals = get_param_values(param_name, sim_reflected)[rcr_mask]
             bl_vals = get_param_values(param_name, sim_direct)[bl_mask]
@@ -1461,6 +1574,7 @@ def print_events_passing_table(scan_params, nominal_cuts,
 
             lines.append(f"  {cut_val:>8.3f}  {rcr_count:>10.3f}  {rcr_err:>10.3f}  "
                           f"{bl_count:>10.3f}  {bl_err:>10.3f}  {data_count:>8d}  "
+                          f"{ibl_count:>6d}  {ircr_count:>6d}  "
                           f"{rcr_mean:>10.4f}  {rcr_std:>10.4f}  "
                           f"{bl_mean:>10.4f}  {bl_std:>10.4f}")
 
@@ -1672,6 +1786,125 @@ if __name__ == "__main__":
         bl_2016_data = None
         ic("No 2016 BL events found.")
 
+    # --- Load Coincidence Events (Coinc BL + Coinc RCR from S01) ---
+    date_coincidence = config['PARAMETERS']['date_coincidence']
+    coincidence_pickle_path = (
+        "/dfs8/sbarwick_lab/ariannaproject/rricesmi/numpy_arrays/station_data/"
+        f"{date_coincidence}_CoincidenceDatetimes_passing_cuts_with_all_params"
+        "_recalcZenAzi_calcPol.pkl"
+    )
+    requested_coincidence_event_ids = [
+        3047, 3432, 10195, 10231, 10273, 10284, 10444, 10449,
+        10466, 10471, 10554, 11197, 11220, 11230, 11236, 11243,
+    ]
+    # Events 11230 and 11243 have per-station category overrides
+    special_coinc_ids = {11230, 11243}
+    special_coinc_station_map = {
+        11230: {13: "RCR", 17: "Backlobe"},
+        11243: {30: "RCR", 17: "Backlobe"},
+    }
+
+    coinc_bl_snr, coinc_bl_chi2016, coinc_bl_chircr = [], [], []
+    coinc_rcr_snr, coinc_rcr_chi2016, coinc_rcr_chircr = [], [], []
+
+    if os.path.exists(coincidence_pickle_path):
+        with open(coincidence_pickle_path, 'rb') as handle:
+            coinc_events_dict = pickle.load(handle)
+        ic(f"Loaded coincidence pickle with {len(coinc_events_dict)} entries.")
+
+        for event_id in requested_coincidence_event_ids:
+            event_obj = coinc_events_dict.get(event_id) or coinc_events_dict.get(str(event_id))
+            if event_obj is None:
+                ic(f"Warning: Coincidence event {event_id} not found in pickle.")
+                continue
+
+            stations_info = event_obj.get('stations', {}) if isinstance(event_obj, dict) else {}
+            default_category = "RCR" if event_id in special_coinc_ids else "Backlobe"
+
+            for station_key, station_payload in stations_info.items():
+                try:
+                    station_int = int(station_key)
+                except (TypeError, ValueError):
+                    continue
+                if station_int not in station_ids:
+                    continue
+
+                category = default_category
+                if event_id in special_coinc_station_map:
+                    category = special_coinc_station_map[event_id].get(station_int, category)
+
+                snr_v = np.asarray(station_payload.get('SNR', []), dtype=float)
+                chi2016_v = np.asarray(station_payload.get('Chi2016', []), dtype=float)
+                chircr_v = np.asarray(station_payload.get('ChiRCR', []), dtype=float)
+
+                min_len = min(snr_v.size, chi2016_v.size, chircr_v.size)
+                if min_len == 0:
+                    continue
+                snr_v, chi2016_v, chircr_v = snr_v[:min_len], chi2016_v[:min_len], chircr_v[:min_len]
+                valid = np.isfinite(snr_v) & np.isfinite(chi2016_v) & np.isfinite(chircr_v)
+                if not np.any(valid):
+                    continue
+
+                if category == "Backlobe":
+                    coinc_bl_snr.extend(snr_v[valid].tolist())
+                    coinc_bl_chi2016.extend(chi2016_v[valid].tolist())
+                    coinc_bl_chircr.extend(chircr_v[valid].tolist())
+                else:
+                    coinc_rcr_snr.extend(snr_v[valid].tolist())
+                    coinc_rcr_chi2016.extend(chi2016_v[valid].tolist())
+                    coinc_rcr_chircr.extend(chircr_v[valid].tolist())
+    else:
+        ic(f"Warning: Coincidence pickle not found: {coincidence_pickle_path}")
+
+    coinc_bl_raw = {
+        'snr': np.array(coinc_bl_snr), 'Chi2016': np.array(coinc_bl_chi2016),
+        'ChiRCR': np.array(coinc_bl_chircr),
+    }
+    coinc_rcr_raw = {
+        'snr': np.array(coinc_rcr_snr), 'Chi2016': np.array(coinc_rcr_chi2016),
+        'ChiRCR': np.array(coinc_rcr_chircr),
+    }
+    ic(f"Coinc BL raw: {len(coinc_bl_raw['snr'])} events, Coinc RCR: {len(coinc_rcr_raw['snr'])} events.")
+
+    # --- Deduplicate Coinc BL against 2016 BL (match on SNR, ChiRCR, Chi2016) ---
+    # 2016 BL takes priority; remove any Coinc BL event that appears in 2016 BL.
+    if bl_2016_data is not None and len(coinc_bl_raw['snr']) > 0:
+        bl16_tuples = set(zip(
+            np.round(bl_2016_data['snr'], 6),
+            np.round(bl_2016_data['ChiRCR'], 6),
+            np.round(bl_2016_data['Chi2016'], 6),
+        ))
+        keep = np.ones(len(coinc_bl_raw['snr']), dtype=bool)
+        for i in range(len(coinc_bl_raw['snr'])):
+            t = (round(coinc_bl_raw['snr'][i], 6),
+                 round(coinc_bl_raw['ChiRCR'][i], 6),
+                 round(coinc_bl_raw['Chi2016'][i], 6))
+            if t in bl16_tuples:
+                keep[i] = False
+        n_dupes = int(np.sum(~keep))
+        if n_dupes > 0:
+            ic(f"Removed {n_dupes} duplicate events from Coinc BL (already in 2016 BL).")
+        for key in coinc_bl_raw:
+            coinc_bl_raw[key] = coinc_bl_raw[key][keep]
+
+    # --- Build Identified BL = 2016 BL + deduplicated Coinc BL ---
+    if bl_2016_data is not None:
+        identified_bl_data = {
+            'snr': np.concatenate([bl_2016_data['snr'], coinc_bl_raw['snr']]),
+            'Chi2016': np.concatenate([bl_2016_data['Chi2016'], coinc_bl_raw['Chi2016']]),
+            'ChiRCR': np.concatenate([bl_2016_data['ChiRCR'], coinc_bl_raw['ChiRCR']]),
+        }
+    elif len(coinc_bl_raw['snr']) > 0:
+        identified_bl_data = coinc_bl_raw
+    else:
+        identified_bl_data = None
+
+    # --- Identified RCR = Coinc RCR ---
+    identified_rcr_data = coinc_rcr_raw if len(coinc_rcr_raw['snr']) > 0 else None
+
+    ic(f"Identified BL: {len(identified_bl_data['snr']) if identified_bl_data else 0} events")
+    ic(f"Identified RCR: {len(identified_rcr_data['snr']) if identified_rcr_data else 0} events")
+
     # --- Run Analysis (with pre-filter, matching S01) ---
     summary_file = os.path.join(plot_folder, 'summary_table.txt')
     with open(summary_file, 'w') as f:
@@ -1743,14 +1976,14 @@ if __name__ == "__main__":
     ic("Fitting Gaussians to chi_rcr_flat data...")
     plot_gaussian_fits(
         sim_direct, sim_reflected,
-        data_dict, bl_2016_data,
+        data_dict, identified_bl_data, identified_rcr_data,
         excluded_mask, no_cuts, plot_folder
     )
 
     ic("Fitting Gaussians to chi_bl (Chi2016) data...")
     plot_gaussian_fits_chibl(
         sim_direct, sim_reflected,
-        data_dict, bl_2016_data,
+        data_dict, identified_bl_data, identified_rcr_data,
         excluded_mask, no_cuts, plot_folder
     )
 
@@ -1762,7 +1995,8 @@ if __name__ == "__main__":
     # Summary table at nominal
     print_summary_table(
         nominal_cuts, sim_direct, sim_reflected,
-        data_dict, data_station_ids, bl_2016_data,
+        data_dict, data_station_ids,
+        identified_bl_data, identified_rcr_data,
         excluded_mask, "Nominal Cuts",
         output_path=summary_file
     )
@@ -1777,8 +2011,8 @@ if __name__ == "__main__":
         plot_distribution(
             param_name, nominal_cuts, param_info['nominal'],
             sim_direct, sim_reflected,
-            data_dict, data_station_ids, bl_2016_data, excluded_mask,
-            output_path, n_bins=param_info.get('n_bins', 30),
+            data_dict, data_station_ids, identified_bl_data, identified_rcr_data,
+            excluded_mask, output_path, n_bins=param_info.get('n_bins', 30),
             param_range=param_info.get('range', None)
         )
 
@@ -1788,8 +2022,8 @@ if __name__ == "__main__":
             plot_distribution(
                 param_name, nominal_cuts, param_info['nominal'],
                 sim_direct, sim_reflected,
-                data_dict, data_station_ids, bl_2016_data, excluded_mask,
-                output_log, n_bins=param_info.get('n_bins', 30),
+                data_dict, data_station_ids, identified_bl_data, identified_rcr_data,
+                excluded_mask, output_log, n_bins=param_info.get('n_bins', 30),
                 param_range=param_info.get('range', None), yscale='log'
             )
 
@@ -1804,13 +2038,23 @@ if __name__ == "__main__":
     ]
     for dbg_param, dbg_nominal, dbg_range, dbg_bins in alt_debug_params:
         ic(f"Plotting errorbar debug distribution for {dbg_param}...")
-        output_path = os.path.join(alt_folder, f'debug_dist_{dbg_param}.png')
+        # With cut line
         plot_distribution(
             dbg_param, no_cuts, dbg_nominal,
             sim_direct, sim_reflected,
-            data_dict, data_station_ids, bl_2016_data, excluded_mask,
-            output_path, n_bins=dbg_bins, param_range=dbg_range,
+            data_dict, data_station_ids, identified_bl_data, identified_rcr_data,
+            excluded_mask, os.path.join(alt_folder, f'debug_dist_{dbg_param}.png'),
+            n_bins=dbg_bins, param_range=dbg_range,
             yscale='log', data_style='errorbar'
+        )
+        # Without cut line
+        plot_distribution(
+            dbg_param, no_cuts, dbg_nominal,
+            sim_direct, sim_reflected,
+            data_dict, data_station_ids, identified_bl_data, identified_rcr_data,
+            excluded_mask, os.path.join(alt_folder, f'debug_dist_{dbg_param}_nocut.png'),
+            n_bins=dbg_bins, param_range=dbg_range,
+            yscale='log', data_style='errorbar', show_cut_line=False
         )
 
     # --- Extended-range chi_diff_threshold distributions ---
@@ -1821,8 +2065,8 @@ if __name__ == "__main__":
         plot_distribution(
             'chi_diff_threshold', nominal_cuts, ext_info['nominal'],
             sim_direct, sim_reflected,
-            data_dict, data_station_ids, bl_2016_data, excluded_mask,
-            output_path, n_bins=ext_info.get('n_bins', 30),
+            data_dict, data_station_ids, identified_bl_data, identified_rcr_data,
+            excluded_mask, output_path, n_bins=ext_info.get('n_bins', 30),
             param_range=ext_info.get('range', None)
         )
 
@@ -1835,12 +2079,23 @@ if __name__ == "__main__":
         ('chi_bl', 0.0, (0.0, 1.0), 50),
     ]
     for dbg_param, dbg_nominal, dbg_range, dbg_bins in debug_fullrange_params:
+        # With cut line
         plot_distribution(
             dbg_param, no_cuts, dbg_nominal,
             sim_direct, sim_reflected,
-            data_dict, data_station_ids, bl_2016_data, excluded_mask,
+            data_dict, data_station_ids, identified_bl_data, identified_rcr_data,
+            excluded_mask,
             os.path.join(plot_folder, f'debug_dist_{dbg_param}_fullrange.png'),
             n_bins=dbg_bins, param_range=dbg_range, yscale='log'
+        )
+        # Without cut line
+        plot_distribution(
+            dbg_param, no_cuts, dbg_nominal,
+            sim_direct, sim_reflected,
+            data_dict, data_station_ids, identified_bl_data, identified_rcr_data,
+            excluded_mask,
+            os.path.join(plot_folder, f'debug_dist_{dbg_param}_fullrange_nocut.png'),
+            n_bins=dbg_bins, param_range=dbg_range, yscale='log', show_cut_line=False
         )
 
     # --- Cumulative distribution plots ---
@@ -1882,8 +2137,10 @@ if __name__ == "__main__":
                 sim_direct, sim_reflected,
                 sim_direct_high, sim_reflected_high,
                 sim_direct_low, sim_reflected_low,
-                data_dict, data_station_ids, bl_2016_data, excluded_mask,
-                output_path, x_range=x_range, yscale=yscale,
+                data_dict, data_station_ids,
+                identified_bl_data, identified_rcr_data,
+                excluded_mask, output_path,
+                x_range=x_range, yscale=yscale,
                 show_stat_error=stat_err, show_day_cut=day_cut
             )
 
@@ -1924,8 +2181,10 @@ if __name__ == "__main__":
                 scan_param, nominal_cuts, param_info['nominal'],
                 cross_param, cross_range,
                 sim_direct, sim_reflected,
-                data_dict, data_station_ids, bl_2016_data, excluded_mask,
-                output_path, x_range=x_range, yscale=yscale
+                data_dict, data_station_ids,
+                identified_bl_data, identified_rcr_data,
+                excluded_mask, output_path,
+                x_range=x_range, yscale=yscale
             )
 
     # --- Events passing table ---
@@ -1938,6 +2197,7 @@ if __name__ == "__main__":
             scan_params, nominal_cuts,
             sim_direct, sim_reflected,
             data_dict, data_station_ids,
+            identified_bl_data, identified_rcr_data,
             excluded_mask, events_table_path
         )
 
