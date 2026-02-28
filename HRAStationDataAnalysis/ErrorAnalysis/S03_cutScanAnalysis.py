@@ -1097,7 +1097,7 @@ def plot_gaussian_fits(sim_direct, sim_reflected,
 
     # Three sigma-max variants for Noise and BL widths.
     # RCR sigma is always capped at 0.15 (unconstrained).
-    sigma_max_variants = [0.045, 0.04, 0.035]
+    sigma_max_variants = [0.06, 0.055, 0.05, 0.045, 0.04, 0.035]
 
     names_2g = ['Noise', 'Backlobe']
     colors_2g = ['blue', 'orange']
