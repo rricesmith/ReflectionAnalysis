@@ -349,6 +349,8 @@ def get_param_values(param_name, data_dict):
         return data_dict['ChiRCR'] - data_dict['Chi2016']
     elif param_name == 'snr_max':
         return data_dict['snr']
+    elif param_name == 'chi_bl':
+        return data_dict['Chi2016']
     else:
         raise ValueError(f"Unknown param_name: {param_name}")
 
@@ -363,6 +365,7 @@ PARAM_LABELS = {
     'chi_diff_threshold': r'$\Delta\chi$ ($\chi_{\mathrm{RCR}} - \chi_{2016}$)',
     'chi_diff_max': r'$\Delta\chi$ ($\chi_{\mathrm{RCR}} - \chi_{2016}$)',
     'snr_max': 'SNR',
+    'chi_bl': r'$\chi_{2016}$',
 }
 
 # Mapping from internal parameter names to professional title labels
@@ -371,6 +374,7 @@ PARAM_TITLES = {
     'chi_diff_threshold': r'$\Delta\chi$ Threshold',
     'chi_diff_max': r'$\Delta\chi$ Maximum',
     'snr_max': 'SNR Maximum',
+    'chi_bl': r'$\chi_{2016}$',
 }
 
 
@@ -965,12 +969,14 @@ def _triple_gaussian(x, a1, mu1, sig1, a2, mu2, sig2, a3, mu3, sig3):
 
 
 def _prepare_gaussian_fit_data(data_dict, excluded_events_mask,
-                                no_cuts, n_bins, param_range):
-    """Shared data preparation for Gaussian fits: histogram the uncut chi_rcr data.
+                                no_cuts, n_bins, param_range,
+                                param_name='chi_rcr_flat'):
+    """Shared data preparation for Gaussian fits: histogram the uncut data for param_name.
     No day-uniqueness applied — fitting the full distribution of all events."""
-    data_mask = apply_cuts(data_dict, no_cuts, cut_type='rcr', exclude_param='chi_rcr_flat')
+    data_mask = apply_cuts(data_dict, no_cuts, cut_type='rcr', exclude_param=param_name)
     data_mask &= ~excluded_events_mask
-    data_vals = data_dict['ChiRCR'][data_mask]
+    all_vals = get_param_values(param_name, data_dict)
+    data_vals = all_vals[data_mask]
 
     bin_edges = np.linspace(param_range[0], param_range[1], n_bins + 1)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
@@ -1215,6 +1221,172 @@ def plot_gaussian_fits(sim_direct, sim_reflected,
             plt.close(fig)
 
     ic(f"Gaussian fit plots and parameters saved to {plot_folder}")
+
+
+def plot_gaussian_fits_chibl(sim_direct, sim_reflected,
+                              data_dict, bl_2016_data,
+                              excluded_events_mask, no_cuts,
+                              plot_folder, n_bins=50, param_range=(0.0, 1.0)):
+    """
+    Fit 2 and 3 Gaussians to the chi_bl (Chi2016) data distribution (no cuts).
+
+    Bounds are wide open (0 to 1.0) for initial exploration.
+    Produces plots and saves fit parameters to gaussian_fit_chi_bl.txt.
+    """
+    # --- Prepare data ---
+    result = _prepare_gaussian_fit_data(
+        data_dict, excluded_events_mask, no_cuts, n_bins, param_range,
+        param_name='chi_bl')
+    data_vals, bin_edges, bin_centers, bin_width, data_hist, data_density, x_fit, y_fit, sigma_fit = result
+
+    if len(data_vals) < 10:
+        ic("Chi-BL Gaussian fit: too few data events, skipping")
+        return
+
+    total_events = len(data_vals)
+    x_smooth = np.linspace(param_range[0], param_range[1], 500)
+
+    # Sim histograms for with-sim versions
+    bl_chibl = sim_direct['Chi2016']
+    bl_w = sim_direct['weights']
+    rcr_chibl = sim_reflected['Chi2016']
+    rcr_w = sim_reflected['weights']
+    rcr_hist, _ = np.histogram(rcr_chibl, bins=bin_edges, weights=rcr_w)
+    bl_hist, _ = np.histogram(bl_chibl, bins=bin_edges, weights=bl_w)
+    if bl_2016_data is not None and len(bl_2016_data['snr']) > 0:
+        bl16_hist, _ = np.histogram(bl_2016_data['Chi2016'], bins=bin_edges)
+    else:
+        bl16_hist = np.zeros(n_bins)
+
+    # Initialize output text file (overwrite)
+    txt_path = os.path.join(plot_folder, 'gaussian_fit_chi_bl.txt')
+    with open(txt_path, 'w') as f:
+        f.write(f"Gaussian Fits to Chi_BL (Chi2016) Data Distribution\n")
+        f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+
+    # Fixed y-axis range for all Gaussian fit plots
+    ylim = (1e-1, 1e6)
+
+    # Wide-open bounds for initial exploration — user will fine-tune
+    # Only one "variant" for now; can be expanded like chi_rcr
+    sigma_max_variants = [0.15, 0.10, 0.05]
+
+    names_2g = ['Comp1', 'Comp2']
+    colors_2g = ['blue', 'orange']
+    names_3g = ['Comp1', 'Comp2', 'Comp3']
+    colors_3g = ['blue', 'orange', 'green']
+
+    param_label = PARAM_LABELS['chi_bl']
+
+    for sig_max in sigma_max_variants:
+        sig_label = f"sig{int(sig_max*1000):03d}"
+        ic(f"Chi-BL Gaussian fits with sigma_max={sig_max} ({sig_label})...")
+
+        # =================================================================
+        # Double Gaussian fit
+        # =================================================================
+        p0_2g = [
+            total_events * 0.6, 0.4, min(0.05, sig_max),
+            total_events * 0.4, 0.6, min(0.05, sig_max),
+        ]
+        lower_2g = [0, 0.0, 0.005,  0, 0.0, 0.005]
+        upper_2g = [total_events * 5, 1.0, sig_max,
+                    total_events * 5, 1.0, sig_max]
+
+        popt_2g, perr_2g, ok_2g = _do_gaussian_fit(
+            _double_gaussian, p0_2g, lower_2g, upper_2g,
+            x_fit, y_fit, sigma_fit, 6, f"Chi-BL Double Gaussian ({sig_label})")
+
+        _write_fit_results(txt_path,
+                           f"Double Gaussian Fit — sigma_max={sig_max}",
+                           names_2g, popt_2g, perr_2g, ok_2g,
+                           param_range, n_bins, total_events)
+
+        # --- 2G plots ---
+        for vis_suffix, title_extra, show_sim in [
+            ('data_only', 'Data Only', False),
+            ('with_sim', 'with Sim', True),
+        ]:
+            fig, ax = plt.subplots(figsize=(10, 7))
+            ax.bar(bin_centers, data_hist, width=bin_width, color='gray',
+                   alpha=(0.3 if show_sim else 0.4),
+                   edgecolor='black', linewidth=0.5, label='Data')
+            if show_sim:
+                ax.step(bin_edges[:-1], rcr_hist, where='post', color='green',
+                        linewidth=2, label='RCR Sim')
+                ax.step(bin_edges[:-1], bl_hist, where='post', color='orange',
+                        linewidth=2, label='BL Sim')
+                if np.any(bl16_hist > 0):
+                    ax.plot(bin_centers, bl16_hist, 'cs', markersize=5,
+                            label='2016 BL Events', zorder=6)
+            _plot_gaussian_fit(ax, x_smooth, bin_width, names_2g, colors_2g, popt_2g, '2')
+            ax.set_xlabel(param_label, fontsize=12)
+            ax.set_ylabel('Events per Bin', fontsize=12)
+            ax.set_title(rf'Double Gaussian Fit ($\sigma_{{\max}}$={sig_max}): '
+                          rf'$\chi_{{2016}}$ ({title_extra})', fontsize=13)
+            ax.legend(loc='upper left', fontsize=9 if not show_sim else 8)
+            ax.grid(True, alpha=0.3)
+            ax.set_yscale('log')
+            ax.set_ylim(ylim)
+            plt.tight_layout()
+            plt.savefig(os.path.join(plot_folder,
+                        f'gaussian_fit_chibl_2g_{sig_label}_{vis_suffix}.png'), dpi=150)
+            plt.close(fig)
+
+        # =================================================================
+        # Triple Gaussian fit
+        # =================================================================
+        p0_3g = [
+            total_events * 0.5, 0.35, min(0.05, sig_max),
+            total_events * 0.3, 0.55, min(0.05, sig_max),
+            total_events * 0.2, 0.75, min(0.05, sig_max),
+        ]
+        lower_3g = [0, 0.0, 0.005,  0, 0.0, 0.005,  0, 0.0, 0.005]
+        upper_3g = [total_events * 5, 1.0, sig_max,
+                    total_events * 5, 1.0, sig_max,
+                    total_events * 5, 1.0, sig_max]
+
+        popt_3g, perr_3g, ok_3g = _do_gaussian_fit(
+            _triple_gaussian, p0_3g, lower_3g, upper_3g,
+            x_fit, y_fit, sigma_fit, 9, f"Chi-BL Triple Gaussian ({sig_label})")
+
+        _write_fit_results(txt_path,
+                           f"Triple Gaussian Fit — sigma_max={sig_max}",
+                           names_3g, popt_3g, perr_3g, ok_3g,
+                           param_range, n_bins, total_events)
+
+        # --- 3G plots ---
+        for vis_suffix, title_extra, show_sim in [
+            ('data_only', 'Data Only', False),
+            ('with_sim', 'with Sim', True),
+        ]:
+            fig, ax = plt.subplots(figsize=(10, 7))
+            ax.bar(bin_centers, data_hist, width=bin_width, color='gray',
+                   alpha=(0.3 if show_sim else 0.4),
+                   edgecolor='black', linewidth=0.5, label='Data')
+            if show_sim:
+                ax.step(bin_edges[:-1], rcr_hist, where='post', color='green',
+                        linewidth=2, label='RCR Sim')
+                ax.step(bin_edges[:-1], bl_hist, where='post', color='orange',
+                        linewidth=2, label='BL Sim')
+                if np.any(bl16_hist > 0):
+                    ax.plot(bin_centers, bl16_hist, 'cs', markersize=5,
+                            label='2016 BL Events', zorder=6)
+            _plot_gaussian_fit(ax, x_smooth, bin_width, names_3g, colors_3g, popt_3g, '3')
+            ax.set_xlabel(param_label, fontsize=12)
+            ax.set_ylabel('Events per Bin', fontsize=12)
+            ax.set_title(rf'Triple Gaussian Fit ($\sigma_{{\max}}$={sig_max}): '
+                          rf'$\chi_{{2016}}$ ({title_extra})', fontsize=13)
+            ax.legend(loc='upper left', fontsize=9 if not show_sim else 8)
+            ax.grid(True, alpha=0.3)
+            ax.set_yscale('log')
+            ax.set_ylim(ylim)
+            plt.tight_layout()
+            plt.savefig(os.path.join(plot_folder,
+                        f'gaussian_fit_chibl_3g_{sig_label}_{vis_suffix}.png'), dpi=150)
+            plt.close(fig)
+
+    ic(f"Chi-BL Gaussian fit plots and parameters saved to {plot_folder}")
 
 
 def print_events_passing_table(scan_params, nominal_cuts,
@@ -1566,10 +1738,17 @@ if __name__ == "__main__":
     no_cuts['chi_diff_threshold'] = -999
     no_cuts['chi_diff_max'] = 999
 
-    # --- Gaussian fits to chi_rcr_flat (double and triple) ---
+    # --- Gaussian fits (double and triple) ---
     # Run early so --only-gaussian can exit before making all the other plots.
     ic("Fitting Gaussians to chi_rcr_flat data...")
     plot_gaussian_fits(
+        sim_direct, sim_reflected,
+        data_dict, bl_2016_data,
+        excluded_mask, no_cuts, plot_folder
+    )
+
+    ic("Fitting Gaussians to chi_bl (Chi2016) data...")
+    plot_gaussian_fits_chibl(
         sim_direct, sim_reflected,
         data_dict, bl_2016_data,
         excluded_mask, no_cuts, plot_folder
@@ -1621,6 +1800,7 @@ if __name__ == "__main__":
         ('chi_rcr_flat', nominal_cuts['chi_rcr_line_chi'][0], (0.2, 0.9), 50),
         ('chi_diff_threshold', nominal_cuts['chi_diff_threshold'], (-0.3, 0.3), 50),
         ('snr_max', nominal_cuts['snr_max'], (3, 100), 50),
+        ('chi_bl', 0.0, (0.0, 1.0), 50),
     ]
     for dbg_param, dbg_nominal, dbg_range, dbg_bins in alt_debug_params:
         ic(f"Plotting errorbar debug distribution for {dbg_param}...")
@@ -1652,6 +1832,7 @@ if __name__ == "__main__":
         ('chi_rcr_flat', nominal_cuts['chi_rcr_line_chi'][0], (0.2, 0.9), 50),
         ('chi_diff_threshold', nominal_cuts['chi_diff_threshold'], (-0.3, 0.3), 50),
         ('snr_max', nominal_cuts['snr_max'], (3, 100), 50),
+        ('chi_bl', 0.0, (0.0, 1.0), 50),
     ]
     for dbg_param, dbg_nominal, dbg_range, dbg_bins in debug_fullrange_params:
         plot_distribution(
