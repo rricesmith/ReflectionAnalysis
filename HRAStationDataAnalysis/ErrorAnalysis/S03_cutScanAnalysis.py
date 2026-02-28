@@ -1092,110 +1092,127 @@ def plot_gaussian_fits(sim_direct, sim_reflected,
         f.write(f"Gaussian Fits to Chi_RCR Data Distribution\n")
         f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-    # =====================================================================
-    # Double Gaussian fit (Noise + Backlobe only)
-    # =====================================================================
-    p0_2g = [
-        total_events * 0.7, 0.375, 0.04,   # noise
-        total_events * 0.3, 0.575, 0.05,    # BL
-    ]
-    lower_2g = [0, 0.35, 0.005,  0, 0.55, 0.005]
-    upper_2g = [total_events * 5, 0.40, 0.15,  total_events * 5, 0.60, 0.15]
+    # Fixed y-axis range for all Gaussian fit plots
+    ylim = (1e-1, 1e6)
 
-    popt_2g, perr_2g, ok_2g = _do_gaussian_fit(
-        _double_gaussian, p0_2g, lower_2g, upper_2g,
-        x_fit, y_fit, sigma_fit, 6, "Double Gaussian")
+    # Three sigma-max variants for Noise and BL widths.
+    # RCR sigma is always capped at 0.15 (unconstrained).
+    sigma_max_variants = [0.045, 0.04, 0.035]
 
     names_2g = ['Noise', 'Backlobe']
     colors_2g = ['blue', 'orange']
-    _write_fit_results(txt_path, "Double Gaussian Fit (Noise + Backlobe)",
-                       names_2g, popt_2g, perr_2g, ok_2g,
-                       param_range, n_bins, total_events)
-
-    # --- 2G plots ---
-    for suffix, title_extra, show_sim in [
-        ('data_only', 'Data Only', False),
-        ('with_sim', 'with Sim', True),
-    ]:
-        fig, ax = plt.subplots(figsize=(10, 7))
-        ax.bar(bin_centers, data_hist, width=bin_width, color='gray',
-               alpha=(0.3 if show_sim else 0.4),
-               edgecolor='black', linewidth=0.5, label='Data')
-        if show_sim:
-            ax.step(bin_edges[:-1], rcr_hist, where='post', color='green',
-                    linewidth=2, label='RCR Sim')
-            ax.step(bin_edges[:-1], bl_hist, where='post', color='orange',
-                    linewidth=2, label='BL Sim')
-            if np.any(bl16_hist > 0):
-                ax.plot(bin_centers, bl16_hist, 'cs', markersize=5,
-                        label='2016 BL Events', zorder=6)
-        _plot_gaussian_fit(ax, x_smooth, bin_width, names_2g, colors_2g, popt_2g, '2')
-        ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
-        ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
-        ax.set_ylabel('Events per Bin', fontsize=12)
-        ax.set_title(rf'Double Gaussian Fit: $\chi_{{\mathrm{{RCR}}}}$ ({title_extra})',
-                      fontsize=14)
-        ax.legend(loc='upper left', fontsize=9 if not show_sim else 8)
-        ax.grid(True, alpha=0.3)
-        ax.set_yscale('log')
-        ax.set_ylim(bottom=0.1)
-        plt.tight_layout()
-        plt.savefig(os.path.join(plot_folder, f'gaussian_fit_2g_{suffix}.png'), dpi=150)
-        plt.close(fig)
-
-    # =====================================================================
-    # Triple Gaussian fit (Noise + Backlobe + RCR)
-    # =====================================================================
-    p0_3g = [
-        total_events * 0.7, 0.375, 0.04,   # noise: mean 0.35-0.40
-        total_events * 0.2, 0.575, 0.05,   # BL:    mean 0.55-0.60
-        total_events * 0.1, 0.75, 0.03,    # RCR:   mean 0.70-0.80
-    ]
-    lower_3g = [0, 0.35, 0.005,  0, 0.55, 0.005,  0, 0.70, 0.005]
-    upper_3g = [total_events * 5, 0.40, 0.15,
-                total_events * 5, 0.60, 0.15,
-                total_events * 5, 0.80, 0.15]
-
-    popt_3g, perr_3g, ok_3g = _do_gaussian_fit(
-        _triple_gaussian, p0_3g, lower_3g, upper_3g,
-        x_fit, y_fit, sigma_fit, 9, "Triple Gaussian")
-
     names_3g = ['Noise', 'Backlobe', 'RCR']
     colors_3g = ['blue', 'orange', 'green']
-    _write_fit_results(txt_path, "Triple Gaussian Fit (Noise + Backlobe + RCR)",
-                       names_3g, popt_3g, perr_3g, ok_3g,
-                       param_range, n_bins, total_events)
 
-    # --- 3G plots ---
-    for suffix, title_extra, show_sim in [
-        ('data_only', 'Data Only', False),
-        ('with_sim', 'with Sim', True),
-    ]:
-        fig, ax = plt.subplots(figsize=(10, 7))
-        ax.bar(bin_centers, data_hist, width=bin_width, color='gray',
-               alpha=(0.3 if show_sim else 0.4),
-               edgecolor='black', linewidth=0.5, label='Data')
-        if show_sim:
-            ax.step(bin_edges[:-1], rcr_hist, where='post', color='green',
-                    linewidth=2, label='RCR Sim')
-            ax.step(bin_edges[:-1], bl_hist, where='post', color='orange',
-                    linewidth=2, label='BL Sim')
-            if np.any(bl16_hist > 0):
-                ax.plot(bin_centers, bl16_hist, 'cs', markersize=5,
-                        label='2016 BL Events', zorder=6)
-        _plot_gaussian_fit(ax, x_smooth, bin_width, names_3g, colors_3g, popt_3g, '3')
-        ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
-        ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
-        ax.set_ylabel('Events per Bin', fontsize=12)
-        ax.set_title(rf'Triple Gaussian Fit: $\chi_{{\mathrm{{RCR}}}}$ ({title_extra})',
-                      fontsize=14)
-        ax.legend(loc='upper left', fontsize=9 if not show_sim else 8)
-        ax.grid(True, alpha=0.3)
-        ax.set_yscale('log')
-        ax.set_ylim(bottom=0.1)
-        plt.tight_layout()
-        plt.savefig(os.path.join(plot_folder, f'gaussian_fit_3g_{suffix}.png'), dpi=150)
-        plt.close(fig)
+    for sig_max in sigma_max_variants:
+        sig_label = f"sig{int(sig_max*1000):03d}"  # e.g. "sig045"
+        ic(f"Gaussian fits with sigma_max={sig_max} ({sig_label})...")
+
+        # =================================================================
+        # Double Gaussian fit (Noise + Backlobe only)
+        # =================================================================
+        p0_2g = [
+            total_events * 0.7, 0.375, min(0.04, sig_max),
+            total_events * 0.3, 0.575, min(0.04, sig_max),
+        ]
+        lower_2g = [0, 0.35, 0.005,  0, 0.55, 0.005]
+        upper_2g = [total_events * 5, 0.40, sig_max,
+                    total_events * 5, 0.60, sig_max]
+
+        popt_2g, perr_2g, ok_2g = _do_gaussian_fit(
+            _double_gaussian, p0_2g, lower_2g, upper_2g,
+            x_fit, y_fit, sigma_fit, 6, f"Double Gaussian ({sig_label})")
+
+        _write_fit_results(txt_path,
+                           f"Double Gaussian Fit — sigma_max={sig_max} (Noise + BL)",
+                           names_2g, popt_2g, perr_2g, ok_2g,
+                           param_range, n_bins, total_events)
+
+        # --- 2G plots ---
+        for vis_suffix, title_extra, show_sim in [
+            ('data_only', 'Data Only', False),
+            ('with_sim', 'with Sim', True),
+        ]:
+            fig, ax = plt.subplots(figsize=(10, 7))
+            ax.bar(bin_centers, data_hist, width=bin_width, color='gray',
+                   alpha=(0.3 if show_sim else 0.4),
+                   edgecolor='black', linewidth=0.5, label='Data')
+            if show_sim:
+                ax.step(bin_edges[:-1], rcr_hist, where='post', color='green',
+                        linewidth=2, label='RCR Sim')
+                ax.step(bin_edges[:-1], bl_hist, where='post', color='orange',
+                        linewidth=2, label='BL Sim')
+                if np.any(bl16_hist > 0):
+                    ax.plot(bin_centers, bl16_hist, 'cs', markersize=5,
+                            label='2016 BL Events', zorder=6)
+            _plot_gaussian_fit(ax, x_smooth, bin_width, names_2g, colors_2g, popt_2g, '2')
+            ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
+            ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
+            ax.set_ylabel('Events per Bin', fontsize=12)
+            ax.set_title(rf'Double Gaussian Fit ($\sigma_{{\max}}$={sig_max}): '
+                          rf'$\chi_{{\mathrm{{RCR}}}}$ ({title_extra})', fontsize=13)
+            ax.legend(loc='upper left', fontsize=9 if not show_sim else 8)
+            ax.grid(True, alpha=0.3)
+            ax.set_yscale('log')
+            ax.set_ylim(ylim)
+            plt.tight_layout()
+            plt.savefig(os.path.join(plot_folder,
+                        f'gaussian_fit_2g_{sig_label}_{vis_suffix}.png'), dpi=150)
+            plt.close(fig)
+
+        # =================================================================
+        # Triple Gaussian fit (Noise + Backlobe + RCR)
+        # =================================================================
+        p0_3g = [
+            total_events * 0.7, 0.375, min(0.04, sig_max),
+            total_events * 0.2, 0.575, min(0.04, sig_max),
+            total_events * 0.1, 0.75, 0.03,
+        ]
+        lower_3g = [0, 0.35, 0.005,  0, 0.55, 0.005,  0, 0.70, 0.005]
+        upper_3g = [total_events * 5, 0.40, sig_max,
+                    total_events * 5, 0.60, sig_max,
+                    total_events * 5, 0.80, 0.15]
+
+        popt_3g, perr_3g, ok_3g = _do_gaussian_fit(
+            _triple_gaussian, p0_3g, lower_3g, upper_3g,
+            x_fit, y_fit, sigma_fit, 9, f"Triple Gaussian ({sig_label})")
+
+        _write_fit_results(txt_path,
+                           f"Triple Gaussian Fit — sigma_max={sig_max} (Noise + BL + RCR)",
+                           names_3g, popt_3g, perr_3g, ok_3g,
+                           param_range, n_bins, total_events)
+
+        # --- 3G plots ---
+        for vis_suffix, title_extra, show_sim in [
+            ('data_only', 'Data Only', False),
+            ('with_sim', 'with Sim', True),
+        ]:
+            fig, ax = plt.subplots(figsize=(10, 7))
+            ax.bar(bin_centers, data_hist, width=bin_width, color='gray',
+                   alpha=(0.3 if show_sim else 0.4),
+                   edgecolor='black', linewidth=0.5, label='Data')
+            if show_sim:
+                ax.step(bin_edges[:-1], rcr_hist, where='post', color='green',
+                        linewidth=2, label='RCR Sim')
+                ax.step(bin_edges[:-1], bl_hist, where='post', color='orange',
+                        linewidth=2, label='BL Sim')
+                if np.any(bl16_hist > 0):
+                    ax.plot(bin_centers, bl16_hist, 'cs', markersize=5,
+                            label='2016 BL Events', zorder=6)
+            _plot_gaussian_fit(ax, x_smooth, bin_width, names_3g, colors_3g, popt_3g, '3')
+            ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
+            ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
+            ax.set_ylabel('Events per Bin', fontsize=12)
+            ax.set_title(rf'Triple Gaussian Fit ($\sigma_{{\max}}$={sig_max}): '
+                          rf'$\chi_{{\mathrm{{RCR}}}}$ ({title_extra})', fontsize=13)
+            ax.legend(loc='upper left', fontsize=9 if not show_sim else 8)
+            ax.grid(True, alpha=0.3)
+            ax.set_yscale('log')
+            ax.set_ylim(ylim)
+            plt.tight_layout()
+            plt.savefig(os.path.join(plot_folder,
+                        f'gaussian_fit_3g_{sig_label}_{vis_suffix}.png'), dpi=150)
+            plt.close(fig)
 
     ic(f"Gaussian fit plots and parameters saved to {plot_folder}")
 
@@ -1290,6 +1307,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="S03 Cut Scan Error Analysis")
     parser.add_argument('--skip-table', action='store_true',
                         help='Skip generating events passing table (slow)')
+    parser.add_argument('--only-gaussian', action='store_true',
+                        help='Only run Gaussian fits (skip all other plots)')
     args = parser.parse_args()
 
     # --- Configuration ---
@@ -1540,6 +1559,27 @@ if __name__ == "__main__":
     assign_binned_weights(sim_direct_high, direct_events, e_bins, z_bins, label="BL high")
     assign_binned_weights(sim_direct_low, direct_events, e_bins, z_bins, label="BL low")
 
+    # --- No-cuts config (used by debug, alt-style, and Gaussian fit plots) ---
+    no_cuts = dict(nominal_cuts)
+    no_cuts['snr_max'] = 9999
+    no_cuts['chi_rcr_line_chi'] = np.zeros_like(nominal_cuts['chi_rcr_line_chi'])
+    no_cuts['chi_diff_threshold'] = -999
+    no_cuts['chi_diff_max'] = 999
+
+    # --- Gaussian fits to chi_rcr_flat (double and triple) ---
+    # Run early so --only-gaussian can exit before making all the other plots.
+    ic("Fitting Gaussians to chi_rcr_flat data...")
+    plot_gaussian_fits(
+        sim_direct, sim_reflected,
+        data_dict, bl_2016_data,
+        excluded_mask, no_cuts, plot_folder
+    )
+
+    if args.only_gaussian:
+        ic("--only-gaussian flag: skipping all other plots.")
+        ic("Done. Gaussian outputs saved to: " + plot_folder)
+        sys.exit(0)
+
     # Summary table at nominal
     print_summary_table(
         nominal_cuts, sim_direct, sim_reflected,
@@ -1573,13 +1613,6 @@ if __name__ == "__main__":
                 output_log, n_bins=param_info.get('n_bins', 30),
                 param_range=param_info.get('range', None), yscale='log'
             )
-
-    # --- No-cuts config (used by debug and alt-style plots) ---
-    no_cuts = dict(nominal_cuts)
-    no_cuts['snr_max'] = 9999
-    no_cuts['chi_rcr_line_chi'] = np.zeros_like(nominal_cuts['chi_rcr_line_chi'])
-    no_cuts['chi_diff_threshold'] = -999
-    no_cuts['chi_diff_max'] = 999
 
     # --- Alternative-style distribution plots (debug: no cuts, full range, log, errorbar data) ---
     alt_folder = os.path.join(plot_folder, 'dist_errorbar')
@@ -1628,14 +1661,6 @@ if __name__ == "__main__":
             os.path.join(plot_folder, f'debug_dist_{dbg_param}_fullrange.png'),
             n_bins=dbg_bins, param_range=dbg_range, yscale='log'
         )
-
-    # --- Gaussian fits to chi_rcr_flat (double and triple) ---
-    ic("Fitting Gaussians to chi_rcr_flat data...")
-    plot_gaussian_fits(
-        sim_direct, sim_reflected,
-        data_dict, bl_2016_data,
-        excluded_mask, no_cuts, plot_folder
-    )
 
     # --- Cumulative distribution plots ---
     ic("Generating cumulative distribution plots...")
