@@ -362,10 +362,10 @@ def get_param_values(param_name, data_dict):
 # Mapping from internal parameter names to professional axis labels
 PARAM_LABELS = {
     'chi_rcr_flat': r'$\chi_{\mathrm{RCR}}$',
-    'chi_diff_threshold': r'$\Delta\chi$ ($\chi_{\mathrm{RCR}} - \chi_{2016}$)',
-    'chi_diff_max': r'$\Delta\chi$ ($\chi_{\mathrm{RCR}} - \chi_{2016}$)',
+    'chi_diff_threshold': r'$\Delta\chi$ ($\chi_{\mathrm{RCR}} - \chi_{BL}$)',
+    'chi_diff_max': r'$\Delta\chi$ ($\chi_{\mathrm{RCR}} - \chi_{BL}$)',
     'snr_max': 'SNR',
-    'chi_bl': r'$\chi_{2016}$',
+    'chi_bl': r'$\chi_{BL}$',
 }
 
 # Mapping from internal parameter names to professional title labels
@@ -374,7 +374,7 @@ PARAM_TITLES = {
     'chi_diff_threshold': r'$\Delta\chi$ Threshold',
     'chi_diff_max': r'$\Delta\chi$ Maximum',
     'snr_max': 'SNR Maximum',
-    'chi_bl': r'$\chi_{2016}$',
+    'chi_bl': r'$\chi_{BL}$',
 }
 
 
