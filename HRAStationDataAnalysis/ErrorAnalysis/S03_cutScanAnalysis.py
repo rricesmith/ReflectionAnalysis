@@ -306,10 +306,13 @@ def apply_cuts(data_dict, cuts, cut_type='rcr', exclude_param=None):
     if exclude_param != 'snr_max':
         mask &= snr < cuts['snr_max']
 
-    # ChiRCR line cut (chi_rcr_flat when the line is flat)
+    # Chi line cut: chi-RCR for RCR mode, chi-BL for backlobe mode
     if exclude_param != 'chi_rcr_flat':
-        chi_rcr_snr_cut_values = np.interp(snr, cuts['chi_rcr_line_snr'], cuts['chi_rcr_line_chi'])
-        mask &= chircr > chi_rcr_snr_cut_values
+        chi_line_values = np.interp(snr, cuts['chi_rcr_line_snr'], cuts['chi_rcr_line_chi'])
+        if cut_type == 'backlobe':
+            mask &= chi2016 > chi_line_values
+        else:
+            mask &= chircr > chi_line_values
 
     # Chi-diff cuts
     if cut_type == 'rcr':
@@ -370,8 +373,8 @@ PARAM_LABELS = {
 
 # Mapping from internal parameter names to professional title labels
 PARAM_TITLES = {
-    'chi_rcr_flat': r'$\chi_{\mathrm{RCR}}$ Flat',
-    'chi_diff_threshold': r'$\Delta\chi$ Threshold',
+    'chi_rcr_flat': r'$\chi_{\mathrm{RCR}}$',
+    'chi_diff_threshold': r'$\Delta\chi$',
     'chi_diff_max': r'$\Delta\chi$ Maximum',
     'snr_max': 'SNR Maximum',
     'chi_bl': r'$\chi_{BL}$',
@@ -511,25 +514,26 @@ def plot_distribution(param_name, nominal_cuts, nominal_value,
         data_handles.append(h)
 
     xlabel = PARAM_LABELS.get(param_name, param_name)
-    ax.set_xlabel(xlabel, fontsize=12)
-    ax.set_ylabel('Events per Bin', fontsize=12)
+    ax.set_xlabel(xlabel, fontsize=14)
+    ax.set_ylabel('Events per Bin', fontsize=14)
+    ax.tick_params(axis='both', labelsize=12)
     ax.grid(True, alpha=0.3)
 
     if yscale == 'log':
         ax.set_yscale('log')
         ax.set_ylim(bottom=0.1)
 
-    # Split legend: data (upper left) and sim (upper right)
-    data_legend = ax.legend(handles=data_handles,
-                            labels=[h.get_label() for h in data_handles],
-                            loc='upper left', fontsize=8, title='Data', title_fontsize=9)
-    ax.add_artist(data_legend)
-    ax.legend(handles=sim_handles,
-              labels=[h.get_label() for h in sim_handles],
-              loc='upper right', fontsize=8, title='Simulation', title_fontsize=9)
+    # Split legend: both in upper right, Simulation on top, Data below
+    sim_legend = ax.legend(handles=sim_handles,
+                            labels=[h.get_label() for h in sim_handles],
+                            loc='upper right', fontsize=10, title='Simulation', title_fontsize=11)
+    ax.add_artist(sim_legend)
+    ax.legend(handles=data_handles,
+              labels=[h.get_label() for h in data_handles],
+              loc=(0.58, 0.45), fontsize=10, title='Data', title_fontsize=11)
 
     title_label = PARAM_TITLES.get(param_name, param_name)
-    plt.title(f'Distribution: {title_label}', fontsize=14)
+    plt.title(f'Distribution: {title_label}', fontsize=16)
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
     plt.close(fig)
@@ -767,15 +771,18 @@ def plot_cumulative_distribution(param_name, nominal_value,
                            label=f'Cut at {nominal_value}', alpha=0.7)
     sim_handles.append(cut_line)
 
-    # Data as points with error bars (same error as sim bands: sqrt(N))
+    # Data as bars with mid-markers and sqrt(N) error bars
     data_handles = []
     # Subsample x_scan for data points (every 5th point) to avoid clutter
     step = max(1, len(x_scan) // 40)
     idx_pts = np.arange(0, len(x_scan), step)
+    bar_width = (x_scan[-1] - x_scan[0]) / len(x_scan) * step * 0.8
     data_err = np.sqrt(np.maximum(data_cum[idx_pts].astype(float), 0))
-    h = ax.errorbar(x_scan[idx_pts], data_cum[idx_pts], yerr=data_err, fmt='ko',
-                     markersize=5, capsize=2, elinewidth=1, label='Data Events', zorder=6)
-    data_handles.append(h)
+    ax.bar(x_scan[idx_pts], data_cum[idx_pts], width=bar_width,
+           color='gray', alpha=0.4, edgecolor='black', linewidth=0.5, zorder=4)
+    h_mid = ax.errorbar(x_scan[idx_pts], data_cum[idx_pts], yerr=data_err, fmt='ko',
+                         markersize=4, capsize=2, elinewidth=1, label='Data Events', zorder=6)
+    data_handles.append(h_mid)
     if show_day_cut and data_cum_daycut is not None:
         h = ax.errorbar(x_scan[idx_pts], data_cum_daycut[idx_pts],
                          yerr=np.sqrt(np.maximum(data_cum_daycut[idx_pts].astype(float), 0)),
@@ -787,13 +794,18 @@ def plot_cumulative_distribution(param_name, nominal_value,
         h, = ax.plot(x_scan, ibl_cum, 'c-', linewidth=1.5, label='Identified BL')
         data_handles.append(h)
     if np.any(ircr_cum > 0):
-        h, = ax.plot(x_scan, ircr_cum, 'r-', linewidth=1.5, label='Identified RCR')
-        data_handles.append(h)
+        step_ircr = max(1, len(x_scan) // 30)
+        idx_ircr = np.arange(0, len(x_scan), step_ircr)
+        h = ax.plot(x_scan[idx_ircr], ircr_cum[idx_ircr], 'r^', markersize=6,
+                     markeredgecolor='white', markeredgewidth=0.8,
+                     label='Identified RCR', zorder=7)
+        data_handles.append(h[0])
 
     xlabel = PARAM_LABELS.get(param_name, param_name)
-    ax.set_xlabel(xlabel, fontsize=12)
-    ax.set_ylabel('Events Passing Cut', fontsize=12)
-    ax.set_title(f'Cumulative: {PARAM_TITLES.get(param_name, param_name)}', fontsize=14)
+    ax.set_xlabel(xlabel, fontsize=14)
+    ax.set_ylabel('Events Passing Cut', fontsize=14)
+    ax.set_title(f'Cumulative: {PARAM_TITLES.get(param_name, param_name)}', fontsize=16)
+    ax.tick_params(axis='both', labelsize=12)
     ax.grid(True, alpha=0.3)
 
     if yscale == 'log':
@@ -802,14 +814,14 @@ def plot_cumulative_distribution(param_name, nominal_value,
     if x_range is not None:
         ax.set_xlim(x_range)
 
-    # Split legend
-    data_legend = ax.legend(handles=data_handles,
-                            labels=[h.get_label() for h in data_handles],
-                            loc='upper left', fontsize=8, title='Data', title_fontsize=9)
-    ax.add_artist(data_legend)
-    ax.legend(handles=sim_handles,
-              labels=[h.get_label() for h in sim_handles],
-              loc='upper right', fontsize=8, title='Simulation', title_fontsize=9)
+    # Split legend: both upper right, Simulation on top, Data below
+    sim_legend = ax.legend(handles=sim_handles,
+                            labels=[h.get_label() for h in sim_handles],
+                            loc='upper right', fontsize=10, title='Simulation', title_fontsize=11)
+    ax.add_artist(sim_legend)
+    ax.legend(handles=data_handles,
+              labels=[h.get_label() for h in data_handles],
+              loc=(0.58, 0.45), fontsize=10, title='Data', title_fontsize=11)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
@@ -984,36 +996,44 @@ def plot_cumulative_cut_interaction(param_name, nominal_cuts, nominal_value,
                            label=f'Cut at {nominal_value}', alpha=0.7)
     sim_handles.append(cut_line)
 
-    # Data as points with error bars
+    # Data as bars with mid-markers and sqrt(N) error bars
     data_handles = []
     step = max(1, len(x_scan) // 40)
     idx_pts = np.arange(0, len(x_scan), step)
+    bar_width = (x_scan[-1] - x_scan[0]) / len(x_scan) * step * 0.8
     data_err = np.sqrt(np.maximum(data_cum[idx_pts].astype(float), 0))
+    ax.bar(x_scan[idx_pts], data_cum[idx_pts], width=bar_width,
+           color='gray', alpha=0.4, edgecolor='black', linewidth=0.5, zorder=4)
     h = ax.errorbar(x_scan[idx_pts], data_cum[idx_pts], yerr=data_err, fmt='ko',
-                     markersize=5, capsize=2, elinewidth=1, label='Data Events', zorder=6)
+                     markersize=4, capsize=2, elinewidth=1, label='Data Events', zorder=6)
     data_handles.append(h)
 
     if np.any(ibl_cum > 0):
         h, = ax.plot(x_scan, ibl_cum, 'c-', linewidth=1.5, label='Identified BL')
         data_handles.append(h)
     if np.any(ircr_cum > 0):
-        h, = ax.plot(x_scan, ircr_cum, 'r-', linewidth=1.5, label='Identified RCR')
-        data_handles.append(h)
+        step_ircr = max(1, len(x_scan) // 30)
+        idx_ircr = np.arange(0, len(x_scan), step_ircr)
+        h = ax.plot(x_scan[idx_ircr], ircr_cum[idx_ircr], 'r^', markersize=6,
+                     markeredgecolor='white', markeredgewidth=0.8,
+                     label='Identified RCR', zorder=7)
+        data_handles.append(h[0])
 
     xlabel = PARAM_LABELS.get(param_name, param_name)
-    ax.set_xlabel(xlabel, fontsize=12)
-    ax.set_ylabel('Events Passing Cut', fontsize=12)
+    ax.set_xlabel(xlabel, fontsize=14)
+    ax.set_ylabel('Events Passing Cut', fontsize=14)
     ax.set_title(f'Cumulative: {PARAM_TITLES.get(param_name, param_name)} '
-                 f'(band: {cross_label})', fontsize=13)
+                 f'(band: {cross_label})', fontsize=16)
+    ax.tick_params(axis='both', labelsize=12)
 
-    # Split legend
-    data_legend = ax.legend(handles=data_handles,
-                            labels=[h.get_label() for h in data_handles],
-                            loc='upper left', fontsize=7, title='Data', title_fontsize=8)
-    ax.add_artist(data_legend)
-    ax.legend(handles=sim_handles,
-              labels=[h.get_label() for h in sim_handles],
-              loc='upper right', fontsize=7, title='Simulation', title_fontsize=8)
+    # Split legend: both upper right, Simulation on top, Data below
+    sim_legend = ax.legend(handles=sim_handles,
+                            labels=[h.get_label() for h in sim_handles],
+                            loc='upper right', fontsize=10, title='Simulation', title_fontsize=11)
+    ax.add_artist(sim_legend)
+    ax.legend(handles=data_handles,
+              labels=[h.get_label() for h in data_handles],
+              loc=(0.58, 0.45), fontsize=10, title='Data', title_fontsize=11)
     ax.grid(True, alpha=0.3)
 
     if yscale == 'log':
@@ -1238,11 +1258,11 @@ def plot_gaussian_fits(sim_direct, sim_reflected,
                             label='Identified RCR', zorder=6)
             _plot_gaussian_fit(ax, x_smooth, bin_width, names_2g, colors_2g, popt_2g, '2')
             ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
-            ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
-            ax.set_ylabel('Events per Bin', fontsize=12)
+            ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=14)
+            ax.set_ylabel('Events per Bin', fontsize=14)
             ax.set_title(rf'Double Gaussian Fit ($\sigma_{{\max}}$={sig_max}): '
-                          rf'$\chi_{{\mathrm{{RCR}}}}$ ({title_extra})', fontsize=13)
-            ax.legend(loc='upper left', fontsize=9 if not show_sim else 8)
+                          rf'$\chi_{{\mathrm{{RCR}}}}$ ({title_extra})', fontsize=16)
+            ax.legend(loc='upper left', fontsize=10)
             ax.grid(True, alpha=0.3)
             ax.set_yscale('log')
             ax.set_ylim(ylim)
@@ -1295,11 +1315,11 @@ def plot_gaussian_fits(sim_direct, sim_reflected,
                             label='Identified RCR', zorder=6)
             _plot_gaussian_fit(ax, x_smooth, bin_width, names_3g, colors_3g, popt_3g, '3')
             ax.axvline(x=nominal_value, color='red', linestyle=':', linewidth=1, alpha=0.5)
-            ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=12)
-            ax.set_ylabel('Events per Bin', fontsize=12)
+            ax.set_xlabel(PARAM_LABELS['chi_rcr_flat'], fontsize=14)
+            ax.set_ylabel('Events per Bin', fontsize=14)
             ax.set_title(rf'Triple Gaussian Fit ($\sigma_{{\max}}$={sig_max}): '
-                          rf'$\chi_{{\mathrm{{RCR}}}}$ ({title_extra})', fontsize=13)
-            ax.legend(loc='upper left', fontsize=9 if not show_sim else 8)
+                          rf'$\chi_{{\mathrm{{RCR}}}}$ ({title_extra})', fontsize=16)
+            ax.legend(loc='upper left', fontsize=10)
             ax.grid(True, alpha=0.3)
             ax.set_yscale('log')
             ax.set_ylim(ylim)
@@ -1416,11 +1436,11 @@ def plot_gaussian_fits_chibl(sim_direct, sim_reflected,
                     ax.plot(bin_centers, ircr_hist, 'r^', markersize=6,
                             label='Identified RCR', zorder=6)
             _plot_gaussian_fit(ax, x_smooth, bin_width, names_2g, colors_2g, popt_2g, '2')
-            ax.set_xlabel(param_label, fontsize=12)
-            ax.set_ylabel('Events per Bin', fontsize=12)
+            ax.set_xlabel(param_label, fontsize=14)
+            ax.set_ylabel('Events per Bin', fontsize=14)
             ax.set_title(rf'Double Gaussian Fit ($\sigma_{{\max}}$={sig_max}): '
-                          rf'$\chi_{{2016}}$ ({title_extra})', fontsize=13)
-            ax.legend(loc='upper left', fontsize=9 if not show_sim else 8)
+                          rf'$\chi_{{2016}}$ ({title_extra})', fontsize=16)
+            ax.legend(loc='upper left', fontsize=10)
             ax.grid(True, alpha=0.3)
             ax.set_yscale('log')
             ax.set_ylim(ylim)
@@ -1472,11 +1492,11 @@ def plot_gaussian_fits_chibl(sim_direct, sim_reflected,
                     ax.plot(bin_centers, ircr_hist, 'r^', markersize=6,
                             label='Identified RCR', zorder=6)
             _plot_gaussian_fit(ax, x_smooth, bin_width, names_3g, colors_3g, popt_3g, '3')
-            ax.set_xlabel(param_label, fontsize=12)
-            ax.set_ylabel('Events per Bin', fontsize=12)
+            ax.set_xlabel(param_label, fontsize=14)
+            ax.set_ylabel('Events per Bin', fontsize=14)
             ax.set_title(rf'Triple Gaussian Fit ($\sigma_{{\max}}$={sig_max}): '
-                          rf'$\chi_{{2016}}$ ({title_extra})', fontsize=13)
-            ax.legend(loc='upper left', fontsize=9 if not show_sim else 8)
+                          rf'$\chi_{{2016}}$ ({title_extra})', fontsize=16)
+            ax.legend(loc='upper left', fontsize=10)
             ax.grid(True, alpha=0.3)
             ax.set_yscale('log')
             ax.set_ylim(ylim)
@@ -1486,6 +1506,341 @@ def plot_gaussian_fits_chibl(sim_direct, sim_reflected,
             plt.close(fig)
 
     ic(f"Chi-BL Gaussian fit plots and parameters saved to {plot_folder}")
+
+
+def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
+                                    data_dict, excluded_events_mask,
+                                    output_path, n_bins=50, param_range=None):
+    """
+    Plot histograms assessing parameter width for sim and data subsets.
+
+    Sim: full set and SNR > 10 subset (weighted).
+    Data: events passing RCR cuts (chi-RCR > 0.75, delta-chi > 0) and
+          events passing BL cuts (chi-BL > 0.75, delta-chi < 0).
+    """
+    param_label = PARAM_LABELS.get(param_name, param_name)
+    title_label = PARAM_TITLES.get(param_name, param_name)
+
+    # Sim values and weights
+    rcr_vals_all = get_param_values(param_name, sim_reflected)
+    rcr_w_all = sim_reflected['weights']
+    bl_vals_all = get_param_values(param_name, sim_direct)
+    bl_w_all = sim_direct['weights']
+
+    # SNR > 10 subsets
+    rcr_snr10 = sim_reflected['snr'] > 10
+    bl_snr10 = sim_direct['snr'] > 10
+
+    # Data subsets
+    data_vals = get_param_values(param_name, data_dict)
+    data_not_excl = ~excluded_events_mask
+
+    # RCR cuts: chi-RCR > 0.75, delta-chi > 0
+    rcr_cut_mask = (data_dict['ChiRCR'] > 0.75) & \
+                   ((data_dict['ChiRCR'] - data_dict['Chi2016']) > 0) & \
+                   data_not_excl
+    # BL cuts: chi-BL > 0.75, delta-chi < 0
+    bl_cut_mask = (data_dict['Chi2016'] > 0.75) & \
+                  ((data_dict['ChiRCR'] - data_dict['Chi2016']) < 0) & \
+                  data_not_excl
+
+    if param_range is None:
+        all_v = np.concatenate([rcr_vals_all, bl_vals_all, data_vals[data_not_excl]])
+        param_range = (np.nanmin(all_v), np.nanmax(all_v))
+
+    bin_edges = np.linspace(param_range[0], param_range[1], n_bins + 1)
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+
+    # Sim histograms
+    rcr_hist_all, _ = np.histogram(rcr_vals_all, bins=bin_edges, weights=rcr_w_all)
+    bl_hist_all, _ = np.histogram(bl_vals_all, bins=bin_edges, weights=bl_w_all)
+    rcr_hist_snr10, _ = np.histogram(rcr_vals_all[rcr_snr10], bins=bin_edges,
+                                      weights=rcr_w_all[rcr_snr10])
+    bl_hist_snr10, _ = np.histogram(bl_vals_all[bl_snr10], bins=bin_edges,
+                                     weights=bl_w_all[bl_snr10])
+
+    ax.step(bin_edges[:-1], rcr_hist_all, where='post', color='green', linewidth=2,
+            label='RCR Sim (all)')
+    ax.step(bin_edges[:-1], rcr_hist_snr10, where='post', color='green', linewidth=2,
+            linestyle='--', label='RCR Sim (SNR>10)')
+    ax.step(bin_edges[:-1], bl_hist_all, where='post', color='orange', linewidth=2,
+            label='BL Sim (all)')
+    ax.step(bin_edges[:-1], bl_hist_snr10, where='post', color='orange', linewidth=2,
+            linestyle='--', label='BL Sim (SNR>10)')
+
+    # Data histograms
+    data_rcr_hist, _ = np.histogram(data_vals[rcr_cut_mask], bins=bin_edges)
+    data_bl_hist, _ = np.histogram(data_vals[bl_cut_mask], bins=bin_edges)
+    ax.plot(bin_centers, data_rcr_hist, 'ko', markersize=5, label='Data Pass RCR Cuts')
+    ax.plot(bin_centers, data_bl_hist, 'bs', markersize=5, label='Data Pass BL Cuts')
+
+    ax.set_xlabel(param_label, fontsize=14)
+    ax.set_ylabel('Events per Bin', fontsize=14)
+    ax.set_title(f'Parameter Width: {title_label}', fontsize=16)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.legend(fontsize=10)
+    ax.set_yscale('log')
+    ax.set_ylim(bottom=0.1)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close(fig)
+    ic(f"Saved parameter width plot: {output_path}")
+
+
+def plot_coincidence_cut_test(sim_direct, output_folder, n_bins=50):
+    """
+    Test a hypothetical coincidence cut on randomly paired BL sim events.
+
+    Randomly pair all BL sim events. Apply a cut requiring chi-RCR or chi-BL > 0.6
+    in one event, and chi-RCR or chi-BL > 0.5 in the other. Plot distributions of
+    chi-RCR, chi-BL, and SNR for events passing this cut.
+    """
+    n_events = len(sim_direct['snr'])
+    if n_events < 2:
+        ic("Coincidence cut test: too few BL sim events, skipping")
+        return
+
+    # Random pairing (drop last if odd)
+    rng = np.random.default_rng(42)
+    indices = rng.permutation(n_events)
+    if len(indices) % 2 == 1:
+        indices = indices[:-1]
+    idx_a = indices[::2]
+    idx_b = indices[1::2]
+
+    # Coincidence cut: one must have chi-RCR or chi-BL > 0.6,
+    # the other must have chi-RCR or chi-BL > 0.5
+    chi_rcr_a = sim_direct['ChiRCR'][idx_a]
+    chi_bl_a = sim_direct['Chi2016'][idx_a]
+    chi_rcr_b = sim_direct['ChiRCR'][idx_b]
+    chi_bl_b = sim_direct['Chi2016'][idx_b]
+
+    max_chi_a = np.maximum(chi_rcr_a, chi_bl_a)
+    max_chi_b = np.maximum(chi_rcr_b, chi_bl_b)
+
+    # Either (A > 0.6 and B > 0.5) or (B > 0.6 and A > 0.5)
+    pass_coinc = ((max_chi_a > 0.6) & (max_chi_b > 0.5)) | \
+                 ((max_chi_b > 0.6) & (max_chi_a > 0.5))
+
+    # Collect both events from passing pairs
+    pass_idx = np.concatenate([idx_a[pass_coinc], idx_b[pass_coinc]])
+    pass_weights = sim_direct['weights'][pass_idx]
+
+    params_to_plot = [
+        ('chi_rcr_flat', (0.2, 0.9), r'$\chi_{\mathrm{RCR}}$'),
+        ('chi_bl', (0.0, 1.0), r'$\chi_{BL}$'),
+        ('snr_max', (3, 100), 'SNR'),
+    ]
+
+    for pname, prange, plabel in params_to_plot:
+        vals = get_param_values(pname, sim_direct)
+        pass_vals = vals[pass_idx]
+
+        bin_edges = np.linspace(prange[0], prange[1], n_bins + 1)
+        hist_pass, _ = np.histogram(pass_vals, bins=bin_edges, weights=pass_weights)
+
+        fig, ax = plt.subplots(figsize=(10, 7))
+        ax.step(bin_edges[:-1], hist_pass, where='post', color='orange', linewidth=2,
+                label=f'BL Sim after Coinc Cut')
+
+        ax.set_xlabel(plabel, fontsize=14)
+        ax.set_ylabel('Events per Bin', fontsize=14)
+        ax.set_title(f'Coincidence Cut Test: {plabel}', fontsize=16)
+        ax.tick_params(axis='both', labelsize=12)
+        ax.legend(fontsize=10)
+        ax.set_yscale('log')
+        ax.set_ylim(bottom=0.01)
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        out_path = os.path.join(output_folder, f'coinc_cut_test_{pname}.png')
+        plt.savefig(out_path, dpi=150)
+        plt.close(fig)
+
+    n_pairs = len(idx_a)
+    n_pass = int(np.sum(pass_coinc))
+    ic(f"Coincidence cut test: {n_pass}/{n_pairs} pairs passed "
+       f"({n_pass*2} events), weighted sum = {np.sum(pass_weights):.4f}")
+
+
+def plot_distribution_with_cuts(param_name, sim_direct, sim_reflected,
+                                 data_dict,
+                                 identified_bl_data, identified_rcr_data,
+                                 excluded_events_mask, nominal_cuts,
+                                 output_path, cut_type='rcr',
+                                 n_bins=30, param_range=None):
+    """
+    Distribution plot with either RCR-cuts or BL-cuts applied to all datasets.
+
+    RCR cuts: chi-RCR > 0.75, 0 < delta-chi < 0.2, SNR < 50
+    BL cuts:  chi-BL > 0.75, delta-chi < 0, delta-chi > -0.2, SNR < 50
+    """
+    param_label = PARAM_LABELS.get(param_name, param_name)
+    title_label = PARAM_TITLES.get(param_name, param_name)
+    cut_label = "RCR Cuts" if cut_type == 'rcr' else "BL Cuts"
+
+    # Apply cuts
+    rcr_mask = apply_cuts(sim_reflected, nominal_cuts, cut_type=cut_type,
+                           exclude_param=param_name)
+    bl_mask = apply_cuts(sim_direct, nominal_cuts, cut_type=cut_type,
+                          exclude_param=param_name)
+    data_mask = apply_cuts(data_dict, nominal_cuts, cut_type=cut_type,
+                            exclude_param=param_name)
+    data_mask &= ~excluded_events_mask
+
+    rcr_vals = get_param_values(param_name, sim_reflected)[rcr_mask]
+    rcr_w = sim_reflected['weights'][rcr_mask]
+    bl_vals = get_param_values(param_name, sim_direct)[bl_mask]
+    bl_w = sim_direct['weights'][bl_mask]
+    data_vals = get_param_values(param_name, data_dict)[data_mask]
+
+    # Identified sets
+    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+        ibl_mask = apply_cuts(identified_bl_data, nominal_cuts, cut_type=cut_type,
+                               exclude_param=param_name)
+        ibl_vals = get_param_values(param_name, identified_bl_data)[ibl_mask]
+    else:
+        ibl_vals = np.array([])
+    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+        ircr_mask = apply_cuts(identified_rcr_data, nominal_cuts, cut_type=cut_type,
+                                exclude_param=param_name)
+        ircr_vals = get_param_values(param_name, identified_rcr_data)[ircr_mask]
+    else:
+        ircr_vals = np.array([])
+
+    if param_range is None:
+        all_v = np.concatenate([v for v in [rcr_vals, bl_vals, data_vals] if len(v) > 0])
+        if len(all_v) > 0:
+            param_range = (np.nanmin(all_v), np.nanmax(all_v))
+        else:
+            param_range = (0, 1)
+
+    bin_edges = np.linspace(param_range[0], param_range[1], n_bins + 1)
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+    rcr_hist, _ = np.histogram(rcr_vals, bins=bin_edges, weights=rcr_w)
+    bl_hist, _ = np.histogram(bl_vals, bins=bin_edges, weights=bl_w)
+    both_hist = rcr_hist + bl_hist
+    data_hist, _ = np.histogram(data_vals, bins=bin_edges)
+    ibl_hist, _ = np.histogram(ibl_vals, bins=bin_edges) if len(ibl_vals) > 0 else (np.zeros(n_bins), None)
+    ircr_hist, _ = np.histogram(ircr_vals, bins=bin_edges) if len(ircr_vals) > 0 else (np.zeros(n_bins), None)
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+
+    sim_handles = []
+    h = ax.step(bin_edges[:-1], rcr_hist, where='post', color='green', linewidth=2, label='RCR Sim')
+    sim_handles.append(h[0])
+    h = ax.step(bin_edges[:-1], bl_hist, where='post', color='orange', linewidth=2, label='BL Sim')
+    sim_handles.append(h[0])
+    h = ax.step(bin_edges[:-1], both_hist, where='post', color='purple', linewidth=2,
+                linestyle='--', label='Both Sim')
+    sim_handles.append(h[0])
+
+    data_handles = []
+    h, = ax.plot(bin_centers, data_hist, 'ko', markersize=5, label='Data Events', zorder=6)
+    data_handles.append(h)
+    if len(ibl_vals) > 0:
+        h, = ax.plot(bin_centers, ibl_hist, 'cs', markersize=6, label='Identified BL', zorder=6)
+        data_handles.append(h)
+    if len(ircr_vals) > 0:
+        h, = ax.plot(bin_centers, ircr_hist, 'r^', markersize=7, label='Identified RCR', zorder=6)
+        data_handles.append(h)
+
+    ax.set_xlabel(param_label, fontsize=14)
+    ax.set_ylabel('Events per Bin', fontsize=14)
+    ax.set_title(f'Distribution ({cut_label}): {title_label}', fontsize=16)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_yscale('log')
+    ax.set_ylim(bottom=0.1)
+    ax.grid(True, alpha=0.3)
+
+    sim_legend = ax.legend(handles=sim_handles,
+                            labels=[h.get_label() for h in sim_handles],
+                            loc='upper right', fontsize=10, title='Simulation', title_fontsize=11)
+    ax.add_artist(sim_legend)
+    ax.legend(handles=data_handles,
+              labels=[h.get_label() for h in data_handles],
+              loc=(0.58, 0.45), fontsize=10, title='Data', title_fontsize=11)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close(fig)
+    ic(f"Saved distribution ({cut_label}): {output_path}")
+
+
+def plot_scale_factor_fit(param_name, nominal_value,
+                           sim_reflected,
+                           data_dict, excluded_events_mask,
+                           output_path, x_range=None):
+    """
+    Find the scale factor that best fits the RCR sim to the data in the
+    cumulative distribution at and above the cut line.
+
+    Plots the data, the nominal RCR sim, and the best-fit scaled RCR sim.
+    """
+    rcr_vals = get_param_values(param_name, sim_reflected)
+    rcr_w = sim_reflected['weights']
+
+    data_vals = get_param_values(param_name, data_dict)
+    data_not_excl = ~excluded_events_mask
+
+    if x_range is not None:
+        x_scan = np.linspace(x_range[0], x_range[1], 200)
+    else:
+        all_v = rcr_vals[rcr_w > 0]
+        if len(all_v) == 0:
+            ic(f"Scale factor fit {param_name}: no sim events, skipping")
+            return
+        x_scan = np.linspace(np.nanmin(all_v), np.nanmax(all_v), 200)
+
+    if param_name in ('chi_rcr_flat', 'chi_diff_threshold'):
+        pass_fn = lambda vals, x: vals > x
+        # "at and above the cut" means x >= nominal_value
+        fit_mask = x_scan >= nominal_value
+    elif param_name in ('snr_max', 'chi_diff_max'):
+        pass_fn = lambda vals, x: vals < x
+        fit_mask = x_scan <= nominal_value
+    else:
+        raise ValueError(f"Unknown param_name: {param_name}")
+
+    # Compute cumulative curves
+    rcr_cum = np.array([np.sum(rcr_w[pass_fn(rcr_vals, x)]) for x in x_scan])
+    data_cum = np.array([int(np.sum(pass_fn(data_vals, x) & data_not_excl)) for x in x_scan])
+
+    # Fit scale factor only in the region at/above the cut
+    fit_rcr = rcr_cum[fit_mask]
+    fit_data = data_cum[fit_mask].astype(float)
+
+    # Least-squares: minimize sum((scale * rcr - data)^2)
+    if np.sum(fit_rcr**2) > 0:
+        scale_factor = np.sum(fit_data * fit_rcr) / np.sum(fit_rcr**2)
+    else:
+        scale_factor = 1.0
+    ic(f"Scale factor fit for {param_name}: {scale_factor:.4f}")
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.plot(x_scan, data_cum, 'ko', markersize=4, label='Data Events', zorder=6)
+    ax.plot(x_scan, rcr_cum, 'g-', linewidth=2, label='RCR Sim (nominal)')
+    ax.plot(x_scan, rcr_cum * scale_factor, '--', color='gray', linewidth=2,
+            label=f'RCR Sim x {scale_factor:.3f}')
+    ax.axvline(x=nominal_value, color='red', linestyle='--', linewidth=1.5,
+               alpha=0.7, label=f'Cut at {nominal_value}')
+
+    ax.set_xlabel(PARAM_LABELS.get(param_name, param_name), fontsize=14)
+    ax.set_ylabel('Events Passing Cut', fontsize=14)
+    ax.set_title(f'Scale Factor Fit: {PARAM_TITLES.get(param_name, param_name)}', fontsize=16)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.legend(fontsize=11)
+    ax.grid(True, alpha=0.3)
+    if x_range is not None:
+        ax.set_xlim(x_range)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close(fig)
+    ic(f"Saved scale factor fit: {output_path}")
 
 
 def print_events_passing_table(scan_params, nominal_cuts,
@@ -2098,6 +2453,50 @@ if __name__ == "__main__":
             n_bins=dbg_bins, param_range=dbg_range, yscale='log', show_cut_line=False
         )
 
+    # --- Parameter width assessment plots ---
+    ic("Generating parameter width assessment plots...")
+    width_folder = os.path.join(plot_folder, 'param_width')
+    os.makedirs(width_folder, exist_ok=True)
+    width_params = [
+        ('chi_rcr_flat', (0.2, 0.9)),
+        ('chi_bl', (0.0, 1.0)),
+        ('snr_max', (3, 100)),
+    ]
+    for wp_name, wp_range in width_params:
+        plot_parameter_width_assessment(
+            wp_name, sim_direct, sim_reflected,
+            data_dict, excluded_mask,
+            os.path.join(width_folder, f'param_width_{wp_name}.png'),
+            n_bins=50, param_range=wp_range
+        )
+
+    # --- Coincidence cut test on BL sim ---
+    ic("Generating coincidence cut test plots...")
+    coinc_test_folder = os.path.join(plot_folder, 'coinc_cut_test')
+    os.makedirs(coinc_test_folder, exist_ok=True)
+    plot_coincidence_cut_test(sim_direct, coinc_test_folder)
+
+    # --- Distributions with RCR-cuts and BL-cuts applied ---
+    ic("Generating RCR/BL-cuts distribution plots...")
+    cuts_dist_folder = os.path.join(plot_folder, 'dist_with_cuts')
+    os.makedirs(cuts_dist_folder, exist_ok=True)
+    cuts_dist_params = [
+        ('chi_rcr_flat', (0.2, 0.9), 50),
+        ('chi_bl', (0.0, 1.0), 50),
+        ('snr_max', (3, 100), 50),
+    ]
+    for cdp_name, cdp_range, cdp_bins in cuts_dist_params:
+        for ct in ['rcr', 'backlobe']:
+            ct_label = 'rcr' if ct == 'rcr' else 'bl'
+            plot_distribution_with_cuts(
+                cdp_name, sim_direct, sim_reflected,
+                data_dict,
+                identified_bl_data, identified_rcr_data,
+                excluded_mask, nominal_cuts,
+                os.path.join(cuts_dist_folder, f'dist_{cdp_name}_{ct_label}_cuts.png'),
+                cut_type=ct, n_bins=cdp_bins, param_range=cdp_range
+            )
+
     # --- Cumulative distribution plots ---
     ic("Generating cumulative distribution plots...")
 
@@ -2143,6 +2542,22 @@ if __name__ == "__main__":
                 x_range=x_range, yscale=yscale,
                 show_stat_error=stat_err, show_day_cut=day_cut
             )
+
+    # --- Scale factor fits ---
+    ic("Generating scale factor fit plots...")
+    scale_folder = os.path.join(plot_folder, 'scale_factor')
+    os.makedirs(scale_folder, exist_ok=True)
+    scale_fit_configs = [
+        ('chi_rcr_flat', 0.75, (0.5, 1.0)),
+        ('chi_diff_threshold', 0.0, (-0.15, 0.15)),
+    ]
+    for sf_param, sf_nominal, sf_range in scale_fit_configs:
+        plot_scale_factor_fit(
+            sf_param, sf_nominal,
+            sim_reflected, data_dict, excluded_mask,
+            os.path.join(scale_folder, f'scale_factor_{sf_param}.png'),
+            x_range=sf_range
+        )
 
     # --- Cut-interaction cumulative plots (sub-folder) ---
     # These show how varying one cut affects the cumulative distribution of another.
