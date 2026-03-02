@@ -14,7 +14,8 @@ Produces only:
 Global changes vs S03:
   - SNR < 50 prefilter applied to ALL data immediately after loading
   - Data legend positioned in upper right, below Simulation legend
-  - Data Pass BL Cuts = blue stars; Data Pass RCR Cuts = purple stars
+  - Marker convention: Identified RCR = red triangles, Identified BL = cyan squares,
+    Pass RCR Cuts = purple stars, Pass BL Cuts = green circles
 """
 
 import sys
@@ -331,68 +332,34 @@ def add_split_legend(ax, sim_handles, data_handles):
 # Plot 1: Coincidence Cut Test (3 subplots)
 # ============================================================================
 
-def plot_coincidence_cut_test(sim_direct, sim_reflected,
+def plot_coincidence_cut_test(coinc_bl_data, coinc_rcr_data,
+                               coinc_bl_rate, coinc_bl_rate_err,
+                               coinc_rcr_rate, coinc_rcr_rate_err,
+                               sim_direct, sim_reflected,
                                sim_direct_high, sim_reflected_high,
                                sim_direct_low, sim_reflected_low,
                                output_path, n_bins=50):
     """
     3-subplot figure: chi-RCR, chi-BL, SNR.
-    Shows: BL Sim after Coinc Cut, RCR Sim after Coinc Cut,
+    Shows: Coincidence BL events, Coincidence RCR events (weighted by total rate),
            general RCR Sim (no cut), general BL Sim (no cut).
     All with error bands.
     SNR subplot has log x-scale.
     """
-    n_events = len(sim_direct['snr'])
-    if n_events < 2:
-        ic("Coincidence cut test: too few BL sim events, skipping")
+    # Assign weights to coinc events: total_rate / n_events
+    n_coinc_bl = len(coinc_bl_data['snr'])
+    n_coinc_rcr = len(coinc_rcr_data['snr'])
+    if n_coinc_bl == 0 and n_coinc_rcr == 0:
+        ic("Coincidence cut test: no coincidence events, skipping")
         return
 
-    # Random pairing
-    rng = np.random.default_rng(42)
-    indices = rng.permutation(n_events)
-    if len(indices) % 2 == 1:
-        indices = indices[:-1]
-    idx_a = indices[::2]
-    idx_b = indices[1::2]
+    coinc_bl_weights = np.full(n_coinc_bl, coinc_bl_rate / n_coinc_bl) if n_coinc_bl > 0 else np.array([])
+    coinc_bl_weights_hi = np.full(n_coinc_bl, (coinc_bl_rate + coinc_bl_rate_err) / n_coinc_bl) if n_coinc_bl > 0 else np.array([])
+    coinc_bl_weights_lo = np.full(n_coinc_bl, (coinc_bl_rate - coinc_bl_rate_err) / n_coinc_bl) if n_coinc_bl > 0 else np.array([])
 
-    chi_rcr_a = sim_direct['ChiRCR'][idx_a]
-    chi_bl_a = sim_direct['Chi2016'][idx_a]
-    chi_rcr_b = sim_direct['ChiRCR'][idx_b]
-    chi_bl_b = sim_direct['Chi2016'][idx_b]
-
-    max_chi_a = np.maximum(chi_rcr_a, chi_bl_a)
-    max_chi_b = np.maximum(chi_rcr_b, chi_bl_b)
-
-    pass_coinc = ((max_chi_a > 0.6) & (max_chi_b > 0.5)) | \
-                 ((max_chi_b > 0.6) & (max_chi_a > 0.5))
-
-    pass_idx = np.concatenate([idx_a[pass_coinc], idx_b[pass_coinc]])
-    pass_weights = sim_direct['weights'][pass_idx]
-
-    # Same pairing for RCR sim
-    n_rcr = len(sim_reflected['snr'])
-    if n_rcr >= 2:
-        rcr_indices = rng.permutation(n_rcr)
-        if len(rcr_indices) % 2 == 1:
-            rcr_indices = rcr_indices[:-1]
-        rcr_idx_a = rcr_indices[::2]
-        rcr_idx_b = rcr_indices[1::2]
-
-        rcr_chi_rcr_a = sim_reflected['ChiRCR'][rcr_idx_a]
-        rcr_chi_bl_a = sim_reflected['Chi2016'][rcr_idx_a]
-        rcr_chi_rcr_b = sim_reflected['ChiRCR'][rcr_idx_b]
-        rcr_chi_bl_b = sim_reflected['Chi2016'][rcr_idx_b]
-
-        rcr_max_chi_a = np.maximum(rcr_chi_rcr_a, rcr_chi_bl_a)
-        rcr_max_chi_b = np.maximum(rcr_chi_rcr_b, rcr_chi_bl_b)
-
-        rcr_pass_coinc = ((rcr_max_chi_a > 0.6) & (rcr_max_chi_b > 0.5)) | \
-                         ((rcr_max_chi_b > 0.6) & (rcr_max_chi_a > 0.5))
-        rcr_pass_idx = np.concatenate([rcr_idx_a[rcr_pass_coinc], rcr_idx_b[rcr_pass_coinc]])
-        rcr_pass_weights = sim_reflected['weights'][rcr_pass_idx]
-    else:
-        rcr_pass_idx = np.array([], dtype=int)
-        rcr_pass_weights = np.array([])
+    coinc_rcr_weights = np.full(n_coinc_rcr, coinc_rcr_rate / n_coinc_rcr) if n_coinc_rcr > 0 else np.array([])
+    coinc_rcr_weights_hi = np.full(n_coinc_rcr, (coinc_rcr_rate + coinc_rcr_rate_err) / n_coinc_rcr) if n_coinc_rcr > 0 else np.array([])
+    coinc_rcr_weights_lo = np.full(n_coinc_rcr, (coinc_rcr_rate - coinc_rcr_rate_err) / n_coinc_rcr) if n_coinc_rcr > 0 else np.array([])
 
     params_to_plot = [
         ('chi_rcr_flat', (0.2, 0.9), r'$\chi_{\mathrm{RCR}}$', False),
@@ -404,8 +371,8 @@ def plot_coincidence_cut_test(sim_direct, sim_reflected,
 
     for ax_idx, (pname, prange, plabel, log_x) in enumerate(params_to_plot):
         ax = axes[ax_idx]
-        vals_bl = get_param_values(pname, sim_direct)
-        vals_rcr = get_param_values(pname, sim_reflected)
+        vals_bl_sim = get_param_values(pname, sim_direct)
+        vals_rcr_sim = get_param_values(pname, sim_reflected)
 
         if log_x:
             bin_edges = np.logspace(np.log10(prange[0]), np.log10(prange[1]), n_bins + 1)
@@ -414,46 +381,43 @@ def plot_coincidence_cut_test(sim_direct, sim_reflected,
         bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
         bin_width = bin_edges[1:] - bin_edges[:-1]
 
-        # General sims (no cut)
-        bl_hist_all, _ = np.histogram(vals_bl, bins=bin_edges, weights=sim_direct['weights'])
-        rcr_hist_all, _ = np.histogram(vals_rcr, bins=bin_edges, weights=sim_reflected['weights'])
+        # General sims (no cut) — background
+        bl_hist_all, _ = np.histogram(vals_bl_sim, bins=bin_edges, weights=sim_direct['weights'])
+        rcr_hist_all, _ = np.histogram(vals_rcr_sim, bins=bin_edges, weights=sim_reflected['weights'])
 
         # Statistical errors for general sims
-        bl_err_all = np.sqrt(np.histogram(vals_bl, bins=bin_edges,
+        bl_err_all = np.sqrt(np.histogram(vals_bl_sim, bins=bin_edges,
                                            weights=sim_direct['weights']**2)[0])
-        rcr_err_sq_all = np.histogram(vals_rcr, bins=bin_edges,
-                                       weights=sim_reflected['weights']**2)[0]
-        rcr_stat_err_all = np.sqrt(rcr_err_sq_all)
+        rcr_stat_err_all = np.sqrt(np.histogram(vals_rcr_sim, bins=bin_edges,
+                                                  weights=sim_reflected['weights']**2)[0])
 
         # RCR R-sweep error
-        rcr_hist_hi, _ = np.histogram(vals_rcr, bins=bin_edges, weights=sim_reflected_high['weights'])
-        rcr_hist_lo, _ = np.histogram(vals_rcr, bins=bin_edges, weights=sim_reflected_low['weights'])
+        rcr_hist_hi, _ = np.histogram(vals_rcr_sim, bins=bin_edges, weights=sim_reflected_high['weights'])
+        rcr_hist_lo, _ = np.histogram(vals_rcr_sim, bins=bin_edges, weights=sim_reflected_low['weights'])
         rcr_band_lo_all = np.minimum(rcr_hist_lo, rcr_hist_hi) - rcr_stat_err_all
         rcr_band_hi_all = np.maximum(rcr_hist_lo, rcr_hist_hi) + rcr_stat_err_all
 
-        # BL after coinc cut
-        bl_coinc_hist, _ = np.histogram(vals_bl[pass_idx], bins=bin_edges, weights=pass_weights)
-        bl_coinc_err = np.sqrt(np.histogram(vals_bl[pass_idx], bins=bin_edges,
-                                             weights=pass_weights**2)[0])
-
-        # RCR after coinc cut
-        if len(rcr_pass_idx) > 0:
-            rcr_coinc_hist, _ = np.histogram(vals_rcr[rcr_pass_idx], bins=bin_edges,
-                                              weights=rcr_pass_weights)
-            rcr_coinc_err_sq = np.histogram(vals_rcr[rcr_pass_idx], bins=bin_edges,
-                                             weights=rcr_pass_weights**2)[0]
-            rcr_coinc_stat_err = np.sqrt(rcr_coinc_err_sq)
-            # R-sweep for coinc-cut RCR
-            rcr_coinc_hi, _ = np.histogram(vals_rcr[rcr_pass_idx], bins=bin_edges,
-                                            weights=sim_reflected_high['weights'][rcr_pass_idx])
-            rcr_coinc_lo, _ = np.histogram(vals_rcr[rcr_pass_idx], bins=bin_edges,
-                                            weights=sim_reflected_low['weights'][rcr_pass_idx])
-            rcr_coinc_band_lo = np.minimum(rcr_coinc_lo, rcr_coinc_hi) - rcr_coinc_stat_err
-            rcr_coinc_band_hi = np.maximum(rcr_coinc_lo, rcr_coinc_hi) + rcr_coinc_stat_err
+        # Coincidence BL events (weighted)
+        if n_coinc_bl > 0:
+            coinc_bl_vals = get_param_values(pname, coinc_bl_data)
+            coinc_bl_hist, _ = np.histogram(coinc_bl_vals, bins=bin_edges, weights=coinc_bl_weights)
+            coinc_bl_hist_hi, _ = np.histogram(coinc_bl_vals, bins=bin_edges, weights=coinc_bl_weights_hi)
+            coinc_bl_hist_lo, _ = np.histogram(coinc_bl_vals, bins=bin_edges, weights=coinc_bl_weights_lo)
         else:
-            rcr_coinc_hist = np.zeros(n_bins)
-            rcr_coinc_band_lo = np.zeros(n_bins)
-            rcr_coinc_band_hi = np.zeros(n_bins)
+            coinc_bl_hist = np.zeros(n_bins)
+            coinc_bl_hist_hi = np.zeros(n_bins)
+            coinc_bl_hist_lo = np.zeros(n_bins)
+
+        # Coincidence RCR events (weighted)
+        if n_coinc_rcr > 0:
+            coinc_rcr_vals = get_param_values(pname, coinc_rcr_data)
+            coinc_rcr_hist, _ = np.histogram(coinc_rcr_vals, bins=bin_edges, weights=coinc_rcr_weights)
+            coinc_rcr_hist_hi, _ = np.histogram(coinc_rcr_vals, bins=bin_edges, weights=coinc_rcr_weights_hi)
+            coinc_rcr_hist_lo, _ = np.histogram(coinc_rcr_vals, bins=bin_edges, weights=coinc_rcr_weights_lo)
+        else:
+            coinc_rcr_hist = np.zeros(n_bins)
+            coinc_rcr_hist_hi = np.zeros(n_bins)
+            coinc_rcr_hist_lo = np.zeros(n_bins)
 
         # Plot general sims (lighter, background)
         ax.step(bin_edges[:-1], rcr_hist_all, where='post', color='green', linewidth=1.5,
@@ -466,25 +430,29 @@ def plot_coincidence_cut_test(sim_direct, sim_reflected,
         ax.bar(bin_centers, 2 * bl_err_all, bottom=bl_hist_all - bl_err_all, width=bin_width,
                color='orange', alpha=0.08, edgecolor='none')
 
-        # Plot coinc-cut distributions (foreground)
-        ax.step(bin_edges[:-1], bl_coinc_hist, where='post', color='orange', linewidth=2,
-                label='BL Sim (Coinc Cut)')
-        ax.bar(bin_centers, 2 * bl_coinc_err, bottom=bl_coinc_hist - bl_coinc_err, width=bin_width,
-               color='orange', alpha=0.2, edgecolor='none')
+        # Plot coincidence event distributions (foreground)
+        ax.step(bin_edges[:-1], coinc_bl_hist, where='post', color='orange', linewidth=2,
+                label=f'Coinc BL ({coinc_bl_rate:.1f}$\\pm${coinc_bl_rate_err:.1f} evts/yr)')
+        ax.fill_between(bin_edges[:-1],
+                         np.minimum(coinc_bl_hist_lo, coinc_bl_hist_hi),
+                         np.maximum(coinc_bl_hist_lo, coinc_bl_hist_hi),
+                         step='post', color='orange', alpha=0.2)
 
-        if len(rcr_pass_idx) > 0:
-            ax.step(bin_edges[:-1], rcr_coinc_hist, where='post', color='green', linewidth=2,
-                    label='RCR Sim (Coinc Cut)')
-            ax.fill_between(bin_edges[:-1], rcr_coinc_band_lo, rcr_coinc_band_hi,
-                             step='post', color='green', alpha=0.15)
+        if n_coinc_rcr > 0:
+            ax.step(bin_edges[:-1], coinc_rcr_hist, where='post', color='green', linewidth=2,
+                    label=f'Coinc RCR ({coinc_rcr_rate:.1f}$\\pm${coinc_rcr_rate_err:.2f} evts/yr)')
+            ax.fill_between(bin_edges[:-1],
+                             np.minimum(coinc_rcr_hist_lo, coinc_rcr_hist_hi),
+                             np.maximum(coinc_rcr_hist_lo, coinc_rcr_hist_hi),
+                             step='post', color='green', alpha=0.2)
 
         ax.set_xlabel(plabel, fontsize=FONTSIZE_LABEL)
-        ax.set_ylabel('Events per Bin', fontsize=FONTSIZE_LABEL)
-        ax.set_title(f'Coincidence Cut: {plabel}', fontsize=FONTSIZE_TITLE)
+        ax.set_ylabel('Events per Bin (evts/yr)', fontsize=FONTSIZE_LABEL)
+        ax.set_title(f'Coincidence Events: {plabel}', fontsize=FONTSIZE_TITLE)
         ax.tick_params(axis='both', labelsize=FONTSIZE_TICK)
         ax.legend(fontsize=9, loc='upper left')
         ax.set_yscale('log')
-        ax.set_ylim(bottom=0.01)
+        ax.set_ylim(bottom=0.001)
         ax.grid(True, alpha=0.3)
         if log_x:
             ax.set_xscale('log')
@@ -493,11 +461,7 @@ def plot_coincidence_cut_test(sim_direct, sim_reflected,
     plt.savefig(output_path, dpi=150)
     plt.close(fig)
 
-    n_pairs = len(idx_a)
-    n_pass = int(np.sum(pass_coinc))
-    ic(f"Coincidence cut test: {n_pass}/{n_pairs} BL pairs passed, "
-       f"weighted sum = {np.sum(pass_weights):.4f}")
-    return n_pass, n_pairs
+    ic(f"Coincidence cut test: {n_coinc_bl} BL events, {n_coinc_rcr} RCR events")
 
 
 # ============================================================================
@@ -523,13 +487,19 @@ def plot_dist_errorbar(param_name, nominal_value, sim_direct, sim_reflected,
     data_vals = get_param_values(param_name, data_dict)
     data_not_excl = ~excluded_events_mask
 
+    log_x = (param_name == 'snr_max')
+
     if param_range is None:
         all_v = np.concatenate([rcr_vals, bl_vals, data_vals[data_not_excl]])
         param_range = (np.nanmin(all_v), np.nanmax(all_v))
 
-    bin_edges = np.linspace(param_range[0], param_range[1], n_bins + 1)
+    if log_x:
+        bin_edges = np.logspace(np.log10(max(param_range[0], 1e-3)),
+                                np.log10(param_range[1]), n_bins + 1)
+    else:
+        bin_edges = np.linspace(param_range[0], param_range[1], n_bins + 1)
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-    bin_width = bin_edges[1] - bin_edges[0]
+    bin_width = bin_edges[1:] - bin_edges[:-1]
 
     # Weighted histograms
     rcr_hist, _ = np.histogram(rcr_vals, bins=bin_edges, weights=sim_reflected['weights'])
@@ -617,6 +587,8 @@ def plot_dist_errorbar(param_name, nominal_value, sim_direct, sim_reflected,
     ax.tick_params(axis='both', labelsize=FONTSIZE_TICK)
     ax.set_yscale('log')
     ax.set_ylim(bottom=0.1)
+    if log_x:
+        ax.set_xscale('log')
     ax.grid(True, alpha=0.3)
 
     add_split_legend(ax, sim_handles, data_handles)
@@ -636,21 +608,22 @@ def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
                                     sim_direct_low, sim_reflected_low,
                                     data_dict, excluded_events_mask,
                                     nominal_cuts, output_path,
-                                    n_bins=50, param_range=None):
+                                    n_bins=50, param_range=None,
+                                    show_snr10_subset=True):
     """
     Parameter width histograms.
-    Sim: RCR sim has RCR cuts applied, BL sim has BL cuts applied.
-    Both shown for full set and SNR > 10 subset.
+    Sim: RCR sim has ALL RCR cuts applied, BL sim has ALL BL cuts applied.
+    Optionally shows SNR > 10 subset.
     RCR sim error = statistical + R-sweep; BL sim error = statistical only.
-    Data: 'Pass RCR Cuts' (purple stars), 'Pass BL Cuts' (blue stars).
+    Data: 'Pass RCR Cuts' (purple stars), 'Pass BL Cuts' (green circles).
     Title reflects which cuts are applied.
     """
     param_label = PARAM_LABELS.get(param_name, param_name)
     title_label = PARAM_TITLES.get(param_name, param_name)
 
-    # Apply RCR cuts to RCR sim, BL cuts to BL sim (exclude the plotted param)
-    rcr_mask = apply_cuts(sim_reflected, nominal_cuts, cut_type='rcr', exclude_param=param_name)
-    bl_mask = apply_cuts(sim_direct, nominal_cuts, cut_type='backlobe', exclude_param=param_name)
+    # Apply ALL RCR cuts to RCR sim, ALL BL cuts to BL sim (no exclusion)
+    rcr_mask = apply_cuts(sim_reflected, nominal_cuts, cut_type='rcr')
+    bl_mask = apply_cuts(sim_direct, nominal_cuts, cut_type='backlobe')
 
     rcr_vals = get_param_values(param_name, sim_reflected)
     bl_vals = get_param_values(param_name, sim_direct)
@@ -663,12 +636,10 @@ def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
     data_vals = get_param_values(param_name, data_dict)
     data_not_excl = ~excluded_events_mask
 
-    # RCR cuts on data: chi-RCR > 0.75, delta-chi > 0
-    rcr_cut_mask = (data_dict['ChiRCR'] > 0.75) & \
-                   ((data_dict['ChiRCR'] - data_dict['Chi2016']) > 0) & data_not_excl
-    # BL cuts on data: chi-BL > 0.75, delta-chi < 0
-    bl_cut_mask = (data_dict['Chi2016'] > 0.75) & \
-                  ((data_dict['ChiRCR'] - data_dict['Chi2016']) < 0) & data_not_excl
+    # RCR cuts on data
+    data_rcr_mask = apply_cuts(data_dict, nominal_cuts, cut_type='rcr') & data_not_excl
+    # BL cuts on data
+    data_bl_mask = apply_cuts(data_dict, nominal_cuts, cut_type='backlobe') & data_not_excl
 
     if param_range is None:
         all_v = np.concatenate([rcr_vals[rcr_mask], bl_vals[bl_mask], data_vals[data_not_excl]])
@@ -683,8 +654,6 @@ def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
     # RCR sim histograms (after RCR cuts)
     rcr_hist_all, _ = np.histogram(rcr_vals[rcr_mask], bins=bin_edges,
                                     weights=sim_reflected['weights'][rcr_mask])
-    rcr_hist_snr10, _ = np.histogram(rcr_vals[rcr_snr10], bins=bin_edges,
-                                      weights=sim_reflected['weights'][rcr_snr10])
 
     # RCR R-sweep error for all (after RCR cuts)
     rcr_hist_hi, _ = np.histogram(rcr_vals[rcr_mask], bins=bin_edges,
@@ -699,8 +668,6 @@ def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
     # BL sim histograms (after BL cuts)
     bl_hist_all, _ = np.histogram(bl_vals[bl_mask], bins=bin_edges,
                                    weights=sim_direct['weights'][bl_mask])
-    bl_hist_snr10, _ = np.histogram(bl_vals[bl_snr10], bins=bin_edges,
-                                     weights=sim_direct['weights'][bl_snr10])
 
     # BL stat error
     bl_stat_err = np.sqrt(np.histogram(bl_vals[bl_mask], bins=bin_edges,
@@ -710,35 +677,44 @@ def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
     sim_handles = []
     ax.fill_between(bin_centers, rcr_band_lo, rcr_band_hi, color='green', alpha=0.12, step='mid')
     h = ax.step(bin_edges[:-1], rcr_hist_all, where='post', color='green', linewidth=2,
-                label='RCR Sim (all, RCR cuts)')
+                label='RCR Sim (RCR cuts)')
     sim_handles.append(h[0])
-    h = ax.step(bin_edges[:-1], rcr_hist_snr10, where='post', color='green', linewidth=2,
-                linestyle='--', label='RCR Sim (SNR>10, RCR cuts)')
-    sim_handles.append(h[0])
+
+    if show_snr10_subset:
+        rcr_hist_snr10, _ = np.histogram(rcr_vals[rcr_snr10], bins=bin_edges,
+                                          weights=sim_reflected['weights'][rcr_snr10])
+        h = ax.step(bin_edges[:-1], rcr_hist_snr10, where='post', color='green', linewidth=2,
+                    linestyle='--', label='RCR Sim (SNR>10, RCR cuts)')
+        sim_handles.append(h[0])
 
     ax.bar(bin_centers, 2 * bl_stat_err, bottom=bl_hist_all - bl_stat_err, width=bin_width,
            color='orange', alpha=0.12, edgecolor='none')
     h = ax.step(bin_edges[:-1], bl_hist_all, where='post', color='orange', linewidth=2,
-                label='BL Sim (all, BL cuts)')
+                label='BL Sim (BL cuts)')
     sim_handles.append(h[0])
-    h = ax.step(bin_edges[:-1], bl_hist_snr10, where='post', color='orange', linewidth=2,
-                linestyle='--', label='BL Sim (SNR>10, BL cuts)')
-    sim_handles.append(h[0])
+
+    if show_snr10_subset:
+        bl_hist_snr10, _ = np.histogram(bl_vals[bl_snr10], bins=bin_edges,
+                                         weights=sim_direct['weights'][bl_snr10])
+        h = ax.step(bin_edges[:-1], bl_hist_snr10, where='post', color='orange', linewidth=2,
+                    linestyle='--', label='BL Sim (SNR>10, BL cuts)')
+        sim_handles.append(h[0])
 
     # Data histograms
     data_handles = []
-    data_rcr_hist, _ = np.histogram(data_vals[rcr_cut_mask], bins=bin_edges)
-    data_bl_hist, _ = np.histogram(data_vals[bl_cut_mask], bins=bin_edges)
+    data_rcr_hist, _ = np.histogram(data_vals[data_rcr_mask], bins=bin_edges)
+    data_bl_hist, _ = np.histogram(data_vals[data_bl_mask], bins=bin_edges)
     h, = ax.plot(bin_centers, data_rcr_hist, marker='*', color='purple', markersize=8,
                  linestyle='none', label='Data Pass RCR Cuts', zorder=6)
     data_handles.append(h)
-    h, = ax.plot(bin_centers, data_bl_hist, marker='*', color='blue', markersize=8,
+    h, = ax.plot(bin_centers, data_bl_hist, marker='o', color='green', markersize=6,
                  linestyle='none', label='Data Pass BL Cuts', zorder=6)
     data_handles.append(h)
 
     ax.set_xlabel(param_label, fontsize=FONTSIZE_LABEL)
     ax.set_ylabel('Events per Bin', fontsize=FONTSIZE_LABEL)
-    ax.set_title(f'Parameter Width: {title_label}\n(Sim: RCR cuts on RCR, BL cuts on BL)',
+    snr10_str = " (incl. SNR>10 subset)" if show_snr10_subset else ""
+    ax.set_title(f'Parameter Width: {title_label}\n(Sim: all RCR cuts on RCR, all BL cuts on BL){snr10_str}',
                  fontsize=FONTSIZE_TITLE)
     ax.tick_params(axis='both', labelsize=FONTSIZE_TICK)
     ax.set_yscale('log')
@@ -1154,8 +1130,11 @@ def plot_scale_factor(param_name, nominal_value, nominal_cuts,
 
     sim_handles = []
     corrected_cum = rcr_cum * scale_factor
-    corrected_lo = np.minimum(rcr_cum_lo, rcr_cum_hi) * scale_factor
-    corrected_hi = np.maximum(rcr_cum_lo, rcr_cum_hi) * scale_factor
+    # Error band: multiply R-sweep high/low cumulatives by scale factor range
+    corrected_lo = np.minimum(rcr_cum_lo * (scale_factor - scale_error),
+                              rcr_cum_hi * (scale_factor - scale_error))
+    corrected_hi = np.maximum(rcr_cum_lo * (scale_factor + scale_error),
+                              rcr_cum_hi * (scale_factor + scale_error))
     ax.fill_between(x_scan, corrected_lo, corrected_hi, color='gray', alpha=0.15)
     h, = ax.plot(x_scan, corrected_cum, '--', color='gray', linewidth=2,
                  label=f'Corrected RCR Sim (x{scale_factor:.2f})')
@@ -1368,8 +1347,13 @@ def _plot_scale_factor_with_sims(param_name, nominal_value, nominal_cuts,
     h, = ax.plot(x_scan, both_cum_nom, 'purple', linewidth=2, linestyle='--', label='Both Sim')
     sim_handles.append(h)
 
-    # Corrected RCR Sim
+    # Corrected RCR Sim with error band from R-sweep * scale factor range
     corrected_cum = rcr_cum_nom * scale_factor
+    corrected_band_lo = np.minimum(rcr_cum_rlo * (scale_factor - scale_error),
+                                    rcr_cum_rhi * (scale_factor - scale_error))
+    corrected_band_hi = np.maximum(rcr_cum_rlo * (scale_factor + scale_error),
+                                    rcr_cum_rhi * (scale_factor + scale_error))
+    ax.fill_between(x_scan, corrected_band_lo, corrected_band_hi, color='gray', alpha=0.15)
     h, = ax.plot(x_scan, corrected_cum, '--', color='gray', linewidth=2.5,
                  label=f'Corrected RCR (x{scale_factor:.2f})')
     sim_handles.append(h)
@@ -1419,6 +1403,211 @@ def _plot_scale_factor_with_sims(param_name, nominal_value, nominal_cuts,
     plt.savefig(output_path, dpi=150)
     plt.close(fig)
     ic(f"Saved scale factor with sims: {output_path}")
+
+
+# ============================================================================
+# Plot 6: 2D Chi-Chi Histogram (Coincidence Events)
+# ============================================================================
+
+def plot_chi_chi_coinc_2d(coinc_bl_data, coinc_rcr_data,
+                           coinc_bl_rate, coinc_rcr_rate,
+                           sim_direct, sim_reflected,
+                           identified_bl_data, identified_rcr_data,
+                           nominal_cuts, output_path, n_bins=50):
+    """
+    Two subplots of chi-BL vs chi-RCR 2D histograms.
+    Left: Coinc BL Sim (histogram), overlaid with Identified BL and RCR.
+          Red dashed diagonal (0,0)->(1,1).
+    Right: Coinc RCR Sim (histogram under data), overlaid with Identified events.
+           Dashed lines showing RCR cut in RCR region (above diagonal) and
+           BL cut in BL region (below diagonal).
+    """
+    import matplotlib.colors as mcolors
+
+    chi_rcr_cut = nominal_cuts['chi_rcr_line_chi'][0]  # flat cut value
+
+    fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(16, 7))
+
+    # --- Left subplot: BL sim background + coinc BL events + identified ---
+    # Use BL simulation as background
+    bl_chi2016 = sim_direct['Chi2016']
+    bl_chircr = sim_direct['ChiRCR']
+    bl_weights = sim_direct['weights']
+
+    h_bl = ax_left.hist2d(bl_chi2016, bl_chircr, bins=n_bins,
+                           range=[[0, 1], [0, 1]], weights=bl_weights,
+                           norm=mcolors.LogNorm(), cmap='Oranges', zorder=1)
+    plt.colorbar(h_bl[3], ax=ax_left, label='BL Sim (evts/yr)')
+
+    # Diagonal
+    ax_left.plot([0, 1], [0, 1], 'r--', linewidth=1.5, alpha=0.7, label='Diagonal', zorder=2)
+
+    # Overlay Coinc BL events
+    if len(coinc_bl_data['snr']) > 0:
+        ax_left.scatter(coinc_bl_data['Chi2016'], coinc_bl_data['ChiRCR'],
+                         marker='s', s=40, c='cyan', edgecolors='black', linewidths=0.5,
+                         label=f'Coinc BL ({len(coinc_bl_data["snr"])} evts)', zorder=4)
+
+    # Overlay Coinc RCR events
+    if len(coinc_rcr_data['snr']) > 0:
+        ax_left.scatter(coinc_rcr_data['Chi2016'], coinc_rcr_data['ChiRCR'],
+                         marker='^', s=60, c='red', edgecolors='black', linewidths=0.5,
+                         label=f'Coinc RCR ({len(coinc_rcr_data["snr"])} evts)', zorder=5)
+
+    # Overlay Identified BL
+    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+        ax_left.scatter(identified_bl_data['Chi2016'], identified_bl_data['ChiRCR'],
+                         marker='s', s=30, c='cyan', edgecolors='white', linewidths=0.8,
+                         alpha=0.8, label='Identified BL', zorder=3)
+
+    # Overlay Identified RCR
+    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+        ax_left.scatter(identified_rcr_data['Chi2016'], identified_rcr_data['ChiRCR'],
+                         marker='^', s=50, c='red', edgecolors='white', linewidths=0.8,
+                         alpha=0.8, label='Identified RCR', zorder=3)
+
+    ax_left.set_xlabel(r'$\chi_{BL}$', fontsize=FONTSIZE_LABEL)
+    ax_left.set_ylabel(r'$\chi_{\mathrm{RCR}}$', fontsize=FONTSIZE_LABEL)
+    ax_left.set_title('Coincidence: BL Sim Background', fontsize=FONTSIZE_TITLE)
+    ax_left.legend(fontsize=8, loc='lower right')
+    ax_left.tick_params(axis='both', labelsize=FONTSIZE_TICK)
+    ax_left.set_xlim(0, 1)
+    ax_left.set_ylim(0, 1)
+
+    # --- Right subplot: RCR sim background + identified events + cut lines ---
+    rcr_chi2016 = sim_reflected['Chi2016']
+    rcr_chircr = sim_reflected['ChiRCR']
+    rcr_weights = sim_reflected['weights']
+
+    h_rcr = ax_right.hist2d(rcr_chi2016, rcr_chircr, bins=n_bins,
+                              range=[[0, 1], [0, 1]], weights=rcr_weights,
+                              norm=mcolors.LogNorm(), cmap='Greens', zorder=1)
+    plt.colorbar(h_rcr[3], ax=ax_right, label='RCR Sim (evts/yr)')
+
+    # Diagonal
+    ax_right.plot([0, 1], [0, 1], 'r--', linewidth=1.5, alpha=0.7, label='Diagonal', zorder=2)
+
+    # Cut lines: RCR cut in RCR region (above diagonal), BL cut in BL region (below diagonal)
+    # RCR region: chi-RCR > chi-BL, so flat chi-RCR cut at chi_rcr_cut
+    ax_right.plot([0, chi_rcr_cut], [chi_rcr_cut, chi_rcr_cut], 'b--', linewidth=2,
+                   alpha=0.8, label=f'RCR cut ($\\chi_{{RCR}}$>{chi_rcr_cut})', zorder=3)
+    # BL region: chi-BL > chi-RCR, so flat chi-BL cut at chi_rcr_cut (same value)
+    ax_right.plot([chi_rcr_cut, chi_rcr_cut], [0, chi_rcr_cut], 'b--', linewidth=2,
+                   alpha=0.8, label=f'BL cut ($\\chi_{{BL}}$>{chi_rcr_cut})', zorder=3)
+
+    # Overlay Coinc BL events
+    if len(coinc_bl_data['snr']) > 0:
+        ax_right.scatter(coinc_bl_data['Chi2016'], coinc_bl_data['ChiRCR'],
+                          marker='s', s=40, c='cyan', edgecolors='black', linewidths=0.5,
+                          label='Coinc BL', zorder=5)
+
+    # Overlay Coinc RCR events
+    if len(coinc_rcr_data['snr']) > 0:
+        ax_right.scatter(coinc_rcr_data['Chi2016'], coinc_rcr_data['ChiRCR'],
+                          marker='^', s=60, c='red', edgecolors='black', linewidths=0.5,
+                          label='Coinc RCR', zorder=5)
+
+    # Overlay Identified events
+    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+        ax_right.scatter(identified_bl_data['Chi2016'], identified_bl_data['ChiRCR'],
+                          marker='s', s=30, c='cyan', edgecolors='white', linewidths=0.8,
+                          alpha=0.8, label='Identified BL', zorder=4)
+    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+        ax_right.scatter(identified_rcr_data['Chi2016'], identified_rcr_data['ChiRCR'],
+                          marker='^', s=50, c='red', edgecolors='white', linewidths=0.8,
+                          alpha=0.8, label='Identified RCR', zorder=4)
+
+    ax_right.set_xlabel(r'$\chi_{BL}$', fontsize=FONTSIZE_LABEL)
+    ax_right.set_ylabel(r'$\chi_{\mathrm{RCR}}$', fontsize=FONTSIZE_LABEL)
+    ax_right.set_title('Coincidence: RCR Sim Background + Cuts', fontsize=FONTSIZE_TITLE)
+    ax_right.legend(fontsize=8, loc='lower right')
+    ax_right.tick_params(axis='both', labelsize=FONTSIZE_TICK)
+    ax_right.set_xlim(0, 1)
+    ax_right.set_ylim(0, 1)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close(fig)
+    ic(f"Saved chi-chi coinc 2D plot: {output_path}")
+
+
+# ============================================================================
+# Plot 7: Chi-Chi Cut Space (Station Data with pass/fail markers)
+# ============================================================================
+
+def plot_chi_chi_cut_space(data_dict, excluded_events_mask, nominal_cuts,
+                            identified_bl_data, identified_rcr_data,
+                            output_path):
+    """
+    Chi-BL vs Chi-RCR scatter of station data.
+    Gray dots: data not passing any cut.
+    Purple stars: data passing RCR cuts.
+    Green circles: data passing BL cuts (but failing RCR).
+    Identified events layered above passing, but below non-passing data is gray.
+    Identified RCR: red triangles. Identified BL: cyan squares.
+    """
+    chi_bl = data_dict['Chi2016']
+    chi_rcr = data_dict['ChiRCR']
+    not_excl = ~excluded_events_mask
+
+    # Apply cuts
+    rcr_pass = apply_cuts(data_dict, nominal_cuts, cut_type='rcr') & not_excl
+    bl_pass = apply_cuts(data_dict, nominal_cuts, cut_type='backlobe') & not_excl
+
+    # Categories: pass RCR, pass BL (but not RCR), neither
+    neither = not_excl & ~rcr_pass & ~bl_pass
+
+    chi_rcr_cut = nominal_cuts['chi_rcr_line_chi'][0]
+
+    fig, ax = plt.subplots(figsize=(9, 8))
+
+    # Layer 1: gray dots (neither pass)
+    ax.scatter(chi_bl[neither], chi_rcr[neither],
+               s=4, c='gray', alpha=0.3, label='Data (no cut passed)', zorder=1)
+
+    # Layer 2: Identified events (under passing data)
+    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+        ax.scatter(identified_bl_data['Chi2016'], identified_bl_data['ChiRCR'],
+                   marker='s', s=50, c='cyan', edgecolors='black', linewidths=0.5,
+                   label='Identified BL', zorder=3)
+    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+        ax.scatter(identified_rcr_data['Chi2016'], identified_rcr_data['ChiRCR'],
+                   marker='^', s=60, c='red', edgecolors='black', linewidths=0.5,
+                   label='Identified RCR', zorder=3)
+
+    # Layer 3: passing events on top
+    ax.scatter(chi_bl[bl_pass], chi_rcr[bl_pass],
+               marker='o', s=30, c='green', edgecolors='black', linewidths=0.3,
+               label=f'Pass BL Cuts ({int(np.sum(bl_pass))})', zorder=4)
+    ax.scatter(chi_bl[rcr_pass], chi_rcr[rcr_pass],
+               marker='*', s=60, c='purple', edgecolors='black', linewidths=0.3,
+               label=f'Pass RCR Cuts ({int(np.sum(rcr_pass))})', zorder=5)
+
+    # Diagonal
+    ax.plot([0, 1], [0, 1], 'r--', linewidth=1.5, alpha=0.5, zorder=2)
+
+    # Cut lines
+    # RCR region (above diagonal): horizontal line at chi-RCR = cut
+    ax.plot([0, chi_rcr_cut], [chi_rcr_cut, chi_rcr_cut], 'b--', linewidth=1.5,
+            alpha=0.7, zorder=2)
+    # BL region (below diagonal): vertical line at chi-BL = cut
+    ax.plot([chi_rcr_cut, chi_rcr_cut], [0, chi_rcr_cut], 'b--', linewidth=1.5,
+            alpha=0.7, zorder=2)
+
+    ax.set_xlabel(r'$\chi_{BL}$', fontsize=FONTSIZE_LABEL)
+    ax.set_ylabel(r'$\chi_{\mathrm{RCR}}$', fontsize=FONTSIZE_LABEL)
+    ax.set_title(r'$\chi$-$\chi$ Cut Space: Station Data', fontsize=FONTSIZE_TITLE)
+    ax.legend(fontsize=FONTSIZE_LEGEND, loc='lower right')
+    ax.tick_params(axis='both', labelsize=FONTSIZE_TICK)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_aspect('equal')
+    ax.grid(True, alpha=0.2)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close(fig)
+    ic(f"Saved chi-chi cut space plot: {output_path}")
 
 
 # ============================================================================
@@ -1850,7 +2039,15 @@ if __name__ == "__main__":
     # PLOT 1: Coincidence Cut Test (3-subplot)
     # =========================================================================
     ic("Generating coincidence cut test plot...")
+    # Coincidence event rates (evts/yr)
+    COINC_RCR_RATE = 1.7
+    COINC_RCR_RATE_ERR = 0.25
+    COINC_BL_RATE = 31.7
+    COINC_BL_RATE_ERR = 3.5
     plot_coincidence_cut_test(
+        coinc_bl_raw, coinc_rcr_raw,
+        COINC_BL_RATE, COINC_BL_RATE_ERR,
+        COINC_RCR_RATE, COINC_RCR_RATE_ERR,
         sim_direct, sim_reflected,
         sim_direct_high, sim_reflected_high,
         sim_direct_low, sim_reflected_low,
@@ -1891,13 +2088,22 @@ if __name__ == "__main__":
         ('snr_max', (3, 50)),
     ]
     for wp_name, wp_range in width_params:
+        # Version with SNR>10 subset
         plot_parameter_width_assessment(
             wp_name, sim_direct, sim_reflected,
             sim_direct_high, sim_reflected_high,
             sim_direct_low, sim_reflected_low,
             data_dict, excluded_mask, nominal_cuts,
             os.path.join(width_folder, f'param_width_{wp_name}.png'),
-            n_bins=50, param_range=wp_range)
+            n_bins=50, param_range=wp_range, show_snr10_subset=True)
+        # Version without SNR>10 subset
+        plot_parameter_width_assessment(
+            wp_name, sim_direct, sim_reflected,
+            sim_direct_high, sim_reflected_high,
+            sim_direct_low, sim_reflected_low,
+            data_dict, excluded_mask, nominal_cuts,
+            os.path.join(width_folder, f'param_width_{wp_name}_nosnr10.png'),
+            n_bins=50, param_range=wp_range, show_snr10_subset=False)
 
     # =========================================================================
     # PLOT 4: Cut Interaction Cumulative
@@ -1968,6 +2174,27 @@ if __name__ == "__main__":
         excluded_mask, sf_folder,
         x_range=(-0.15, 0.15), yscale='linear')
     scale_factors['chi_diff_threshold'] = (sf_dchi, sf_dchi_err)
+
+    # =========================================================================
+    # PLOT 6: 2D Chi-Chi Coincidence Histograms
+    # =========================================================================
+    ic("Generating 2D chi-chi coincidence plot...")
+    plot_chi_chi_coinc_2d(
+        coinc_bl_raw, coinc_rcr_raw,
+        COINC_BL_RATE, COINC_RCR_RATE,
+        sim_direct, sim_reflected,
+        identified_bl_data, identified_rcr_data,
+        nominal_cuts,
+        os.path.join(plot_folder, 'chi_chi_coinc_2d.png'))
+
+    # =========================================================================
+    # PLOT 7: Chi-Chi Cut Space (Station Data)
+    # =========================================================================
+    ic("Generating chi-chi cut space plot...")
+    plot_chi_chi_cut_space(
+        data_dict, excluded_mask, nominal_cuts,
+        identified_bl_data, identified_rcr_data,
+        os.path.join(plot_folder, 'chi_chi_cut_space.png'))
 
     # =========================================================================
     # TEXT OUTPUT
