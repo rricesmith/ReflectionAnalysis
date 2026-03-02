@@ -15,7 +15,7 @@ Global changes vs S03:
   - SNR < 50 prefilter applied to ALL data immediately after loading
   - Data legend positioned in upper right, below Simulation legend
   - Marker convention: Identified RCR = red triangles, Identified BL = cyan squares,
-    Pass RCR Cuts = purple stars, Pass BL Cuts = green circles
+    Pass RCR Cuts = green stars (black outline), Pass BL Cuts = yellow circles (black outline)
 """
 
 import sys
@@ -73,6 +73,23 @@ FONTSIZE_TITLE = 16
 FONTSIZE_TICK = 12
 FONTSIZE_LEGEND = 10
 FONTSIZE_LEGEND_TITLE = 11
+
+# Complementary-log scale: focuses on values near 1.0
+# forward: x -> -log10(1.001 - x)   (spreads 0.8-1.0 region)
+# inverse: y -> 1.001 - 10^(-y)
+_COMP_LOG_EPS = 0.001  # small offset to avoid log(0) at x=1
+def _comp_log_forward(x):
+    return -np.log10(_COMP_LOG_EPS + 1.0 - np.clip(x, 0, 1.0))
+def _comp_log_inverse(y):
+    return 1.0 + _COMP_LOG_EPS - 10.0**(-y)
+
+def set_comp_log_scale(ax, axis='both'):
+    """Apply complementary-log scale to an axis to zoom into 0.8–1.0 region."""
+    funcs = (_comp_log_forward, _comp_log_inverse)
+    if axis in ('x', 'both'):
+        ax.set_xscale('function', functions=funcs)
+    if axis in ('y', 'both'):
+        ax.set_yscale('function', functions=funcs)
 
 
 # ============================================================================
@@ -603,23 +620,23 @@ def plot_dist_errorbar(param_name, nominal_value, sim_direct, sim_reflected,
 # Plot 3: Parameter Width Assessment (with cuts applied, with errors)
 # ============================================================================
 
-def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
-                                    sim_direct_high, sim_reflected_high,
-                                    sim_direct_low, sim_reflected_low,
-                                    data_dict, excluded_events_mask,
-                                    nominal_cuts, output_path,
-                                    n_bins=50, param_range=None,
-                                    show_snr10_subset=True):
+def _draw_param_width_on_ax(ax, param_name, sim_direct, sim_reflected,
+                             sim_direct_high, sim_reflected_high,
+                             sim_direct_low, sim_reflected_low,
+                             data_dict, excluded_events_mask,
+                             nominal_cuts, n_bins=50, param_range=None,
+                             show_snr10_subset=True, compact=False):
     """
-    Parameter width histograms.
-    Sim: RCR sim has ALL RCR cuts applied, BL sim has ALL BL cuts applied.
-    Optionally shows SNR > 10 subset.
-    RCR sim error = statistical + R-sweep; BL sim error = statistical only.
-    Data: 'Pass RCR Cuts' (purple stars), 'Pass BL Cuts' (green circles).
-    Title reflects which cuts are applied.
+    Core drawing logic for parameter width histogram on a given axes.
+    compact=True reduces font sizes and legend for subplot use.
     """
     param_label = PARAM_LABELS.get(param_name, param_name)
     title_label = PARAM_TITLES.get(param_name, param_name)
+
+    fs_label = FONTSIZE_LABEL - 2 if compact else FONTSIZE_LABEL
+    fs_title = FONTSIZE_TITLE - 2 if compact else FONTSIZE_TITLE
+    fs_tick = FONTSIZE_TICK - 1 if compact else FONTSIZE_TICK
+    fs_legend = 8 if compact else FONTSIZE_LEGEND
 
     # Apply ALL RCR cuts to RCR sim, ALL BL cuts to BL sim (no exclusion)
     rcr_mask = apply_cuts(sim_reflected, nominal_cuts, cut_type='rcr')
@@ -636,9 +653,7 @@ def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
     data_vals = get_param_values(param_name, data_dict)
     data_not_excl = ~excluded_events_mask
 
-    # RCR cuts on data
     data_rcr_mask = apply_cuts(data_dict, nominal_cuts, cut_type='rcr') & data_not_excl
-    # BL cuts on data
     data_bl_mask = apply_cuts(data_dict, nominal_cuts, cut_type='backlobe') & data_not_excl
 
     if param_range is None:
@@ -648,8 +663,6 @@ def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
     bin_edges = np.linspace(param_range[0], param_range[1], n_bins + 1)
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
     bin_width = bin_edges[1] - bin_edges[0]
-
-    fig, ax = plt.subplots(figsize=(10, 7))
 
     # RCR sim histograms (after RCR cuts)
     rcr_hist_all, _ = np.histogram(rcr_vals[rcr_mask], bins=bin_edges,
@@ -669,7 +682,6 @@ def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
     bl_hist_all, _ = np.histogram(bl_vals[bl_mask], bins=bin_edges,
                                    weights=sim_direct['weights'][bl_mask])
 
-    # BL stat error
     bl_stat_err = np.sqrt(np.histogram(bl_vals[bl_mask], bins=bin_edges,
                                         weights=sim_direct['weights'][bl_mask]**2)[0])
 
@@ -684,7 +696,7 @@ def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
         rcr_hist_snr10, _ = np.histogram(rcr_vals[rcr_snr10], bins=bin_edges,
                                           weights=sim_reflected['weights'][rcr_snr10])
         h = ax.step(bin_edges[:-1], rcr_hist_snr10, where='post', color='green', linewidth=2,
-                    linestyle='--', label='RCR Sim (SNR>10, RCR cuts)')
+                    linestyle='--', label='RCR Sim (SNR>10)')
         sim_handles.append(h[0])
 
     ax.bar(bin_centers, 2 * bl_stat_err, bottom=bl_hist_all - bl_stat_err, width=bin_width,
@@ -697,36 +709,89 @@ def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
         bl_hist_snr10, _ = np.histogram(bl_vals[bl_snr10], bins=bin_edges,
                                          weights=sim_direct['weights'][bl_snr10])
         h = ax.step(bin_edges[:-1], bl_hist_snr10, where='post', color='orange', linewidth=2,
-                    linestyle='--', label='BL Sim (SNR>10, BL cuts)')
+                    linestyle='--', label='BL Sim (SNR>10)')
         sim_handles.append(h[0])
 
     # Data histograms
     data_handles = []
     data_rcr_hist, _ = np.histogram(data_vals[data_rcr_mask], bins=bin_edges)
     data_bl_hist, _ = np.histogram(data_vals[data_bl_mask], bins=bin_edges)
-    h, = ax.plot(bin_centers, data_rcr_hist, marker='*', color='purple', markersize=8,
+    h, = ax.plot(bin_centers, data_rcr_hist, marker='*', color='green', markersize=8,
+                 markeredgecolor='black', markeredgewidth=0.5,
                  linestyle='none', label='Data Pass RCR Cuts', zorder=6)
     data_handles.append(h)
-    h, = ax.plot(bin_centers, data_bl_hist, marker='o', color='green', markersize=6,
+    h, = ax.plot(bin_centers, data_bl_hist, marker='o', color='yellow', markersize=6,
+                 markeredgecolor='black', markeredgewidth=0.5,
                  linestyle='none', label='Data Pass BL Cuts', zorder=6)
     data_handles.append(h)
 
-    ax.set_xlabel(param_label, fontsize=FONTSIZE_LABEL)
-    ax.set_ylabel('Events per Bin', fontsize=FONTSIZE_LABEL)
-    snr10_str = " (incl. SNR>10 subset)" if show_snr10_subset else ""
-    ax.set_title(f'Parameter Width: {title_label}\n(Sim: all RCR cuts on RCR, all BL cuts on BL){snr10_str}',
-                 fontsize=FONTSIZE_TITLE)
-    ax.tick_params(axis='both', labelsize=FONTSIZE_TICK)
+    ax.set_xlabel(param_label, fontsize=fs_label)
+    ax.set_ylabel('Events per Bin', fontsize=fs_label)
+    ax.set_title(f'{title_label}', fontsize=fs_title)
+    ax.tick_params(axis='both', labelsize=fs_tick)
     ax.set_yscale('log')
     ax.set_ylim(bottom=0.1)
     ax.grid(True, alpha=0.3)
 
-    add_split_legend(ax, sim_handles, data_handles)
+    if compact:
+        ax.legend(fontsize=fs_legend, loc='upper left')
+    else:
+        add_split_legend(ax, sim_handles, data_handles)
 
+
+def plot_parameter_width_assessment(param_name, sim_direct, sim_reflected,
+                                    sim_direct_high, sim_reflected_high,
+                                    sim_direct_low, sim_reflected_low,
+                                    data_dict, excluded_events_mask,
+                                    nominal_cuts, output_path,
+                                    n_bins=50, param_range=None,
+                                    show_snr10_subset=True):
+    """Single-parameter standalone figure."""
+    fig, ax = plt.subplots(figsize=(10, 7))
+    _draw_param_width_on_ax(ax, param_name, sim_direct, sim_reflected,
+                             sim_direct_high, sim_reflected_high,
+                             sim_direct_low, sim_reflected_low,
+                             data_dict, excluded_events_mask, nominal_cuts,
+                             n_bins=n_bins, param_range=param_range,
+                             show_snr10_subset=show_snr10_subset, compact=False)
+    fig.suptitle('Parameter Width (Sim: all RCR cuts on RCR, all BL cuts on BL)',
+                 fontsize=FONTSIZE_TITLE, y=1.01)
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
     plt.close(fig)
     ic(f"Saved parameter width plot: {output_path}")
+
+
+def plot_parameter_width_combined(width_params_list, sim_direct, sim_reflected,
+                                   sim_direct_high, sim_reflected_high,
+                                   sim_direct_low, sim_reflected_low,
+                                   data_dict, excluded_events_mask,
+                                   nominal_cuts, output_path,
+                                   n_bins=50, show_snr10_subset=True):
+    """
+    Combined 1x3 subplot figure for all parameter widths.
+    width_params_list: list of (param_name, param_range) tuples.
+    """
+    n_params = len(width_params_list)
+    fig, axes = plt.subplots(1, n_params, figsize=(7 * n_params, 6))
+    if n_params == 1:
+        axes = [axes]
+
+    for ax, (wp_name, wp_range) in zip(axes, width_params_list):
+        _draw_param_width_on_ax(ax, wp_name, sim_direct, sim_reflected,
+                                 sim_direct_high, sim_reflected_high,
+                                 sim_direct_low, sim_reflected_low,
+                                 data_dict, excluded_events_mask, nominal_cuts,
+                                 n_bins=n_bins, param_range=wp_range,
+                                 show_snr10_subset=show_snr10_subset, compact=True)
+
+    snr10_str = " (incl. SNR>10 subset)" if show_snr10_subset else ""
+    fig.suptitle(f'Parameter Width (Sim: all RCR cuts on RCR, all BL cuts on BL){snr10_str}',
+                 fontsize=FONTSIZE_TITLE)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close(fig)
+    ic(f"Saved combined parameter width plot: {output_path}")
 
 
 # ============================================================================
@@ -1413,7 +1478,8 @@ def plot_chi_chi_coinc_2d(coinc_bl_data, coinc_rcr_data,
                            coinc_bl_rate, coinc_rcr_rate,
                            sim_direct, sim_reflected,
                            identified_bl_data, identified_rcr_data,
-                           nominal_cuts, output_path, n_bins=50):
+                           nominal_cuts, output_path, n_bins=50,
+                           use_comp_log=False):
     """
     Two subplots of chi-BL vs chi-RCR 2D histograms.
     Left: Coinc BL Sim (histogram), overlaid with Identified BL and RCR.
@@ -1441,6 +1507,14 @@ def plot_chi_chi_coinc_2d(coinc_bl_data, coinc_rcr_data,
 
     # Diagonal
     ax_left.plot([0, 1], [0, 1], 'r--', linewidth=1.5, alpha=0.7, label='Diagonal', zorder=2)
+
+    # Cut lines (same on both subplots)
+    # RCR region (above diagonal): horizontal line at chi-RCR = cut
+    ax_left.plot([0, chi_rcr_cut], [chi_rcr_cut, chi_rcr_cut], 'b--', linewidth=2,
+                  alpha=0.8, zorder=2)
+    # BL region (below diagonal): vertical line at chi-BL = cut
+    ax_left.plot([chi_rcr_cut, chi_rcr_cut], [0, chi_rcr_cut], 'b--', linewidth=2,
+                  alpha=0.8, label=f'Cut ($\\chi$>{chi_rcr_cut})', zorder=2)
 
     # Overlay Coinc BL events
     if len(coinc_bl_data['snr']) > 0:
@@ -1471,6 +1545,8 @@ def plot_chi_chi_coinc_2d(coinc_bl_data, coinc_rcr_data,
     ax_left.set_title('Coincidence: BL Sim Background', fontsize=FONTSIZE_TITLE)
     ax_left.legend(fontsize=8, loc='lower right')
     ax_left.tick_params(axis='both', labelsize=FONTSIZE_TICK)
+    if use_comp_log:
+        set_comp_log_scale(ax_left, axis='both')
     ax_left.set_xlim(0, 1)
     ax_left.set_ylim(0, 1)
 
@@ -1522,6 +1598,8 @@ def plot_chi_chi_coinc_2d(coinc_bl_data, coinc_rcr_data,
     ax_right.set_title('Coincidence: RCR Sim Background + Cuts', fontsize=FONTSIZE_TITLE)
     ax_right.legend(fontsize=8, loc='lower right')
     ax_right.tick_params(axis='both', labelsize=FONTSIZE_TICK)
+    if use_comp_log:
+        set_comp_log_scale(ax_right, axis='both')
     ax_right.set_xlim(0, 1)
     ax_right.set_ylim(0, 1)
 
@@ -1537,7 +1615,7 @@ def plot_chi_chi_coinc_2d(coinc_bl_data, coinc_rcr_data,
 
 def plot_chi_chi_cut_space(data_dict, excluded_events_mask, nominal_cuts,
                             identified_bl_data, identified_rcr_data,
-                            output_path):
+                            output_path, use_comp_log=False):
     """
     Chi-BL vs Chi-RCR scatter of station data.
     Gray dots: data not passing any cut.
@@ -1577,10 +1655,10 @@ def plot_chi_chi_cut_space(data_dict, excluded_events_mask, nominal_cuts,
 
     # Layer 3: passing events on top
     ax.scatter(chi_bl[bl_pass], chi_rcr[bl_pass],
-               marker='o', s=30, c='green', edgecolors='black', linewidths=0.3,
+               marker='o', s=30, c='yellow', edgecolors='black', linewidths=0.5,
                label=f'Pass BL Cuts ({int(np.sum(bl_pass))})', zorder=4)
     ax.scatter(chi_bl[rcr_pass], chi_rcr[rcr_pass],
-               marker='*', s=60, c='purple', edgecolors='black', linewidths=0.3,
+               marker='*', s=60, c='green', edgecolors='black', linewidths=0.5,
                label=f'Pass RCR Cuts ({int(np.sum(rcr_pass))})', zorder=5)
 
     # Diagonal
@@ -1599,9 +1677,12 @@ def plot_chi_chi_cut_space(data_dict, excluded_events_mask, nominal_cuts,
     ax.set_title(r'$\chi$-$\chi$ Cut Space: Station Data', fontsize=FONTSIZE_TITLE)
     ax.legend(fontsize=FONTSIZE_LEGEND, loc='lower right')
     ax.tick_params(axis='both', labelsize=FONTSIZE_TICK)
+    if use_comp_log:
+        set_comp_log_scale(ax, axis='both')
+    else:
+        ax.set_aspect('equal')
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    ax.set_aspect('equal')
     ax.grid(True, alpha=0.2)
 
     plt.tight_layout()
@@ -1994,6 +2075,10 @@ if __name__ == "__main__":
         'ChiRCR': np.array(coinc_rcr_chircr),
     }
 
+    # Save full coinc sets BEFORE dedup (for coinc cut test plot)
+    coinc_bl_full = {k: v.copy() for k, v in coinc_bl_raw.items()}
+    coinc_rcr_full = {k: v.copy() for k, v in coinc_rcr_raw.items()}
+
     # Deduplicate coinc BL against 2016 BL
     if bl_2016_data is not None and len(coinc_bl_raw['snr']) > 0:
         bl16_tuples = set(zip(
@@ -2045,7 +2130,7 @@ if __name__ == "__main__":
     COINC_BL_RATE = 31.7
     COINC_BL_RATE_ERR = 3.5
     plot_coincidence_cut_test(
-        coinc_bl_raw, coinc_rcr_raw,
+        coinc_bl_full, coinc_rcr_full,
         COINC_BL_RATE, COINC_BL_RATE_ERR,
         COINC_RCR_RATE, COINC_RCR_RATE_ERR,
         sim_direct, sim_reflected,
@@ -2104,6 +2189,22 @@ if __name__ == "__main__":
             data_dict, excluded_mask, nominal_cuts,
             os.path.join(width_folder, f'param_width_{wp_name}_nosnr10.png'),
             n_bins=50, param_range=wp_range, show_snr10_subset=False)
+
+    # Combined 1x3 subplot versions
+    plot_parameter_width_combined(
+        width_params, sim_direct, sim_reflected,
+        sim_direct_high, sim_reflected_high,
+        sim_direct_low, sim_reflected_low,
+        data_dict, excluded_mask, nominal_cuts,
+        os.path.join(width_folder, 'param_width_combined.png'),
+        n_bins=50, show_snr10_subset=True)
+    plot_parameter_width_combined(
+        width_params, sim_direct, sim_reflected,
+        sim_direct_high, sim_reflected_high,
+        sim_direct_low, sim_reflected_low,
+        data_dict, excluded_mask, nominal_cuts,
+        os.path.join(width_folder, 'param_width_combined_nosnr10.png'),
+        n_bins=50, show_snr10_subset=False)
 
     # =========================================================================
     # PLOT 4: Cut Interaction Cumulative
@@ -2180,12 +2281,21 @@ if __name__ == "__main__":
     # =========================================================================
     ic("Generating 2D chi-chi coincidence plot...")
     plot_chi_chi_coinc_2d(
-        coinc_bl_raw, coinc_rcr_raw,
+        coinc_bl_full, coinc_rcr_full,
         COINC_BL_RATE, COINC_RCR_RATE,
         sim_direct, sim_reflected,
         identified_bl_data, identified_rcr_data,
         nominal_cuts,
         os.path.join(plot_folder, 'chi_chi_coinc_2d.png'))
+    # Zoomed version (complementary-log scale focusing on 0.8-1.0)
+    plot_chi_chi_coinc_2d(
+        coinc_bl_full, coinc_rcr_full,
+        COINC_BL_RATE, COINC_RCR_RATE,
+        sim_direct, sim_reflected,
+        identified_bl_data, identified_rcr_data,
+        nominal_cuts,
+        os.path.join(plot_folder, 'chi_chi_coinc_2d_zoomed.png'),
+        use_comp_log=True)
 
     # =========================================================================
     # PLOT 7: Chi-Chi Cut Space (Station Data)
@@ -2195,6 +2305,12 @@ if __name__ == "__main__":
         data_dict, excluded_mask, nominal_cuts,
         identified_bl_data, identified_rcr_data,
         os.path.join(plot_folder, 'chi_chi_cut_space.png'))
+    # Zoomed version
+    plot_chi_chi_cut_space(
+        data_dict, excluded_mask, nominal_cuts,
+        identified_bl_data, identified_rcr_data,
+        os.path.join(plot_folder, 'chi_chi_cut_space_zoomed.png'),
+        use_comp_log=True)
 
     # =========================================================================
     # TEXT OUTPUT
