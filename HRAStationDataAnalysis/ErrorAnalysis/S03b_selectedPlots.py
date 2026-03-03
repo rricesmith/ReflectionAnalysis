@@ -189,6 +189,72 @@ def get_sim_data(HRAeventList, direct_weight_name, reflected_weight_name,
     return direct_data, reflected_data
 
 
+def get_sim_data_coincidence(HRAeventList, direct_weight_name, reflected_weight_name,
+                              direct_stations, reflected_stations, sigma=4.5,
+                              apply_chi_diff_prefilter=True):
+    """
+    Like get_sim_data, but applies coincidence logic from S01:
+    - Direct: requires >= 2 direct stations triggered (excluding reflected/bad).
+    - Reflected: requires >= 2 stations total AND at least one reflected station.
+    Includes energy/zenith for bin-by-bin weighting.
+    """
+    direct_data = {'snr': [], 'Chi2016': [], 'ChiRCR': [], 'weights': [], 'energy': [], 'zenith': []}
+    reflected_data = {'snr': [], 'Chi2016': [], 'ChiRCR': [], 'weights': [], 'energy': [], 'zenith': []}
+
+    # Station sets for coincidence (matching S01)
+    bad_stations_direct = [32, 52, 113, 114, 115, 117, 118, 119, 130, 132, 152]
+    bad_stations_reflected = [32, 52, 132, 152]
+    force_stations_reflected = list(reflected_stations)  # [113, 114, ...]
+
+    for event in HRAeventList:
+        # --- Direct: require coincidence >= 2 among direct stations ---
+        if event.hasCoincidence(2, bad_stations_direct, sigma=sigma):
+            direct_weight = event.getWeight(direct_weight_name, primary=True, sigma=sigma)
+            if not np.isnan(direct_weight) and direct_weight > 0:
+                triggered_direct = [st_id for st_id in direct_stations if event.hasTriggered(st_id, sigma)]
+                if triggered_direct:
+                    split_weight = direct_weight / len(triggered_direct)
+                    for st_id in triggered_direct:
+                        snr, chi_dict = event.getSNR(st_id), event.getChi(st_id)
+                        if snr is not None and chi_dict:
+                            direct_data['snr'].append(snr)
+                            direct_data['Chi2016'].append(chi_dict.get('Chi2016', np.nan))
+                            direct_data['ChiRCR'].append(chi_dict.get('ChiRCR', np.nan))
+                            direct_data['weights'].append(split_weight)
+                            direct_data['energy'].append(event.energy)
+                            direct_data['zenith'].append(event.zenith)
+
+        # --- Reflected: require coincidence >= 2 total AND at least one reflected ---
+        if event.hasCoincidence(2, bad_stations_reflected, sigma=sigma):
+            triggers = event.station_triggers.get(sigma, [])
+            if not set(force_stations_reflected).isdisjoint(triggers):
+                reflected_weight = event.getWeight(reflected_weight_name, primary=True, sigma=sigma)
+                if not np.isnan(reflected_weight) and reflected_weight > 0:
+                    triggered_reflected = [st_id for st_id in reflected_stations if event.hasTriggered(st_id, sigma)]
+                    if triggered_reflected:
+                        split_weight = reflected_weight / len(triggered_reflected)
+                        for st_id in triggered_reflected:
+                            snr, chi_dict = event.getSNR(st_id), event.getChi(st_id)
+                            if snr is not None and chi_dict:
+                                reflected_data['snr'].append(snr)
+                                reflected_data['Chi2016'].append(chi_dict.get('Chi2016', np.nan))
+                                reflected_data['ChiRCR'].append(chi_dict.get('ChiRCR', np.nan))
+                                reflected_data['weights'].append(split_weight)
+                                reflected_data['energy'].append(event.energy)
+                                reflected_data['zenith'].append(event.zenith)
+
+    for data_dict in [direct_data, reflected_data]:
+        for key in data_dict:
+            data_dict[key] = np.array(data_dict[key])
+        if apply_chi_diff_prefilter and len(data_dict['ChiRCR']) > 0:
+            mask = (data_dict['ChiRCR'] - data_dict['Chi2016']) <= 0.15
+            ic(f"Coinc pre-filter: keeping {np.sum(mask)}/{len(mask)} events where (ChiRCR - Chi2016) <= 0.15")
+            for key in data_dict:
+                data_dict[key] = data_dict[key][mask]
+
+    return direct_data, reflected_data
+
+
 def filter_unique_events_by_day(times, station_ids):
     """Returns a boolean mask keeping only the first event per station per day."""
     seen_combinations = set()
@@ -349,34 +415,23 @@ def add_split_legend(ax, sim_handles, data_handles):
 # Plot 1: Coincidence Cut Test (3 subplots)
 # ============================================================================
 
-def plot_coincidence_cut_test(coinc_bl_data, coinc_rcr_data,
-                               coinc_bl_rate, coinc_bl_rate_err,
-                               coinc_rcr_rate, coinc_rcr_rate_err,
+def plot_coincidence_cut_test(coinc_sim_direct, coinc_sim_reflected,
+                               coinc_sim_direct_high, coinc_sim_reflected_high,
+                               coinc_sim_direct_low, coinc_sim_reflected_low,
                                sim_direct, sim_reflected,
                                sim_direct_high, sim_reflected_high,
                                sim_direct_low, sim_reflected_low,
                                output_path, n_bins=50):
     """
     3-subplot figure: chi-RCR, chi-BL, SNR.
-    Shows: Coincidence BL events, Coincidence RCR events (weighted by total rate),
-           general RCR Sim (no cut), general BL Sim (no cut).
-    All with error bands.
+    Compares single-station sim vs coincidence sim (from get_sim_data_coincidence).
+    Shows: Coinc BL Sim, Coinc RCR Sim (with error bands),
+           general RCR Sim (no cut), general BL Sim (no cut, with error bands).
     SNR subplot has log x-scale.
     """
-    # Assign weights to coinc events: total_rate / n_events
-    n_coinc_bl = len(coinc_bl_data['snr'])
-    n_coinc_rcr = len(coinc_rcr_data['snr'])
-    if n_coinc_bl == 0 and n_coinc_rcr == 0:
-        ic("Coincidence cut test: no coincidence events, skipping")
-        return
-
-    coinc_bl_weights = np.full(n_coinc_bl, coinc_bl_rate / n_coinc_bl) if n_coinc_bl > 0 else np.array([])
-    coinc_bl_weights_hi = np.full(n_coinc_bl, (coinc_bl_rate + coinc_bl_rate_err) / n_coinc_bl) if n_coinc_bl > 0 else np.array([])
-    coinc_bl_weights_lo = np.full(n_coinc_bl, (coinc_bl_rate - coinc_bl_rate_err) / n_coinc_bl) if n_coinc_bl > 0 else np.array([])
-
-    coinc_rcr_weights = np.full(n_coinc_rcr, coinc_rcr_rate / n_coinc_rcr) if n_coinc_rcr > 0 else np.array([])
-    coinc_rcr_weights_hi = np.full(n_coinc_rcr, (coinc_rcr_rate + coinc_rcr_rate_err) / n_coinc_rcr) if n_coinc_rcr > 0 else np.array([])
-    coinc_rcr_weights_lo = np.full(n_coinc_rcr, (coinc_rcr_rate - coinc_rcr_rate_err) / n_coinc_rcr) if n_coinc_rcr > 0 else np.array([])
+    n_coinc_bl = len(coinc_sim_direct['snr'])
+    n_coinc_rcr = len(coinc_sim_reflected['snr'])
+    ic(f"Coinc sim: {n_coinc_bl} BL entries, {n_coinc_rcr} RCR entries")
 
     params_to_plot = [
         ('chi_rcr_flat', (0.2, 0.9), r'$\chi_{\mathrm{RCR}}$', False),
@@ -388,8 +443,6 @@ def plot_coincidence_cut_test(coinc_bl_data, coinc_rcr_data,
 
     for ax_idx, (pname, prange, plabel, log_x) in enumerate(params_to_plot):
         ax = axes[ax_idx]
-        vals_bl_sim = get_param_values(pname, sim_direct)
-        vals_rcr_sim = get_param_values(pname, sim_reflected)
 
         if log_x:
             bin_edges = np.logspace(np.log10(prange[0]), np.log10(prange[1]), n_bins + 1)
@@ -398,74 +451,75 @@ def plot_coincidence_cut_test(coinc_bl_data, coinc_rcr_data,
         bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
         bin_width = bin_edges[1:] - bin_edges[:-1]
 
-        # General sims (no cut) — background
+        # --- Single-station sims (background, dotted) ---
+        vals_bl_sim = get_param_values(pname, sim_direct)
+        vals_rcr_sim = get_param_values(pname, sim_reflected)
+
         bl_hist_all, _ = np.histogram(vals_bl_sim, bins=bin_edges, weights=sim_direct['weights'])
         rcr_hist_all, _ = np.histogram(vals_rcr_sim, bins=bin_edges, weights=sim_reflected['weights'])
 
-        # Statistical errors for general sims
         bl_err_all = np.sqrt(np.histogram(vals_bl_sim, bins=bin_edges,
                                            weights=sim_direct['weights']**2)[0])
         rcr_stat_err_all = np.sqrt(np.histogram(vals_rcr_sim, bins=bin_edges,
                                                   weights=sim_reflected['weights']**2)[0])
 
-        # RCR R-sweep error
+        # RCR R-sweep for single-station
         rcr_hist_hi, _ = np.histogram(vals_rcr_sim, bins=bin_edges, weights=sim_reflected_high['weights'])
         rcr_hist_lo, _ = np.histogram(vals_rcr_sim, bins=bin_edges, weights=sim_reflected_low['weights'])
         rcr_band_lo_all = np.minimum(rcr_hist_lo, rcr_hist_hi) - rcr_stat_err_all
         rcr_band_hi_all = np.maximum(rcr_hist_lo, rcr_hist_hi) + rcr_stat_err_all
 
-        # Coincidence BL events (weighted)
-        if n_coinc_bl > 0:
-            coinc_bl_vals = get_param_values(pname, coinc_bl_data)
-            coinc_bl_hist, _ = np.histogram(coinc_bl_vals, bins=bin_edges, weights=coinc_bl_weights)
-            coinc_bl_hist_hi, _ = np.histogram(coinc_bl_vals, bins=bin_edges, weights=coinc_bl_weights_hi)
-            coinc_bl_hist_lo, _ = np.histogram(coinc_bl_vals, bins=bin_edges, weights=coinc_bl_weights_lo)
-        else:
-            coinc_bl_hist = np.zeros(n_bins)
-            coinc_bl_hist_hi = np.zeros(n_bins)
-            coinc_bl_hist_lo = np.zeros(n_bins)
+        # --- Coincidence sims (foreground, solid) ---
+        coinc_bl_vals = get_param_values(pname, coinc_sim_direct)
+        coinc_rcr_vals = get_param_values(pname, coinc_sim_reflected)
 
-        # Coincidence RCR events (weighted)
-        if n_coinc_rcr > 0:
-            coinc_rcr_vals = get_param_values(pname, coinc_rcr_data)
-            coinc_rcr_hist, _ = np.histogram(coinc_rcr_vals, bins=bin_edges, weights=coinc_rcr_weights)
-            coinc_rcr_hist_hi, _ = np.histogram(coinc_rcr_vals, bins=bin_edges, weights=coinc_rcr_weights_hi)
-            coinc_rcr_hist_lo, _ = np.histogram(coinc_rcr_vals, bins=bin_edges, weights=coinc_rcr_weights_lo)
-        else:
-            coinc_rcr_hist = np.zeros(n_bins)
-            coinc_rcr_hist_hi = np.zeros(n_bins)
-            coinc_rcr_hist_lo = np.zeros(n_bins)
+        coinc_bl_hist, _ = np.histogram(coinc_bl_vals, bins=bin_edges,
+                                         weights=coinc_sim_direct['weights'])
+        coinc_bl_stat = np.sqrt(np.histogram(coinc_bl_vals, bins=bin_edges,
+                                              weights=coinc_sim_direct['weights']**2)[0])
 
-        # Plot general sims (lighter, background)
+        coinc_rcr_hist, _ = np.histogram(coinc_rcr_vals, bins=bin_edges,
+                                          weights=coinc_sim_reflected['weights'])
+        coinc_rcr_stat = np.sqrt(np.histogram(coinc_rcr_vals, bins=bin_edges,
+                                               weights=coinc_sim_reflected['weights']**2)[0])
+
+        # Coinc RCR R-sweep error
+        coinc_rcr_hist_hi, _ = np.histogram(coinc_rcr_vals, bins=bin_edges,
+                                              weights=coinc_sim_reflected_high['weights'])
+        coinc_rcr_hist_lo, _ = np.histogram(coinc_rcr_vals, bins=bin_edges,
+                                              weights=coinc_sim_reflected_low['weights'])
+        coinc_rcr_band_lo = np.minimum(coinc_rcr_hist_lo, coinc_rcr_hist_hi) - coinc_rcr_stat
+        coinc_rcr_band_hi = np.maximum(coinc_rcr_hist_lo, coinc_rcr_hist_hi) + coinc_rcr_stat
+
+        # Coinc BL stat-only error
+        coinc_bl_band_lo = coinc_bl_hist - coinc_bl_stat
+        coinc_bl_band_hi = coinc_bl_hist + coinc_bl_stat
+
+        # Plot single-station sims (background)
         ax.step(bin_edges[:-1], rcr_hist_all, where='post', color='green', linewidth=1.5,
-                linestyle=':', alpha=0.6, label='RCR Sim (no cut)')
+                linestyle=':', alpha=0.6, label='RCR Sim')
         ax.fill_between(bin_edges[:-1], rcr_band_lo_all, rcr_band_hi_all,
                          step='post', color='green', alpha=0.08)
 
         ax.step(bin_edges[:-1], bl_hist_all, where='post', color='orange', linewidth=1.5,
-                linestyle=':', alpha=0.6, label='BL Sim (no cut)')
+                linestyle=':', alpha=0.6, label='BL Sim')
         ax.bar(bin_centers, 2 * bl_err_all, bottom=bl_hist_all - bl_err_all, width=bin_width,
                color='orange', alpha=0.08, edgecolor='none')
 
-        # Plot coincidence event distributions (foreground)
+        # Plot coincidence sims (foreground)
         ax.step(bin_edges[:-1], coinc_bl_hist, where='post', color='orange', linewidth=2,
-                label=f'Coinc BL ({coinc_bl_rate:.1f}$\\pm${coinc_bl_rate_err:.1f} evts/yr)')
-        ax.fill_between(bin_edges[:-1],
-                         np.minimum(coinc_bl_hist_lo, coinc_bl_hist_hi),
-                         np.maximum(coinc_bl_hist_lo, coinc_bl_hist_hi),
+                label='Coinc BL Sim')
+        ax.fill_between(bin_edges[:-1], coinc_bl_band_lo, coinc_bl_band_hi,
                          step='post', color='orange', alpha=0.2)
 
-        if n_coinc_rcr > 0:
-            ax.step(bin_edges[:-1], coinc_rcr_hist, where='post', color='green', linewidth=2,
-                    label=f'Coinc RCR ({coinc_rcr_rate:.1f}$\\pm${coinc_rcr_rate_err:.2f} evts/yr)')
-            ax.fill_between(bin_edges[:-1],
-                             np.minimum(coinc_rcr_hist_lo, coinc_rcr_hist_hi),
-                             np.maximum(coinc_rcr_hist_lo, coinc_rcr_hist_hi),
-                             step='post', color='green', alpha=0.2)
+        ax.step(bin_edges[:-1], coinc_rcr_hist, where='post', color='green', linewidth=2,
+                label='Coinc RCR Sim')
+        ax.fill_between(bin_edges[:-1], coinc_rcr_band_lo, coinc_rcr_band_hi,
+                         step='post', color='green', alpha=0.2)
 
         ax.set_xlabel(plabel, fontsize=FONTSIZE_LABEL)
         ax.set_ylabel('Events per Bin (evts/yr)', fontsize=FONTSIZE_LABEL)
-        ax.set_title(f'Coincidence Events: {plabel}', fontsize=FONTSIZE_TITLE)
+        ax.set_title(f'Single-Station vs Coincidence: {plabel}', fontsize=FONTSIZE_TITLE)
         ax.tick_params(axis='both', labelsize=FONTSIZE_TICK)
         ax.legend(fontsize=9, loc='upper left')
         ax.set_yscale('log')
@@ -477,8 +531,7 @@ def plot_coincidence_cut_test(coinc_bl_data, coinc_rcr_data,
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
     plt.close(fig)
-
-    ic(f"Coincidence cut test: {n_coinc_bl} BL events, {n_coinc_rcr} RCR events")
+    ic(f"Saved coincidence cut test: {output_path}")
 
 
 # ============================================================================
@@ -2124,15 +2177,64 @@ if __name__ == "__main__":
     # PLOT 1: Coincidence Cut Test (3-subplot)
     # =========================================================================
     ic("Generating coincidence cut test plot...")
-    # Coincidence event rates (evts/yr)
-    COINC_RCR_RATE = 1.7
+
+    # Load coincidence simulation (applies hasCoincidence logic from S01)
+    coinc_sim_direct, coinc_sim_reflected = get_sim_data_coincidence(
+        HRAeventList, direct_weight_name, reflected_weight_name,
+        direct_stations, reflected_stations, sigma=sim_sigma,
+        apply_chi_diff_prefilter=True)
+    ic(f"Coinc sim direct: {len(coinc_sim_direct['snr'])} entries")
+    ic(f"Coinc sim reflected: {len(coinc_sim_reflected['snr'])} entries")
+
+    # Weight coinc sim using bin-by-bin method, then rescale to match known rates
+    COINC_RCR_RATE = 1.7     # evts/yr
     COINC_RCR_RATE_ERR = 0.25
-    COINC_BL_RATE = 31.7
+    COINC_BL_RATE = 31.7     # evts/yr
     COINC_BL_RATE_ERR = 3.5
+
+    # First assign S04 bin-by-bin weights (gives correct shape)
+    assign_binned_weights(coinc_sim_reflected, central_ref_events, e_bins, z_bins,
+                           label="Coinc RCR reflected")
+    assign_binned_weights(coinc_sim_direct, direct_events, e_bins, z_bins,
+                           label="Coinc BL direct")
+
+    # Rescale totals to match given coinc rates
+    rcr_total_raw = np.sum(coinc_sim_reflected['weights'])
+    bl_total_raw = np.sum(coinc_sim_direct['weights'])
+    if rcr_total_raw > 0:
+        coinc_sim_reflected['weights'] *= COINC_RCR_RATE / rcr_total_raw
+    if bl_total_raw > 0:
+        coinc_sim_direct['weights'] *= COINC_BL_RATE / bl_total_raw
+    ic(f"Coinc sim rescaled: RCR {rcr_total_raw:.4f} -> {COINC_RCR_RATE}, "
+       f"BL {bl_total_raw:.4f} -> {COINC_BL_RATE}")
+
+    # Create high/low variants for error bands
+    coinc_sim_reflected_high = copy.deepcopy(coinc_sim_reflected)
+    coinc_sim_reflected_low = copy.deepcopy(coinc_sim_reflected)
+    coinc_sim_direct_high = copy.deepcopy(coinc_sim_direct)
+    coinc_sim_direct_low = copy.deepcopy(coinc_sim_direct)
+
+    # RCR high/low: R-sweep shape * rescale to rate ± error
+    assign_binned_weights(coinc_sim_reflected_high, high_ref_events, e_bins, z_bins,
+                           label="Coinc RCR high")
+    assign_binned_weights(coinc_sim_reflected_low, low_ref_events, e_bins, z_bins,
+                           label="Coinc RCR low")
+    rcr_hi_raw = np.sum(coinc_sim_reflected_high['weights'])
+    rcr_lo_raw = np.sum(coinc_sim_reflected_low['weights'])
+    if rcr_hi_raw > 0:
+        coinc_sim_reflected_high['weights'] *= (COINC_RCR_RATE + COINC_RCR_RATE_ERR) / rcr_hi_raw
+    if rcr_lo_raw > 0:
+        coinc_sim_reflected_low['weights'] *= (COINC_RCR_RATE - COINC_RCR_RATE_ERR) / rcr_lo_raw
+
+    # BL high/low: just rate ± error (no R-sweep)
+    if bl_total_raw > 0:
+        coinc_sim_direct_high['weights'] *= (COINC_BL_RATE + COINC_BL_RATE_ERR) / bl_total_raw
+        coinc_sim_direct_low['weights'] *= (COINC_BL_RATE - COINC_BL_RATE_ERR) / bl_total_raw
+
     plot_coincidence_cut_test(
-        coinc_bl_full, coinc_rcr_full,
-        COINC_BL_RATE, COINC_BL_RATE_ERR,
-        COINC_RCR_RATE, COINC_RCR_RATE_ERR,
+        coinc_sim_direct, coinc_sim_reflected,
+        coinc_sim_direct_high, coinc_sim_reflected_high,
+        coinc_sim_direct_low, coinc_sim_reflected_low,
         sim_direct, sim_reflected,
         sim_direct_high, sim_reflected_high,
         sim_direct_low, sim_reflected_low,
