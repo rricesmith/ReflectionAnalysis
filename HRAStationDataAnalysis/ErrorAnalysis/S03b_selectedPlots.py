@@ -518,24 +518,25 @@ def plot_coincidence_cut_test(coinc_sim_direct, coinc_sim_reflected,
         ax.fill_between(bin_edges[:-1], coinc_rcr_band_lo, coinc_rcr_band_hi,
                          step='post', color='green', alpha=0.2)
 
-        # Overlay Identified events as scatter points (if provided)
+        # Overlay Identified events as binned points (if provided)
         if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
             ibl_vals = get_param_values(pname, identified_bl_data)
-            # Only plot points within the bin range
-            in_range = (ibl_vals >= prange[0]) & (ibl_vals <= prange[1])
-            if np.any(in_range):
-                ax.plot(ibl_vals[in_range], np.ones(np.sum(in_range)) * 0.5,
+            ibl_hist, _ = np.histogram(ibl_vals, bins=bin_edges)
+            nonzero = ibl_hist > 0
+            if np.any(nonzero):
+                ax.plot(bin_centers[nonzero], ibl_hist[nonzero],
                         's', color='cyan', markersize=7, markeredgecolor='black',
-                        markeredgewidth=0.5, label='Identified BL', zorder=6,
-                        clip_on=False)
+                        markeredgewidth=0.5, linestyle='none',
+                        label='Identified BL', zorder=6)
         if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
             ircr_vals = get_param_values(pname, identified_rcr_data)
-            in_range = (ircr_vals >= prange[0]) & (ircr_vals <= prange[1])
-            if np.any(in_range):
-                ax.plot(ircr_vals[in_range], np.ones(np.sum(in_range)) * 0.3,
+            ircr_hist, _ = np.histogram(ircr_vals, bins=bin_edges)
+            nonzero = ircr_hist > 0
+            if np.any(nonzero):
+                ax.plot(bin_centers[nonzero], ircr_hist[nonzero],
                         '^', color='red', markersize=8, markeredgecolor='black',
-                        markeredgewidth=0.5, label='Identified RCR', zorder=6,
-                        clip_on=False)
+                        markeredgewidth=0.5, linestyle='none',
+                        label='Identified RCR', zorder=6)
 
         ax.set_xlabel(plabel, fontsize=FONTSIZE_LABEL)
         ax.set_ylabel('Events per Bin (evts/yr)', fontsize=FONTSIZE_LABEL)
