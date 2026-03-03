@@ -496,39 +496,46 @@ def plot_coincidence_cut_test(coinc_sim_direct, coinc_sim_reflected,
         coinc_bl_band_lo = coinc_bl_hist - coinc_bl_stat
         coinc_bl_band_hi = coinc_bl_hist + coinc_bl_stat
 
-        # Plot single-station sims (background, dashed)
-        ax.step(bin_edges[:-1], rcr_hist_all, where='post', color='green', linewidth=1.5,
-                linestyle='--', label='RCR Sim')
+        # Plot single-station sims (solid, background)
+        ax.step(bin_edges[:-1], rcr_hist_all, where='post', color='green', linewidth=2,
+                label='RCR Sim')
         ax.fill_between(bin_edges[:-1], rcr_band_lo_all, rcr_band_hi_all,
                          step='post', color='green', alpha=0.1)
 
-        ax.step(bin_edges[:-1], bl_hist_all, where='post', color='orange', linewidth=1.5,
-                linestyle='--', label='BL Sim')
+        ax.step(bin_edges[:-1], bl_hist_all, where='post', color='orange', linewidth=2,
+                label='BL Sim')
         ax.bar(bin_centers, 2 * bl_err_all, bottom=bl_hist_all - bl_err_all, width=bin_width,
                color='orange', alpha=0.1, edgecolor='none')
 
-        # Plot coincidence sims (foreground)
+        # Plot coincidence sims (dashed, foreground)
         ax.step(bin_edges[:-1], coinc_bl_hist, where='post', color='orange', linewidth=2,
-                label='Coinc BL Sim')
+                linestyle='--', label='Coinc BL Sim')
         ax.fill_between(bin_edges[:-1], coinc_bl_band_lo, coinc_bl_band_hi,
                          step='post', color='orange', alpha=0.2)
 
         ax.step(bin_edges[:-1], coinc_rcr_hist, where='post', color='green', linewidth=2,
-                label='Coinc RCR Sim')
+                linestyle='--', label='Coinc RCR Sim')
         ax.fill_between(bin_edges[:-1], coinc_rcr_band_lo, coinc_rcr_band_hi,
                          step='post', color='green', alpha=0.2)
 
-        # Overlay Identified events as histograms (if provided)
+        # Overlay Identified events as scatter points (if provided)
         if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
             ibl_vals = get_param_values(pname, identified_bl_data)
-            ibl_hist, _ = np.histogram(ibl_vals, bins=bin_edges)
-            ax.step(bin_edges[:-1], ibl_hist, where='post', color='cyan', linewidth=1.5,
-                    linestyle='-', label='Identified BL', zorder=6)
+            # Only plot points within the bin range
+            in_range = (ibl_vals >= prange[0]) & (ibl_vals <= prange[1])
+            if np.any(in_range):
+                ax.plot(ibl_vals[in_range], np.ones(np.sum(in_range)) * 0.5,
+                        's', color='cyan', markersize=7, markeredgecolor='black',
+                        markeredgewidth=0.5, label='Identified BL', zorder=6,
+                        clip_on=False)
         if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
             ircr_vals = get_param_values(pname, identified_rcr_data)
-            ircr_hist, _ = np.histogram(ircr_vals, bins=bin_edges)
-            ax.step(bin_edges[:-1], ircr_hist, where='post', color='red', linewidth=1.5,
-                    linestyle='-', label='Identified RCR', zorder=6)
+            in_range = (ircr_vals >= prange[0]) & (ircr_vals <= prange[1])
+            if np.any(in_range):
+                ax.plot(ircr_vals[in_range], np.ones(np.sum(in_range)) * 0.3,
+                        '^', color='red', markersize=8, markeredgecolor='black',
+                        markeredgewidth=0.5, label='Identified RCR', zorder=6,
+                        clip_on=False)
 
         ax.set_xlabel(plabel, fontsize=FONTSIZE_LABEL)
         ax.set_ylabel('Events per Bin (evts/yr)', fontsize=FONTSIZE_LABEL)
@@ -1722,6 +1729,7 @@ def plot_chi_chi_cut_space(data_dict, excluded_events_mask, nominal_cuts,
 
 def print_text_output(nominal_cuts, sim_direct, sim_reflected,
                       sim_reflected_high, sim_reflected_low,
+                      coinc_sim_direct, coinc_sim_reflected,
                       data_dict, data_station_ids,
                       identified_bl_data, identified_rcr_data,
                       excluded_events_mask,
@@ -1729,6 +1737,7 @@ def print_text_output(nominal_cuts, sim_direct, sim_reflected,
                       output_path):
     """
     Print comprehensive text output with event counts, errors, scale factors.
+    Includes per-cut breakdown for both full and coincidence sims.
     """
     lines = []
     lines.append(f"S03b Selected Plots — Text Output")
@@ -1776,7 +1785,7 @@ def print_text_output(nominal_cuts, sim_direct, sim_reflected,
     else:
         ircr_count = 0
 
-    lines.append(f"  Events Passing Nominal Cuts:")
+    lines.append(f"  Events Passing All Nominal Cuts:")
     lines.append(f"    ChiRCR > {nominal_cuts['chi_rcr_line_chi'][0]:.2f}, "
                  f"{nominal_cuts['chi_diff_threshold']:.2f} < dChi < {nominal_cuts['chi_diff_max']:.2f}, "
                  f"SNR < {nominal_cuts['snr_max']}")
@@ -1793,6 +1802,79 @@ def print_text_output(nominal_cuts, sim_direct, sim_reflected,
                  f"{np.sqrt(data_count):>10.2f} {'':>10} {np.sqrt(data_count):>10.2f}")
     lines.append(f"    {'Identified BL':<30} {ibl_count:>10d}")
     lines.append(f"    {'Identified RCR':<30} {ircr_count:>10d}")
+    lines.append(f"")
+
+    # --- Per-cut breakdown ---
+    lines.append(f"  Per-Cut Breakdown (events passing each individual cut):")
+    lines.append(f"    {'':>30} {'RCR Sim':>10} {'BL Sim':>10} "
+                 f"{'Coinc RCR':>10} {'Coinc BL':>10} {'Data':>10}")
+    lines.append(f"    {'-'*82}")
+
+    cut_labels = [
+        ('snr_max', f"SNR < {nominal_cuts['snr_max']}"),
+        ('chi_rcr_flat', f"ChiRCR > {nominal_cuts['chi_rcr_line_chi'][0]:.2f}"),
+        ('chi_diff_threshold', f"dChi > {nominal_cuts['chi_diff_threshold']:.2f}"),
+        ('chi_diff_max', f"dChi < {nominal_cuts['chi_diff_max']:.2f}"),
+    ]
+    # Also RCR cuts and BL cuts as groups
+    cut_groups = [
+        ('All RCR cuts', 'rcr'),
+        ('All BL cuts', 'backlobe'),
+    ]
+
+    for param_name, label in cut_labels:
+        # Disable all cuts, then enable only the one we want
+        test_cuts = dict(nominal_cuts)
+        test_cuts['snr_max'] = 9999
+        test_cuts['chi_rcr_line_chi'] = np.zeros_like(nominal_cuts['chi_rcr_line_chi'])
+        test_cuts['chi_diff_threshold'] = -999
+        test_cuts['chi_diff_max'] = 999
+        # Re-enable the one cut
+        if param_name == 'snr_max':
+            test_cuts['snr_max'] = nominal_cuts['snr_max']
+        elif param_name == 'chi_rcr_flat':
+            test_cuts['chi_rcr_line_chi'] = nominal_cuts['chi_rcr_line_chi']
+        elif param_name == 'chi_diff_threshold':
+            test_cuts['chi_diff_threshold'] = nominal_cuts['chi_diff_threshold']
+        elif param_name == 'chi_diff_max':
+            test_cuts['chi_diff_max'] = nominal_cuts['chi_diff_max']
+
+        rcr_n = np.sum(sim_reflected['weights'][apply_cuts(sim_reflected, test_cuts, cut_type='rcr')])
+        bl_n = np.sum(sim_direct['weights'][apply_cuts(sim_direct, test_cuts, cut_type='rcr')])
+        coinc_rcr_n = np.sum(coinc_sim_reflected['weights'][apply_cuts(coinc_sim_reflected, test_cuts, cut_type='rcr')])
+        coinc_bl_n = np.sum(coinc_sim_direct['weights'][apply_cuts(coinc_sim_direct, test_cuts, cut_type='rcr')])
+
+        # Data
+        d_mask = apply_cuts(data_dict, test_cuts, cut_type='rcr') & ~excluded_events_mask
+        d_pidx = np.where(d_mask)[0]
+        if len(d_pidx) > 0:
+            d_umask = filter_unique_events_by_day(data_dict['Time'][d_pidx], data_station_ids[d_pidx])
+            d_count = int(np.sum(d_umask))
+        else:
+            d_count = 0
+
+        lines.append(f"    {label:<30} {rcr_n:>10.2f} {bl_n:>10.2f} "
+                     f"{coinc_rcr_n:>10.2f} {coinc_bl_n:>10.2f} {d_count:>10d}")
+
+    lines.append(f"    {'-'*82}")
+
+    for group_label, cut_type in cut_groups:
+        rcr_n = np.sum(sim_reflected['weights'][apply_cuts(sim_reflected, nominal_cuts, cut_type=cut_type)])
+        bl_n = np.sum(sim_direct['weights'][apply_cuts(sim_direct, nominal_cuts, cut_type=cut_type)])
+        coinc_rcr_n = np.sum(coinc_sim_reflected['weights'][apply_cuts(coinc_sim_reflected, nominal_cuts, cut_type=cut_type)])
+        coinc_bl_n = np.sum(coinc_sim_direct['weights'][apply_cuts(coinc_sim_direct, nominal_cuts, cut_type=cut_type)])
+
+        d_mask = apply_cuts(data_dict, nominal_cuts, cut_type=cut_type) & ~excluded_events_mask
+        d_pidx = np.where(d_mask)[0]
+        if len(d_pidx) > 0:
+            d_umask = filter_unique_events_by_day(data_dict['Time'][d_pidx], data_station_ids[d_pidx])
+            d_count = int(np.sum(d_umask))
+        else:
+            d_count = 0
+
+        lines.append(f"    {group_label:<30} {rcr_n:>10.2f} {bl_n:>10.2f} "
+                     f"{coinc_rcr_n:>10.2f} {coinc_bl_n:>10.2f} {d_count:>10d}")
+
     lines.append(f"")
 
     # Scale factors
@@ -2364,19 +2446,19 @@ if __name__ == "__main__":
     # =========================================================================
     # PLOT 6: 2D Chi-Chi Coincidence Histograms
     # =========================================================================
-    ic("Generating 2D chi-chi coincidence plot...")
+    ic("Generating 2D chi-chi plots...")
+    # Coincidence sim version
     plot_chi_chi_coinc_2d(
         coinc_sim_direct, coinc_sim_reflected,
         identified_bl_data, identified_rcr_data,
         nominal_cuts,
         os.path.join(plot_folder, 'chi_chi_coinc_2d.png'))
-    # Zoomed version (complementary-log scale focusing on 0.8-1.0)
+    # Full (single-station) sim version
     plot_chi_chi_coinc_2d(
-        coinc_sim_direct, coinc_sim_reflected,
+        sim_direct, sim_reflected,
         identified_bl_data, identified_rcr_data,
         nominal_cuts,
-        os.path.join(plot_folder, 'chi_chi_coinc_2d_zoomed.png'),
-        use_comp_log=True)
+        os.path.join(plot_folder, 'chi_chi_full_2d.png'))
 
     # =========================================================================
     # PLOT 7: Chi-Chi Cut Space (Station Data)
@@ -2386,12 +2468,6 @@ if __name__ == "__main__":
         data_dict, excluded_mask, nominal_cuts,
         identified_bl_data, identified_rcr_data,
         os.path.join(plot_folder, 'chi_chi_cut_space.png'))
-    # Zoomed version
-    plot_chi_chi_cut_space(
-        data_dict, excluded_mask, nominal_cuts,
-        identified_bl_data, identified_rcr_data,
-        os.path.join(plot_folder, 'chi_chi_cut_space_zoomed.png'),
-        use_comp_log=True)
 
     # =========================================================================
     # TEXT OUTPUT
@@ -2400,6 +2476,7 @@ if __name__ == "__main__":
     print_text_output(
         nominal_cuts, sim_direct, sim_reflected,
         sim_reflected_high, sim_reflected_low,
+        coinc_sim_direct, coinc_sim_reflected,
         data_dict, data_station_ids,
         identified_bl_data, identified_rcr_data,
         excluded_mask,
