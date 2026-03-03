@@ -421,7 +421,8 @@ def plot_coincidence_cut_test(coinc_sim_direct, coinc_sim_reflected,
                                sim_direct, sim_reflected,
                                sim_direct_high, sim_reflected_high,
                                sim_direct_low, sim_reflected_low,
-                               output_path, n_bins=50):
+                               output_path, n_bins=50,
+                               identified_bl_data=None, identified_rcr_data=None):
     """
     3-subplot figure: chi-RCR, chi-BL, SNR.
     Compares single-station sim vs coincidence sim (from get_sim_data_coincidence).
@@ -495,16 +496,16 @@ def plot_coincidence_cut_test(coinc_sim_direct, coinc_sim_reflected,
         coinc_bl_band_lo = coinc_bl_hist - coinc_bl_stat
         coinc_bl_band_hi = coinc_bl_hist + coinc_bl_stat
 
-        # Plot single-station sims (background)
+        # Plot single-station sims (background, dashed)
         ax.step(bin_edges[:-1], rcr_hist_all, where='post', color='green', linewidth=1.5,
-                linestyle=':', alpha=0.6, label='RCR Sim')
+                linestyle='--', label='RCR Sim')
         ax.fill_between(bin_edges[:-1], rcr_band_lo_all, rcr_band_hi_all,
-                         step='post', color='green', alpha=0.08)
+                         step='post', color='green', alpha=0.1)
 
         ax.step(bin_edges[:-1], bl_hist_all, where='post', color='orange', linewidth=1.5,
-                linestyle=':', alpha=0.6, label='BL Sim')
+                linestyle='--', label='BL Sim')
         ax.bar(bin_centers, 2 * bl_err_all, bottom=bl_hist_all - bl_err_all, width=bin_width,
-               color='orange', alpha=0.08, edgecolor='none')
+               color='orange', alpha=0.1, edgecolor='none')
 
         # Plot coincidence sims (foreground)
         ax.step(bin_edges[:-1], coinc_bl_hist, where='post', color='orange', linewidth=2,
@@ -516,6 +517,18 @@ def plot_coincidence_cut_test(coinc_sim_direct, coinc_sim_reflected,
                 label='Coinc RCR Sim')
         ax.fill_between(bin_edges[:-1], coinc_rcr_band_lo, coinc_rcr_band_hi,
                          step='post', color='green', alpha=0.2)
+
+        # Overlay Identified events as histograms (if provided)
+        if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+            ibl_vals = get_param_values(pname, identified_bl_data)
+            ibl_hist, _ = np.histogram(ibl_vals, bins=bin_edges)
+            ax.step(bin_edges[:-1], ibl_hist, where='post', color='cyan', linewidth=1.5,
+                    linestyle='-', label='Identified BL', zorder=6)
+        if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+            ircr_vals = get_param_values(pname, identified_rcr_data)
+            ircr_hist, _ = np.histogram(ircr_vals, bins=bin_edges)
+            ax.step(bin_edges[:-1], ircr_hist, where='post', color='red', linewidth=1.5,
+                    linestyle='-', label='Identified RCR', zorder=6)
 
         ax.set_xlabel(plabel, fontsize=FONTSIZE_LABEL)
         ax.set_ylabel('Events per Bin (evts/yr)', fontsize=FONTSIZE_LABEL)
@@ -1527,75 +1540,51 @@ def _plot_scale_factor_with_sims(param_name, nominal_value, nominal_cuts,
 # Plot 6: 2D Chi-Chi Histogram (Coincidence Events)
 # ============================================================================
 
-def plot_chi_chi_coinc_2d(coinc_bl_data, coinc_rcr_data,
-                           coinc_bl_rate, coinc_rcr_rate,
-                           sim_direct, sim_reflected,
+def plot_chi_chi_coinc_2d(coinc_sim_direct, coinc_sim_reflected,
                            identified_bl_data, identified_rcr_data,
                            nominal_cuts, output_path, n_bins=50,
                            use_comp_log=False):
     """
-    Two subplots of chi-BL vs chi-RCR 2D histograms.
+    Two subplots of chi-BL vs chi-RCR 2D histograms using coincidence simulation.
     Left: Coinc BL Sim (histogram), overlaid with Identified BL and RCR.
-          Red dashed diagonal (0,0)->(1,1).
-    Right: Coinc RCR Sim (histogram under data), overlaid with Identified events.
-           Dashed lines showing RCR cut in RCR region (above diagonal) and
-           BL cut in BL region (below diagonal).
+    Right: Coinc RCR Sim (histogram), overlaid with Identified events.
+    Both have diagonal and cut lines.
     """
     import matplotlib.colors as mcolors
 
-    chi_rcr_cut = nominal_cuts['chi_rcr_line_chi'][0]  # flat cut value
+    chi_rcr_cut = nominal_cuts['chi_rcr_line_chi'][0]
 
     fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(16, 7))
 
-    # --- Left subplot: BL sim background + coinc BL events + identified ---
-    # Use BL simulation as background
-    bl_chi2016 = sim_direct['Chi2016']
-    bl_chircr = sim_direct['ChiRCR']
-    bl_weights = sim_direct['weights']
+    # --- Left subplot: Coinc BL Sim as 2D histogram ---
+    bl_chi2016 = coinc_sim_direct['Chi2016']
+    bl_chircr = coinc_sim_direct['ChiRCR']
+    bl_weights = coinc_sim_direct['weights']
 
     h_bl = ax_left.hist2d(bl_chi2016, bl_chircr, bins=n_bins,
                            range=[[0, 1], [0, 1]], weights=bl_weights,
                            norm=mcolors.LogNorm(), cmap='Oranges', zorder=1)
-    plt.colorbar(h_bl[3], ax=ax_left, label='BL Sim (evts/yr)')
+    plt.colorbar(h_bl[3], ax=ax_left, label='Coinc BL Sim (evts/yr)')
 
-    # Diagonal
     ax_left.plot([0, 1], [0, 1], 'r--', linewidth=1.5, alpha=0.7, label='Diagonal', zorder=2)
-
-    # Cut lines (same on both subplots)
-    # RCR region (above diagonal): horizontal line at chi-RCR = cut
     ax_left.plot([0, chi_rcr_cut], [chi_rcr_cut, chi_rcr_cut], 'b--', linewidth=2,
                   alpha=0.8, zorder=2)
-    # BL region (below diagonal): vertical line at chi-BL = cut
     ax_left.plot([chi_rcr_cut, chi_rcr_cut], [0, chi_rcr_cut], 'b--', linewidth=2,
                   alpha=0.8, label=f'Cut ($\\chi$>{chi_rcr_cut})', zorder=2)
 
-    # Overlay Coinc BL events
-    if len(coinc_bl_data['snr']) > 0:
-        ax_left.scatter(coinc_bl_data['Chi2016'], coinc_bl_data['ChiRCR'],
-                         marker='s', s=40, c='cyan', edgecolors='black', linewidths=0.5,
-                         label=f'Coinc BL ({len(coinc_bl_data["snr"])} evts)', zorder=4)
-
-    # Overlay Coinc RCR events
-    if len(coinc_rcr_data['snr']) > 0:
-        ax_left.scatter(coinc_rcr_data['Chi2016'], coinc_rcr_data['ChiRCR'],
-                         marker='^', s=60, c='red', edgecolors='black', linewidths=0.5,
-                         label=f'Coinc RCR ({len(coinc_rcr_data["snr"])} evts)', zorder=5)
-
-    # Overlay Identified BL
+    # Overlay Identified events
     if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
         ax_left.scatter(identified_bl_data['Chi2016'], identified_bl_data['ChiRCR'],
-                         marker='s', s=30, c='cyan', edgecolors='white', linewidths=0.8,
-                         alpha=0.8, label='Identified BL', zorder=3)
-
-    # Overlay Identified RCR
+                         marker='s', s=40, c='cyan', edgecolors='black', linewidths=0.5,
+                         label='Identified BL', zorder=4)
     if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
         ax_left.scatter(identified_rcr_data['Chi2016'], identified_rcr_data['ChiRCR'],
-                         marker='^', s=50, c='red', edgecolors='white', linewidths=0.8,
-                         alpha=0.8, label='Identified RCR', zorder=3)
+                         marker='^', s=60, c='red', edgecolors='black', linewidths=0.5,
+                         label='Identified RCR', zorder=5)
 
     ax_left.set_xlabel(r'$\chi_{BL}$', fontsize=FONTSIZE_LABEL)
     ax_left.set_ylabel(r'$\chi_{\mathrm{RCR}}$', fontsize=FONTSIZE_LABEL)
-    ax_left.set_title('Coincidence: BL Sim Background', fontsize=FONTSIZE_TITLE)
+    ax_left.set_title('Coinc BL Sim', fontsize=FONTSIZE_TITLE)
     ax_left.legend(fontsize=8, loc='lower right')
     ax_left.tick_params(axis='both', labelsize=FONTSIZE_TICK)
     if use_comp_log:
@@ -1603,52 +1592,35 @@ def plot_chi_chi_coinc_2d(coinc_bl_data, coinc_rcr_data,
     ax_left.set_xlim(0, 1)
     ax_left.set_ylim(0, 1)
 
-    # --- Right subplot: RCR sim background + identified events + cut lines ---
-    rcr_chi2016 = sim_reflected['Chi2016']
-    rcr_chircr = sim_reflected['ChiRCR']
-    rcr_weights = sim_reflected['weights']
+    # --- Right subplot: Coinc RCR Sim as 2D histogram ---
+    rcr_chi2016 = coinc_sim_reflected['Chi2016']
+    rcr_chircr = coinc_sim_reflected['ChiRCR']
+    rcr_weights = coinc_sim_reflected['weights']
 
     h_rcr = ax_right.hist2d(rcr_chi2016, rcr_chircr, bins=n_bins,
                               range=[[0, 1], [0, 1]], weights=rcr_weights,
                               norm=mcolors.LogNorm(), cmap='Greens', zorder=1)
-    plt.colorbar(h_rcr[3], ax=ax_right, label='RCR Sim (evts/yr)')
+    plt.colorbar(h_rcr[3], ax=ax_right, label='Coinc RCR Sim (evts/yr)')
 
-    # Diagonal
     ax_right.plot([0, 1], [0, 1], 'r--', linewidth=1.5, alpha=0.7, label='Diagonal', zorder=2)
-
-    # Cut lines: RCR cut in RCR region (above diagonal), BL cut in BL region (below diagonal)
-    # RCR region: chi-RCR > chi-BL, so flat chi-RCR cut at chi_rcr_cut
     ax_right.plot([0, chi_rcr_cut], [chi_rcr_cut, chi_rcr_cut], 'b--', linewidth=2,
                    alpha=0.8, label=f'RCR cut ($\\chi_{{RCR}}$>{chi_rcr_cut})', zorder=3)
-    # BL region: chi-BL > chi-RCR, so flat chi-BL cut at chi_rcr_cut (same value)
     ax_right.plot([chi_rcr_cut, chi_rcr_cut], [0, chi_rcr_cut], 'b--', linewidth=2,
                    alpha=0.8, label=f'BL cut ($\\chi_{{BL}}$>{chi_rcr_cut})', zorder=3)
-
-    # Overlay Coinc BL events
-    if len(coinc_bl_data['snr']) > 0:
-        ax_right.scatter(coinc_bl_data['Chi2016'], coinc_bl_data['ChiRCR'],
-                          marker='s', s=40, c='cyan', edgecolors='black', linewidths=0.5,
-                          label='Coinc BL', zorder=5)
-
-    # Overlay Coinc RCR events
-    if len(coinc_rcr_data['snr']) > 0:
-        ax_right.scatter(coinc_rcr_data['Chi2016'], coinc_rcr_data['ChiRCR'],
-                          marker='^', s=60, c='red', edgecolors='black', linewidths=0.5,
-                          label='Coinc RCR', zorder=5)
 
     # Overlay Identified events
     if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
         ax_right.scatter(identified_bl_data['Chi2016'], identified_bl_data['ChiRCR'],
-                          marker='s', s=30, c='cyan', edgecolors='white', linewidths=0.8,
-                          alpha=0.8, label='Identified BL', zorder=4)
+                          marker='s', s=40, c='cyan', edgecolors='black', linewidths=0.5,
+                          label='Identified BL', zorder=4)
     if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
         ax_right.scatter(identified_rcr_data['Chi2016'], identified_rcr_data['ChiRCR'],
-                          marker='^', s=50, c='red', edgecolors='white', linewidths=0.8,
-                          alpha=0.8, label='Identified RCR', zorder=4)
+                          marker='^', s=60, c='red', edgecolors='black', linewidths=0.5,
+                          label='Identified RCR', zorder=5)
 
     ax_right.set_xlabel(r'$\chi_{BL}$', fontsize=FONTSIZE_LABEL)
     ax_right.set_ylabel(r'$\chi_{\mathrm{RCR}}$', fontsize=FONTSIZE_LABEL)
-    ax_right.set_title('Coincidence: RCR Sim Background + Cuts', fontsize=FONTSIZE_TITLE)
+    ax_right.set_title('Coinc RCR Sim + Cuts', fontsize=FONTSIZE_TITLE)
     ax_right.legend(fontsize=8, loc='lower right')
     ax_right.tick_params(axis='both', labelsize=FONTSIZE_TICK)
     if use_comp_log:
@@ -2239,6 +2211,17 @@ if __name__ == "__main__":
         sim_direct_high, sim_reflected_high,
         sim_direct_low, sim_reflected_low,
         os.path.join(plot_folder, 'coinc_cut_test.png'))
+    # Version with Identified events overlaid
+    plot_coincidence_cut_test(
+        coinc_sim_direct, coinc_sim_reflected,
+        coinc_sim_direct_high, coinc_sim_reflected_high,
+        coinc_sim_direct_low, coinc_sim_reflected_low,
+        sim_direct, sim_reflected,
+        sim_direct_high, sim_reflected_high,
+        sim_direct_low, sim_reflected_low,
+        os.path.join(plot_folder, 'coinc_cut_test_identified.png'),
+        identified_bl_data=identified_bl_data,
+        identified_rcr_data=identified_rcr_data)
 
     # =========================================================================
     # PLOT 2: dist_errorbar
@@ -2383,17 +2366,13 @@ if __name__ == "__main__":
     # =========================================================================
     ic("Generating 2D chi-chi coincidence plot...")
     plot_chi_chi_coinc_2d(
-        coinc_bl_full, coinc_rcr_full,
-        COINC_BL_RATE, COINC_RCR_RATE,
-        sim_direct, sim_reflected,
+        coinc_sim_direct, coinc_sim_reflected,
         identified_bl_data, identified_rcr_data,
         nominal_cuts,
         os.path.join(plot_folder, 'chi_chi_coinc_2d.png'))
     # Zoomed version (complementary-log scale focusing on 0.8-1.0)
     plot_chi_chi_coinc_2d(
-        coinc_bl_full, coinc_rcr_full,
-        COINC_BL_RATE, COINC_RCR_RATE,
-        sim_direct, sim_reflected,
+        coinc_sim_direct, coinc_sim_reflected,
         identified_bl_data, identified_rcr_data,
         nominal_cuts,
         os.path.join(plot_folder, 'chi_chi_coinc_2d_zoomed.png'),
