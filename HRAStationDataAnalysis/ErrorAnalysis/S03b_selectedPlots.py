@@ -1728,6 +1728,43 @@ def plot_chi_chi_cut_space(data_dict, excluded_events_mask, nominal_cuts,
 # Text Output
 # ============================================================================
 
+def _fmt_val_err(val, err, sig_figs=2):
+    """Format a value ± error with the given significant figures on the error."""
+    if err == 0:
+        return f"{val:.{sig_figs}g} ± 0"
+    # Determine decimal places from error's significant figures
+    if abs(err) >= 1:
+        dec = max(0, sig_figs - 1 - int(np.floor(np.log10(abs(err)))))
+    else:
+        dec = sig_figs - 1 - int(np.floor(np.log10(abs(err))))
+    dec = max(dec, 0)
+    return f"{val:.{dec}f} ± {err:.{dec}f}"
+
+
+def _count_data_dayunique(data_dict, data_station_ids, excluded_mask, cuts, cut_type='rcr'):
+    """Count day-unique data events passing cuts."""
+    mask = apply_cuts(data_dict, cuts, cut_type=cut_type) & ~excluded_mask
+    pidx = np.where(mask)[0]
+    if len(pidx) == 0:
+        return 0
+    umask = filter_unique_events_by_day(data_dict['Time'][pidx], data_station_ids[pidx])
+    return int(np.sum(umask))
+
+
+def _sim_count_with_err(sim_data, sim_data_high, sim_data_low, cuts, cut_type='rcr'):
+    """Compute weighted count + total error (stat + R-sweep if high/low provided)."""
+    mask = apply_cuts(sim_data, cuts, cut_type=cut_type)
+    count, stat_err = compute_weighted_count_and_error(sim_data['weights'], mask)
+    if sim_data_high is not None and sim_data_low is not None:
+        count_hi, _ = compute_weighted_count_and_error(sim_data_high['weights'], mask)
+        count_lo, _ = compute_weighted_count_and_error(sim_data_low['weights'], mask)
+        r_var = abs(count_hi - count_lo) / 2
+        total_err = np.sqrt(stat_err**2 + r_var**2)
+    else:
+        total_err = stat_err
+    return count, total_err
+
+
 def print_text_output(nominal_cuts, sim_direct, sim_reflected,
                       sim_reflected_high, sim_reflected_low,
                       coinc_sim_direct, coinc_sim_reflected,
@@ -1736,185 +1773,226 @@ def print_text_output(nominal_cuts, sim_direct, sim_reflected,
                       excluded_events_mask,
                       scale_factors, cut_interaction_results,
                       output_path):
-    """
-    Print comprehensive text output with event counts, errors, scale factors.
-    Includes per-cut breakdown for both full and coincidence sims.
-    """
+    """Print comprehensive text output matching the agreed table format."""
     lines = []
-    lines.append(f"S03b Selected Plots — Text Output")
+    lines.append("S03b Selected Plots — Text Output")
     lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"{'='*85}")
-    lines.append(f"")
+    lines.append("=" * 90)
+    lines.append("")
 
-    # Events passing nominal cuts
-    rcr_mask = apply_cuts(sim_reflected, nominal_cuts, cut_type='rcr')
-    rcr_count, rcr_stat_err = compute_weighted_count_and_error(sim_reflected['weights'], rcr_mask)
-    bl_mask = apply_cuts(sim_direct, nominal_cuts, cut_type='rcr')
-    bl_count, bl_stat_err = compute_weighted_count_and_error(sim_direct['weights'], bl_mask)
+    # Total data count
+    total_data = len(data_dict['snr'])
+    not_excl = ~excluded_events_mask
+    total_data_dayunique = _count_data_dayunique(
+        data_dict, data_station_ids, excluded_events_mask,
+        {'snr_max': 9999, 'chi_rcr_line_snr': nominal_cuts['chi_rcr_line_snr'],
+         'chi_rcr_line_chi': np.zeros_like(nominal_cuts['chi_rcr_line_chi']),
+         'chi_diff_threshold': -999, 'chi_diff_max': 999,
+         'chi_2016_line_snr': nominal_cuts.get('chi_2016_line_snr', nominal_cuts['chi_rcr_line_snr']),
+         'chi_2016_line_chi': np.zeros_like(nominal_cuts['chi_rcr_line_chi'])})
 
-    # R-sweep variation for RCR
-    rcr_mask_hi = apply_cuts(sim_reflected, nominal_cuts, cut_type='rcr')
-    rcr_count_hi, _ = compute_weighted_count_and_error(sim_reflected_high['weights'], rcr_mask_hi)
-    rcr_count_lo, _ = compute_weighted_count_and_error(sim_reflected_low['weights'], rcr_mask)
-    rcr_r_variation = abs(rcr_count_hi - rcr_count_lo) / 2
-    rcr_total_err = np.sqrt(rcr_stat_err**2 + rcr_r_variation**2)
-
-    both_count = rcr_count + bl_count
-    both_stat_err = np.sqrt(rcr_stat_err**2 + bl_stat_err**2)
-    both_total_err = np.sqrt(rcr_total_err**2 + bl_stat_err**2)
-
-    # Data
-    data_mask = apply_cuts(data_dict, nominal_cuts, cut_type='rcr')
-    data_mask &= ~excluded_events_mask
-    pidx = np.where(data_mask)[0]
-    if len(pidx) > 0:
-        umask = filter_unique_events_by_day(
-            data_dict['Time'][pidx], data_station_ids[pidx])
-        data_count = int(np.sum(umask))
-    else:
-        data_count = 0
-
-    # Identified
-    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
-        ibl_mask = apply_cuts(identified_bl_data, nominal_cuts, cut_type='rcr')
-        ibl_count = int(np.sum(ibl_mask))
-    else:
-        ibl_count = 0
-    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
-        ircr_mask = apply_cuts(identified_rcr_data, nominal_cuts, cut_type='rcr')
-        ircr_count = int(np.sum(ircr_mask))
-    else:
-        ircr_count = 0
-
-    lines.append(f"  Events Passing All Nominal Cuts:")
-    lines.append(f"    ChiRCR > {nominal_cuts['chi_rcr_line_chi'][0]:.2f}, "
+    lines.append(f"  Data totals: {total_data_dayunique} day-unique events "
+                 f"(after quality cuts + SNR < {nominal_cuts['snr_max']} prefilter)")
+    lines.append(f"  Nominal Cuts: ChiRCR > {nominal_cuts['chi_rcr_line_chi'][0]:.2f}, "
                  f"{nominal_cuts['chi_diff_threshold']:.2f} < dChi < {nominal_cuts['chi_diff_max']:.2f}, "
                  f"SNR < {nominal_cuts['snr_max']}")
-    lines.append(f"")
-    lines.append(f"    {'Source':<30} {'Count':>10} {'Stat Err':>10} {'R-sweep':>10} {'Total Err':>10}")
-    lines.append(f"    {'-'*72}")
-    lines.append(f"    {'RCR Sim':<30} {rcr_count:>10.4f} {rcr_stat_err:>10.4f} "
-                 f"{rcr_r_variation:>10.4f} {rcr_total_err:>10.4f}")
-    lines.append(f"    {'BL Sim':<30} {bl_count:>10.4f} {bl_stat_err:>10.4f} "
-                 f"{'N/A':>10} {bl_stat_err:>10.4f}")
-    lines.append(f"    {'Both Sim (RCR+BL)':<30} {both_count:>10.4f} {both_stat_err:>10.4f} "
-                 f"{'—':>10} {both_total_err:>10.4f}")
-    lines.append(f"    {'Data (day-unique)':<30} {data_count:>10d} "
-                 f"{np.sqrt(data_count):>10.2f} {'':>10} {np.sqrt(data_count):>10.2f}")
-    lines.append(f"    {'Identified BL':<30} {ibl_count:>10d}")
-    lines.append(f"    {'Identified RCR':<30} {ircr_count:>10d}")
-    lines.append(f"")
+    lines.append("")
 
-    # --- Per-cut breakdown ---
-    lines.append(f"  Per-Cut Breakdown (events passing each individual cut):")
-    lines.append(f"    {'':>30} {'RCR Sim':>10} {'BL Sim':>10} "
-                 f"{'Coinc RCR':>10} {'Coinc BL':>10} {'Data':>10}")
-    lines.append(f"    {'-'*82}")
+    # ─── Events Passing All Nominal Cuts ──────────────────────
+    rcr_count, rcr_err = _sim_count_with_err(
+        sim_reflected, sim_reflected_high, sim_reflected_low, nominal_cuts, 'rcr')
+    bl_count, bl_err = _sim_count_with_err(
+        sim_direct, None, None, nominal_cuts, 'rcr')
+    both_count = rcr_count + bl_count
+    both_err = np.sqrt(rcr_err**2 + bl_err**2)
 
-    cut_labels = [
-        ('snr_max', f"SNR < {nominal_cuts['snr_max']}"),
-        ('chi_rcr_flat', f"ChiRCR > {nominal_cuts['chi_rcr_line_chi'][0]:.2f}"),
-        ('chi_diff_threshold', f"dChi > {nominal_cuts['chi_diff_threshold']:.2f}"),
-        ('chi_diff_max', f"dChi < {nominal_cuts['chi_diff_max']:.2f}"),
-    ]
-    # Also RCR cuts and BL cuts as groups
-    cut_groups = [
-        ('All RCR cuts', 'rcr'),
-        ('All BL cuts', 'backlobe'),
-    ]
+    data_count = _count_data_dayunique(
+        data_dict, data_station_ids, excluded_events_mask, nominal_cuts, 'rcr')
 
-    for param_name, label in cut_labels:
-        # Disable all cuts, then enable only the one we want
-        test_cuts = dict(nominal_cuts)
-        test_cuts['snr_max'] = 9999
-        test_cuts['chi_rcr_line_chi'] = np.zeros_like(nominal_cuts['chi_rcr_line_chi'])
-        test_cuts['chi_diff_threshold'] = -999
-        test_cuts['chi_diff_max'] = 999
-        # Re-enable the one cut
+    ibl_count = 0
+    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+        ibl_count = int(np.sum(apply_cuts(identified_bl_data, nominal_cuts, cut_type='rcr')))
+    ircr_count = 0
+    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+        ircr_count = int(np.sum(apply_cuts(identified_rcr_data, nominal_cuts, cut_type='rcr')))
+
+    lines.append("  ─── Events Passing All Nominal Cuts ──────────────────────────────────")
+    lines.append("")
+    lines.append(f"    {'Source':<25} {'Count ± Error':>20}")
+    lines.append(f"    {'─' * 47}")
+    lines.append(f"    {'RCR Sim':<25} {_fmt_val_err(rcr_count, rcr_err):>20}")
+    lines.append(f"    {'BL Sim':<25} {_fmt_val_err(bl_count, bl_err):>20}")
+    lines.append(f"    {'Both Sim':<25} {_fmt_val_err(both_count, both_err):>20}")
+    lines.append(f"    {'Data (day-unique)':<25} {data_count:>20d}")
+    lines.append(f"    {'Identified BL':<25} {ibl_count:>20d}")
+    lines.append(f"    {'Identified RCR':<25} {ircr_count:>20d}")
+    lines.append("")
+
+    # ─── Per-Cut Breakdown ────────────────────────────────────
+    lines.append("  ─── Per-Cut Breakdown (each cut applied alone, all others open) ─────")
+    lines.append("")
+
+    # Helper to build single-cut config
+    def _single_cut(param_name):
+        tc = dict(nominal_cuts)
+        tc['snr_max'] = 9999
+        tc['chi_rcr_line_chi'] = np.zeros_like(nominal_cuts['chi_rcr_line_chi'])
+        tc['chi_diff_threshold'] = -999
+        tc['chi_diff_max'] = 999
         if param_name == 'snr_max':
-            test_cuts['snr_max'] = nominal_cuts['snr_max']
+            tc['snr_max'] = nominal_cuts['snr_max']
         elif param_name == 'chi_rcr_flat':
-            test_cuts['chi_rcr_line_chi'] = nominal_cuts['chi_rcr_line_chi']
+            tc['chi_rcr_line_chi'] = nominal_cuts['chi_rcr_line_chi']
         elif param_name == 'chi_diff_threshold':
-            test_cuts['chi_diff_threshold'] = nominal_cuts['chi_diff_threshold']
-        elif param_name == 'chi_diff_max':
-            test_cuts['chi_diff_max'] = nominal_cuts['chi_diff_max']
+            tc['chi_diff_threshold'] = nominal_cuts['chi_diff_threshold']
+        return tc
 
-        rcr_n = np.sum(sim_reflected['weights'][apply_cuts(sim_reflected, test_cuts, cut_type='rcr')])
-        bl_n = np.sum(sim_direct['weights'][apply_cuts(sim_direct, test_cuts, cut_type='rcr')])
-        coinc_rcr_n = np.sum(coinc_sim_reflected['weights'][apply_cuts(coinc_sim_reflected, test_cuts, cut_type='rcr')])
-        coinc_bl_n = np.sum(coinc_sim_direct['weights'][apply_cuts(coinc_sim_direct, test_cuts, cut_type='rcr')])
+    # No-cuts config
+    no_cuts = dict(nominal_cuts)
+    no_cuts['snr_max'] = 9999
+    no_cuts['chi_rcr_line_chi'] = np.zeros_like(nominal_cuts['chi_rcr_line_chi'])
+    no_cuts['chi_diff_threshold'] = -999
+    no_cuts['chi_diff_max'] = 999
 
-        # Data
-        d_mask = apply_cuts(data_dict, test_cuts, cut_type='rcr') & ~excluded_events_mask
-        d_pidx = np.where(d_mask)[0]
-        if len(d_pidx) > 0:
-            d_umask = filter_unique_events_by_day(data_dict['Time'][d_pidx], data_station_ids[d_pidx])
-            d_count = int(np.sum(d_umask))
-        else:
-            d_count = 0
+    col_w = 18  # column width for val±err
+    hdr = f"    {'':>20} {'RCR Sim':>{col_w}} {'BL Sim':>{col_w}}  {'Data':>6}"
+    lines.append(hdr)
+    lines.append(f"    {'─' * (20 + 2 * col_w + 10)}")
 
-        lines.append(f"    {label:<30} {rcr_n:>10.2f} {bl_n:>10.2f} "
-                     f"{coinc_rcr_n:>10.2f} {coinc_bl_n:>10.2f} {d_count:>10d}")
+    cut_rows = [
+        ('none', 'No cuts', no_cuts),
+        ('snr_max', f"SNR < {nominal_cuts['snr_max']}", _single_cut('snr_max')),
+        ('chi_rcr_flat', f"ChiRCR > {nominal_cuts['chi_rcr_line_chi'][0]:.2f}",
+         _single_cut('chi_rcr_flat')),
+        ('chi_diff_threshold', f"dChi > {nominal_cuts['chi_diff_threshold']:.2f}",
+         _single_cut('chi_diff_threshold')),
+    ]
 
-    lines.append(f"    {'-'*82}")
+    for _, label, tc in cut_rows:
+        rcr_n, rcr_e = _sim_count_with_err(
+            sim_reflected, sim_reflected_high, sim_reflected_low, tc, 'rcr')
+        bl_n, bl_e = _sim_count_with_err(sim_direct, None, None, tc, 'rcr')
+        d_n = _count_data_dayunique(
+            data_dict, data_station_ids, excluded_events_mask, tc, 'rcr')
+        lines.append(f"    {label:>20} {_fmt_val_err(rcr_n, rcr_e):>{col_w}} "
+                     f"{_fmt_val_err(bl_n, bl_e):>{col_w}}  {d_n:>6d}")
 
-    for group_label, cut_type in cut_groups:
-        rcr_n = np.sum(sim_reflected['weights'][apply_cuts(sim_reflected, nominal_cuts, cut_type=cut_type)])
-        bl_n = np.sum(sim_direct['weights'][apply_cuts(sim_direct, nominal_cuts, cut_type=cut_type)])
-        coinc_rcr_n = np.sum(coinc_sim_reflected['weights'][apply_cuts(coinc_sim_reflected, nominal_cuts, cut_type=cut_type)])
-        coinc_bl_n = np.sum(coinc_sim_direct['weights'][apply_cuts(coinc_sim_direct, nominal_cuts, cut_type=cut_type)])
+    lines.append(f"    {'─' * (20 + 2 * col_w + 10)}")
 
-        d_mask = apply_cuts(data_dict, nominal_cuts, cut_type=cut_type) & ~excluded_events_mask
-        d_pidx = np.where(d_mask)[0]
-        if len(d_pidx) > 0:
-            d_umask = filter_unique_events_by_day(data_dict['Time'][d_pidx], data_station_ids[d_pidx])
-            d_count = int(np.sum(d_umask))
-        else:
-            d_count = 0
+    for group_label, cut_type in [('All RCR cuts', 'rcr'), ('All BL cuts', 'backlobe')]:
+        rcr_n, rcr_e = _sim_count_with_err(
+            sim_reflected, sim_reflected_high, sim_reflected_low, nominal_cuts, cut_type)
+        bl_n, bl_e = _sim_count_with_err(sim_direct, None, None, nominal_cuts, cut_type)
+        d_n = _count_data_dayunique(
+            data_dict, data_station_ids, excluded_events_mask, nominal_cuts, cut_type)
+        lines.append(f"    {group_label:>20} {_fmt_val_err(rcr_n, rcr_e):>{col_w}} "
+                     f"{_fmt_val_err(bl_n, bl_e):>{col_w}}  {d_n:>6d}")
 
-        lines.append(f"    {group_label:<30} {rcr_n:>10.2f} {bl_n:>10.2f} "
-                     f"{coinc_rcr_n:>10.2f} {coinc_bl_n:>10.2f} {d_count:>10d}")
+    lines.append("")
 
-    lines.append(f"")
+    # ─── Scale Factors ────────────────────────────────────────
+    sf_list = list(scale_factors.values())
+    sf_vals = [s[0] for s in sf_list]
+    sf_errs = [s[1] for s in sf_list]
+    sf_combined = np.mean(sf_vals)
+    sf_combined_err = abs(sf_vals[0] - sf_vals[1]) / 2  # half-spread
 
-    # Scale factors
-    lines.append(f"  Scale Factors (RCR Sim -> Data at/above cut):")
-    lines.append(f"    {'Parameter':<25} {'Scale':>10} {'Error':>10}")
-    lines.append(f"    {'-'*47}")
-    for param_name, (sf, sf_err) in scale_factors.items():
-        lines.append(f"    {param_name:<25} {sf:>10.4f} {sf_err:>10.4f}")
-    lines.append(f"")
+    lines.append("  ─── Scale Factors (RCR Sim → Data, fitted above cut) ────────────────")
+    lines.append("")
+    sf_names = list(scale_factors.keys())
+    lines.append(f"    From chi-RCR scan:          {_fmt_val_err(sf_vals[0], sf_errs[0])}")
+    lines.append(f"    From delta-chi scan:        {_fmt_val_err(sf_vals[1], sf_errs[1])}")
+    lines.append(f"    Combined (mean ± spread):   {_fmt_val_err(sf_combined, sf_combined_err)}")
+    lines.append("")
 
-    # Predicted events using scale factor
-    lines.append(f"  Predicted Events (Scale Factor x RCR Sim):")
-    lines.append(f"    {'Parameter':<25} {'Pred Above Cut':>15} {'Pred Total':>15}")
-    lines.append(f"    {'-'*57}")
-    for param_name, (sf, sf_err) in scale_factors.items():
-        pred_above = rcr_count * sf
-        pred_above_err = np.sqrt((rcr_total_err * sf)**2 + (rcr_count * sf_err)**2)
-        total_rcr = np.sum(sim_reflected['weights'])
-        pred_total = total_rcr * sf
-        pred_total_err = total_rcr * sf_err
-        lines.append(f"    {param_name:<25} {pred_above:>10.3f}+/-{pred_above_err:<5.3f}"
-                     f" {pred_total:>10.3f}+/-{pred_total_err:<5.3f}")
-    lines.append(f"")
+    # ─── Predicted RCR Events ─────────────────────────────────
+    # Data range from chi_diff_threshold cross-cut scan
+    ci_dchi = cut_interaction_results.get('chi_diff_threshold')
+    if ci_dchi is not None:
+        data_lo = ci_dchi['data_lo']
+        data_hi = ci_dchi['data_hi']
+        data_nom = ci_dchi['data_nom']
+        data_plus = max(data_lo, data_hi) - data_nom
+        data_minus = data_nom - min(data_lo, data_hi)
+    else:
+        data_nom = data_count
+        data_plus = 0
+        data_minus = 0
 
-    # Cut interaction results
-    if cut_interaction_results:
-        lines.append(f"  Cut Interaction Results at Nominal:")
-        lines.append(f"    {'Parameter':<25} {'RCR':>8} {'BL':>8} {'Both':>8} "
-                     f"{'Data':>8} {'Data range':>15}")
-        lines.append(f"    {'-'*75}")
-        for param_name, res in cut_interaction_results.items():
-            if res is not None:
-                lines.append(f"    {param_name:<25} {res['rcr_nom']:>8.3f} "
-                             f"{res['bl_nom']:>8.3f} {res['both_nom']:>8.3f} "
-                             f"{res['data_nom']:>8d} "
-                             f"{res['data_lo']:>6d}–{res['data_hi']:<6d}")
-        lines.append(f"")
+    total_rcr_sim = np.sum(sim_reflected['weights'])
+    pred_above = rcr_count * sf_combined
+    pred_above_err = np.sqrt((rcr_err * sf_combined)**2 + (rcr_count * sf_combined_err)**2)
+    pred_total = total_rcr_sim * sf_combined
+    pred_total_err = total_rcr_sim * sf_combined_err
 
-    lines.append(f"{'='*85}")
+    lines.append("  ─── Predicted RCR Events (Combined SF × RCR Sim) ────────────────────")
+    lines.append("")
+    lines.append(f"    {'':>20} {'Predicted':>{col_w}} {'Predicted':>{col_w}}  {'Data':>14}")
+    lines.append(f"    {'':>20} {'above cuts':>{col_w}} {'total':>{col_w}}  {'(observed)':>14}")
+    lines.append(f"    {'─' * (20 + 2 * col_w + 18)}")
+    lines.append(f"    {'SF combined':>20} "
+                 f"{_fmt_val_err(pred_above, pred_above_err):>{col_w}} "
+                 f"{_fmt_val_err(pred_total, pred_total_err):>{col_w}}  "
+                 f"{data_nom:>5d} (+{data_plus}/-{data_minus})")
+    lines.append("")
+
+    # ─── Predicted BL Events (Combined SF × BL Sim) ──────────
+    bl_count_bl, bl_err_bl = _sim_count_with_err(
+        sim_direct, None, None, nominal_cuts, 'backlobe')
+    total_bl_sim = np.sum(sim_direct['weights'])
+
+    pred_bl_above = bl_count_bl * sf_combined
+    pred_bl_above_err = np.sqrt((bl_err_bl * sf_combined)**2 +
+                                 (bl_count_bl * sf_combined_err)**2)
+    pred_bl_total = total_bl_sim * sf_combined
+    pred_bl_total_err = total_bl_sim * sf_combined_err
+
+    # BL data count and range from cross-cut variation
+    bl_data_nom = _count_data_dayunique(
+        data_dict, data_station_ids, excluded_events_mask, nominal_cuts, 'backlobe')
+
+    # BL data range: vary delta-chi cross-cut for the BL-side scan
+    bl_cuts_lo = dict(nominal_cuts)
+    bl_cuts_lo['chi_diff_threshold'] = abs(nominal_cuts['chi_diff_threshold']) - 0.05
+    bl_cuts_hi = dict(nominal_cuts)
+    bl_cuts_hi['chi_diff_threshold'] = abs(nominal_cuts['chi_diff_threshold']) + 0.05
+    bl_data_lo = _count_data_dayunique(
+        data_dict, data_station_ids, excluded_events_mask, bl_cuts_lo, 'backlobe')
+    bl_data_hi = _count_data_dayunique(
+        data_dict, data_station_ids, excluded_events_mask, bl_cuts_hi, 'backlobe')
+    bl_data_min = min(bl_data_lo, bl_data_hi)
+    bl_data_max = max(bl_data_lo, bl_data_hi)
+    bl_data_plus = bl_data_max - bl_data_nom
+    bl_data_minus = bl_data_nom - bl_data_min
+
+    # Also vary chi-BL threshold
+    bl_cuts_chi_lo = dict(nominal_cuts)
+    bl_cuts_chi_lo['chi_rcr_line_chi'] = np.full_like(
+        nominal_cuts['chi_rcr_line_chi'], nominal_cuts['chi_rcr_line_chi'][0] - 0.01)
+    bl_cuts_chi_hi = dict(nominal_cuts)
+    bl_cuts_chi_hi['chi_rcr_line_chi'] = np.full_like(
+        nominal_cuts['chi_rcr_line_chi'], nominal_cuts['chi_rcr_line_chi'][0] + 0.01)
+    bl_data_chi_lo = _count_data_dayunique(
+        data_dict, data_station_ids, excluded_events_mask, bl_cuts_chi_lo, 'backlobe')
+    bl_data_chi_hi = _count_data_dayunique(
+        data_dict, data_station_ids, excluded_events_mask, bl_cuts_chi_hi, 'backlobe')
+
+    lines.append("  ─── Predicted BL Events (Combined SF × BL Sim) ──────────────────────")
+    lines.append("")
+    lines.append(f"    {'':>20} {'Predicted':>{col_w}} {'Predicted':>{col_w}}  {'Data':>14}")
+    lines.append(f"    {'':>20} {'above cuts':>{col_w}} {'total':>{col_w}}  {'(observed)':>14}")
+    lines.append(f"    {'─' * (20 + 2 * col_w + 18)}")
+    lines.append(f"    {'SF combined':>20} "
+                 f"{_fmt_val_err(pred_bl_above, pred_bl_above_err):>{col_w}} "
+                 f"{_fmt_val_err(pred_bl_total, pred_bl_total_err):>{col_w}}  "
+                 f"{bl_data_nom:>5d} (+{bl_data_plus}/-{bl_data_minus})")
+    lines.append("")
+    lines.append(f"    BL data range (dChi ± 0.05):  {bl_data_min} – {bl_data_max}")
+    lines.append(f"    BL data range (chi-BL ± 0.01): {min(bl_data_chi_lo, bl_data_chi_hi)}"
+                 f" – {max(bl_data_chi_lo, bl_data_chi_hi)}")
+    lines.append("")
+
+    lines.append("=" * 90)
 
     output = '\n'.join(lines)
     print(output)
