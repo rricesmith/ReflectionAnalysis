@@ -1025,7 +1025,7 @@ def get_E2_limit_figure(diffuse=True,
         # ax.plot(PUEO30_energy / plotUnitsEnergy, PUEO30 / plotUnitsFlux, linestyle=(0, (3, 1, 1, 1, 1, 1)), color='#EA5A06', label='PUEO (1 flight, 30 days)',
         #         lw=2)
         
-        ax.annotate('PUEO', xy=(2e18 * units.eV / plotUnitsEnergy, 1e-7),
+        ax.annotate('PUEO', xy=(1e18 * units.eV / plotUnitsEnergy, 1e-7),
                     xycoords='data', horizontalalignment='left', color='#EA5A06', rotation=0, fontsize=legendfontsize)
         ax.plot(PUEO_custom_energy / plotUnitsEnergy, PUEO_custom_flux / plotUnitsFlux, linestyle='--', color='#EA5A06', label='PUEO Custom',
                 lw=2)        
