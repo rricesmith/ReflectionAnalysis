@@ -92,7 +92,7 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
 
     # --- Figure layout: scatter + polar on top, one trace + one spectrum, text box ---
     fig = plt.figure(figsize=(18, 16))
-    gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.3, wspace=0.3,
+    gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.3, wspace=0.15,
                            height_ratios=[4, 2, 2.5])
 
     ax_scatter = fig.add_subplot(gs[0, 0])
@@ -203,37 +203,19 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
 
     text_info_lines.append("--- Station Triggers ---")
 
-    # --- Find the loudest channel across all stations/triggers ---
-    loudest_info = _find_loudest_trace(event_details)
+    # --- Determine which channel index to plot for all stations ---
+    # Find the channel with the largest amplitude across all stations/triggers.
+    # Override: event 11230 always uses ch 3 (0-indexed: 2).
+    CHANNEL_OVERRIDES = {11230: 2, "11230": 2}
+    if event_id in CHANNEL_OVERRIDES:
+        selected_ch_idx = CHANNEL_OVERRIDES[event_id]
+    else:
+        loudest_info = _find_loudest_trace(event_details)
+        selected_ch_idx = loudest_info["channel_idx"] if loudest_info is not None else 0
 
-    # --- Plot the loudest trace + spectrum directly (outside station loop) ---
-    if loudest_info is not None:
-        trace_arr = loudest_info["trace"]
-        loudest_station_id = loudest_info["station_id"]
-        try:
-            loudest_color = color_map.get(int(loudest_station_id), default_color)
-        except (TypeError, ValueError):
-            loudest_color = default_color
+    sampling_rate_hz = 2e9
 
-        time_ax_ns = np.linspace(0, (len(trace_arr) - 1) * 0.5, len(trace_arr))
-        ax_trace.plot(time_ax_ns, trace_arr, c=loudest_color, ls='-', alpha=0.7)
-        ax_trace.set_ylabel("Voltage (V)")
-        ax_trace.set_xlabel("Time (ns)")
-        ax_trace.grid(True, ls=':', alpha=0.5)
-
-        sampling_rate_hz = 2e9
-        if len(trace_arr) > 1:
-            freq_ax_ghz = np.fft.rfftfreq(len(trace_arr), d=1 / sampling_rate_hz) / 1e9
-            spectrum = np.abs(fft.time2freq(trace_arr, sampling_rate_hz))
-            if len(spectrum) > 0:
-                spectrum[0] = 0
-            ax_spectrum.plot(freq_ax_ghz, spectrum, c=loudest_color, ls='-', alpha=0.6)
-            ax_spectrum.set_ylabel("Amplitude")
-            ax_spectrum.set_xlabel("Frequency (GHz)")
-            ax_spectrum.grid(True, ls=':', alpha=0.5)
-            ax_spectrum.set_xlim(0, 1)
-
-    # --- Loop over stations to populate scatter, polar, and text ---
+    # --- Loop over stations to populate scatter, polar, text, and traces ---
     legend_handles_for_fig = {}
 
     station_items = list(event_details.get("stations", {}).items())
@@ -291,6 +273,21 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
                 ax_polar.scatter(azi_rad, np.degrees(zen_rad), c=color, marker=marker,
                                  s=60, alpha=0.9)
 
+            # --- Trace + spectrum: plot selected_ch_idx for every station/trigger ---
+            padded_traces = (list(traces_this_trigger) + [None] * NUM_TRACE_CHANNELS)[:NUM_TRACE_CHANNELS]
+            trace_ch_data = padded_traces[selected_ch_idx] if selected_ch_idx < len(padded_traces) else None
+            if trace_ch_data is not None and hasattr(trace_ch_data, "__len__") and len(trace_ch_data) > 0:
+                trace_arr = np.asarray(trace_ch_data)
+                ls = '-' if trigger_idx % 2 == 0 else '--'
+                time_ax_ns = np.linspace(0, (len(trace_arr) - 1) * 0.5, len(trace_arr))
+                ax_trace.plot(time_ax_ns, trace_arr, c=color, ls=ls, alpha=0.7)
+                if len(trace_arr) > 1:
+                    freq_ax_ghz = np.fft.rfftfreq(len(trace_arr), d=1 / sampling_rate_hz) / 1e9
+                    spectrum = np.abs(fft.time2freq(trace_arr, sampling_rate_hz))
+                    if len(spectrum) > 0:
+                        spectrum[0] = 0
+                    ax_spectrum.plot(freq_ax_ghz, spectrum, c=color, ls=ls, alpha=0.6)
+
             # Station legend handle
             if station_id_int not in legend_handles_for_fig:
                 legend_handles_for_fig[station_id_int] = Line2D(
@@ -325,6 +322,15 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
             snrs, chis = zip(*station_points)
             ax_scatter.plot(snrs, chis, color=color, linestyle='--', marker=None,
                             alpha=0.8, zorder=2)
+
+    # === Trace + spectrum axis labels (set once after all stations plotted) ===
+    ax_trace.set_ylabel("Voltage (V)")
+    ax_trace.set_xlabel("Time (ns)")
+    ax_trace.grid(True, ls=':', alpha=0.5)
+    ax_spectrum.set_ylabel("Amplitude")
+    ax_spectrum.set_xlabel("Frequency (GHz)")
+    ax_spectrum.grid(True, ls=':', alpha=0.5)
+    ax_spectrum.set_xlim(0, 1)
 
     # === SNR vs Chi scatter axis setup ===
     ax_scatter.set_title(f"Event {event_id}: {event_time_str}")
