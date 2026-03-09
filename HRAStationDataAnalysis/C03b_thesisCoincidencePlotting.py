@@ -283,22 +283,22 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
                     trace_arr = np.asarray(trace_ch_data)
                     time_ax_ns = np.linspace(0, (len(trace_arr) - 1) * 0.5, len(trace_arr))
                     ax_trace.plot(time_ax_ns, trace_arr, c=color, ls='-', alpha=0.7)
-                    ax_trace.set_ylabel("Amp (mV)", fontsize=8)
+                    ax_trace.set_ylabel("Voltage (V)", fontsize=8)
                     ax_trace.set_xlabel("Time (ns)", fontsize=8)
                     ax_trace.grid(True, ls=':', alpha=0.5)
 
                     # Frequency spectrum
                     sampling_rate_hz = 2e9
                     if len(trace_arr) > 1:
-                        freq_ax_mhz = np.fft.rfftfreq(len(trace_arr), d=1 / sampling_rate_hz) / 1e6
+                        freq_ax_ghz = np.fft.rfftfreq(len(trace_arr), d=1 / sampling_rate_hz) / 1e9
                         spectrum = np.abs(fft.time2freq(trace_arr, sampling_rate_hz))
                         if len(spectrum) > 0:
                             spectrum[0] = 0
-                        ax_spectrum.plot(freq_ax_mhz, spectrum, c=color, ls='-', alpha=0.6)
-                        ax_spectrum.set_ylabel("Mag", fontsize=8)
-                        ax_spectrum.set_xlabel("Freq (MHz)", fontsize=8)
+                        ax_spectrum.plot(freq_ax_ghz, spectrum, c=color, ls='-', alpha=0.6)
+                        ax_spectrum.set_ylabel("Amplitude", fontsize=8)
+                        ax_spectrum.set_xlabel("Frequency (GHz)", fontsize=8)
                         ax_spectrum.grid(True, ls=':', alpha=0.5)
-                        ax_spectrum.set_xlim(0, 1000)
+                        ax_spectrum.set_xlim(0, 1)
                     loudest_trace_plotted = True
 
             # Station legend handle
@@ -445,8 +445,10 @@ if __name__ == '__main__':
     base_processed_data_dir = os.path.join("HRAStationDataAnalysis", "StationData", "processedNumpyData")
     processed_data_dir_for_date = os.path.join(base_processed_data_dir, date_of_data)
 
-    # --- Locate data file ---
+    # --- Locate data file (highest priority first) ---
     prefixes = [
+        f"{date_of_coincidence}_CoincidenceDatetimes_passing_cuts_passing_cuts",
+        f"{date_of_coincidence}_CoincidenceDatetimes_passing_cuts",
         f"{date_of_coincidence}_CoincidenceDatetimes",
     ]
     suffixes = [
