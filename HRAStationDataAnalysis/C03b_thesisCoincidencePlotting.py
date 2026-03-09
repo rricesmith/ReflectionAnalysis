@@ -92,7 +92,7 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
 
     # --- Figure layout: scatter + polar on top, one trace + one spectrum, text box ---
     fig = plt.figure(figsize=(18, 16))
-    gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.5, wspace=0.3,
+    gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.3, wspace=0.3,
                            height_ratios=[4, 2, 2.5])
 
     ax_scatter = fig.add_subplot(gs[0, 0])
@@ -106,15 +106,14 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
     if "datetime" in event_details and event_details["datetime"] is not None:
         try:
             event_time_dt = datetime.datetime.fromtimestamp(event_details["datetime"])
-            event_time_str = event_time_dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            event_time_str = event_time_dt.strftime('%Y-%m-%d %H:%M:%S')
         except Exception as e:
             ic(f"Error formatting datetime for event {event_id}: {e}")
 
-    # Main figure title
+    # Main figure title (cut status only — detail goes on ax_scatter)
     cut_status = "PASSES ALL CUTS" if passes_overall_analysis else "FAILS CUTS"
-    main_title = (f"Master Plot: Event {event_id} ({dataset_name}) - {cut_status}"
-                  f"{title_suffix}\nTime: {event_time_str}")
-    fig.suptitle(main_title, fontsize=16, y=0.98)
+    main_title = f"({dataset_name}) - {cut_status}{title_suffix}"
+    fig.suptitle(main_title, fontsize=14, y=0.98)
 
     # --- Build text info lines ---
     status_text = "PASS" if passes_overall_analysis else "FAIL"
@@ -218,8 +217,8 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
 
         time_ax_ns = np.linspace(0, (len(trace_arr) - 1) * 0.5, len(trace_arr))
         ax_trace.plot(time_ax_ns, trace_arr, c=loudest_color, ls='-', alpha=0.7)
-        ax_trace.set_ylabel("Voltage (V)", fontsize=8)
-        ax_trace.set_xlabel("Time (ns)", fontsize=8)
+        ax_trace.set_ylabel("Voltage (V)")
+        ax_trace.set_xlabel("Time (ns)")
         ax_trace.grid(True, ls=':', alpha=0.5)
 
         sampling_rate_hz = 2e9
@@ -229,8 +228,8 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
             if len(spectrum) > 0:
                 spectrum[0] = 0
             ax_spectrum.plot(freq_ax_ghz, spectrum, c=loudest_color, ls='-', alpha=0.6)
-            ax_spectrum.set_ylabel("Amplitude", fontsize=8)
-            ax_spectrum.set_xlabel("Frequency (GHz)", fontsize=8)
+            ax_spectrum.set_ylabel("Amplitude")
+            ax_spectrum.set_xlabel("Frequency (GHz)")
             ax_spectrum.grid(True, ls=':', alpha=0.5)
             ax_spectrum.set_xlim(0, 1)
 
@@ -327,7 +326,8 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
             ax_scatter.plot(snrs, chis, color=color, linestyle='--', marker=None,
                             alpha=0.8, zorder=2)
 
-    # === SNR vs Chi scatter axis setup (no title) ===
+    # === SNR vs Chi scatter axis setup ===
+    ax_scatter.set_title(f"Event {event_id}: {event_time_str}")
     ax_scatter.set_xlabel("SNR")
     ax_scatter.set_ylabel(r"$\chi$")
     ax_scatter.set_xscale('log')
@@ -369,6 +369,9 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
     ax_text_box.text(0.01, 0.95, "\n".join(text_info_lines), ha='left', va='top',
                      fontsize=9, family='monospace', linespacing=1.4,
                      bbox=dict(boxstyle="round,pad=0.5", fc="wheat", alpha=0.6))
+
+    # Keep text box fully visible below the other plots
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
 
     # --- Save ---
     master_filename = os.path.join(output_dir, f'master_event_{event_id}.png')
