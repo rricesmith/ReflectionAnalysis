@@ -206,17 +206,36 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
 
     # --- Find the loudest channel across all stations/triggers ---
     loudest_info = _find_loudest_trace(event_details)
-    loudest_key = None  # (station_id_str, trigger_idx, channel_idx)
+
+    # --- Plot the loudest trace + spectrum directly (outside station loop) ---
     if loudest_info is not None:
-        loudest_key = (
-            str(loudest_info["station_id"]),
-            loudest_info["trigger_idx"],
-            loudest_info["channel_idx"],
-        )
+        trace_arr = loudest_info["trace"]
+        loudest_station_id = loudest_info["station_id"]
+        try:
+            loudest_color = color_map.get(int(loudest_station_id), default_color)
+        except (TypeError, ValueError):
+            loudest_color = default_color
+
+        time_ax_ns = np.linspace(0, (len(trace_arr) - 1) * 0.5, len(trace_arr))
+        ax_trace.plot(time_ax_ns, trace_arr, c=loudest_color, ls='-', alpha=0.7)
+        ax_trace.set_ylabel("Voltage (V)", fontsize=8)
+        ax_trace.set_xlabel("Time (ns)", fontsize=8)
+        ax_trace.grid(True, ls=':', alpha=0.5)
+
+        sampling_rate_hz = 2e9
+        if len(trace_arr) > 1:
+            freq_ax_ghz = np.fft.rfftfreq(len(trace_arr), d=1 / sampling_rate_hz) / 1e9
+            spectrum = np.abs(fft.time2freq(trace_arr, sampling_rate_hz))
+            if len(spectrum) > 0:
+                spectrum[0] = 0
+            ax_spectrum.plot(freq_ax_ghz, spectrum, c=loudest_color, ls='-', alpha=0.6)
+            ax_spectrum.set_ylabel("Amplitude", fontsize=8)
+            ax_spectrum.set_xlabel("Frequency (GHz)", fontsize=8)
+            ax_spectrum.grid(True, ls=':', alpha=0.5)
+            ax_spectrum.set_xlim(0, 1)
 
     # --- Loop over stations to populate scatter, polar, and text ---
     legend_handles_for_fig = {}
-    loudest_trace_plotted = False
 
     station_items = list(event_details.get("stations", {}).items())
     for s_idx, (station_id_str, station_data) in enumerate(station_items):
@@ -272,34 +291,6 @@ def plot_single_master_event_thesis(event_id, event_details, output_dir, dataset
                     azi_rad is not None and not np.isnan(azi_rad)):
                 ax_polar.scatter(azi_rad, np.degrees(zen_rad), c=color, marker=marker,
                                  s=60, alpha=0.9)
-
-            # --- Plot only the loudest channel trace + spectrum ---
-            if (loudest_key is not None and not loudest_trace_plotted and
-                    station_id_str == loudest_key[0] and trigger_idx == loudest_key[1]):
-                padded_traces = (list(traces_this_trigger) + [None] * NUM_TRACE_CHANNELS)[:NUM_TRACE_CHANNELS]
-                ch_idx = loudest_key[2]
-                trace_ch_data = padded_traces[ch_idx] if ch_idx < len(padded_traces) else None
-                if trace_ch_data is not None and hasattr(trace_ch_data, "__len__") and len(trace_ch_data) > 0:
-                    trace_arr = np.asarray(trace_ch_data)
-                    time_ax_ns = np.linspace(0, (len(trace_arr) - 1) * 0.5, len(trace_arr))
-                    ax_trace.plot(time_ax_ns, trace_arr, c=color, ls='-', alpha=0.7)
-                    ax_trace.set_ylabel("Voltage (V)", fontsize=8)
-                    ax_trace.set_xlabel("Time (ns)", fontsize=8)
-                    ax_trace.grid(True, ls=':', alpha=0.5)
-
-                    # Frequency spectrum
-                    sampling_rate_hz = 2e9
-                    if len(trace_arr) > 1:
-                        freq_ax_ghz = np.fft.rfftfreq(len(trace_arr), d=1 / sampling_rate_hz) / 1e9
-                        spectrum = np.abs(fft.time2freq(trace_arr, sampling_rate_hz))
-                        if len(spectrum) > 0:
-                            spectrum[0] = 0
-                        ax_spectrum.plot(freq_ax_ghz, spectrum, c=color, ls='-', alpha=0.6)
-                        ax_spectrum.set_ylabel("Amplitude", fontsize=8)
-                        ax_spectrum.set_xlabel("Frequency (GHz)", fontsize=8)
-                        ax_spectrum.grid(True, ls=':', alpha=0.5)
-                        ax_spectrum.set_xlim(0, 1)
-                    loudest_trace_plotted = True
 
             # Station legend handle
             if station_id_int not in legend_handles_for_fig:
@@ -447,7 +438,6 @@ if __name__ == '__main__':
 
     # --- Locate data file (highest priority first) ---
     prefixes = [
-        f"{date_of_coincidence}_CoincidenceDatetimes_passing_cuts_passing_cuts",
         f"{date_of_coincidence}_CoincidenceDatetimes_passing_cuts",
         f"{date_of_coincidence}_CoincidenceDatetimes",
     ]
