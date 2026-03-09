@@ -671,7 +671,7 @@ def plot_trigger_rate_panels(
 
         if info_texts and ip < len(info_texts):
             ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
-                    fontsize=6, verticalalignment="top", family="monospace", color="white",
+                    fontsize=9, verticalalignment="top", family="monospace", color="white",
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="black", alpha=0.6))
 
     axes[0].set_ylabel("cos(zenith)")
@@ -782,7 +782,7 @@ def plot_event_rate_panels(
 
         if info_texts and ip < len(info_texts):
             ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
-                    fontsize=6, verticalalignment="top", family="monospace", color="white",
+                    fontsize=9, verticalalignment="top", family="monospace", color="white",
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="black", alpha=0.6))
 
     axes[0].set_ylabel("cos(zenith)")
@@ -862,7 +862,7 @@ def plot_event_rate_bands(
             zen_lo = z_bins[iz] / units.deg
             zen_hi = z_bins[iz + 1] / units.deg
             label = f"{zen_lo:.0f}-{zen_hi:.0f}\u00b0"
-            ax.fill_between(x_vals, lo, hi, alpha=0.3, color=colors[iz], label=label)
+            ax.fill_between(x_vals, lo, hi, alpha=0.3, color=colors[iz], label=label, step="mid")
 
         # Total (sum of zenith bins) band
         total_rates = np.nansum(stacked, axis=2)  # shape (n_db, n_energy)
@@ -874,7 +874,7 @@ def plot_event_rate_bands(
         else:
             lo_total = np.nanmin(total_rates, axis=0)
             hi_total = np.nanmax(total_rates, axis=0)
-        ax.fill_between(x_vals, lo_total, hi_total, alpha=0.2, color="black", label="Total")
+        ax.fill_between(x_vals, lo_total, hi_total, alpha=0.2, color="black", label="Total", step="mid")
 
         # Track global y-max and x-range where data exists
         if hi_total.max() > global_ymax:
@@ -888,7 +888,7 @@ def plot_event_rate_bands(
         # Info text annotation
         if info_texts and ip < len(info_texts):
             ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
-                    fontsize=7, verticalalignment="top", family="monospace",
+                    fontsize=9, verticalalignment="top", family="monospace",
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
     # Set consistent axis limits across all panels
@@ -905,7 +905,7 @@ def plot_event_rate_bands(
         ax.set_xlim(x_lo, x_hi)
 
     axes[0].set_ylabel("Event Rate (evts/station/yr)")
-    axes[0].legend(fontsize=7, loc="lower left")
+    axes[0].legend(fontsize=9, loc="lower left")
 
     fig.suptitle(suptitle, fontsize=13, y=1.02)
     plt.tight_layout()
@@ -962,18 +962,18 @@ def plot_event_rate_bands_single_db(
             label = f"{zen_lo:.0f}-{zen_hi:.0f}\u00b0"
             central = rate[:, iz]
             # Dashed central line (no uncertainty)
-            ax.plot(x_vals, central, color=colors[iz], linewidth=1, linestyle="--", alpha=0.7)
+            ax.step(x_vals, central, color=colors[iz], linewidth=1, linestyle="--", alpha=0.7, where="mid")
             if has_errors:
                 lo = np.maximum(central - err[:, iz], 0)
                 hi = central + err[:, iz]
             else:
                 lo = central
                 hi = central
-            ax.fill_between(x_vals, lo, hi, alpha=0.3, color=colors[iz], label=label)
+            ax.fill_between(x_vals, lo, hi, alpha=0.3, color=colors[iz], label=label, step="mid")
 
         # Total (sum of zenith bins) band
         total_rate = np.nansum(rate, axis=1)
-        ax.plot(x_vals, total_rate, color="black", linewidth=1, linestyle="--", alpha=0.7)
+        ax.step(x_vals, total_rate, color="black", linewidth=1, linestyle="--", alpha=0.7, where="mid")
         if has_errors:
             total_err = np.sqrt(np.nansum(err**2, axis=1))
             lo_total = np.maximum(total_rate - total_err, 0)
@@ -981,7 +981,7 @@ def plot_event_rate_bands_single_db(
         else:
             lo_total = total_rate
             hi_total = total_rate
-        ax.fill_between(x_vals, lo_total, hi_total, alpha=0.2, color="black", label="Total")
+        ax.fill_between(x_vals, lo_total, hi_total, alpha=0.2, color="black", label="Total", step="mid")
 
         if hi_total.max() > global_ymax:
             global_ymax = hi_total.max()
@@ -993,7 +993,7 @@ def plot_event_rate_bands_single_db(
 
         if info_texts and ip < len(info_texts):
             ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
-                    fontsize=7, verticalalignment="top", family="monospace",
+                    fontsize=9, verticalalignment="top", family="monospace",
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
     if data_x_mask.any():
@@ -1009,7 +1009,7 @@ def plot_event_rate_bands_single_db(
         ax.set_xlim(x_lo, x_hi)
 
     axes[0].set_ylabel("Event Rate (evts/station/yr)")
-    axes[0].legend(fontsize=7, loc="lower left")
+    axes[0].legend(fontsize=9, loc="lower left")
 
     fig.suptitle(suptitle, fontsize=13, y=1.02)
     plt.tight_layout()
@@ -1289,13 +1289,13 @@ def _plot_density_panels(
 
         if info_texts and ip < len(info_texts):
             ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
-                    fontsize=7, verticalalignment="top", family="monospace",
+                    fontsize=9, verticalalignment="top", family="monospace",
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
         panel_stats.append(stats)
 
     axes[0].set_ylabel(ylabel)
-    axes[0].legend(fontsize=7, loc="upper right")
+    axes[0].legend(fontsize=9, loc="upper right")
 
     fig.suptitle(suptitle, fontsize=13, y=1.02)
     plt.tight_layout()
@@ -1313,7 +1313,7 @@ def _plot_density_panels(
                 stat_lines.append(f"Reflected: \u03bc = {stats['reflected']}")
             if stat_lines:
                 txt = ax.text(0.97, 0.60, "\n".join(stat_lines), transform=ax.transAxes,
-                              fontsize=7, verticalalignment="top", horizontalalignment="right",
+                              fontsize=9, verticalalignment="top", horizontalalignment="right",
                               family="monospace",
                               bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.9))
                 stat_artists.append(txt)
@@ -1403,13 +1403,13 @@ def _plot_density_panels_single(
 
         if info_texts and ip < len(info_texts):
             ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
-                    fontsize=7, verticalalignment="top", family="monospace",
+                    fontsize=9, verticalalignment="top", family="monospace",
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
         panel_stats.append(stats)
 
     axes[0].set_ylabel(ylabel)
-    axes[0].legend(fontsize=7, loc="upper right")
+    axes[0].legend(fontsize=9, loc="upper right")
 
     fig.suptitle(suptitle, fontsize=13, y=1.02)
     plt.tight_layout()
@@ -1427,7 +1427,7 @@ def _plot_density_panels_single(
                 stat_lines.append(f"Reflected: \u03bc = {stats['reflected']}")
             if stat_lines:
                 txt = ax.text(0.97, 0.60, "\n".join(stat_lines), transform=ax.transAxes,
-                              fontsize=7, verticalalignment="top", horizontalalignment="right",
+                              fontsize=9, verticalalignment="top", horizontalalignment="right",
                               family="monospace",
                               bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.9))
                 stat_artists.append(txt)
@@ -2021,9 +2021,9 @@ def generate_mb_error_breakdown_table(
 # Display name overrides for trigger names in plot annotations.
 # Keyed by station label — always use these instead of raw trigger names.
 TRIGGER_DISPLAY_NAMES = {
-    "HRA": "LPDA_2of4_4.5sigma",
-    "Gen2 Shallow": "LPDA_2of4_100Hz",
-    "Gen2 Deep": "PA_8ch_100Hz",
+    "HRA": "LPDA 2of4 1Hz",
+    "Gen2 Shallow": "LPDA 2of4 100Hz",
+    "Gen2 Deep": "PA 8ch 100Hz",
 }
 
 
@@ -2031,10 +2031,10 @@ def _build_info(site: str, station: str, trigger: str | None = None,
                 reflectivity: str | None = None) -> str:
     """Build info annotation string for a plot panel."""
     site_full = "Moore's Bay" if site == "MB" else "South Pole"
-    parts = [f"Site: {site_full}", f"Station: {station}"]
+    parts = [site_full, station]
     if trigger:
         display_name = TRIGGER_DISPLAY_NAMES.get(station, trigger)
-        parts.append(f"Trigger: {display_name}")
+        parts.append(display_name)
     if reflectivity:
         parts.append(reflectivity)
     return "\n".join(parts)
@@ -2615,13 +2615,13 @@ def generate_sp_radii_plots(loaded, save_folder, max_distance):
 
         if ip < len(info_texts):
             ax.text(0.03, 0.97, info_texts[ip], transform=ax.transAxes,
-                    fontsize=7, verticalalignment="top", family="monospace",
+                    fontsize=9, verticalalignment="top", family="monospace",
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
         panel_stats.append(stats)
 
     axes[0].set_ylabel("Probability Density")
-    axes[0].legend(fontsize=7, loc="upper right")
+    axes[0].legend(fontsize=9, loc="upper right")
     fig.suptitle("SP Radii Distribution \u2014 300m", fontsize=13, y=1.02)
     plt.tight_layout()
     savename = os.path.join(save_folder, "sp_radii_density.png")
@@ -2638,7 +2638,7 @@ def generate_sp_radii_plots(loaded, save_folder, max_distance):
             stat_lines.append(f"Reflected: \u03bc = {stats['reflected']}")
         if stat_lines:
             txt = ax.text(0.97, 0.60, "\n".join(stat_lines), transform=ax.transAxes,
-                          fontsize=7, verticalalignment="top", horizontalalignment="right",
+                          fontsize=9, verticalalignment="top", horizontalalignment="right",
                           family="monospace",
                           bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.9))
             stat_artists.append(txt)
