@@ -1670,29 +1670,58 @@ def plot_chi_chi_cut_space(data_dict, excluded_events_mask, nominal_cuts,
 
     chi_rcr_cut = nominal_cuts['chi_rcr_line_chi'][0]
 
+    # Build coordinate sets for identified events so we can suppress their
+    # duplicate markers in the Pass Cuts scatter layers (visual dedup only;
+    # legend counts still reflect the full pass masks).
+    ircr_coords = set()
+    if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
+        for _c1, _c2 in zip(identified_rcr_data['Chi2016'], identified_rcr_data['ChiRCR']):
+            ircr_coords.add((_c1, _c2))
+
+    ibl_coords = set()
+    if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
+        for _c1, _c2 in zip(identified_bl_data['Chi2016'], identified_bl_data['ChiRCR']):
+            ibl_coords.add((_c1, _c2))
+
+    # Masks for Pass Cuts scatters with identified events removed
+    rcr_pass_only = rcr_pass.copy()
+    for _idx in np.where(rcr_pass)[0]:
+        if (chi_bl[_idx], chi_rcr[_idx]) in ircr_coords:
+            rcr_pass_only[_idx] = False
+
+    bl_pass_only = bl_pass.copy()
+    for _idx in np.where(bl_pass)[0]:
+        if (chi_bl[_idx], chi_rcr[_idx]) in ibl_coords:
+            bl_pass_only[_idx] = False
+
     fig, ax = plt.subplots(figsize=(9, 8))
 
+    # Priority (bottom→top): gray < Pass BL < Identified BL < Pass RCR < Identified RCR
     # Layer 1: gray dots (neither pass)
     ax.scatter(chi_bl[neither], chi_rcr[neither],
                s=4, c='gray', alpha=0.3, label='Data (no cut passed)', zorder=1)
 
-    # Layer 2: Identified events (under passing data)
+    # Layer 2: Pass BL Cuts (identified BL events excluded to avoid overlap)
+    ax.scatter(chi_bl[bl_pass_only], chi_rcr[bl_pass_only],
+               marker='o', s=30, c='yellow', edgecolors='black', linewidths=0.5,
+               label=f'Pass BL Cuts ({int(np.sum(bl_pass))})', zorder=2)
+
+    # Layer 3: Identified BL
     if identified_bl_data is not None and len(identified_bl_data['snr']) > 0:
         ax.scatter(identified_bl_data['Chi2016'], identified_bl_data['ChiRCR'],
                    marker='s', s=50, c='cyan', edgecolors='black', linewidths=0.5,
                    label='Identified BL', zorder=3)
+
+    # Layer 4: Pass RCR Cuts (identified RCR events excluded to avoid overlap)
+    ax.scatter(chi_bl[rcr_pass_only], chi_rcr[rcr_pass_only],
+               marker='*', s=60, c='green', edgecolors='black', linewidths=0.5,
+               label=f'Pass RCR Cuts ({int(np.sum(rcr_pass))})', zorder=4)
+
+    # Layer 5: Identified RCR (topmost)
     if identified_rcr_data is not None and len(identified_rcr_data['snr']) > 0:
         ax.scatter(identified_rcr_data['Chi2016'], identified_rcr_data['ChiRCR'],
                    marker='^', s=60, c='red', edgecolors='black', linewidths=0.5,
-                   label='Identified RCR', zorder=3)
-
-    # Layer 3: passing events on top
-    ax.scatter(chi_bl[bl_pass], chi_rcr[bl_pass],
-               marker='o', s=30, c='yellow', edgecolors='black', linewidths=0.5,
-               label=f'Pass BL Cuts ({int(np.sum(bl_pass))})', zorder=4)
-    ax.scatter(chi_bl[rcr_pass], chi_rcr[rcr_pass],
-               marker='*', s=60, c='green', edgecolors='black', linewidths=0.5,
-               label=f'Pass RCR Cuts ({int(np.sum(rcr_pass))})', zorder=5)
+                   label='Identified RCR', zorder=5)
 
     # Diagonal
     ax.plot([0, 1], [0, 1], 'r--', linewidth=1.5, alpha=0.5, zorder=2)
