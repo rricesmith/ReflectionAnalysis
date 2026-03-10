@@ -862,7 +862,7 @@ def plot_event_rate_bands(
             zen_lo = z_bins[iz] / units.deg
             zen_hi = z_bins[iz + 1] / units.deg
             label = f"{zen_lo:.0f}-{zen_hi:.0f}\u00b0"
-            ax.fill_between(x_vals, lo, hi, alpha=0.3, color=colors[iz], label=label, step="mid")
+            ax.fill_between(x_vals, lo, hi, alpha=0.3, color=colors[iz], label=label)
 
         # Total (sum of zenith bins) band
         total_rates = np.nansum(stacked, axis=2)  # shape (n_db, n_energy)
@@ -874,7 +874,7 @@ def plot_event_rate_bands(
         else:
             lo_total = np.nanmin(total_rates, axis=0)
             hi_total = np.nanmax(total_rates, axis=0)
-        ax.fill_between(x_vals, lo_total, hi_total, alpha=0.2, color="black", label="Total", step="mid")
+        ax.fill_between(x_vals, lo_total, hi_total, alpha=0.2, color="black", label="Total")
 
         # Track global y-max and x-range where data exists
         if hi_total.max() > global_ymax:
@@ -962,18 +962,18 @@ def plot_event_rate_bands_single_db(
             label = f"{zen_lo:.0f}-{zen_hi:.0f}\u00b0"
             central = rate[:, iz]
             # Dashed central line (no uncertainty)
-            ax.step(x_vals, central, color=colors[iz], linewidth=1, linestyle="--", alpha=0.7, where="mid")
+            ax.plot(x_vals, central, color=colors[iz], linewidth=1, linestyle="--", alpha=0.7)
             if has_errors:
                 lo = np.maximum(central - err[:, iz], 0)
                 hi = central + err[:, iz]
             else:
                 lo = central
                 hi = central
-            ax.fill_between(x_vals, lo, hi, alpha=0.3, color=colors[iz], label=label, step="mid")
+            ax.fill_between(x_vals, lo, hi, alpha=0.3, color=colors[iz], label=label)
 
         # Total (sum of zenith bins) band
         total_rate = np.nansum(rate, axis=1)
-        ax.step(x_vals, total_rate, color="black", linewidth=1, linestyle="--", alpha=0.7, where="mid")
+        ax.plot(x_vals, total_rate, color="black", linewidth=1, linestyle="--", alpha=0.7)
         if has_errors:
             total_err = np.sqrt(np.nansum(err**2, axis=1))
             lo_total = np.maximum(total_rate - total_err, 0)
@@ -981,7 +981,7 @@ def plot_event_rate_bands_single_db(
         else:
             lo_total = total_rate
             hi_total = total_rate
-        ax.fill_between(x_vals, lo_total, hi_total, alpha=0.2, color="black", label="Total", step="mid")
+        ax.fill_between(x_vals, lo_total, hi_total, alpha=0.2, color="black", label="Total")
 
         if hi_total.max() > global_ymax:
             global_ymax = hi_total.max()
