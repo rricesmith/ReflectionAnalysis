@@ -8,12 +8,13 @@ Two purposes:
   2. Plot the azimuth-zenith distribution of all events (polar + 2D scatter).
 
 Input:
-    HRAStationDataAnalysis/ErrorAnalysis/output/3.9.26/rcr_passing_events.npz
+    HRAStationDataAnalysis/ErrorAnalysis/output/{date_processing}/rcr_passing_events.npz
+    (date_processing read from HRAStationDataAnalysis/config.ini)
 
 Output:
-    HRAStationDataAnalysis/ErrorAnalysis/output/3.9.26/rcr_passing_events_with_angles.npz
-    HRAStationDataAnalysis/ErrorAnalysis/plots/3.9.26/rcr_single_station_plots/zen_azi_distribution.png
-    HRAStationDataAnalysis/ErrorAnalysis/plots/3.9.26/rcr_single_station_plots/zen_azi_distribution_2d.png
+    HRAStationDataAnalysis/ErrorAnalysis/output/{date_processing}/rcr_passing_events_with_angles.npz
+    HRAStationDataAnalysis/ErrorAnalysis/plots/{date_processing}/rcr_single_station_plots/zen_azi_distribution.png
+    HRAStationDataAnalysis/ErrorAnalysis/plots/{date_processing}/rcr_single_station_plots/zen_azi_distribution_2d.png
 
 Usage:
     python -m HRAStationDataAnalysis.ErrorAnalysis.S04c_singleStationAngularRecalc
@@ -21,6 +22,7 @@ Usage:
 
 import os
 import sys
+import configparser
 import datetime
 import numpy as np
 import matplotlib
@@ -47,11 +49,8 @@ from HRAStationDataAnalysis.batchHRADataConversion import loadStationNurFiles
 
 # ---------------------------------------------------------------------------
 # Paths (relative to ReflectionAnalysis/ working directory)
+# Dates are read from config.ini at runtime; these are computed in main().
 # ---------------------------------------------------------------------------
-VERSION         = '3.9.26'
-INPUT_NPZ       = f'HRAStationDataAnalysis/ErrorAnalysis/output/{VERSION}/rcr_passing_events.npz'
-OUTPUT_NPZ      = f'HRAStationDataAnalysis/ErrorAnalysis/output/{VERSION}/rcr_passing_events_with_angles.npz'
-PLOTS_DIR       = f'HRAStationDataAnalysis/ErrorAnalysis/plots/{VERSION}/rcr_single_station_plots'
 DETECTOR_JSON   = 'HRASimulation/HRAStationLayoutForCoREAS.json'
 
 # Per-station color palette (consistent with other thesis plots)
@@ -341,10 +340,35 @@ def main():
     ic.configureOutput(prefix='S04c | ')
 
     # -----------------------------------------------------------------------
+    # 0. Read config for date_processing
+    # -----------------------------------------------------------------------
+    config = configparser.ConfigParser()
+    config_path = os.path.join('HRAStationDataAnalysis', 'config.ini')
+    if not os.path.exists(config_path):
+        config_path = 'config.ini'
+    config.read(config_path)
+    date_processing = config['PARAMETERS']['date_processing']
+
+    input_npz  = os.path.join(
+        'HRAStationDataAnalysis', 'ErrorAnalysis', 'output',
+        date_processing, 'rcr_passing_events.npz'
+    )
+    output_npz = os.path.join(
+        'HRAStationDataAnalysis', 'ErrorAnalysis', 'output',
+        date_processing, 'rcr_passing_events_with_angles.npz'
+    )
+    plots_dir  = os.path.join(
+        'HRAStationDataAnalysis', 'ErrorAnalysis', 'plots',
+        date_processing, 'rcr_single_station_plots'
+    )
+
+    ic(f'date_processing={date_processing}')
+
+    # -----------------------------------------------------------------------
     # 1. Load events
     # -----------------------------------------------------------------------
-    ic(f'Loading events from: {INPUT_NPZ}')
-    events = load_rcr_events(INPUT_NPZ)
+    ic(f'Loading events from: {input_npz}')
+    events = load_rcr_events(input_npz)
     N = len(events['station_ids'])
     ic(f'Loaded {N} events.')
 
@@ -391,14 +415,14 @@ def main():
     # -----------------------------------------------------------------------
     # 5. Save updated .npz (all original arrays, updated azi/zen)
     # -----------------------------------------------------------------------
-    os.makedirs(os.path.dirname(OUTPUT_NPZ), exist_ok=True)
+    os.makedirs(os.path.dirname(output_npz), exist_ok=True)
 
     save_dict = {key: events[key] for key in events}
     save_dict['azi'] = azi_out
     save_dict['zen'] = zen_out
 
-    np.savez_compressed(OUTPUT_NPZ, **save_dict)
-    ic(f'Saved updated events to: {OUTPUT_NPZ}')
+    np.savez_compressed(output_npz, **save_dict)
+    ic(f'Saved updated events to: {output_npz}')
 
     # Quick summary of how many now have valid angles
     valid_mask = np.isfinite(azi_out) & np.isfinite(zen_out) \
@@ -408,8 +432,8 @@ def main():
     # -----------------------------------------------------------------------
     # 6. Plots
     # -----------------------------------------------------------------------
-    polar_path = os.path.join(PLOTS_DIR, 'zen_azi_distribution.png')
-    scatter_path = os.path.join(PLOTS_DIR, 'zen_azi_distribution_2d.png')
+    polar_path = os.path.join(plots_dir, 'zen_azi_distribution.png')
+    scatter_path = os.path.join(plots_dir, 'zen_azi_distribution_2d.png')
 
     plot_polar(azi_out, zen_out, events['station_ids'], polar_path)
     plot_2d(azi_out, zen_out, events['station_ids'], scatter_path)
