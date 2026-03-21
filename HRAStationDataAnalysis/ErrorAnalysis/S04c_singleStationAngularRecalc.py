@@ -245,140 +245,143 @@ def recalc_angles_for_station(station_id, target_indices, events,
 # Plotting
 # ---------------------------------------------------------------------------
 
-def plot_polar(azi, zen, station_ids, save_path, categories=None):
+def plot_polar(azi, zen, station_ids, save_path,
+               categories_chircr=None, categories_chidiff=None, categories_combined=None):
     """
     Polar (compass-style) azimuth-zenith scatter plot.
+
+    Saves three separate files (one per categorization system), derived from
+    save_path by inserting _chircr, _chidiff, _combined before the extension.
 
     Axes: North up, clockwise convention (standard for arrival-direction plots).
     Radial axis: zenith in degrees (0 at centre = vertical).
     Angular axis: azimuth in radians (NuRadioReco convention).
     """
-    fig = plt.figure(figsize=(8, 8))
-    ax  = fig.add_subplot(111, polar=True)
+    def _render_and_save(cat_array, out_path, subtitle):
+        fig = plt.figure(figsize=(8, 8))
+        ax  = fig.add_subplot(111, polar=True)
+        ax.set_theta_zero_location('N')
+        ax.set_theta_direction(-1)
+        ax.set_rlabel_position(22.5)
+        ax.set_rlim(0, 90)
+        ax.set_rticks([0, 30, 60, 90])
+        ax.grid(True, linestyle='--', alpha=0.5)
 
-    # North at top, angles increase clockwise (compass convention)
-    ax.set_theta_zero_location('N')
-    ax.set_theta_direction(-1)
+        present_stations = sorted(set(int(s) for s in station_ids))
+        _CAT_MARKERS = {CATEGORY_ALWAYS: 'o', CATEGORY_NOMINAL: '^', CATEGORY_ADDITIONAL: '*'}
+        _CAT_SIZES   = {CATEGORY_ALWAYS: 60,  CATEGORY_NOMINAL: 70,  CATEGORY_ADDITIONAL: 120}
 
-    ax.set_rlabel_position(22.5)   # Push radial tick labels away from data
-    ax.set_rlim(0, 90)
-    ax.set_rticks([0, 30, 60, 90])
-    ax.grid(True, linestyle='--', alpha=0.5)
+        for i in range(len(station_ids)):
+            a = azi[i]; z = zen[i]
+            if not (np.isfinite(a) and np.isfinite(z)):
+                continue
+            if a == 0.0 and z == 0.0:
+                continue
+            color = COLOR_MAP.get(int(station_ids[i]), 'gray')
+            cat = int(cat_array[i]) if cat_array is not None and len(cat_array) > i else CATEGORY_NOMINAL
+            ax.scatter(a, np.degrees(z), c=color,
+                       marker=_CAT_MARKERS.get(cat, 'o'),
+                       s=_CAT_SIZES.get(cat, 60), alpha=0.9, zorder=3)
 
-    present_stations = sorted(set(int(s) for s in station_ids))
+        handles = [Line2D([0], [0], marker='o', color='w',
+                          markerfacecolor=COLOR_MAP.get(sid, 'gray'),
+                          markersize=10, label=f'St {sid}')
+                   for sid in present_stations]
+        ax.legend(handles=handles, loc='upper right', bbox_to_anchor=(1.3, 1.1), title='Station')
 
-    # Marker per category: always=circle (default), nominal=triangle, additional=star
-    _CAT_MARKERS = {CATEGORY_ALWAYS: 'o', CATEGORY_NOMINAL: '^', CATEGORY_ADDITIONAL: '*'}
-    _CAT_SIZES   = {CATEGORY_ALWAYS: 60,  CATEGORY_NOMINAL: 70,  CATEGORY_ADDITIONAL: 120}
+        cat_handles = [
+            Line2D([0], [0], marker='o', color='k', linestyle='None',
+                   markerfacecolor='gray', markersize=8, label='Always (tighter cuts)'),
+            Line2D([0], [0], marker='^', color='k', linestyle='None',
+                   markerfacecolor='gray', markersize=8, label='Nominal (could fail)'),
+            Line2D([0], [0], marker='*', color='k', linestyle='None',
+                   markerfacecolor='gray', markersize=10, label='Additional (looser cuts)'),
+        ]
+        ax.legend(handles=cat_handles, loc='lower right', title='Category', fontsize=9)
+        ax.set_title(f'Single-Station RCR Events: Azimuth-Zenith ({subtitle})', pad=20)
 
-    for i in range(len(station_ids)):
-        a = azi[i]
-        z = zen[i]
-        # Skip missing or zero-zero (unfilled)
-        if not (np.isfinite(a) and np.isfinite(z)):
-            continue
-        if a == 0.0 and z == 0.0:
-            continue
-        color = COLOR_MAP.get(int(station_ids[i]), 'gray')
-        cat = int(categories[i]) if categories is not None and len(categories) > i else CATEGORY_NOMINAL
-        marker = _CAT_MARKERS.get(cat, 'o')
-        msize  = _CAT_SIZES.get(cat, 60)
-        ax.scatter(a, np.degrees(z), c=color, marker=marker, s=msize, alpha=0.9, zorder=3)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        fig.savefig(out_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        ic(f'Saved polar plot: {out_path}')
 
-    # Legend: only stations that actually appear in the dataset
-    handles = [
-        Line2D([0], [0], marker='o', color='w',
-               markerfacecolor=COLOR_MAP.get(sid, 'gray'),
-               markersize=10, label=f'St {sid}')
-        for sid in present_stations
-    ]
-    ax.legend(handles=handles, loc='upper right',
-              bbox_to_anchor=(1.3, 1.1), title='Station')
-
-    # Category marker legend
-    cat_handles = [
-        Line2D([0], [0], marker='o', color='k', linestyle='None',
-               markerfacecolor='gray', markersize=8, label='Always (tighter cuts)'),
-        Line2D([0], [0], marker='^', color='k', linestyle='None',
-               markerfacecolor='gray', markersize=8, label='Nominal (could fail)'),
-        Line2D([0], [0], marker='*', color='k', linestyle='None',
-               markerfacecolor='gray', markersize=10, label='Additional (looser cuts)'),
-    ]
-    ax.legend(handles=cat_handles, loc='lower right', title='Category', fontsize=9)
-
-    ax.set_title('Single-Station RCR Events: Azimuth-Zenith Distribution',
-                 pad=20)
-
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    fig.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    ic(f'Saved polar plot: {save_path}')
+    base, ext = os.path.splitext(save_path)
+    _render_and_save(categories_chircr,   f"{base}_chircr{ext}",   "chi-RCR variation")
+    _render_and_save(categories_chidiff,  f"{base}_chidiff{ext}",  "chi-diff variation")
+    _render_and_save(categories_combined, f"{base}_combined{ext}", "combined")
 
 
-def plot_2d(azi, zen, station_ids, save_path, categories=None):
+def plot_2d(azi, zen, station_ids, save_path,
+            categories_chircr=None, categories_chidiff=None, categories_combined=None):
     """
     Flat 2D scatter: azimuth (degrees, x-axis) vs zenith (degrees, y-axis).
 
+    Saves three separate files (one per categorization system), derived from
+    save_path by inserting _chircr, _chidiff, _combined before the extension.
+
     Provides an easier read for precise angle values than the polar plot.
     """
-    fig, ax = plt.subplots(figsize=(10, 7))
+    def _render_and_save_2d(cat_array, out_path, subtitle):
+        fig, ax = plt.subplots(figsize=(10, 7))
 
-    present_stations = sorted(set(int(s) for s in station_ids))
+        present_stations = sorted(set(int(s) for s in station_ids))
+        station_ids_int = np.array([int(s) for s in station_ids])
 
-    _CAT_MARKERS_2D = {CATEGORY_ALWAYS: 'o', CATEGORY_NOMINAL: '^', CATEGORY_ADDITIONAL: '*'}
-    _CAT_SIZES_2D   = {CATEGORY_ALWAYS: 60,  CATEGORY_NOMINAL: 70,  CATEGORY_ADDITIONAL: 120}
+        for sid in present_stations:
+            sid_mask = station_ids_int == sid
+            a = np.degrees(azi[sid_mask])
+            z = np.degrees(zen[sid_mask])
+            valid = np.isfinite(a) & np.isfinite(z) & ~((a == 0.0) & (z == 0.0))
+            color = COLOR_MAP.get(sid, 'gray')
+            cats_for_sid = (cat_array[sid_mask] if cat_array is not None
+                            else np.full(np.sum(sid_mask), CATEGORY_NOMINAL))
+            # Plot each category separately to vary marker
+            first_for_station = True
+            for cat_val, marker, msize in [
+                (CATEGORY_ALWAYS, 'o', 60),
+                (CATEGORY_NOMINAL, '^', 70),
+                (CATEGORY_ADDITIONAL, '*', 120),
+            ]:
+                cat_mask = valid & (cats_for_sid == cat_val)
+                if not np.any(cat_mask):
+                    continue
+                label = f'St {sid}' if first_for_station else '_nolegend_'
+                ax.scatter(a[cat_mask], z[cat_mask],
+                           c=color, marker=marker, s=msize, alpha=0.85,
+                           label=label, zorder=3)
+                first_for_station = False
 
-    station_ids_int = np.array([int(s) for s in station_ids])
-    for sid in present_stations:
-        sid_mask = station_ids_int == sid
-        a = np.degrees(azi[sid_mask])
-        z = np.degrees(zen[sid_mask])
-        valid = np.isfinite(a) & np.isfinite(z) & ~((a == 0.0) & (z == 0.0))
-        color = COLOR_MAP.get(sid, 'gray')
-        cats_for_sid = (categories[sid_mask] if categories is not None
-                        else np.full(np.sum(sid_mask), CATEGORY_NOMINAL))
-        # Plot each category separately to vary marker
-        first_for_station = True
-        for cat_val, marker, msize in [
-            (CATEGORY_ALWAYS, 'o', 60),
-            (CATEGORY_NOMINAL, '^', 70),
-            (CATEGORY_ADDITIONAL, '*', 120),
-        ]:
-            cat_mask = valid & (cats_for_sid == cat_val)
-            if not np.any(cat_mask):
-                continue
-            label = f'St {sid}' if first_for_station else '_nolegend_'
-            ax.scatter(a[cat_mask], z[cat_mask],
-                       c=color, marker=marker, s=msize, alpha=0.85,
-                       label=label, zorder=3)
-            first_for_station = False
+        ax.set_xlabel('Azimuth (degrees)', fontsize=13)
+        ax.set_ylabel('Zenith (degrees)', fontsize=13)
+        ax.set_xlim(0, 360)
+        ax.set_ylim(0, 90)
+        ax.set_xticks(range(0, 361, 45))
+        ax.set_yticks(range(0, 91, 15))
+        ax.grid(True, linestyle='--', alpha=0.4)
+        ax.legend(title='Station', loc='upper right')
 
-    ax.set_xlabel('Azimuth (degrees)', fontsize=13)
-    ax.set_ylabel('Zenith (degrees)', fontsize=13)
-    ax.set_xlim(0, 360)
-    ax.set_ylim(0, 90)
-    ax.set_xticks(range(0, 361, 45))
-    ax.set_yticks(range(0, 91, 15))
-    ax.grid(True, linestyle='--', alpha=0.4)
-    ax.legend(title='Station', loc='upper right')
+        # Category marker legend
+        cat_handles_2d = [
+            Line2D([0], [0], marker='o', color='k', linestyle='None',
+                   markerfacecolor='gray', markersize=8, label='Always (tighter cuts)'),
+            Line2D([0], [0], marker='^', color='k', linestyle='None',
+                   markerfacecolor='gray', markersize=8, label='Nominal (could fail)'),
+            Line2D([0], [0], marker='*', color='k', linestyle='None',
+                   markerfacecolor='gray', markersize=10, label='Additional (looser cuts)'),
+        ]
+        ax.legend(handles=cat_handles_2d, title='Category', loc='lower right', fontsize=9)
+        ax.set_title(f'Single-Station RCR Events: Azimuth-Zenith Distribution (2D) ({subtitle})',
+                     fontsize=14)
 
-    # Category marker legend
-    cat_handles_2d = [
-        Line2D([0], [0], marker='o', color='k', linestyle='None',
-               markerfacecolor='gray', markersize=8, label='Always (tighter cuts)'),
-        Line2D([0], [0], marker='^', color='k', linestyle='None',
-               markerfacecolor='gray', markersize=8, label='Nominal (could fail)'),
-        Line2D([0], [0], marker='*', color='k', linestyle='None',
-               markerfacecolor='gray', markersize=10, label='Additional (looser cuts)'),
-    ]
-    ax.legend(handles=cat_handles_2d, title='Category', loc='lower right', fontsize=9)
-    ax.set_title('Single-Station RCR Events: Azimuth-Zenith Distribution (2D)',
-                 fontsize=14)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        fig.savefig(out_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        ic(f'Saved 2D scatter plot: {out_path}')
 
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    fig.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    ic(f'Saved 2D scatter plot: {save_path}')
+    base, ext = os.path.splitext(save_path)
+    _render_and_save_2d(categories_chircr,   f"{base}_chircr{ext}",   "chi-RCR variation")
+    _render_and_save_2d(categories_chidiff,  f"{base}_chidiff{ext}",  "chi-diff variation")
+    _render_and_save_2d(categories_combined, f"{base}_combined{ext}", "combined")
 
 
 # ---------------------------------------------------------------------------
@@ -484,9 +487,15 @@ def main():
     polar_path = os.path.join(plots_dir, 'zen_azi_distribution.png')
     scatter_path = os.path.join(plots_dir, 'zen_azi_distribution_2d.png')
 
-    categories = events.get('category', None)
-    plot_polar(azi_out, zen_out, events['station_ids'], polar_path, categories=categories)
-    plot_2d(azi_out, zen_out, events['station_ids'], scatter_path, categories=categories)
+    cat_chircr   = events.get('category_chircr',   None)
+    cat_chidiff  = events.get('category_chidiff',  None)
+    cat_combined = events.get('category_combined', None)
+    plot_polar(azi_out, zen_out, events['station_ids'], polar_path,
+               categories_chircr=cat_chircr, categories_chidiff=cat_chidiff,
+               categories_combined=cat_combined)
+    plot_2d(azi_out, zen_out, events['station_ids'], scatter_path,
+            categories_chircr=cat_chircr, categories_chidiff=cat_chidiff,
+            categories_combined=cat_combined)
 
     ic('Done.')
 

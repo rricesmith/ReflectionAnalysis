@@ -46,17 +46,22 @@ NOMINAL_CUTS = {
     'chi_diff_max': 0.2,
 }
 
-# Cut variants for the ±0.05 chi_diff_threshold error band.
-# These bracket the nominal 9(+3/-2) event count prediction from S03b.
-# UPPER_CUTS (looser): chi_diff_threshold lowered → 3 more events can pass
-UPPER_CUTS = {**NOMINAL_CUTS, 'chi_diff_threshold': NOMINAL_CUTS['chi_diff_threshold'] - 0.05}
-# LOWER_CUTS (tighter): chi_diff_threshold raised → 2 fewer events pass
-LOWER_CUTS = {**NOMINAL_CUTS, 'chi_diff_threshold': NOMINAL_CUTS['chi_diff_threshold'] + 0.05}
+# ---------------------------------------------------------------------------
+# Cut variants for error-band categorization
+# ---------------------------------------------------------------------------
+# chi_rcr variation (from the chi_diff_threshold scan cross-cut: 0.74–0.76)
+# These produce the 9(+3/-2) event count seen in the thesis.
+UPPER_CHIRCR = {**NOMINAL_CUTS, 'chi_rcr_line_chi': np.full_like(NOMINAL_CUTS['chi_rcr_line_chi'], 0.74)}
+LOWER_CHIRCR = {**NOMINAL_CUTS, 'chi_rcr_line_chi': np.full_like(NOMINAL_CUTS['chi_rcr_line_chi'], 0.76)}
 
-# Integer category labels saved in the npz alongside each event
-CATEGORY_ALWAYS     = 0  # passes even LOWER_CUTS — always identified as RCR
-CATEGORY_NOMINAL    = 1  # passes NOMINAL but not LOWER — could fail tighter cuts
-CATEGORY_ADDITIONAL = 2  # passes UPPER but not NOMINAL — additionally identified
+# chi_diff variation (from the chi_rcr_flat scan cross-cut: ±0.05)
+UPPER_CHIDIFF = {**NOMINAL_CUTS, 'chi_diff_threshold': NOMINAL_CUTS['chi_diff_threshold'] - 0.05}
+LOWER_CHIDIFF = {**NOMINAL_CUTS, 'chi_diff_threshold': NOMINAL_CUTS['chi_diff_threshold'] + 0.05}
+
+# Integer category labels (same values used for all three categorization systems)
+CATEGORY_ALWAYS     = 0  # passes even the tighter (LOWER) cut
+CATEGORY_NOMINAL    = 1  # passes nominal but not tighter — could fail
+CATEGORY_ADDITIONAL = 2  # passes looser (UPPER) but not nominal — could additionally pass
 
 # Events excluded from analysis (double-counted)
 EXCLUDED_EVENTS = [
@@ -166,18 +171,22 @@ def iterate_rcr_events(filepath):
     Generator that yields one event at a time as a dict.
 
     Each yielded dict contains:
-        'station_id' : int
-        'event_id'   : int
-        'time'       : float (Unix timestamp)
-        'traces'     : ndarray (4, 256)
-        'snr'        : float
-        'chi_rcr'    : float
-        'chi_2016'   : float
-        'chi_bad'    : float
-        'azi'        : float
-        'zen'        : float
-        'category'   : int (0=always, 1=nominal, 2=additional) — present only if
-                       the npz was built with cut-variant labelling (S04b v2+)
+        'station_id'      : int
+        'event_id'        : int
+        'time'            : float (Unix timestamp)
+        'traces'          : ndarray (4, 256)
+        'snr'             : float
+        'chi_rcr'         : float
+        'chi_2016'        : float
+        'chi_bad'         : float
+        'azi'             : float
+        'zen'             : float
+        'category_chircr' : int (0=always, 1=nominal, 2=additional) — present only if
+                            the npz was built with chi_rcr-axis labelling (S04b v3+)
+        'category_chidiff': int (0=always, 1=nominal, 2=additional) — present only if
+                            the npz was built with chi_diff-axis labelling (S04b v3+)
+        'category_combined': int (0=always, 1=nominal, 2=additional) — present only if
+                            the npz was built with combined labelling (S04b v3+)
 
     Example:
         for evt in iterate_rcr_events('rcr_passing_events.npz'):
@@ -186,7 +195,9 @@ def iterate_rcr_events(filepath):
     """
     events = load_rcr_events(filepath)
     n = len(events['station_ids'])
-    has_category = 'category' in events
+    has_cat_chircr   = 'category_chircr'   in events
+    has_cat_chidiff  = 'category_chidiff'  in events
+    has_cat_combined = 'category_combined' in events
     for i in range(n):
         evt = {
             'station_id': int(events['station_ids'][i]),
@@ -200,8 +211,12 @@ def iterate_rcr_events(filepath):
             'azi':        float(events['azi'][i]),
             'zen':        float(events['zen'][i]),
         }
-        if has_category:
-            evt['category'] = int(events['category'][i])
+        if has_cat_chircr:
+            evt['category_chircr']   = int(events['category_chircr'][i])
+        if has_cat_chidiff:
+            evt['category_chidiff']  = int(events['category_chidiff'][i])
+        if has_cat_combined:
+            evt['category_combined'] = int(events['category_combined'][i])
         yield evt
 
 

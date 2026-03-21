@@ -34,8 +34,8 @@ from HRAStationDataAnalysis.ErrorAnalysis.S03b_saveRCRPassingEvents import (
     apply_rcr_cuts,
     iterate_rcr_events,
     NOMINAL_CUTS,
-    UPPER_CUTS,
-    LOWER_CUTS,
+    UPPER_CHIRCR, LOWER_CHIRCR,
+    UPPER_CHIDIFF, LOWER_CHIDIFF,
     CATEGORY_ALWAYS,
     CATEGORY_NOMINAL,
     CATEGORY_ADDITIONAL,
@@ -80,7 +80,7 @@ def collect_and_save_rcr_events(date, date_cuts, output_path):
     out_traces, out_snr, out_chi_rcr           = [], [], []
     out_chi_2016, out_chi_bad                  = [], []
     out_azi, out_zen                            = [], []
-    out_categories                              = []
+    out_cat_chircr, out_cat_chidiff, out_cat_combined = [], [], []
 
     excluded_set = set(EXCLUDED_EVENTS)
 
@@ -139,23 +139,40 @@ def collect_and_save_rcr_events(date, date_cuts, output_path):
         evtids_cut         = evtids_cut[keep]
         final_indices_filt = final_indices_filt[keep]
 
-        # Apply three cut variants: upper (loose), nominal, lower (tight)
-        upper_mask = apply_rcr_cuts(snr_cut, chircr_cut, chi2016_cut, UPPER_CUTS)
-        nom_mask   = apply_rcr_cuts(snr_cut, chircr_cut, chi2016_cut, NOMINAL_CUTS)
-        lower_mask = apply_rcr_cuts(snr_cut, chircr_cut, chi2016_cut, LOWER_CUTS)
+        # Apply all cut variants for both variation axes
+        upper_chircr_mask  = apply_rcr_cuts(snr_cut, chircr_cut, chi2016_cut, UPPER_CHIRCR)
+        lower_chircr_mask  = apply_rcr_cuts(snr_cut, chircr_cut, chi2016_cut, LOWER_CHIRCR)
+        upper_chidiff_mask = apply_rcr_cuts(snr_cut, chircr_cut, chi2016_cut, UPPER_CHIDIFF)
+        lower_chidiff_mask = apply_rcr_cuts(snr_cut, chircr_cut, chi2016_cut, LOWER_CHIDIFF)
+        nom_mask           = apply_rcr_cuts(snr_cut, chircr_cut, chi2016_cut, NOMINAL_CUTS)
 
-        # Collect all events passing the loosest cuts
-        rcr_mask  = upper_mask
+        # Collect all events passing EITHER upper cut (union)
+        rcr_mask  = upper_chircr_mask | upper_chidiff_mask
         n_passing = int(np.sum(rcr_mask))
-        ic(f"  Station {station_id}: {n_passing} events in upper-cut window "
-           f"({int(np.sum(lower_mask))} always, "
-           f"{int(np.sum(nom_mask & ~lower_mask))} nominal-only, "
-           f"{int(np.sum(upper_mask & ~nom_mask))} additional)")
+        ic(f"  Station {station_id}: {n_passing} events in union of upper cuts "
+           f"(chircr: {int(np.sum(upper_chircr_mask))} / "
+           f"chidiff: {int(np.sum(upper_chidiff_mask))})")
 
-        # Assign category per passing event using boolean indexing
-        cat_array = np.where(
-            lower_mask[rcr_mask], CATEGORY_ALWAYS,
+        # Category per passing event — three independent categorization systems
+        # chi_rcr variation: which chi_rcr threshold does each event pass?
+        cat_chircr = np.where(
+            lower_chircr_mask[rcr_mask], CATEGORY_ALWAYS,
             np.where(nom_mask[rcr_mask], CATEGORY_NOMINAL, CATEGORY_ADDITIONAL)
+        ).astype(np.int8)
+
+        # chi_diff variation: which chi_diff threshold does each event pass?
+        cat_chidiff = np.where(
+            lower_chidiff_mask[rcr_mask], CATEGORY_ALWAYS,
+            np.where(nom_mask[rcr_mask], CATEGORY_NOMINAL, CATEGORY_ADDITIONAL)
+        ).astype(np.int8)
+
+        # Combined: always = passes BOTH lowers, additional = passes EITHER upper
+        #           but not both nominals, nominal = passes both nominals but not both lowers
+        both_lower = lower_chircr_mask[rcr_mask] & lower_chidiff_mask[rcr_mask]
+        either_upper_not_nom = (upper_chircr_mask[rcr_mask] | upper_chidiff_mask[rcr_mask]) & ~nom_mask[rcr_mask]
+        cat_combined = np.where(
+            both_lower, CATEGORY_ALWAYS,
+            np.where(either_upper_not_nom, CATEGORY_ADDITIONAL, CATEGORY_NOMINAL)
         ).astype(np.int8)
 
         if n_passing == 0:
@@ -188,7 +205,9 @@ def collect_and_save_rcr_events(date, date_cuts, output_path):
         out_chi_bad.append(chi_bad_pass)
         out_azi.append(azi_pass)
         out_zen.append(zen_pass)
-        out_categories.append(cat_array)
+        out_cat_chircr.append(cat_chircr)
+        out_cat_chidiff.append(cat_chidiff)
+        out_cat_combined.append(cat_combined)
 
     if not out_snr:
         ic("No events passed RCR cuts across any station.")
@@ -205,7 +224,9 @@ def collect_and_save_rcr_events(date, date_cuts, output_path):
         'chi_bad':     np.concatenate(out_chi_bad),
         'azi':         np.concatenate(out_azi),
         'zen':         np.concatenate(out_zen),
-        'category':    np.concatenate(out_categories),
+        'category_chircr':   np.concatenate(out_cat_chircr),
+        'category_chidiff':  np.concatenate(out_cat_chidiff),
+        'category_combined': np.concatenate(out_cat_combined),
     }
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -297,17 +318,33 @@ def plot_event(evt, output_dir):
         bbox=dict(boxstyle='round,pad=0.4', fc='wheat', alpha=0.7)
     )
 
-    # --- Save ---
     plt.tight_layout()
-    _cat_labels = {0: 'always', 1: 'nominal', 2: 'additional'}
-    cat = evt.get('category', 1)  # default to nominal if not present
-    cat_tag = _cat_labels.get(int(cat), 'nominal')
-    filename = f"event_{evt['station_id']}_{evt['event_id']}_{cat_tag}.png"
-    save_path = os.path.join(output_dir, filename)
-    fig.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
 
-    return save_path
+    _cat_labels = {0: 'always', 1: 'nominal', 2: 'additional'}
+
+    # Save to each variation folder using the appropriate category for that system
+    systems = [
+        ('chircr_variation',  evt.get('category_chircr',  CATEGORY_NOMINAL)),
+        ('chidiff_variation', evt.get('category_chidiff', CATEGORY_NOMINAL)),
+        ('combined',          evt.get('category_combined', CATEGORY_NOMINAL)),
+    ]
+    saved_paths = []
+    for subfolder, cat in systems:
+        cat_tag = _cat_labels.get(int(cat), 'nominal')
+        folder = os.path.join(output_dir, subfolder)
+        os.makedirs(folder, exist_ok=True)
+        filename = f"event_{evt['station_id']}_{evt['event_id']}_{cat_tag}.png"
+        save_path = os.path.join(folder, filename)
+        # Only the first save actually writes; subsequent ones copy to avoid re-rendering
+        if not saved_paths:
+            fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        else:
+            import shutil
+            shutil.copy2(saved_paths[0], save_path)
+        saved_paths.append(save_path)
+
+    plt.close(fig)
+    return saved_paths[0] if saved_paths else None
 
 
 # ============================================================================
