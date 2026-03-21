@@ -34,6 +34,11 @@ from HRAStationDataAnalysis.ErrorAnalysis.S03b_saveRCRPassingEvents import (
     apply_rcr_cuts,
     iterate_rcr_events,
     NOMINAL_CUTS,
+    UPPER_CUTS,
+    LOWER_CUTS,
+    CATEGORY_ALWAYS,
+    CATEGORY_NOMINAL,
+    CATEGORY_ADDITIONAL,
     SNR_PREFILTER,
     EXCLUDED_EVENTS,
     STATION_IDS,
@@ -75,6 +80,7 @@ def collect_and_save_rcr_events(date, date_cuts, output_path):
     out_traces, out_snr, out_chi_rcr           = [], [], []
     out_chi_2016, out_chi_bad                  = [], []
     out_azi, out_zen                            = [], []
+    out_categories                              = []
 
     excluded_set = set(EXCLUDED_EVENTS)
 
@@ -133,10 +139,24 @@ def collect_and_save_rcr_events(date, date_cuts, output_path):
         evtids_cut         = evtids_cut[keep]
         final_indices_filt = final_indices_filt[keep]
 
-        # Apply RCR cuts
-        rcr_mask  = apply_rcr_cuts(snr_cut, chircr_cut, chi2016_cut, NOMINAL_CUTS)
+        # Apply three cut variants: upper (loose), nominal, lower (tight)
+        upper_mask = apply_rcr_cuts(snr_cut, chircr_cut, chi2016_cut, UPPER_CUTS)
+        nom_mask   = apply_rcr_cuts(snr_cut, chircr_cut, chi2016_cut, NOMINAL_CUTS)
+        lower_mask = apply_rcr_cuts(snr_cut, chircr_cut, chi2016_cut, LOWER_CUTS)
+
+        # Collect all events passing the loosest cuts
+        rcr_mask  = upper_mask
         n_passing = int(np.sum(rcr_mask))
-        ic(f"  Station {station_id}: {n_passing} events pass RCR cuts (out of {len(snr_cut)})")
+        ic(f"  Station {station_id}: {n_passing} events in upper-cut window "
+           f"({int(np.sum(lower_mask))} always, "
+           f"{int(np.sum(nom_mask & ~lower_mask))} nominal-only, "
+           f"{int(np.sum(upper_mask & ~nom_mask))} additional)")
+
+        # Assign category per passing event using boolean indexing
+        cat_array = np.where(
+            lower_mask[rcr_mask], CATEGORY_ALWAYS,
+            np.where(nom_mask[rcr_mask], CATEGORY_NOMINAL, CATEGORY_ADDITIONAL)
+        ).astype(np.int8)
 
         if n_passing == 0:
             continue
@@ -168,6 +188,7 @@ def collect_and_save_rcr_events(date, date_cuts, output_path):
         out_chi_bad.append(chi_bad_pass)
         out_azi.append(azi_pass)
         out_zen.append(zen_pass)
+        out_categories.append(cat_array)
 
     if not out_snr:
         ic("No events passed RCR cuts across any station.")
@@ -184,6 +205,7 @@ def collect_and_save_rcr_events(date, date_cuts, output_path):
         'chi_bad':     np.concatenate(out_chi_bad),
         'azi':         np.concatenate(out_azi),
         'zen':         np.concatenate(out_zen),
+        'category':    np.concatenate(out_categories),
     }
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -277,7 +299,10 @@ def plot_event(evt, output_dir):
 
     # --- Save ---
     plt.tight_layout()
-    filename = f"event_{evt['station_id']}_{evt['event_id']}.png"
+    _cat_labels = {0: 'always', 1: 'nominal', 2: 'additional'}
+    cat = evt.get('category', 1)  # default to nominal if not present
+    cat_tag = _cat_labels.get(int(cat), 'nominal')
+    filename = f"event_{evt['station_id']}_{evt['event_id']}_{cat_tag}.png"
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close(fig)

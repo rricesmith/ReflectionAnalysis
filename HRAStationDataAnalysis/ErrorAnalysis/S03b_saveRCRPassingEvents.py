@@ -46,6 +46,18 @@ NOMINAL_CUTS = {
     'chi_diff_max': 0.2,
 }
 
+# Cut variants for the ±0.05 chi_diff_threshold error band.
+# These bracket the nominal 9(+3/-2) event count prediction from S03b.
+# UPPER_CUTS (looser): chi_diff_threshold lowered → 3 more events can pass
+UPPER_CUTS = {**NOMINAL_CUTS, 'chi_diff_threshold': NOMINAL_CUTS['chi_diff_threshold'] - 0.05}
+# LOWER_CUTS (tighter): chi_diff_threshold raised → 2 fewer events pass
+LOWER_CUTS = {**NOMINAL_CUTS, 'chi_diff_threshold': NOMINAL_CUTS['chi_diff_threshold'] + 0.05}
+
+# Integer category labels saved in the npz alongside each event
+CATEGORY_ALWAYS     = 0  # passes even LOWER_CUTS — always identified as RCR
+CATEGORY_NOMINAL    = 1  # passes NOMINAL but not LOWER — could fail tighter cuts
+CATEGORY_ADDITIONAL = 2  # passes UPPER but not NOMINAL — additionally identified
+
 # Events excluded from analysis (double-counted)
 EXCLUDED_EVENTS = [
     (18, 82), (18, 520), (18, 681),
@@ -164,6 +176,8 @@ def iterate_rcr_events(filepath):
         'chi_bad'    : float
         'azi'        : float
         'zen'        : float
+        'category'   : int (0=always, 1=nominal, 2=additional) — present only if
+                       the npz was built with cut-variant labelling (S04b v2+)
 
     Example:
         for evt in iterate_rcr_events('rcr_passing_events.npz'):
@@ -172,8 +186,9 @@ def iterate_rcr_events(filepath):
     """
     events = load_rcr_events(filepath)
     n = len(events['station_ids'])
+    has_category = 'category' in events
     for i in range(n):
-        yield {
+        evt = {
             'station_id': int(events['station_ids'][i]),
             'event_id':   int(events['event_ids'][i]),
             'time':       float(events['times'][i]),
@@ -185,6 +200,9 @@ def iterate_rcr_events(filepath):
             'azi':        float(events['azi'][i]),
             'zen':        float(events['zen'][i]),
         }
+        if has_category:
+            evt['category'] = int(events['category'][i])
+        yield evt
 
 
 # ============================================================================
