@@ -236,32 +236,42 @@ def plot_event(evt, output_dir):
     )
 
     # --- Left panel: waveform trace ---
-    ax_trace.plot(time_ax_ns, trace, lw=1.0)
+    ax_trace.plot(time_ax_ns, trace, lw=1.5)
     ax_trace.set_xlabel('Time (ns)')
     ax_trace.set_ylabel('Voltage (V)')
-    ax_trace.set_title(f'Channel {selected_ch} (loudest)')
     ax_trace.grid(True)
 
     # --- Right panel: frequency spectrum ---
-    ax_spectrum.plot(freq_ax_ghz, spectrum, lw=1.0)
+    ax_spectrum.plot(freq_ax_ghz, spectrum, lw=1.5)
     ax_spectrum.set_xlabel('Frequency (GHz)')
     ax_spectrum.set_ylabel('Amplitude')
-    ax_spectrum.set_title('Frequency Spectrum')
     ax_spectrum.set_xlim(0, 1)
     ax_spectrum.grid(True)
 
-    # --- Textbox: SNR and chi values in upper-right of spectrum panel ---
-    # Use LaTeX for Greek letters with subscripts
+    # --- Textbox: SNR, chi values, and arrival angles in upper-right of spectrum panel ---
+    # Use LaTeX for Greek letters with subscripts; convert angles from radians to degrees
+    azi_val = evt.get('azi', float('nan'))
+    zen_val = evt.get('zen', float('nan'))
+    if (np.isfinite(azi_val) and np.isfinite(zen_val)
+            and not (azi_val == 0.0 and zen_val == 0.0)):
+        azi_str = f"{np.degrees(azi_val) % 360:.1f}"
+        zen_str = f"{np.degrees(zen_val):.1f}"
+    else:
+        azi_str = "N/A"
+        zen_str = "N/A"
+
     textbox_str = (
         f"SNR = {evt['snr']:.1f}\n"
         r"$\chi_\mathrm{RCR}$" + f" = {evt['chi_rcr']:.2f}\n"
-        r"$\chi_\mathrm{BL}$"  + f" = {evt['chi_2016']:.2f}"
+        r"$\chi_\mathrm{BL}$"  + f" = {evt['chi_2016']:.2f}\n"
+        f"Zen = {zen_str} deg\n"
+        f"Azi = {azi_str} deg"
     )
     ax_spectrum.text(
         0.97, 0.95, textbox_str,
         transform=ax_spectrum.transAxes,
         ha='right', va='top',
-        fontsize=14,
+        fontsize=11,
         bbox=dict(boxstyle='round,pad=0.4', fc='wheat', alpha=0.7)
     )
 
@@ -293,10 +303,19 @@ if __name__ == '__main__':
     date_cuts       = config['PARAMETERS']['date_cuts']
     date_processing = config['PARAMETERS']['date_processing']
 
-    input_file  = os.path.join(
+    input_file = os.path.join(
         'HRAStationDataAnalysis', 'ErrorAnalysis', 'output',
         date_processing, 'rcr_passing_events.npz'
     )
+    # Prefer the angles-updated file written by S04c when available
+    input_file_with_angles = os.path.join(
+        'HRAStationDataAnalysis', 'ErrorAnalysis', 'output',
+        date_processing, 'rcr_passing_events_with_angles.npz'
+    )
+    if os.path.exists(input_file_with_angles):
+        ic(f"Using angles-updated file from S04c: {input_file_with_angles}")
+        input_file = input_file_with_angles
+
     output_dir  = os.path.join(
         'HRAStationDataAnalysis', 'ErrorAnalysis', 'plots',
         date_processing, 'rcr_single_station_plots'
