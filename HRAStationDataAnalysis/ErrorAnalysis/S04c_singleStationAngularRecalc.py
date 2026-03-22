@@ -246,7 +246,8 @@ def recalc_angles_for_station(station_id, target_indices, events,
 # ---------------------------------------------------------------------------
 
 def plot_polar(azi, zen, station_ids, save_path,
-               categories_chircr=None, categories_chidiff=None, categories_combined=None):
+               categories_chircr=None, categories_chidiff=None, categories_combined=None,
+               in_chircr=None, in_chidiff=None):
     """
     Polar (compass-style) azimuth-zenith scatter plot.
 
@@ -257,7 +258,7 @@ def plot_polar(azi, zen, station_ids, save_path,
     Radial axis: zenith in degrees (0 at centre = vertical).
     Angular axis: azimuth in radians (NuRadioReco convention).
     """
-    def _render_and_save(cat_array, out_path, subtitle):
+    def _render_and_save(cat_array, out_path, subtitle, membership=None):
         fig = plt.figure(figsize=(8, 8))
         ax  = fig.add_subplot(111, polar=True)
         ax.set_theta_zero_location('N')
@@ -272,6 +273,9 @@ def plot_polar(azi, zen, station_ids, save_path,
         _CAT_SIZES   = {CATEGORY_ALWAYS: 60,  CATEGORY_NOMINAL: 70,  CATEGORY_ADDITIONAL: 120}
 
         for i in range(len(station_ids)):
+            # Skip if this event doesn't belong in this system's window
+            if membership is not None and not bool(membership[i]):
+                continue
             a = azi[i]; z = zen[i]
             if not (np.isfinite(a) and np.isfinite(z)):
                 continue
@@ -306,13 +310,14 @@ def plot_polar(azi, zen, station_ids, save_path,
         ic(f'Saved polar plot: {out_path}')
 
     base, ext = os.path.splitext(save_path)
-    _render_and_save(categories_chircr,   f"{base}_chircr{ext}",   "chi-RCR variation")
-    _render_and_save(categories_chidiff,  f"{base}_chidiff{ext}",  "chi-diff variation")
+    _render_and_save(categories_chircr,   f"{base}_chircr{ext}",   "chi-RCR variation",  membership=in_chircr)
+    _render_and_save(categories_chidiff,  f"{base}_chidiff{ext}",  "chi-diff variation", membership=in_chidiff)
     _render_and_save(categories_combined, f"{base}_combined{ext}", "combined")
 
 
 def plot_2d(azi, zen, station_ids, save_path,
-            categories_chircr=None, categories_chidiff=None, categories_combined=None):
+            categories_chircr=None, categories_chidiff=None, categories_combined=None,
+            in_chircr=None, in_chidiff=None):
     """
     Flat 2D scatter: azimuth (degrees, x-axis) vs zenith (degrees, y-axis).
 
@@ -321,7 +326,7 @@ def plot_2d(azi, zen, station_ids, save_path,
 
     Provides an easier read for precise angle values than the polar plot.
     """
-    def _render_and_save_2d(cat_array, out_path, subtitle):
+    def _render_and_save_2d(cat_array, out_path, subtitle, membership=None):
         fig, ax = plt.subplots(figsize=(10, 7))
 
         present_stations = sorted(set(int(s) for s in station_ids))
@@ -331,7 +336,11 @@ def plot_2d(azi, zen, station_ids, save_path,
             sid_mask = station_ids_int == sid
             a = np.degrees(azi[sid_mask])
             z = np.degrees(zen[sid_mask])
-            valid = np.isfinite(a) & np.isfinite(z) & ~((a == 0.0) & (z == 0.0))
+            # Apply membership filter for this system's window
+            mem_for_sid = (membership[sid_mask].astype(bool)
+                           if membership is not None
+                           else np.ones(np.sum(sid_mask), dtype=bool))
+            valid = np.isfinite(a) & np.isfinite(z) & ~((a == 0.0) & (z == 0.0)) & mem_for_sid
             color = COLOR_MAP.get(sid, 'gray')
             cats_for_sid = (cat_array[sid_mask] if cat_array is not None
                             else np.full(np.sum(sid_mask), CATEGORY_NOMINAL))
@@ -379,8 +388,8 @@ def plot_2d(azi, zen, station_ids, save_path,
         ic(f'Saved 2D scatter plot: {out_path}')
 
     base, ext = os.path.splitext(save_path)
-    _render_and_save_2d(categories_chircr,   f"{base}_chircr{ext}",   "chi-RCR variation")
-    _render_and_save_2d(categories_chidiff,  f"{base}_chidiff{ext}",  "chi-diff variation")
+    _render_and_save_2d(categories_chircr,   f"{base}_chircr{ext}",   "chi-RCR variation",  membership=in_chircr)
+    _render_and_save_2d(categories_chidiff,  f"{base}_chidiff{ext}",  "chi-diff variation", membership=in_chidiff)
     _render_and_save_2d(categories_combined, f"{base}_combined{ext}", "combined")
 
 
@@ -490,12 +499,16 @@ def main():
     cat_chircr   = events.get('category_chircr',   None)
     cat_chidiff  = events.get('category_chidiff',  None)
     cat_combined = events.get('category_combined', None)
+    in_chircr    = events.get('in_chircr',         None)
+    in_chidiff   = events.get('in_chidiff',        None)
     plot_polar(azi_out, zen_out, events['station_ids'], polar_path,
                categories_chircr=cat_chircr, categories_chidiff=cat_chidiff,
-               categories_combined=cat_combined)
+               categories_combined=cat_combined,
+               in_chircr=in_chircr, in_chidiff=in_chidiff)
     plot_2d(azi_out, zen_out, events['station_ids'], scatter_path,
             categories_chircr=cat_chircr, categories_chidiff=cat_chidiff,
-            categories_combined=cat_combined)
+            categories_combined=cat_combined,
+            in_chircr=in_chircr, in_chidiff=in_chidiff)
 
     ic('Done.')
 

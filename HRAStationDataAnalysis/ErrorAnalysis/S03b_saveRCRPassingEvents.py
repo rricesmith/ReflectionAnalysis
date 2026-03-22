@@ -198,6 +198,9 @@ def iterate_rcr_events(filepath):
     has_cat_chircr   = 'category_chircr'   in events
     has_cat_chidiff  = 'category_chidiff'  in events
     has_cat_combined = 'category_combined' in events
+    has_in_nominal   = 'in_nominal' in events
+    has_in_chircr    = 'in_chircr'  in events
+    has_in_chidiff   = 'in_chidiff' in events
     for i in range(n):
         evt = {
             'station_id': int(events['station_ids'][i]),
@@ -217,6 +220,12 @@ def iterate_rcr_events(filepath):
             evt['category_chidiff']  = int(events['category_chidiff'][i])
         if has_cat_combined:
             evt['category_combined'] = int(events['category_combined'][i])
+        if has_in_nominal:
+            evt['in_nominal'] = bool(events['in_nominal'][i])
+        if has_in_chircr:
+            evt['in_chircr']  = bool(events['in_chircr'][i])
+        if has_in_chidiff:
+            evt['in_chidiff'] = bool(events['in_chidiff'][i])
         yield evt
 
 

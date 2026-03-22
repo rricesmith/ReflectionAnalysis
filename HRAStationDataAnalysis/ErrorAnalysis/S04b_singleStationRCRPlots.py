@@ -81,6 +81,7 @@ def collect_and_save_rcr_events(date, date_cuts, output_path):
     out_chi_2016, out_chi_bad                  = [], []
     out_azi, out_zen                            = [], []
     out_cat_chircr, out_cat_chidiff, out_cat_combined = [], [], []
+    out_in_nominal, out_in_chircr, out_in_chidiff     = [], [], []
 
     excluded_set = set(EXCLUDED_EVENTS)
 
@@ -208,6 +209,10 @@ def collect_and_save_rcr_events(date, date_cuts, output_path):
         out_cat_chircr.append(cat_chircr)
         out_cat_chidiff.append(cat_chidiff)
         out_cat_combined.append(cat_combined)
+        # Membership: which folder each event belongs in
+        out_in_nominal.append(nom_mask[rcr_mask].astype(np.bool_))
+        out_in_chircr.append(upper_chircr_mask[rcr_mask].astype(np.bool_))
+        out_in_chidiff.append(upper_chidiff_mask[rcr_mask].astype(np.bool_))
 
     if not out_snr:
         ic("No events passed RCR cuts across any station.")
@@ -227,6 +232,10 @@ def collect_and_save_rcr_events(date, date_cuts, output_path):
         'category_chircr':   np.concatenate(out_cat_chircr),
         'category_chidiff':  np.concatenate(out_cat_chidiff),
         'category_combined': np.concatenate(out_cat_combined),
+        # Membership booleans: which folder each event appears in
+        'in_nominal': np.concatenate(out_in_nominal),
+        'in_chircr':  np.concatenate(out_in_chircr),
+        'in_chidiff': np.concatenate(out_in_chidiff),
     }
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -322,24 +331,31 @@ def plot_event(evt, output_dir):
 
     _cat_labels = {0: 'always', 1: 'nominal', 2: 'additional'}
 
-    # Save to each variation folder using the appropriate category for that system
+    # Each folder has its own event set — gate on the membership boolean.
+    # nominal:          only events passing NOMINAL_CUTS (the base 9)
+    # chircr_variation: only events passing UPPER_CHIRCR  (7 always + 2 nominal + 3 additional)
+    # chidiff_variation:only events passing UPPER_CHIDIFF (5 always + 3 nominal + 8 additional)
+    # combined:         all events in the union (no gate)
     systems = [
-        ('chircr_variation',  evt.get('category_chircr',  CATEGORY_NOMINAL)),
-        ('chidiff_variation', evt.get('category_chidiff', CATEGORY_NOMINAL)),
-        ('combined',          evt.get('category_combined', CATEGORY_NOMINAL)),
+        ('nominal',           None,                                    evt.get('in_nominal', True)),
+        ('chircr_variation',  evt.get('category_chircr',  CATEGORY_NOMINAL), evt.get('in_chircr',  True)),
+        ('chidiff_variation', evt.get('category_chidiff', CATEGORY_NOMINAL), evt.get('in_chidiff', True)),
+        ('combined',          evt.get('category_combined', CATEGORY_NOMINAL), True),
     ]
+    import shutil
     saved_paths = []
-    for subfolder, cat in systems:
-        cat_tag = _cat_labels.get(int(cat), 'nominal')
+    for subfolder, cat, belongs in systems:
+        if not belongs:
+            continue
+        # nominal folder has no category distinction — all events here pass the base cuts
+        cat_tag = _cat_labels.get(int(cat), 'nominal') if cat is not None else 'nominal'
         folder = os.path.join(output_dir, subfolder)
         os.makedirs(folder, exist_ok=True)
         filename = f"event_{evt['station_id']}_{evt['event_id']}_{cat_tag}.png"
         save_path = os.path.join(folder, filename)
-        # Only the first save actually writes; subsequent ones copy to avoid re-rendering
         if not saved_paths:
             fig.savefig(save_path, dpi=150, bbox_inches='tight')
         else:
-            import shutil
             shutil.copy2(saved_paths[0], save_path)
         saved_paths.append(save_path)
 
