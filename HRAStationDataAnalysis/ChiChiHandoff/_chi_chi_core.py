@@ -187,25 +187,33 @@ def filter_unique_events_by_day(times, station_ids):
 
 
 def get_all_cut_masks(data_dict, cuts=CUTS, cut_type="rcr"):
-    """Copy of ``S01.get_all_cut_masks`` (the ``all_cuts`` key is what defines a "Pass" set).
+    """Thesis ``get_all_cut_masks`` (the ``all_cuts`` key is what defines a "Pass" set).
 
-    ``cut_type='rcr'``      -> RCR analysis cuts  (RCR-chi - BL-chi in (0, chi_diff_max)).
-    ``cut_type='backlobe'`` -> mirrored BL cuts   (RCR-chi - BL-chi in (-chi_diff_max, 0)).
+    Both selections require SNR < snr_max, a chi floor, and a chi-difference band:
+
+    ``cut_type='rcr'``      -> RCR-chi > 0.75  AND  RCR-chi - BL-chi in (0, chi_diff_max).
+    ``cut_type='backlobe'`` -> BL-chi  > 0.75  AND  RCR-chi - BL-chi in (-chi_diff_max, 0).
+
+    NOTE: the two differ in *which* chi carries the 0.75 floor -- RCR-chi for the RCR cut,
+    BL-chi for the backlobe cut. This matches the thesis figure (vertical BL-chi=0.75 boundary
+    on the backlobe region), and corrects an earlier copy that floored both on RCR-chi.
     """
     snr = data_dict["snr"]
     chircr = data_dict["ChiRCR"]
     chi2016 = data_dict["Chi2016"]
 
-    chi_rcr_snr_cut_values = np.interp(snr, cuts["chi_rcr_line_snr"], cuts["chi_rcr_line_chi"])
     chi_diff = chircr - chi2016
 
     masks = {}
     masks["snr_cut"] = snr < cuts["snr_max"]
-    masks["snr_line_cut"] = chircr > chi_rcr_snr_cut_values
 
     if cut_type == "rcr":
+        floor = np.interp(snr, cuts["chi_rcr_line_snr"], cuts["chi_rcr_line_chi"])
+        masks["snr_line_cut"] = chircr > floor          # RCR-chi floor
         masks["chi_diff_cut"] = (chi_diff > cuts["chi_diff_threshold"]) & (chi_diff < cuts.get("chi_diff_max", 999))
     elif cut_type == "backlobe":
+        floor = np.interp(snr, cuts["chi_2016_line_snr"], cuts["chi_2016_line_chi"])
+        masks["snr_line_cut"] = chi2016 > floor         # BL-chi floor (thesis version)
         masks["chi_diff_cut"] = (chi_diff < -cuts["chi_diff_threshold"]) & (chi_diff > -cuts.get("chi_diff_max", 999))
     else:
         raise ValueError(f"Unknown cut_type: {cut_type}")

@@ -35,10 +35,13 @@ STYLE = {
 
 
 def _draw_cut_regions(ax, cuts=core.CUTS):
-    """Shade the RCR (green) and BL (orange) pass regions exactly as S01's chi_vs_chi panel.
+    """Shade the RCR (green) and BL (orange) pass regions exactly as the thesis chi_vs_chi panel.
 
-    RCR region: RCR-chi in (BL-chi + threshold, BL-chi + max_diff), clipped to RCR-chi > 0.75.
-    BL region : the mirror below the diagonal. Boundaries match the event-selection cuts.
+    RCR region: above the diagonal, RCR-chi in (BL-chi + threshold, BL-chi + max_diff),
+                floored by RCR-chi > 0.75  (horizontal boundary).
+    BL region : below the diagonal, BL-chi - RCR-chi in (threshold, max_diff),
+                floored by BL-chi > 0.75   (vertical boundary).
+    The two floors are on different axes -- this matches ``_chi_chi_core.get_all_cut_masks``.
     """
     rcr_chi_cut = cuts["chi_rcr_line_chi"][0]
     bl_chi_cut = cuts["chi_2016_line_chi"][0]
@@ -47,7 +50,7 @@ def _draw_cut_regions(ax, cuts=core.CUTS):
 
     x = np.linspace(0, 1, 200)
 
-    # RCR pass region (above diagonal).
+    # RCR pass region (above diagonal), floored on RCR-chi (horizontal line at y = 0.75).
     y_lo = np.maximum(rcr_chi_cut, x + thr)
     y_hi = np.minimum(1.0, x + dmax)
     m = y_lo < y_hi
@@ -57,15 +60,16 @@ def _draw_cut_regions(ax, cuts=core.CUTS):
     ax.plot([0, rcr_chi_cut], [rcr_chi_cut, rcr_chi_cut], color="purple",
             linestyle="--", linewidth=1.2, zorder=2)
 
-    # BL pass region (below diagonal).
-    yb_hi = np.minimum(1.0, x - thr)
-    yb_lo = np.maximum(rcr_chi_cut, x - dmax)
+    # BL pass region (below diagonal), floored on BL-chi (vertical line at x = 0.75).
+    xb = np.linspace(bl_chi_cut, 1.0, 200)              # BL-chi > 0.75
+    yb_hi = np.minimum(1.0, xb - thr)                   # just below the diagonal
+    yb_lo = np.maximum(0.0, xb - dmax)                  # max chi-difference of 0.2
     mb = yb_lo < yb_hi
     if np.any(mb):
-        ax.fill_between(x[mb], yb_lo[mb], yb_hi[mb], color="orange", alpha=0.10,
+        ax.fill_between(xb[mb], yb_lo[mb], yb_hi[mb], color="orange", alpha=0.10,
                         label="BL cut region", zorder=0)
-    ax.plot([rcr_chi_cut + thr, rcr_chi_cut + dmax], [rcr_chi_cut, rcr_chi_cut],
-            color="darkorange", linestyle="--", linewidth=1.2, zorder=2)
+    ax.plot([bl_chi_cut, bl_chi_cut], [bl_chi_cut - dmax, bl_chi_cut], color="darkorange",
+            linestyle="--", linewidth=1.2, zorder=2)
 
 
 def make_chi_chi_plot(export, ax=None, draw_cuts=True, title=None):

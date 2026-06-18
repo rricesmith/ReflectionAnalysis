@@ -13,8 +13,12 @@ can run their own analysis on each sub-dataset.
 | Category | Definition | Trace source |
 |---|---|---|
 | `data` | every event surviving the C00 quality cuts (the full table) | nurFiles |
-| `pass_rcr` | `data` rows passing the RCR analysis cuts (+ day-uniqueness, − excluded) | nurFiles |
-| `pass_bl` | `data` rows passing the mirrored BL analysis cuts | nurFiles |
+| `pass_rcr` | `data` rows passing the RCR cut: SNR<50, **RCR-χ>0.75**, 0<RCR-χ−BL-χ<0.2 (+ day-uniqueness, − excluded) | nurFiles |
+| `pass_bl` | `data` rows passing the BL cut: SNR<50, **BL-χ>0.75**, 0<BL-χ−RCR-χ<0.2 (+ day-uniqueness, − excluded) | nurFiles |
+
+> The two cuts floor on **different axes**: the RCR cut requires `RCR-χ>0.75` (horizontal
+> boundary, region above the diagonal); the BL cut requires `BL-χ>0.75` (vertical boundary,
+> region below the diagonal). The check-plot shades both regions so you can see this directly.
 | `identified_bl` | 2016-found backlobe (time-matched) **∪** coincidence-tagged backlobe | nurFiles + pickle |
 | `identified_rcr` | coincidence-tagged RCR events (11230, 11243) | pickle |
 
