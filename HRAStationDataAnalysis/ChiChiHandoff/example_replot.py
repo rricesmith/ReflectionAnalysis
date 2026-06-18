@@ -11,49 +11,18 @@ Run from the ReflectionAnalysis repo root, on the cluster (so the raw traces are
 
 The chi values come straight from the export (no recomputation). Traces are only loaded
 for the handful of points you actually ask for.
+
+The chi-chi figure itself comes from the shared ``chi_chi_plot.make_chi_chi_plot`` -- the
+very same function ``export_chi_chi_datasets.py`` uses to write its check-plot, so what you
+reproduce here is identical to what was emitted at export time.
 """
 
 import sys
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 from HRAStationDataAnalysis.ChiChiHandoff import chi_chi_loader as L
-
-
-# Plot styling per category: (color, marker, size, zorder, label).
-STYLE = {
-    "data":           ("gray",       ".", 6,   1, "Data"),
-    "pass_bl":        ("blue",       "*", 70,  3, "Pass BL Cuts"),
-    "pass_rcr":       ("purple",     "*", 70,  3, "Pass RCR Cuts"),
-    "identified_bl":  ("gold",       "o", 60,  4, "Identified BL"),
-    "identified_rcr": ("darkorange", "*", 150, 5, "Identified RCR"),
-}
-
-
-def make_chi_chi_plot(export, ax=None):
-    """Scatter all five categories on the BL-chi (x) vs RCR-chi (y) plane."""
-    if ax is None:
-        _, ax = plt.subplots(figsize=(8, 8))
-
-    for name, (color, marker, size, z, label) in STYLE.items():
-        bl, rcr = L.category_points(export, name)
-        if bl.size == 0:
-            continue
-        alpha = 0.4 if name == "data" else 0.9
-        edge = "none" if name == "data" else "black"
-        ax.scatter(bl, rcr, c=color, marker=marker, s=size, alpha=alpha,
-                   edgecolors=edge, linewidths=0.4, label=f"{label} (N={bl.size})", zorder=z)
-
-    ax.plot([0, 1], [0, 1], "--", color="red", linewidth=1, zorder=2)  # chi_rcr == chi_bl diagonal
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.set_xlabel(r"BL-$\chi$")
-    ax.set_ylabel(r"RCR-$\chi$")
-    ax.set_title("Reflected-CR search: BL-$\\chi$ vs RCR-$\\chi$")
-    ax.grid(True, which="both", alpha=0.3)
-    ax.legend(loc="lower right", fontsize=9)
-    return ax
+from HRAStationDataAnalysis.ChiChiHandoff.chi_chi_plot import make_chi_chi_plot
 
 
 def demo_trace_load(export):

@@ -37,6 +37,7 @@ import pickle
 import numpy as np
 
 from HRAStationDataAnalysis.ChiChiHandoff import _chi_chi_core as core
+from HRAStationDataAnalysis.ChiChiHandoff import chi_chi_plot
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +330,16 @@ def main():
     with open(out_path, "wb") as f:
         pickle.dump(export, f, protocol=pickle.HIGHEST_PROTOCOL)
 
+    # Check-plot: reproduce the thesis BL-chi vs RCR-chi panel from the just-built export.
+    # This is both a sanity check (do the five categories land in the right regions?) and
+    # the example figure the colleague's loader can reproduce. Uses chi values only -- no
+    # trace loading -- so it runs anywhere the export was built.
+    png_path = os.path.join(out_dir, f"chi_chi_export_{date_processing}.png")
+    chi_chi_plot.save_chi_chi_plot(
+        export, png_path,
+        title=f"BL-$\\chi$ vs RCR-$\\chi$  (export {date_processing})",
+    )
+
     n_data = len(export["table"]["snr"])
     print("\n[export] DONE.")
     print(f"  Data (all):       {n_data}")
@@ -338,6 +349,7 @@ def main():
           f"+ {len(export['identified_bl']['from_coincidence'])} (coinc)")
     print(f"  Identified RCR:   {len(export['identified_rcr']['from_coincidence'])} (coinc)")
     print(f"  -> {out_path}")
+    print(f"  -> {png_path}  (check-plot: should match the thesis chi-chi panel)")
 
 
 if __name__ == "__main__":

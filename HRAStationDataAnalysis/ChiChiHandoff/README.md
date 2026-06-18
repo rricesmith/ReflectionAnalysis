@@ -36,9 +36,27 @@ loads each waveform on demand, only for the points they care about.
 | File | Who runs it | Purpose |
 |---|---|---|
 | `_chi_chi_core.py` | — | Frozen copy of the thesis loading/cut/category logic (numpy only) |
-| `export_chi_chi_datasets.py` | **you, once, on the cluster** | Writes `output/chi_chi_export_<date>.pkl` |
+| `export_chi_chi_datasets.py` | **you, once, on the cluster** | Writes `output/chi_chi_export_<date>.pkl` **and** a check-plot `.png` |
+| `chi_chi_plot.py` | — | Shared plot function (`make_chi_chi_plot`) used by both the export and the example |
 | `chi_chi_loader.py` | colleague | `load_export`, `category_records/points`, `load_trace(s)` |
 | `example_replot.py` | colleague | Rebuilds the 2D scatter + demos a trace load |
+
+## The check-plot (built at export time)
+
+Running the export also writes `output/chi_chi_export_<date>.png` — a reproduction of the
+thesis **BL-χ vs RCR-χ** panel built straight from the dataset it just assembled (chi values
+only, no trace loading). It serves two purposes:
+
+1. **Confirms the right data is being passed** before anything is handed off: the five
+   categories are plotted with their `N=` counts, and the shaded RCR (green) / BL (orange)
+   cut regions are drawn from the same cut definitions used to select the events. The
+   `Pass RCR Cuts` points should sit inside the green region and `Pass BL Cuts` inside the
+   orange — if they don't, the categorization is wrong.
+2. **Gives the colleague a reusable plot function.** The figure comes from
+   `chi_chi_plot.make_chi_chi_plot(export)`, the *same* function `example_replot.py` calls —
+   so what the colleague reproduces is byte-for-byte the panel emitted at export time. They
+   can overlay their own analysis on the same axes (`ax = make_chi_chi_plot(export)` → add
+   to `ax`).
 
 ## How to use
 
@@ -48,8 +66,12 @@ loads each waveform on demand, only for the points they care about.
 python -m HRAStationDataAnalysis.ChiChiHandoff.export_chi_chi_datasets
 ```
 
+This writes `output/chi_chi_export_<date>.pkl` **and** `output/chi_chi_export_<date>.png`.
+Open the `.png` and confirm it matches your thesis chi-chi panel (see "The check-plot" above)
+before handing anything off.
+
 Hand the colleague: the resulting `output/chi_chi_export_*.pkl`, plus
-`_chi_chi_core.py`, `chi_chi_loader.py`, and `example_replot.py`.
+`_chi_chi_core.py`, `chi_chi_plot.py`, `chi_chi_loader.py`, and `example_replot.py`.
 
 **2. Colleague side (needs read access to the same raw data):**
 
@@ -76,8 +98,9 @@ against the known schema. On the first cluster run, sanity-check:
 1. **2016-found JSON path** — `_chi_chi_core.CONFIG["found_2016_json_path"]` is
    `StationDataAnalysis/2016FoundEvents.json` (the path used in `S01`, *not* under
    `HRAStationDataAnalysis/`). Confirm it resolves; otherwise `identified_bl` loses its 2016 half.
-2. **Category counts** — compare the printed `Pass RCR` / `Pass BL` / `Identified` counts
-   against the `N=` labels on the thesis figure; they should match exactly.
+2. **Category counts / check-plot** — compare the printed `Pass RCR` / `Pass BL` / `Identified`
+   counts (and the `N=` labels on the auto-generated `chi_chi_export_<date>.png`) against the
+   thesis figure; they should match exactly, and the pass points should fall in their shaded regions.
 3. **Coincidence pickle keys** — station keys may be `int` or `str`; the loader tries both.
 4. **Trace shape** — `example_replot.py` prints one waveform shape per identified set;
    confirm it is what your analysis expects (channels × samples).
